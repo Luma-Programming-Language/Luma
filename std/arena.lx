@@ -3,7 +3,7 @@
 @use "memory" as memory
 
 pub const Arena -> struct {
-    memory: *char,
+    memory: *byte,
     offset: int,
     capacity: int,
 };

@@ -8,8 +8,8 @@
 @use "io" as io
 
 let zBuffer: *double;
-let _colorBuffer: **char;
-let _buffer: *char;
+let _colorBuffer: **byte;
+let _buffer: *byte;
 
 let cube_width: double;
 const width: int = 160;
@@ -56,7 +56,7 @@ const calculateZ -> fn (i: int, j: int, k: int, A: double, B: double) double {
 }
 
 const calculateForSurface -> fn (cX: double, cY: double, cZ: double,
-                                ch: char, color: *char,
+                                ch: byte, color: *byte,
                                 A: double, B: double, C: double) void {
   let x: double = calculateX(cast<int>(cX), cast<int>(cY), cast<int>(cZ), A, B, C);
   let y: double = calculateY(cast<int>(cX), cast<int>(cY), cast<int>(cZ), A, B, C);
@@ -97,8 +97,8 @@ const print_cube -> fn (A: double, B: double, C: double) void {
 
 pub const main -> fn () int {
   zBuffer = cast<*double>(alloc(width * height * sizeof<double>));
-  _colorBuffer = cast<**char>(alloc(width * height * 8));
-  _buffer = cast<*char>(alloc(width * height));
+  _colorBuffer = cast<**byte>(alloc(width * height * 8));
+  _buffer = cast<*byte>(alloc(width * height));
   
   defer { free(zBuffer); free(_colorBuffer); free(_buffer); }
 
@@ -137,10 +137,10 @@ pub const main -> fn () int {
     loop [k: int = 0](k < width * height) : (++k) {
       if (k % width == 0) { output("\n"); }
 
-      if (_colorBuffer[k] != cast<*char>(0)) {
+      if (_colorBuffer[k] != cast<*byte>(0)) {
         output(_colorBuffer[k]);
       }
-      output(string::from_char(_buffer[k]), fx::RESET);
+      output(string::from_byte(_buffer[k]), fx::RESET);
     }
     
     output( 

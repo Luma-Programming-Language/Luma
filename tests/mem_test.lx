@@ -12,7 +12,7 @@ const test_memset -> fn () void {
    mem::memset(buf, 65, 10);
 
    loop [i: int = 0](i < 10) : (++i) {
-    if (cast<*char>(buf)[i] != cast<char>(65)) {
+    if (cast<*byte>(buf)[i] != cast<byte>(65)) {
         output("memset failed at index ", i, "\n");
         return;
     }
@@ -22,8 +22,8 @@ const test_memset -> fn () void {
 }
 
 const test_memcmp -> fn () void {
-    let a: *void = alloc(5 * sizeof<char>);
-    let b: *void = alloc(5 * sizeof<char>);
+    let a: *void = alloc(5 * sizeof<byte>);
+    let b: *void = alloc(5 * sizeof<byte>);
     defer { free(a); free(b); }
 
     // Test equal buffers
@@ -36,7 +36,7 @@ const test_memcmp -> fn () void {
     }
 
     // Test inequality
-    cast<*char>(b)[2] = cast<char>(89);
+    cast<*byte>(b)[2] = cast<byte>(89);
 
     if (mem::memcmp(a, b, 5) >= 0) {
         output("memcmp failed: inequality not detected\n");
@@ -47,13 +47,13 @@ const test_memcmp -> fn () void {
 }
  
 const test_memcpy -> fn () void {
-    let src: *void = alloc(10 * sizeof<char>);
-    let dest: *void = alloc(10 * sizeof<char>);
+    let src: *void = alloc(10 * sizeof<byte>);
+    let dest: *void = alloc(10 * sizeof<byte>);
     defer { free(src); free(dest); }
 
     // Fill source with pattern
     loop [i: int = 0](i < 10) : (++i) {
-        cast<*char>(src)[i] = cast<char>(i + 48); // ASCII '0' to '9'
+        cast<*byte>(src)[i] = cast<byte>(i + 48); // ASCII '0' to '9'
     }
 
     // Copy to destination
@@ -61,7 +61,7 @@ const test_memcpy -> fn () void {
 
     // Verify copy
     loop [i: int = 0](i < 10) : (++i) {
-        if (cast<*char>(dest)[i] != cast<char>(i + 48)) {
+        if (cast<*byte>(dest)[i] != cast<byte>(i + 48)) {
             output("memcpy failed at index ", i, "\n");
             return;
         }
@@ -71,20 +71,20 @@ const test_memcpy -> fn () void {
 }
 
 const test_memmove -> fn () void {
-    let buf: *void = alloc(20 * sizeof<char>);
+    let buf: *void = alloc(20 * sizeof<byte>);
     defer { free(buf); }
 
     // Initialize buffer with pattern
     loop [i: int = 0](i < 20) : (++i) {
-        cast<*char>(buf)[i] = cast<char>(65 + i); // A, B, C, ...
+        cast<*byte>(buf)[i] = cast<byte>(65 + i); // A, B, C, ...
     }
 
     // Test overlapping move (forward)
     mem::memmove(cast<*void>(cast<int>(buf) + 5), buf, 10);
 
-    // Verify first 10 chars are now at positions 5-14
+    // Verify first 10 bytes are now at positions 5-14
     loop [i: int = 0](i < 10) : (++i) {
-        if (cast<*char>(buf)[i+5] != cast<char>(65 + i)) {
+        if (cast<*byte>(buf)[i+5] != cast<byte>(65 + i)) {
             output("memmove (forward) failed at index ", i + 5, "\n");
             return;
         }
@@ -94,15 +94,15 @@ const test_memmove -> fn () void {
 }
 
 const test_memchr -> fn () void {
-    let buf: *void = alloc(10 * sizeof<char>);
+    let buf: *void = alloc(10 * sizeof<byte>);
     defer { free(buf); }
   
     // Fill with pattern where 'X' is at  position 5
     loop [i: int = 0](i < 10) : (++i) {
       if (i == 5) {
-        cast<*char>(buf)[i] = cast<char>(88); // 'X'
+        cast<*byte>(buf)[i] = cast<byte>(88); // 'X'
       } else {
-        cast<*char>(buf)[i] = cast<char>(65); // 'A'
+        cast<*byte>(buf)[i] = cast<byte>(65); // 'A'
       }
     }
 
@@ -131,7 +131,7 @@ const test_memchr -> fn () void {
 }
  
 const test_memzero -> fn () void {
-    let buf: *void = alloc(10 * sizeof<char>);
+    let buf: *void = alloc(10 * sizeof<byte>);
     defer { free(buf); }
 
     // Fill with non-zero values
@@ -142,7 +142,7 @@ const test_memzero -> fn () void {
 
     // Verify all zeros
     loop [i: int = 0](i < 10) : (++i) {
-        if (cast<*char>(buf)[i] != cast<char>(0)) {
+        if (cast<*byte>(buf)[i] != cast<byte>(0)) {
             output("memzero failed at index ", i, "\n");
             return;
         }
@@ -152,7 +152,7 @@ const test_memzero -> fn () void {
 }
 
 const test_calloc -> fn () void {
-    let buf: *void = mem::calloc(10, sizeof<char>);
+    let buf: *void = mem::calloc(10, sizeof<byte>);
     defer { free(buf); }
 
     if (buf == cast<*void>(0)) {
@@ -162,7 +162,7 @@ const test_calloc -> fn () void {
 
     // Verify all zeros
     loop [i: int = 0](i < 10) : (++i) {
-        if (cast<*char>(buf)[i] != cast<char>(0)) {
+        if (cast<*byte>(buf)[i] != cast<byte>(0)) {
             output("calloc failed: not zeroed at index ", i, "\n");
             return;
         }
@@ -172,11 +172,11 @@ const test_calloc -> fn () void {
 }
 
 const test_realloc -> fn () void {
-    let buf: *void = alloc(5 * sizeof<char>);
+    let buf: *void = alloc(5 * sizeof<byte>);
  
     // Fill original buffer
     loop [i: int = 0](i < 5) : (++i) {
-        cast<*char>(buf)[i] = cast<char>(65 + i); // A, B, C, D, E
+        cast<*byte>(buf)[i] = cast<byte>(65 + i); // A, B, C, D, E
     }
 
     // Expand buffer (realloc frees the old buffer internally)
@@ -191,7 +191,7 @@ const test_realloc -> fn () void {
 
     // Verify original data preserved
     loop [i: int = 0](i < 5) : (++i) {
-        if (cast<*char>(buf)[i] != cast<char>(65 + i)) {
+        if (cast<*byte>(buf)[i] != cast<byte>(65 + i)) {
             output("realloc failed: data not preserved at index ", i, "\n");
             return;
         }
@@ -201,8 +201,8 @@ const test_realloc -> fn () void {
 }
 
 const test_memswap -> fn () void {
-    let a: *void = alloc(5 * sizeof<char>);
-    let b: *void = alloc(5 * sizeof<char>);
+    let a: *void = alloc(5 * sizeof<byte>);
+    let b: *void = alloc(5 * sizeof<byte>);
     defer { free(a); free(b); }
 
     // Fill buffers with different patterns
@@ -214,11 +214,11 @@ const test_memswap -> fn () void {
 
     // Verify swap
     loop [i: int = 0](i < 5) : (++i) {
-        if (cast<*char>(a)[i] != cast<char>(66)) {
+        if (cast<*byte>(a)[i] != cast<byte>(66)) {
             output("memswap failed: buffer a not swapped at index ", i, "\n");
             return;
         }
-        if (cast<*char>(b)[i] != cast<char>(65)) {
+        if (cast<*byte>(b)[i] != cast<byte>(65)) {
             output("memswap failed: buffer b not swapped at index ", i, "\n");
             return;
         }
@@ -274,14 +274,14 @@ const test_memfill -> fn () void {
     free(arr);
     if (failed == 1) { return; }
 
-    // === Test 2: Fill with char pattern ===
-    let buf: *char = cast<*char>(alloc(6));
+    // === Test 2: Fill with byte pattern ===
+    let buf: *byte = cast<*byte>(alloc(6));
     defer { free(buf); }
-    mem::memfill(cast<*void>(buf), 65, sizeof<char>, 6);
+    mem::memfill(cast<*void>(buf), 65, sizeof<byte>, 6);
 
     loop [i: int = 0](i < 6) : (++i) {
         if (buf[i] != 'A') {
-            output("memfill (char) failed at index ", i, ": got ", buf[i], ", expected 'A'\n");
+            output("memfill (byte) failed at index ", i, ": got ", buf[i], ", expected 'A'\n");
             return;
         }
     }
@@ -290,12 +290,12 @@ const test_memfill -> fn () void {
 }
 
 const test_memrev -> fn () void {
-    let buf: *void = alloc(5 * sizeof<char>);
+    let buf: *void = alloc(5 * sizeof<byte>);
     defer { free(buf); }
 
     // Fill with pattern: A, B, C, D, E
     loop [i: int = 0](i < 5) : (++i) {
-        cast<*char>(buf)[i] = cast<char>(65 + i);
+        cast<*byte>(buf)[i] = cast<byte>(65 + i);
     }
 
     // Reverse it
@@ -303,8 +303,8 @@ const test_memrev -> fn () void {
 
     // Verify reversal: should be E, D, C, B, A
     loop [i: int = 0](i < 5) : (++i) {
-        let expected: char = cast<char>(69 - i); // E=69, D=68, etc.
-        if (cast<*char>(buf)[i] != expected) {
+        let expected: byte = cast<byte>(69 - i); // E=69, D=68, etc.
+        if (cast<*byte>(buf)[i] != expected) {
             output("memrev failed at index ", i, "\n");
             return;
         }
@@ -314,15 +314,15 @@ const test_memrev -> fn () void {
 }
 
 const test_memcount -> fn () void {
-    let buf: *void = alloc(10 * sizeof<char>);
+    let buf: *void = alloc(10 * sizeof<byte>);
     defer { free(buf); }
 
     // Fill with pattern where 'A' appears 3 times
     loop [i: int = 0](i < 10) : (++i) {
         if (i == 2 || i == 5 || i == 8) {
-            cast<*char>(buf)[i] = cast<char>(65); // 'A'
+            cast<*byte>(buf)[i] = cast<byte>(65); // 'A'
         } else {
-            cast<*char>(buf)[i] = cast<char>(66); // 'B'
+            cast<*byte>(buf)[i] = cast<byte>(66); // 'B'
         }
     }
 

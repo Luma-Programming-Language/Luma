@@ -104,7 +104,7 @@ Luma provides a straightforward type system with both primitive and compound typ
 | `float` | Floating point | 32-bit |
 | `double` | Floating point | 64-bit |
 | `bool` | Boolean | 1 byte |
-| `char` | Unicode Character| 1 byte |
+| `byte` | Unicode byteacter| 1 byte |
 | `str` | String | Variable |
 
 ### Enumerations
@@ -734,14 +734,14 @@ const main -> fn () int {
 ### Input Functions
 
 ```luma
-input<T>(prompt: *char) -> T    // Read typed input
+input<T>(prompt: *byte) -> T    // Read typed input
 ```
 
 The `input` function is generic and reads a value of the specified type:
 
 ```luma
 const main -> fn () int {
-    let name: *char = input<*char>("Enter your name: ");
+    let name: *byte = input<*byte>("Enter your name: ");
     let age: int = input<int>("Enter your age: ");
     let height: double = input<double>("Enter height (meters): ");
     
@@ -756,7 +756,7 @@ const main -> fn () int {
 ### System Commands
 
 ```luma
-system(command: *char) -> int    // Execute system command
+system(command: *byte) -> int    // Execute system command
 ```
 
 Execute shell commands from your program:
@@ -780,7 +780,7 @@ Get the size of any type at compile time:
 ```luma
 const main -> fn () int {
     outputln("int: ", sizeof<int>);           // 8
-    outputln("char: ", sizeof<char>);         // 1
+    outputln("byte: ", sizeof<byte>);         // 1
     outputln("double: ", sizeof<double>);     // 8
     
     // Use in allocations
@@ -816,7 +816,7 @@ const main -> fn () int {
     let rounded: int = cast<int>(pi);     // 3
     
     // Between integer types
-    let small: char = cast<char>(65);     // 'A'
+    let small: byte = cast<byte>(65);     // 'A'
     let large: int = cast<int>(small);    // 65
     
     return 0;
@@ -846,7 +846,7 @@ const main -> fn () int {
 
 ```luma
 const main -> fn () int {
-    let ptr: *char = cast<*char>(alloc(10));
+    let ptr: *byte = cast<*byte>(alloc(10));
     defer free(ptr);
     
     // Pointer to integer
@@ -856,7 +856,7 @@ const main -> fn () int {
     let offset_addr: int = addr + 5;
     
     // Back to pointer
-    let offset_ptr: *char = cast<*char>(offset_addr);
+    let offset_ptr: *byte = cast<*byte>(offset_addr);
     
     return 0;
 }
@@ -873,7 +873,7 @@ Luma supports fixed-size arrays with compile-time known sizes.
 ```luma
 // Syntax: [Type; Size]
 let numbers: [int; 10];           // Array of 10 integers
-let chars: [char; 256];           // Array of 256 characters
+let bytes: [byte; 256];           // Array of 256 byteacters
 let buffer: [double; 100];        // Array of 100 doubles
 
 // Constants can be arrays too
@@ -928,27 +928,27 @@ const main -> fn () int {
 
 ### String Literals
 
-String literals are null-terminated character arrays:
+String literals are null-terminated byteacter arrays:
 
 ```luma
 const main -> fn () int {
-    // String literal - type is *char
-    let message: *char = "Hello, World!";
+    // String literal - type is *byte
+    let message: *byte = "Hello, World!";
     outputln(message);
     
     return 0;
 }
 ```
 
-### Character Literals
+### byteacter Literals
 
-Single characters use single quotes:
+Single byteacters use single quotes:
 
 ```luma
 const main -> fn () int {
-    let letter: char = 'A';           // Character literal
-    let newline: char = '\n';         // Escape sequence
-    let tab: char = '\t';             // Tab character
+    let letter: byte = 'A';           // byteacter literal
+    let newline: byte = '\n';         // Escape sequence
+    let tab: byte = '\t';             // Tab byteacter
     
     return 0;
 }
@@ -963,7 +963,7 @@ const main -> fn () int {
 '\\'   // Backslash
 '\''   // Single quote
 '\"'   // Double quote
-'\0'   // Null character
+'\0'   // Null byteacter
 '\xHH' // Hexadecimal byte (e.g., '\x1b' for ESC)
 ```
 
@@ -1023,11 +1023,11 @@ const INTERNAL_CONSTANT: int = 42;
 ```luma
 const Person -> struct {
 pub:
-    name: *char,
+    name: *byte,
     age: int,
     
 priv:
-    ssn: *char,
+    ssn: *byte,
     internal_id: int
 };
 ```
@@ -1520,7 +1520,7 @@ mem::memeq(a, b, n)             // Check equality
 @use "memory" as mem
 
 const main -> fn () int {
-    let buffer: *void = mem::calloc(10, sizeof<char>);
+    let buffer: *void = mem::calloc(10, sizeof<byte>);
     defer free(buffer);
     
     mem::memset(buffer, 65, 10);  // Fill with 'A'
@@ -1538,7 +1538,7 @@ String manipulation functions.
 @use "string" as string
 
 // Creation
-string::from_char(c)            // Create string from char
+string::from_byte(c)            // Create string from byte
 string::from_int(n)             // Convert int to string
 
 // Measurement
@@ -1548,11 +1548,11 @@ string::strlen(s)               // Get length
 string::strcmp(s1, s2)          // Compare strings
 
 // Search
-string::s_char(s, c)            // Find character
+string::s_byte(s, c)            // Find byteacter
 
 // Manipulation
 string::copy(dest, src)         // Copy string
-string::n_copy(dest, src, n)    // Copy n characters
+string::n_copy(dest, src, n)    // Copy n byteacters
 string::cat(dest, s1, s2)       // Concatenate
 ```
 
@@ -1561,11 +1561,11 @@ string::cat(dest, s1, s2)       // Concatenate
 @use "string" as string
 
 const main -> fn () int {
-    let name: *char = "Alice";
+    let name: *byte = "Alice";
     let len: int = string::strlen(name);
     outputln("Length: ", len);
     
-    let num_str: *char = string::from_int(42);
+    let num_str: *byte = string::from_int(42);
     defer free(num_str);
     outputln("Number: ", num_str);
     
@@ -1629,9 +1629,9 @@ Interactive terminal input functions.
 ```luma
 @use "terminal" as term
 
-term::getch()              // Get single char (no echo, no enter)
-term::getch_silent()       // Get char silently
-term::getche()             // Get char with echo
+term::getch()              // Get single byte (no echo, no enter)
+term::getch_silent()       // Get byte silently
+term::getche()             // Get byte with echo
 term::kbhit()              // Check if key pressed
 term::wait_for_key()       // Wait for any key
 term::clear_input_buffer() // Clear input buffer
@@ -1645,10 +1645,10 @@ term::getpass(prompt)      // Get password (hidden input)
 
 const main -> fn () int {
     outputln("Press any key...");
-    let key: char = term::getch();
-    outputln("You pressed: ", string::from_char(key));
+    let key: byte = term::getch();
+    outputln("You pressed: ", string::from_byte(key));
     
-    let password: *char = term::getpass("Enter password: ");
+    let password: *byte = term::getpass("Enter password: ");
     defer free(password);
     outputln("Password entered");
     
@@ -1760,7 +1760,7 @@ Access:      .   ::  []  *  &
 
 ```
 int     double    bool    *T      [T; N]
-uint    float     char    str     void
+uint    float     byte    str     void
 ```
 
 ### Common Patterns
@@ -1785,7 +1785,7 @@ if (ptr == cast<*T>(0)) {
 let x: int = m::function();
 
 // String operations
-let s: *char = string::from_int(42);
+let s: *byte = string::from_int(42);
 defer free(s);
 ```
 

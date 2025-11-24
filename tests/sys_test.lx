@@ -25,7 +25,7 @@ const test_file_operations -> fn () int {
         return 1;
     }
     
-    let test_data: *char = "Hello from Luma!\n";
+    let test_data: *byte = "Hello from Luma!\n";
     let bytes_written: int = sys::write_str(fd, test_data);
     
     if (sys::is_error(bytes_written)) {
@@ -45,7 +45,7 @@ const test_file_operations -> fn () int {
         return 1;
     }
     
-    let buffer: *char = cast<*char>(alloc(100));
+    let buffer: *byte = cast<*byte>(alloc(100));
     defer { free(buffer); }
     
     let bytes_read: int = sys::read(fd, cast<*void>(buffer), 99);
@@ -56,7 +56,7 @@ const test_file_operations -> fn () int {
         return 1;
     }
     
-    buffer[bytes_read] = cast<char>(0);  // Null terminate
+    buffer[bytes_read] = cast<byte>(0);  // Null terminate
     sys::print("✓ File read successful: ");
     sys::print(buffer);
     
@@ -100,12 +100,12 @@ const test_directory_operations -> fn () int {
     sys::print("✓ Directory change successful\n");
     
     // Test 3: Get current directory
-    let cwd_buffer: *char = cast<*char>(alloc(256));
+    let cwd_buffer: *byte = cast<*byte>(alloc(256));
     defer { free(cwd_buffer); }
     
-    let getcwd_result: *char = sys::getcwd(cwd_buffer, 256);
+    let getcwd_result: *byte = sys::getcwd(cwd_buffer, 256);
     
-    if (getcwd_result == cast<*char>(0)) {
+    if (getcwd_result == cast<*byte>(0)) {
         sys::eprint("Error: Failed to get current directory\n");
         sys::chdir("/tmp");
         sys::rmdir("/tmp/luma_test_dir");

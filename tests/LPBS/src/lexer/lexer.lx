@@ -49,9 +49,9 @@ pub const TokenType -> enum {
 
 // Keywords: target, if, else, let
 // Built-ins: run, copy, mkdir, glob, import, exists
-const K_Symbol_Map -> struct { value: *char, type: int };
-const D_Symbol_Map -> struct { value: *char, type: int };
-const S_Symbol_Map -> struct { value:  char, type: int };
+const K_Symbol_Map -> struct { value: *byte, type: int };
+const D_Symbol_Map -> struct { value: *byte, type: int };
+const S_Symbol_Map -> struct { value:  byte, type: int };
 
 const K_Symbol_Size: int = 10;
 const D_Symbol_Size: int = 4;
@@ -61,7 +61,7 @@ pub const Token -> struct {
   list: *Token,
   size: int,
   capacity: int,
-  value: *char,
+  value: *byte,
   type: int,
   line: int,
   col: int,
@@ -103,11 +103,11 @@ const s_symbol: [S_Symbol_Map; 12]  = [
 ];
 
 // Helper function to print error messages with line and column info
-const print_error -> fn (msg: *char, line: int, col: int) void {
+const print_error -> fn (msg: *byte, line: int, col: int) void {
   sys::eprint("Lexer Error at line ");
   
   // Allocate buffer for line number
-  let line_buf: *char = cast<*char>(alloc(20));
+  let line_buf: *byte = cast<*byte>(alloc(20));
   string::int_to_str(line, line_buf, 20);
   sys::eprint(line_buf);
   free(line_buf);
@@ -115,7 +115,7 @@ const print_error -> fn (msg: *char, line: int, col: int) void {
   sys::eprint(", column ");
   
   // Allocate buffer for column number
-  let col_buf: *char = cast<*char>(alloc(20));
+  let col_buf: *byte = cast<*byte>(alloc(20));
   string::int_to_str(col, col_buf, 20);
   sys::eprint(col_buf);
   free(col_buf);
@@ -133,7 +133,7 @@ pub const free_tokens -> fn (tks: *Token) void {
   
   if (tks.list != cast<*Token>(0)) {
     loop [i: int = 0](i < tks.size) : (++i) {
-      if (tks.list[i].value != cast<*char>(0)) {
+      if (tks.list[i].value != cast<*byte>(0)) {
         free(tks.list[i].value);
       }
     }
@@ -142,7 +142,7 @@ pub const free_tokens -> fn (tks: *Token) void {
   free(tks);
 }
 
-const make_token -> fn (type: int, value: *char, line: int, col: int) Token {
+const make_token -> fn (type: int, value: *byte, line: int, col: int) Token {
   let tk: Token;
   tk.type = type;
   tk.value = value;
@@ -151,14 +151,14 @@ const make_token -> fn (type: int, value: *char, line: int, col: int) Token {
   return tk;
 }
 
-const is_whitespace -> fn (ch: char) bool {
+const is_whitespace -> fn (ch: byte) bool {
   return (ch == ' ' || ch == '\t' || ch == '\n' || ch == '\r');
 }
 
 #returns_ownership
-pub const scan -> fn (path: *char) *Token {
+pub const scan -> fn (path: *byte) *Token {
   // Validate input
-  if (path == cast<*char>(0)) {
+  if (path == cast<*byte>(0)) {
     sys::eprint("Lexer Error: NULL input provided to scan()\n");
     return cast<*Token>(0);
   }
@@ -188,7 +188,7 @@ pub const scan -> fn (path: *char) *Token {
 
   let i: int = 0;
   loop (i < src_len) {
-    let ch: char = path[i];
+    let ch: byte = path[i];
     
     // Skip whitespace but count lines/cols
     if (is_whitespace(ch)) {
@@ -223,9 +223,9 @@ pub const scan -> fn (path: *char) *Token {
       }
     
       let length: int = i - start_pos;
-      let word: *char = cast<*char>(alloc(length + 1));
+      let word: *byte = cast<*byte>(alloc(length + 1));
       
-      if (word == cast<*char>(0)) {
+      if (word == cast<*byte>(0)) {
         print_error("Failed to allocate memory for identifier", 
                     tks.line, start_col);
         free_tokens(tks);
@@ -272,9 +272,9 @@ pub const scan -> fn (path: *char) *Token {
       }
       
       let length: int = i - start_pos;
-      let num: *char = cast<*char>(alloc(length + 1));
+      let num: *byte = cast<*byte>(alloc(length + 1));
       
-      if (num == cast<*char>(0)) {
+      if (num == cast<*byte>(0)) {
         print_error("Failed to allocate memory for number", tks.line, start_col);
         free_tokens(tks);
         return cast<*Token>(0);
@@ -320,9 +320,9 @@ pub const scan -> fn (path: *char) *Token {
       }
       
       let length: int = i - start_pos;
-      let str_val: *char = cast<*char>(alloc(length + 1));
+      let str_val: *byte = cast<*byte>(alloc(length + 1));
       
-      if (str_val == cast<*char>(0)) {
+      if (str_val == cast<*byte>(0)) {
         print_error("Failed to allocate memory for string", tks.line, start_col);
         free_tokens(tks);
         return cast<*Token>(0);
@@ -344,12 +344,12 @@ pub const scan -> fn (path: *char) *Token {
       continue;
     }
 
-    // Handle double-character symbols
+    // Handle double-byteacter symbols
     let matched: int = 0;
     if (i + 1 < src_len) {
-      let two: *char = cast<*char>(alloc(3 * sizeof<char>));
+      let two: *byte = cast<*byte>(alloc(3 * sizeof<byte>));
       
-      if (two == cast<*char>(0)) {
+      if (two == cast<*byte>(0)) {
         print_error("Failed to allocate memory for symbol", tks.line, tks.col);
         free_tokens(tks);
         return cast<*Token>(0);
@@ -377,7 +377,7 @@ pub const scan -> fn (path: *char) *Token {
       }
     }
    
-    // Handle single-character symbols
+    // Handle single-byteacter symbols
     if (matched == 0) {
       matched = 0;
       loop [k: int = 0](k < 12) : (++k) {
@@ -393,7 +393,7 @@ pub const scan -> fn (path: *char) *Token {
           
           // Ownership transferred to token - will be freed by free_tokens()
           tks.list[tks.size] = 
-                make_token(s_symbol[k].type, string::from_char(ch), 
+                make_token(s_symbol[k].type, string::from_byte(ch), 
                            tks.line, start_col);
           tks.size = tks.size + 1;
           tks.col = tks.col + 1;
@@ -403,24 +403,24 @@ pub const scan -> fn (path: *char) *Token {
         }
       }
       
-      // If still no match, we have an unknown character
+      // If still no match, we have an unknown byteacter
       if (matched == 0) {
         sys::eprint("Lexer Error at line ");
         
-        let line_buf: *char = cast<*char>(alloc(20));
+        let line_buf: *byte = cast<*byte>(alloc(20));
         string::int_to_str(tks.line, line_buf, 20);
         sys::eprint(line_buf);
         free(line_buf);
         
         sys::eprint(", column ");
         
-        let col_buf: *char = cast<*char>(alloc(20));
+        let col_buf: *byte = cast<*byte>(alloc(20));
         string::int_to_str(tks.col, col_buf, 20);
         sys::eprint(col_buf);
         free(col_buf);
         
-        sys::eprint(": Unknown character '");
-        let unknown: *char = cast<*char>(alloc(2));
+        sys::eprint(": Unknown byteacter '");
+        let unknown: *byte = cast<*byte>(alloc(2));
         unknown[0] = ch;
         unknown[1] = '\0';
         sys::eprint(unknown);

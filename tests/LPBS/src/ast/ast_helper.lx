@@ -21,7 +21,7 @@ pub const print_expr -> fn (node: *Expr) void {
     }
     ast::ExprKind::EXPR_BINARY -> {
       let bin_node: *Binary = cast<*Binary>(node);      
-      let binop: *char = string::from_char(bin_node.op);
+      let binop: *byte = string::from_byte(bin_node.op);
       defer { free(binop); }                            
                                                   
       output("(");                                      
@@ -32,7 +32,7 @@ pub const print_expr -> fn (node: *Expr) void {
     }
     ast::ExprKind::EXPR_UNARY  -> {
       let unary_node: *Unary = cast<*Unary>(node);       
-      let unop: *char = string::from_char(unary_node.op);
+      let unop: *byte = string::from_byte(unary_node.op);
       defer { free(unop); }                              
                                                    
       output(unop);                                      

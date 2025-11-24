@@ -13,8 +13,8 @@ const menu_demo -> fn () void {
   output("4. Exit\n\n");
   output("Select an option: ");
   
-  let choice: char = term::getch();
-  output(string::from_char(choice), "\n\n"); // Echo the choice
+  let choice: byte = term::getch();
+  output(string::from_byte(choice), "\n\n"); // Echo the choice
   
   if (choice == '1') {
     output(fx::GREEN, "✓ You selected Option One\n", fx::RESET);
@@ -33,7 +33,7 @@ const password_demo -> fn () void {
   output(fx::CLEAR_SCREEN, fx::CURSOR_HOME);
   output(fx::BOLD, fx::BRIGHT_MAGENTA, "=== Password Input Demo ===\n", fx::RESET);
   
-  let password: *char = term::getpass("Enter password: ");
+  let password: *byte = term::getpass("Enter password: ");
   defer { free(password); }
   
   output(fx::GREEN, "Password received! (hidden)\n", fx::RESET);
@@ -46,23 +46,23 @@ const keystroke_demo -> fn () void {
   output("Press keys (ESC to exit)\n\n");
   
   loop {
-    let c: char = term::getch();
+    let c: byte = term::getch();
     
     // ESC key
-    if (c == cast<char>(27)) {
+    if (c == cast<byte>(27)) {
         output("\n", fx::CYAN, "ESC pressed - exiting\n", fx::RESET);
         break;
     }
     
-    // Show character code
-    output("Key: '", string::from_char(c), "' (ASCII: ", cast<int>(c), ")\n");
+    // Show byteacter code
+    output("Key: '", string::from_byte(c), "' (ASCII: ", cast<int>(c), ")\n");
     
     // Special key detection
-    if (c == cast<char>(13) || c == cast<char>(10)) {
+    if (c == cast<byte>(13) || c == cast<byte>(10)) {
         output(fx::BRIGHT_GREEN, "  → ENTER key\n", fx::RESET);
-    } elif (c == cast<char>(32)) {
+    } elif (c == cast<byte>(32)) {
         output(fx::BRIGHT_BLUE, "  → SPACE key\n", fx::RESET);
-    } elif (c == cast<char>(127) || c == cast<char>(8)) {
+    } elif (c == cast<byte>(127) || c == cast<byte>(8)) {
         output(fx::BRIGHT_RED, "  → BACKSPACE key\n", fx::RESET);
     }
   }
@@ -77,7 +77,7 @@ const reaction_game -> fn () void {
   term::wait_for_key();
   
   output(fx::BRIGHT_GREEN, fx::BOLD, "\nGO!\n", fx::RESET);
-  let c: char = term::getch();
+  let c: byte = term::getch();
   
   if (c == ' ') {
     output(fx::GREEN, "✓ Good reflexes!\n", fx::RESET);
@@ -98,9 +98,9 @@ const raw_mode_demo -> fn () void {
   let running: int = 1;
   
   loop (running == 1) {
-    let key: char = term::getch_raw();
+    let key: byte = term::getch_raw();
     
-    output("Key: '", string::from_char(key), 
+    output("Key: '", string::from_byte(key), 
            "' (ASCII: ", cast<int>(key), ")\n");
     
     if (key == 'q' || key == 'Q') {
@@ -111,12 +111,12 @@ const raw_mode_demo -> fn () void {
   output(fx::BRIGHT_CYAN, "\nExiting...\n", fx::RESET);
 }
 
-const moving_character_demo -> fn () void {
+const moving_byteacter_demo -> fn () void {
   // Enable raw mode
   term::enable_raw_mode();
   defer { term::disable_raw_mode(); }
   
-  // Character position
+  // byteacter position
   let x: int = 20;
   let y: int = 10;
   let running: int = 1;
@@ -127,7 +127,7 @@ const moving_character_demo -> fn () void {
   loop (running == 1) {
     // Draw screen at home position (overwrites previous)
     output(fx::CURSOR_HOME);
-    output(fx::BOLD, fx::BRIGHT_YELLOW, "=== Moving Character Demo ===\n", fx::RESET);
+    output(fx::BOLD, fx::BRIGHT_YELLOW, "=== Moving byteacter Demo ===\n", fx::RESET);
     output("Position: (", x, ", ", y, ")  \n");
     output("Use WASD to move, Q to quit.\n\n");
     
@@ -157,7 +157,7 @@ const moving_character_demo -> fn () void {
     output("┘\n", fx::RESET);
     
     // Wait for input (blocking)
-    let key: char = term::getch_raw();
+    let key: byte = term::getch_raw();
     
     // Handle movement with boundary checks
     switch (key) {
@@ -177,7 +177,7 @@ const typing_speed_demo -> fn () void {
   output(fx::CLEAR_SCREEN, fx::CURSOR_HOME);
   output(fx::BOLD, fx::BRIGHT_BLUE, "=== Typing Speed Test ===\n", fx::RESET);
   
-  let target: *char = "The quick brown fox jumps over the lazy dog";
+  let target: *byte = "The quick brown fox jumps over the lazy dog";
   output("Type this: ", fx::BRIGHT_YELLOW, target, fx::RESET, "\n\n", fx::CURSOR_SHOW);
   output("Your input: ");
   
@@ -185,7 +185,7 @@ const typing_speed_demo -> fn () void {
   term::enable_raw_mode();
   defer { term::disable_raw_mode(); }
   
-  let typed: *char = cast<*char>(alloc(100));
+  let typed: *byte = cast<*byte>(alloc(100));
   defer { free(typed); }
   
   let index: int = 0;
@@ -194,10 +194,10 @@ const typing_speed_demo -> fn () void {
   let wrong: int = 0;
   
   loop (index < target_len) {
-    let key: char = term::getch_raw(); // Blocking in raw mode
+    let key: byte = term::getch_raw(); // Blocking in raw mode
     
     // Handle backspace
-    if (key == cast<char>(127) || key == cast<char>(8)) {
+    if (key == cast<byte>(127) || key == cast<byte>(8)) {
       if (index > 0) {
         // Check if we need to undo a correct or wrong count
         if (typed[index - 1] == target[index - 1]) {
@@ -207,27 +207,27 @@ const typing_speed_demo -> fn () void {
         }
         
         index = index - 1;
-        output("\b\b"); // Erase character visually
+        output("\b\b"); // Erase byteacter visually
       }
       continue;
     }
     
-    // Store typed character
+    // Store typed byteacter
     typed[index] = key;
     
     // Check if correct
     if (key == target[index]) {
-      output(fx::GREEN, string::from_char(key), fx::RESET);
+      output(fx::GREEN, string::from_byte(key), fx::RESET);
       correct = correct + 1;
     } else {
-      output(fx::RED, string::from_char(key), fx::RESET);
+      output(fx::RED, string::from_byte(key), fx::RESET);
       wrong = wrong + 1;
     }
     
     index = index + 1;
   }
   
-  typed[index] = cast<char>(0); // Null terminate
+  typed[index] = cast<byte>(0); // Null terminate
   
   // Show results
   output("\n\n");
@@ -239,12 +239,12 @@ const typing_speed_demo -> fn () void {
   output(fx::BRIGHT_CYAN, "Accuracy: ", accuracy, "%\n", fx::RESET);
 }
 
-const yes_no_prompt -> fn (question: *char) int {
+const yes_no_prompt -> fn (question: *byte) int {
   output(question, " (y/n): ");
   
   loop {
-    let c: char = term::getch();
-    output(string::from_char(c), "\n");
+    let c: byte = term::getch();
+    output(string::from_byte(c), "\n");
     
     switch (c) {
      'y', 'Y' -> return 1;
@@ -272,13 +272,13 @@ pub const main -> fn () int {
    output("  4. Reaction Game\n\n");
    output(fx::BRIGHT_MAGENTA, "Raw Mode Demos (NEW!):\n", fx::RESET);
    output("  5. Raw Mode Demo\n");
-   output("  6. Moving Character Game\n");
+   output("  6. Moving byteacter Game\n");
    output("  7. Typing Speed Test\n\n");
    output("  8. Exit\n\n");
    output("Choose: ");
    
-   let choice: char = term::getch();
-   output(string::from_char(choice), "\n\n");
+   let choice: byte = term::getch();
+   output(string::from_byte(choice), "\n\n");
 
     switch(choice) {
      '1' -> { menu_demo(); term::wait_for_key(); }
@@ -286,7 +286,7 @@ pub const main -> fn () int {
      '3' -> { keystroke_demo(); term::wait_for_key(); }
      '4' -> { reaction_game(); term::wait_for_key(); }
      '5' -> { raw_mode_demo(); term::wait_for_key(); }
-     '6' -> { moving_character_demo(); term::wait_for_key(); }
+     '6' -> { moving_byteacter_demo(); term::wait_for_key(); }
      '7' -> { typing_speed_demo(); term::wait_for_key(); }
      '8' -> {
         if (yes_no_prompt("Are you sure you want to exit?") == 1) {

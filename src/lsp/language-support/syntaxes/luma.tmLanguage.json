@@ -149,7 +149,7 @@
       "patterns": [
         {
           "name": "support.type.primitive.luma",
-          "match": "\\b(int|uint|float|double|bool|str|void|char|short|long|nil)\\b"
+          "match": "\\b(int|uint|float|double|bool|str|void|byte|short|long|nil)\\b"
         },
         {
           "name": "entity.name.type.luma",

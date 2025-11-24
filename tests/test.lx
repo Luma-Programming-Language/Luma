@@ -3,7 +3,7 @@
 @use "io" as io
 
 pub const Point -> struct {
-  vertex: *char,
+  vertex: *byte,
   x: int,
   y: int
 };
@@ -13,7 +13,7 @@ pub const main -> fn () int {
 
   io::print_int("Point coordinates: (%d, %d)\n", [y.x, y.y]);
   io::print_str("Point vertex: %s\n", [y.vertex]);
-  io::print_char("Point vertex first char: %c\n", [y.vertex[0]]);
+  io::print_byte("Point vertex first byte: %c\n", [y.vertex[0]]);
 
   return 0; 
 }

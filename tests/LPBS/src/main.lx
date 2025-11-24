@@ -10,8 +10,8 @@
 pub const main -> fn () int {
   let speed: Timer = time::timer_start();
 
-  let path: *char = "/home/thedevconnor/Projects/Luma/tests/LPBS/build.lmb";
-  let file: *char = io::read_file(path);
+  let path: *byte = "/home/thedevconnor/Projects/Luma/tests/LPBS/build.lmb";
+  let file: *byte = io::read_file(path);
   let lex: *Token = lexer::scan(file);
 
   let parser: *Stmt = psr::parse(lex, path);

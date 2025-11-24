@@ -188,7 +188,7 @@ pub const wait4 -> fn  (pid: int, status: *int, options: int, rusage: *void) int
     return __syscall__(SYS_WAIT4, pid, cast<int>(status), options, cast<int>(rusage));
 }
 
-pub const execve -> fn  (path: *char, argv: **char, envp: **char) int {
+pub const execve -> fn  (path: *byte, argv: **byte, envp: **byte) int {
     return __syscall__(SYS_EXECVE, cast<int>(path), cast<int>(argv), cast<int>(envp));
 }
 
@@ -202,7 +202,7 @@ pub const write -> fn  (fd: int, buf: *void, count: int) int {
     return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
 }
 
-pub const open -> fn  (path: *char, flags: int, mode: int) int {
+pub const open -> fn  (path: *byte, flags: int, mode: int) int {
     return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
 }
 
@@ -234,28 +234,28 @@ pub const pipe -> fn  (pipefd: *int) int {
     return __syscall__(SYS_PIPE, cast<int>(pipefd));
 }
 
-pub const unlink -> fn  (path: *char) int {
+pub const unlink -> fn  (path: *byte) int {
     return __syscall__(SYS_UNLINK, cast<int>(path));
 }
 
 // ============= Directory Operations =============
 
-pub const mkdir -> fn  (path: *char, mode: int) int {
+pub const mkdir -> fn  (path: *byte, mode: int) int {
     return __syscall__(SYS_MKDIR, cast<int>(path), mode);
 }
 
-pub const rmdir -> fn  (path: *char) int {
+pub const rmdir -> fn  (path: *byte) int {
     return __syscall__(SYS_RMDIR, cast<int>(path));
 }
 
-pub const chdir -> fn  (path: *char) int {
+pub const chdir -> fn  (path: *byte) int {
     return __syscall__(SYS_CHDIR, cast<int>(path));
 }
 
-pub const getcwd -> fn  (buf: *char, size: int) *char {
+pub const getcwd -> fn  (buf: *byte, size: int) *byte {
     let result: int = __syscall__(SYS_GETCWD, cast<int>(buf), size);
     if (result < 0) {
-        return cast<*char>(0);
+        return cast<*byte>(0);
     }
     return buf;
 }
@@ -291,13 +291,13 @@ pub const get_errno -> fn (result: int) int {
 }
 
 // Write string to file descriptor
-pub const write_str -> fn (fd: int, s: *char) int {
+pub const write_str -> fn (fd: int, s: *byte) int {
     let len: int = 0;
-    loop (s[len] != cast<char>(0)) : (++len) {}
+    loop (s[len] != cast<byte>(0)) : (++len) {}
     return write(fd, cast<*void>(s), len);
 }
 
 // Print to stderr
-pub const eprint -> fn (s: *char) int {
+pub const eprint -> fn (s: *byte) int {
     return write_str(STDERR, s);
 }

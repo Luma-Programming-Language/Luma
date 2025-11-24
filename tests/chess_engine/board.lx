@@ -11,9 +11,9 @@ pub const Move -> struct {
 };
 
 pub const Board -> struct {
-  starting_fen: *char,
+  starting_fen: *byte,
   length_fen: int,
-  squares: *char,
+  squares: *byte,
 
   white_can_castle_kingside:  int,
   white_can_castle_queenside: int,
@@ -23,7 +23,7 @@ pub const Board -> struct {
 
 #returns_ownership
 pub const init_board -> fn (bd: *Board) *Board {
-  bd.squares = cast<*char>(alloc(8 * sizeof<*char>));
+  bd.squares = cast<*byte>(alloc(8 * sizeof<*byte>));
 
   // Initialize the chess board with starting positions
   bd.starting_fen = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR";
@@ -35,7 +35,7 @@ pub const init_board -> fn (bd: *Board) *Board {
   bd.black_can_castle_queenside = 1;
 
   loop [i: int = 0, row: int = 0, col: int = 0](i < bd.length_fen) : (++i) {
-    let c: char = bd.starting_fen[i];
+    let c: byte = bd.starting_fen[i];
     if (c == '/') {
       row = row + 1;
       col = 0;
@@ -54,11 +54,11 @@ pub const init_board -> fn (bd: *Board) *Board {
   return bd;
 }
 
-pub const parse_move -> fn (mv: *Move, move: *char) *Move {
-  let from_col: char = move[0];
-  let from_row: char = move[1];
-  let to_col: char = move[2];
-  let to_row: char = move[3];
+pub const parse_move -> fn (mv: *Move, move: *byte) *Move {
+  let from_col: byte = move[0];
+  let from_row: byte = move[1];
+  let to_col: byte = move[2];
+  let to_row: byte = move[3];
 
   mv.from_col = cast<int>(from_col) - cast<int>('a');
   mv.from_row = 7 - (cast<int>(from_row) - cast<int>('1'));  
@@ -71,7 +71,7 @@ pub const parse_move -> fn (mv: *Move, move: *char) *Move {
 pub const validate_pawn_path -> fn (bd: *Board, mv: *Move, dr: int, dc: int) int {
   if (dc == 0 && (dr == -2 || dr == 2)) {
     let mid_row: int = (mv.from_row + mv.to_row) / 2;
-    let mid: char = bd.squares[mid_row * 8 + mv.from_col];
+    let mid: byte = bd.squares[mid_row * 8 + mv.from_col];
     if (mid != '.') { return 0; } 
   }
   return 1;
@@ -117,16 +117,16 @@ pub const is_move_legal -> fn (rule: *PieceRules, bd: *Board, mv: *Move) int {
 }
 
 pub const is_king_in_check -> fn (bd: *Board, is_white: int) int {
-  let king_char: char; 
-  if (is_white == 1) { king_char = 'K'; } 
-  else { king_char = 'k'; }
+  let king_byte: byte; 
+  if (is_white == 1) { king_byte = 'K'; } 
+  else { king_byte = 'k'; }
   
   let king_row: int = -1;
   let king_col: int = -1;
 
   // Find the king position
   loop [i: int = 0](i < 64) : (++i) {
-    if (bd.squares[i] == king_char) {
+    if (bd.squares[i] == king_byte) {
       king_row = i / 8;
       king_col = i % 8;
       break;
@@ -140,7 +140,7 @@ pub const is_king_in_check -> fn (bd: *Board, is_white: int) int {
   }
 
   loop [i: int = 0](i < 64) : (++i) {
-    let ch: char = bd.squares[i];
+    let ch: byte = bd.squares[i];
     if (ch == '.') { continue; }
 
     // Skip same color pieces
@@ -197,19 +197,19 @@ pub const update_board -> fn (bd: *Board, mv: *Move, white_to_move: *int, is_val
     return;
   }
 
-  let piece_char: char = bd.squares[from_index];
-  if (piece_char == '.') {
+  let piece_byte: byte = bd.squares[from_index];
+  if (piece_byte == '.') {
     output("Error: No piece at source square.\n");
     *is_valid = 1;
     return;
   }
 
-  let target: char = bd.squares[to_index];
+  let target: byte = bd.squares[to_index];
 
   // Determine piece color
   // FIXME: Need to fix when cast the result of a bool it returns -1 and 0 instead of 1 and 0
-  let is_white_piece: int = piece::is_white_piece(piece_char); 
-  let is_black_piece: int = piece::is_black_piece(piece_char); 
+  let is_white_piece: int = piece::is_white_piece(piece_byte); 
+  let is_black_piece: int = piece::is_black_piece(piece_byte); 
 
   // Validate turn (fixed)
   if (*white_to_move == 1 && is_white_piece == 0) {
@@ -224,14 +224,14 @@ pub const update_board -> fn (bd: *Board, mv: *Move, white_to_move: *int, is_val
   }
 
   // Check capture legality
-  if (piece::can_capture(piece_char, target) == 0) {
+  if (piece::can_capture(piece_byte, target) == 0) {
     output("Error: Cannot capture your own piece.\n");
     *is_valid = 1;
     return;
   }
 
   // Validate piece movement rules
-  let rule: *PieceRules = piece::get_rules(piece_char);
+  let rule: *PieceRules = piece::get_rules(piece_byte);
   if (rule == cast<*PieceRules>(0)) {
     output("Error: Unknown piece type.\n");
     *is_valid = 1;
@@ -242,7 +242,7 @@ pub const update_board -> fn (bd: *Board, mv: *Move, white_to_move: *int, is_val
   let dr: int = mv.to_row - mv.from_row;
   
   // Special handling for pawns
-  if (piece_char == 'P' || piece_char == 'p') {
+  if (piece_byte == 'P' || piece_byte == 'p') {
     if (piece::validate_pawn_move(rule, dc, dr, mv.from_row, target, is_white_piece) == 0 ||
         validate_pawn_path(bd, mv, dr, dc) == 0) {
       output("Error: Illegal pawn move.\n");
@@ -258,11 +258,11 @@ pub const update_board -> fn (bd: *Board, mv: *Move, white_to_move: *int, is_val
   }
   
   // Save old state
-  let backup_from: char = bd.squares[from_index];
-  let backup_to: char   = bd.squares[to_index];
+  let backup_from: byte = bd.squares[from_index];
+  let backup_to: byte   = bd.squares[to_index];
 
   // Simulate move
-  bd.squares[to_index] = piece_char;
+  bd.squares[to_index] = piece_byte;
   bd.squares[from_index] = '.';
 
   // Check if own king is now in check
@@ -287,7 +287,7 @@ pub const update_board -> fn (bd: *Board, mv: *Move, white_to_move: *int, is_val
   *is_valid = 0;
 }
 
-pub const print_board -> fn (bd: *Board, moves: **char, move_count: int) void {
+pub const print_board -> fn (bd: *Board, moves: **byte, move_count: int) void {
   output("  ╔═════════════════╗");
   
   // Show moves on the right side of the board
@@ -303,7 +303,7 @@ pub const print_board -> fn (bd: *Board, moves: **char, move_count: int) void {
     if (i < 8) {
       output(8 - i, " ║ ");
       loop [j: int = 0](j < 8) : (++j) {
-        let piece: *char;
+        let piece: *byte;
         switch (bd.squares[i * 8 + j]) {
           'P' -> { piece = "♟"; }
           'N' -> { piece = "♞"; }

@@ -30,24 +30,24 @@ pub const Number -> struct {
 
 pub const Ident -> struct {
   base: Expr, 
-  name: *char
+  name: *byte
 };
 
 pub const StringLit -> struct {
   base: Expr,
-  value: *char
+  value: *byte
 };
 
 pub const Binary -> struct {
   base: Expr,
-  op: char,       
+  op: byte,       
   left: *Expr,
   right: *Expr
 };
 
 pub const Unary -> struct {
   base: Expr,
-  op: char,       
+  op: byte,       
   operand: *Expr
 };
 
@@ -77,7 +77,7 @@ pub const create_number_node -> fn (value: int) *Expr {
 }
 
 #returns_ownership
-pub const create_ident_node -> fn (name: *char) *Expr {
+pub const create_ident_node -> fn (name: *byte) *Expr {
   let node: *Ident = cast<*Ident>(alloc(sizeof<Ident>));
   let base_node: *Expr = cast<*Expr>(node);  
 
@@ -87,7 +87,7 @@ pub const create_ident_node -> fn (name: *char) *Expr {
 }
 
 #returns_ownership
-pub const create_string_node -> fn (value: *char) *Expr {
+pub const create_string_node -> fn (value: *byte) *Expr {
   let node: *StringLit = cast<*StringLit>(alloc(sizeof<StringLit>));
   let base_node: *Expr = cast<*Expr>(node);
 
@@ -97,7 +97,7 @@ pub const create_string_node -> fn (value: *char) *Expr {
 }
 
 #returns_ownership
-pub const create_binary_node -> fn (op: char, left: *Expr, 
+pub const create_binary_node -> fn (op: byte, left: *Expr, 
                                 right: *Expr) *Expr {
   let node: *Binary = cast<*Binary>(alloc(sizeof<Binary>));
   let base_node: *Expr = cast<*Expr>(node);  
@@ -110,7 +110,7 @@ pub const create_binary_node -> fn (op: char, left: *Expr,
 }
 
 #returns_ownership
-pub const create_unary_node -> fn (op: char, operand: *Expr) *Expr {
+pub const create_unary_node -> fn (op: byte, operand: *Expr) *Expr {
   let node: *Unary = cast<*Unary>(alloc(sizeof<Unary>));
   let base_node: *Expr = cast<*Expr>(node);  
 

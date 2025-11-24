@@ -13,10 +13,10 @@ pub const main -> fn () int {
   let mv: Move;
   board::init_board(&bd);
 
-  let user_input: *char = cast<*char>(alloc(5 * sizeof<char>));
-  let moves: **char = cast<**char>(alloc(256 * sizeof<*char>));
+  let user_input: *byte = cast<*byte>(alloc(5 * sizeof<byte>));
+  let moves: **byte = cast<**byte>(alloc(256 * sizeof<*byte>));
   loop [j: int = 0](j < 256) : (++j) { 
-    moves[j] = cast<*char>(alloc(6 * sizeof<char>)); 
+    moves[j] = cast<*byte>(alloc(6 * sizeof<byte>)); 
   } 
 
   defer { 
@@ -52,7 +52,7 @@ pub const main -> fn () int {
     }
     
     is_valid = 0;
-    input<char>("");
+    input<byte>("");
     output("\n");
   }
   

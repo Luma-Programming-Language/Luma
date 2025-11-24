@@ -1,8 +1,8 @@
 @module "memory"
 
 pub const memcpy -> fn (dest: *void, src: *void, n: int) *void {
-    let d: *char = cast<*char>(dest);
-    let s: *char = cast<*char>(src);
+    let d: *byte = cast<*byte>(dest);
+    let s: *byte = cast<*byte>(src);
 
     loop [i: int = 0](i < n) : (++i) {
         d[i] = s[i];
@@ -12,8 +12,8 @@ pub const memcpy -> fn (dest: *void, src: *void, n: int) *void {
 }
 
 pub const memcmp -> fn (a: *void, b: *void, n: int) int {
-    let x: *char = cast<*char>(a);
-    let y: *char = cast<*char>(b);
+    let x: *byte = cast<*byte>(a);
+    let y: *byte = cast<*byte>(b);
     loop [i: int = 0](i < n) : (++i) {
         if (x[i] != y[i]) {
             return cast<int>(x[i]) - cast<int>(y[i]);
@@ -23,8 +23,8 @@ pub const memcmp -> fn (a: *void, b: *void, n: int) int {
 }
 
 pub const memset -> fn (dest: *void, value: int, n: int) *void {
-    let d: *char = cast<*char>(dest);
-    let c:  char = cast<char>(value);
+    let d: *byte = cast<*byte>(dest);
+    let c:  byte = cast<byte>(value);
     let i:   int = 0;
 
     loop (i + 4 <= n) : (i = i + 4) {
@@ -41,8 +41,8 @@ pub const memset -> fn (dest: *void, value: int, n: int) *void {
 
 // Move memory regions (handles overlapping regions correctly)
 pub const memmove -> fn (dest: *void, src: *void, n: int) *void {
-    let d: *char = cast<*char>(dest);
-    let s: *char = cast<*char>(src);
+    let d: *byte = cast<*byte>(dest);
+    let s: *byte = cast<*byte>(src);
     
     if (d < s) {
         // Copy forward
@@ -61,8 +61,8 @@ pub const memmove -> fn (dest: *void, src: *void, n: int) *void {
 
 // Find first occurrence of byte in memory
 pub const memchr -> fn (ptr: *void, value: int, n: int) *void {
-    let p: *char = cast<*char>(ptr);
-    let target: char = cast<char>(value);
+    let p: *byte = cast<*byte>(ptr);
+    let target: byte = cast<byte>(value);
     
     loop [i: int = 0](i < n) : (++i) {
         if (p[i] == target) {
@@ -105,11 +105,11 @@ pub const realloc -> fn (ptr: *void, new_size: int) *void {
 
 // Memory swap (swap contents of two memory regions)
 pub const memswap -> fn (a: *void, b: *void, n: int) void {
-    let p1: *char = cast<*char>(a);
-    let p2: *char = cast<*char>(b);
+    let p1: *byte = cast<*byte>(a);
+    let p2: *byte = cast<*byte>(b);
     
     loop [i: int = 0](i < n) : (++i) {
-        let temp: char = p1[i];
+        let temp: byte = p1[i];
         p1[i] = p2[i];
         p2[i] = temp;
     }
@@ -132,9 +132,9 @@ pub const memswapn -> fn (a: *void, b: *void, count: int, size: int) void {
 
 pub const memfill -> fn (dest: *void, value: int, size: int, count: int) *void {
     if (size == 1) {
-        // Fill char/byte
-        let d: *char = cast<*char>(dest);
-        let byte_val: char = cast<char>(value);
+        // Fill byte/byte
+        let d: *byte = cast<*byte>(dest);
+        let byte_val: byte = cast<byte>(value);
         loop [i: int = 0](i < count) : (++i) {
             d[i] = byte_val;
         }
@@ -146,8 +146,8 @@ pub const memfill -> fn (dest: *void, value: int, size: int, count: int) *void {
         }
     } else {
         // For other sizes, just treat as bytes and fill with low byte of value
-        let d: *char = cast<*char>(dest);
-        let byte_val: char = cast<char>(value);
+        let d: *byte = cast<*byte>(dest);
+        let byte_val: byte = cast<byte>(value);
         let total: int = count * size;
         loop [i: int = 0](i < total) : (++i) {
             d[i] = byte_val;
@@ -159,12 +159,12 @@ pub const memfill -> fn (dest: *void, value: int, size: int, count: int) *void {
 
 // Reverse bytes in memory region
 pub const memrev -> fn (ptr: *void, n: int) *void {
-    let p: *char = cast<*char>(ptr);
+    let p: *byte = cast<*byte>(ptr);
     let start: int = 0;
     let end: int = n - 1;
     
     loop (start < end) : (++start) {
-        let temp: char = p[start];
+        let temp: byte = p[start];
         p[start] = p[end];
         p[end] = temp;
         --end;
@@ -175,8 +175,8 @@ pub const memrev -> fn (ptr: *void, n: int) *void {
 
 // Count occurrences of a byte in memory
 pub const memcount -> fn (ptr: *void, value: int, n: int) int {
-    let p: *char = cast<*char>(ptr);
-    let target: char = cast<char>(value);
+    let p: *byte = cast<*byte>(ptr);
+    let target: byte = cast<byte>(value);
     let count: int = 0;
     
     loop [i: int = 0](i < n) : (++i) {
@@ -208,8 +208,8 @@ pub const memmem -> fn (haystack: *void, haystack_len: int, needle: *void, needl
     if (needle_len == 0) { return haystack; }
     if (needle_len > haystack_len) { return cast<*void>(0); }
     
-    let h: *char = cast<*char>(haystack);
-    let n: *char = cast<*char>(needle);
+    let h: *byte = cast<*byte>(haystack);
+    let n: *byte = cast<*byte>(needle);
     let limit: int = haystack_len - needle_len;
     
     loop [i: int = 0](i <= limit) : (++i) {

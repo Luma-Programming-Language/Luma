@@ -16,12 +16,12 @@ pub const enable_raw_mode -> fn () void {
     system("stty -g > /tmp/luma_termios_backup");
     
     // Configure raw mode:
-    // -icanon: disable line buffering (read char by char)
+    // -icanon: disable line buffering (read byte by byte)
     // -echo: don't echo input
     // -isig: disable interrupt signals (Ctrl+C, Ctrl+Z)
     // -ixon: disable software flow control (Ctrl+S, Ctrl+Q)
     // -icrnl: don't translate CR to NL
-    // min 1 time 0: blocking read (wait for at least 1 character)
+    // min 1 time 0: blocking read (wait for at least 1 byteacter)
     system("stty -icanon -echo -isig -ixon -icrnl min 0 time 0");
     
     // Hide cursor
@@ -51,47 +51,47 @@ pub const disable_raw_mode -> fn () void {
 
 // Blocking input in raw mode - waits for a key but no Enter needed
 // Use with enable_raw_mode() (not enable_raw_mode_nonblock)
-pub const getch_raw -> fn () char {
+pub const getch_raw -> fn () byte {
     if (raw_mode_enabled == 0) {
         enable_raw_mode();
     }
     
-    let c: char = input<char>("");
+    let c: byte = input<byte>("");
     return c;
 }
 
-// Get a single character without waiting for Enter
-pub const getch -> fn () char {
+// Get a single byteacter without waiting for Enter
+pub const getch -> fn () byte {
     // Just try to read input; don't touch stty here
-    let c: char = input<char>(""); 
+    let c: byte = input<byte>(""); 
     return c;
 }
 
-// Get a single character without waiting for Enter (no echo)
-pub const getch_silent -> fn () char {
+// Get a single byteacter without waiting for Enter (no echo)
+pub const getch_silent -> fn () byte {
     // Already has -echo, so it won't display
     system("stty -icanon -echo");
-    let c: char = input<char>("");
+    let c: byte = input<byte>("");
     system("stty icanon echo");
     return c;
 }
 
 #returns_ownership
-pub const getche -> fn () char {
+pub const getche -> fn () byte {
     // Disable canonical mode but keep echo
     system("stty -icanon echo");
-    let c: char = input<char>("");
+    let c: byte = input<byte>("");
     system("stty icanon echo");
     return c;
 }
 
 // Check if a key is pressed (non-blocking)
-// WARNING: This consumes the character! Don't use in raw mode.
+// WARNING: This consumes the byteacter! Don't use in raw mode.
 pub const kbhit -> fn () int {
     // Non-blocking test only
     let result: int = system("read -t 0 -n 1 key < /dev/tty");
     if (result == cast<int>(0)) {
-        // put the char back for getch()
+        // put the byte back for getch()
         system("read -t 0 -n 1 key < /dev/tty && printf '%s' $key > /tmp/luma_kbhit_buf");
         return 1;
     }
@@ -112,10 +112,10 @@ pub const clear_input_buffer -> fn () void {
     // Read until no more input
     loop {
         system("stty min 0 time 0");
-        let c: char = input<char>("");
+        let c: byte = input<byte>("");
         system("stty min 1 time 0");
         
-        if (c == cast<char>(0)) {
+        if (c == cast<byte>(0)) {
             break;
         }
     }
@@ -125,38 +125,38 @@ pub const clear_input_buffer -> fn () void {
 
 // Get password input (hidden)
 #returns_ownership
-pub const getpass -> fn (prompt: *char) *char {
+pub const getpass -> fn (prompt: *byte) *byte {
     output(prompt);
     
     // Allocate buffer for password
-    let password: *char = cast<*char>(alloc(256));
+    let password: *byte = cast<*byte>(alloc(256));
     let i: int = 0;
     
     system("stty -icanon -echo");
     
     loop {
-        let c: char = input<char>("");
+        let c: byte = input<byte>("");
         
         // Check for Enter key
-        if (c == cast<char>(10) || c == cast<char>(13)) {
+        if (c == cast<byte>(10) || c == cast<byte>(13)) {
             break;
         }
         
         // Check for backspace
-        if (c == cast<char>(127) || c == cast<char>(8)) {
+        if (c == cast<byte>(127) || c == cast<byte>(8)) {
             if (i > 0) {
                 i = i - 1;
-                output("\b \b"); // Erase character visually
+                output("\b \b"); // Erase byteacter visually
             }
             continue;
         }
         
         password[i] = c;
         i = i + 1;
-        output("*"); // Show asterisk for each character
+        output("*"); // Show asterisk for each byteacter
     }
     
-    password[i] = cast<char>(0); // Null terminate
+    password[i] = cast<byte>(0); // Null terminate
     system("stty icanon echo");
     output("\n");
     
@@ -165,7 +165,7 @@ pub const getpass -> fn (prompt: *char) *char {
 
 // Sleep for milliseconds (more precise than system("sleep"))
 pub const sleep_ms -> fn (ms: int) void {
-    let cmd: *char = cast<*char>(alloc(64 * sizeof<char>));
+    let cmd: *byte = cast<*byte>(alloc(64 * sizeof<byte>));
     defer { free(cmd); }
 
     // Multiply milliseconds by 1000 for microseconds
@@ -181,11 +181,11 @@ pub const get_terminal_size -> fn () void {
     // Read back from files...
 }
 
-pub const get_line -> fn (prompt: *char, buffer: *char, size: int) void {
+pub const get_line -> fn (prompt: *byte, buffer: *byte, size: int) void {
   output(prompt);
   let i: int = 0;
   loop (i < size - 1) : (++i) {
-    let c: char = getch();
+    let c: byte = getch();
     if (c == '\n' || c == '\r') {
       break;
     }

@@ -1,7 +1,7 @@
 @module "piece"
 
 pub const PieceRules -> struct {
-  piece_type: char,
+  piece_type: byte,
   can_jump: int,
   can_slide: int,
   move_offsets: [int; 16],
@@ -37,14 +37,14 @@ const RULES: [PieceRules; 6] = [
   }
 ]; 
 
-pub const is_white_piece -> fn (ch: char) int { return -cast<int>(ch >= 'A' && ch <= 'Z'); }
-pub const is_black_piece -> fn (ch: char) int { return -cast<int>(ch >= 'a' && ch <= 'z'); }
+pub const is_white_piece -> fn (ch: byte) int { return -cast<int>(ch >= 'A' && ch <= 'Z'); }
+pub const is_black_piece -> fn (ch: byte) int { return -cast<int>(ch >= 'a' && ch <= 'z'); }
 
 // Get rules for a specific piece
-pub const get_rules -> fn (piece: char) *PieceRules {
-  let piece_upper: char = piece;
+pub const get_rules -> fn (piece: byte) *PieceRules {
+  let piece_upper: byte = piece;
   if (piece >= 'a' && piece <= 'z') {
-    piece_upper = cast<char>(cast<int>(piece) - 32);
+    piece_upper = cast<byte>(cast<int>(piece) - 32);
   }
   
   loop [i: int = 0](i < 6) : (++i) {  // Changed from 5 to 6
@@ -56,7 +56,7 @@ pub const get_rules -> fn (piece: char) *PieceRules {
   return cast<*PieceRules>(0);
 }
 
-pub const can_capture -> fn (attacker: char, target: char) int {
+pub const can_capture -> fn (attacker: byte, target: byte) int {
   if (target == '.') { return 1; }
   let atk_white: int = is_white_piece(attacker);
   let tgt_white: int = is_white_piece(target);
@@ -65,7 +65,7 @@ pub const can_capture -> fn (attacker: char, target: char) int {
 
 // Special pawn validation function (pawns have unique rules)
 pub const validate_pawn_move -> fn (rule: *PieceRules, dc: int, dr: int, 
-                                     from_row: int, target: char, is_white: int) int {
+                                     from_row: int, target: byte, is_white: int) int {
   // Determine direction based on color
   let direction: int;
   let start_row: int;

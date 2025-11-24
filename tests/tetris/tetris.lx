@@ -9,7 +9,7 @@ const FIELD_W: int = 14;
 const FIELD_H: int = 24;
 const VISIB_H: int = 23;
 
-const teromino: [[*char; 4]; 7] = [
+const teromino: [[*byte; 4]; 7] = [
   ["....", "XXXX", "....", "...."], // I
   [".X..", ".X..", ".XX.", "...."], // J
   ["..X.", "..X.", ".XX.", "...."], // L
@@ -19,7 +19,7 @@ const teromino: [[*char; 4]; 7] = [
   ["XX..", ".XX.", "....", "...."]  // Z
 ];
 
-const piece_color: [*char; 7] = [
+const piece_color: [*byte; 7] = [
   "\x1b[96m",       // Cyan - I piece
   "\x1b[94m",       // Blue - J piece
   "\x1b[38;5;208m", // Orange - L piece
@@ -78,7 +78,7 @@ const draw_screen -> fn (c_piece: int, c_rotation: int, c_x: int, c_y: int,
           let pi: int = rotate(px, py, c_rotation);
           let row: int = pi / 4;
           let col: int = pi % 4;
-          let str_ptr: *char = teromino[c_piece][row];
+          let str_ptr: *byte = teromino[c_piece][row];
           if (str_ptr[col] == 'X') {
             if ((c_x + px) == x && (c_y + py) == y) {
               is_piece = 1;
@@ -107,7 +107,7 @@ const draw_screen -> fn (c_piece: int, c_rotation: int, c_x: int, c_y: int,
           let pi: int = rotate(px, py, 0);
           let row: int = pi / 4;
           let col: int = pi % 4;
-          let str_ptr: *char = teromino[next_piece][row];
+          let str_ptr: *byte = teromino[next_piece][row];
           if (str_ptr[col] == 'X') {
             output(piece_color[next_piece], "██", tx::RESET);
           } else {
@@ -146,7 +146,7 @@ const does_piece_fit -> fn (piece: int, rotation: int, pos_x: int, pos_y: int) i
     let pi: int = rotate(px, py, rotation);
     let row: int = pi / 4;
     let col: int = pi % 4;
-    let str_ptr: *char = teromino[piece][row];
+    let str_ptr: *byte = teromino[piece][row];
     if (str_ptr[col] == 'X') {
         let field_x: int = pos_x + px;
         let field_y: int = pos_y + py;
@@ -172,7 +172,7 @@ const lock_piece -> fn (piece: int, rotation: int, pos_x: int, pos_y: int) void 
     let pi: int = rotate(px, py, rotation);
     let row: int = pi / 4;
     let col: int = pi % 4;
-    let str_ptr: *char = teromino[piece][row];
+    let str_ptr: *byte = teromino[piece][row];
     if (str_ptr[col] == 'X') {
         let field_x: int = pos_x + px;
         let field_y: int = pos_y + py;
@@ -248,7 +248,7 @@ pub const main -> fn () int {
     
     // Input
     if (term::kbhit() == 1) {
-      let c: char = term::getch();
+      let c: byte = term::getch();
       switch(c) {
         'q', 'Q' -> { game_over = 1; }
         'a', 'A' -> {
@@ -326,7 +326,7 @@ pub const main -> fn () int {
           
           loop {
             if (term::kbhit() == 1) {
-              let c: char = term::getch();
+              let c: byte = term::getch();
               if (c == 'q' || c == 'Q') {
                 game_over = 1;
                 break;

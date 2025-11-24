@@ -7,7 +7,7 @@
 @use "memory" as mem
 
 const test_strlen -> fn () void {
-    let empty_str: *char = cast<*char>(mem::calloc(1, sizeof<char>));
+    let empty_str: *byte = cast<*byte>(mem::calloc(1, sizeof<byte>));
     defer { free(empty_str); }
     
     if (string::strlen(empty_str) != 0) {
@@ -16,7 +16,7 @@ const test_strlen -> fn () void {
     }
 
     // Test normal string "Hello"
-    let hello: *char = cast<*char>(mem::calloc(6, sizeof<char>));
+    let hello: *byte = cast<*byte>(mem::calloc(6, sizeof<byte>));
     defer { free(hello); }
     
     hello[0] = 'H'; // 'H'
@@ -24,7 +24,7 @@ const test_strlen -> fn () void {
     hello[2] = 'l'; // 'l'
     hello[3] = 'l'; // 'l'
     hello[4] = 'o'; // 'o'
-    hello[5] = cast<char>(0);   // null terminator
+    hello[5] = cast<byte>(0);   // null terminator
     
     if (string::strlen(hello) != 5) {
         output("strlen failed: 'Hello' should be length 5, got ", string::strlen(hello), "\n");
@@ -36,9 +36,9 @@ const test_strlen -> fn () void {
 
 const test_strcmp -> fn () void {
     // Create test strings
-    let str1: *char = cast<*char>(mem::calloc(6, sizeof<char>));
-    let str2: *char = cast<*char>(mem::calloc(6, sizeof<char>));
-    let str3: *char = cast<*char>(mem::calloc(4, sizeof<char>));
+    let str1: *byte = cast<*byte>(mem::calloc(6, sizeof<byte>));
+    let str2: *byte = cast<*byte>(mem::calloc(6, sizeof<byte>));
+    let str3: *byte = cast<*byte>(mem::calloc(4, sizeof<byte>));
     defer { free(str1); free(str2); free(str3); }
 
     // str1 = "Hello"
@@ -47,7 +47,7 @@ const test_strcmp -> fn () void {
     str1[2] = 'l';
     str1[3] = 'l'; 
     str1[4] = 'l'; 
-    str1[5] = cast<char>(0);
+    str1[5] = cast<byte>(0);
     
     // str2 = "Hello" (same as str1)
     str2[0] = 'H'; 
@@ -55,12 +55,12 @@ const test_strcmp -> fn () void {
     str2[2] = 'l';
     str2[3] = 'l'; 
     str2[4] = 'l'; 
-    str2[5] = cast<char>(0);
+    str2[5] = cast<byte>(0);
     
     // str3 = "Hi" (different length)
     str3[0] = 'H'; 
     str3[1] = 'i'; 
-    str3[2] = cast<char>(0);
+    str3[2] = cast<byte>(0);
 
     // Test equal strings
     if (string::strcmp(str1, str2) != 0) {
@@ -75,7 +75,7 @@ const test_strcmp -> fn () void {
     }
 
     // Test different content (same length)
-    str2[1] = cast<char>(97); // Change 'e' to 'a' -> "Hallo"
+    str2[1] = cast<byte>(97); // Change 'e' to 'a' -> "Hallo"
     if (string::strcmp(str1, str2) != 1) {
         output("strcmp failed: different content should return 1\n");
         return;
@@ -84,9 +84,9 @@ const test_strcmp -> fn () void {
     output("strcmp passed!\n");
 }
 
-const test_s_char -> fn () void {
+const test_s_byte -> fn () void {
     // Create test string "Hello World"
-    let test_str: *char = cast<*char>(mem::calloc(12, sizeof<char>));
+    let test_str: *byte = cast<*byte>(mem::calloc(12, sizeof<byte>));
     defer { free(test_str); }
     
     test_str[0] = 'H';  // 'H'
@@ -100,36 +100,36 @@ const test_s_char -> fn () void {
     test_str[8] = 'r';  // 'r'
     test_str[9] = 'l';  // 'l'
     test_str[10]= 'd';  // 'd'
-    test_str[11] = cast<char>(0);   // null terminator
+    test_str[11] = cast<byte>(0);   // null terminator
 
-    // Test finding existing character
-    let found_char: char = string::s_char(test_str, 87); // Looking for 'W'
-    if (found_char != 'W') {
-        output("s_char failed: should find 'W'\n");
+    // Test finding existing byteacter
+    let found_byte: byte = string::s_byte(test_str, 87); // Looking for 'W'
+    if (found_byte != 'W') {
+        output("s_byte failed: should find 'W'\n");
         return;
     }
 
-    // Test finding non-existing character
-    let not_found: char = string::s_char(test_str, 120); // Looking for 'x'
-    if (not_found != cast<char>(0)) {
-        output("s_char failed: should return null char for 'x'\n");
+    // Test finding non-existing byteacter
+    let not_found: byte = string::s_byte(test_str, 120); // Looking for 'x'
+    if (not_found != cast<byte>(0)) {
+        output("s_byte failed: should return null byte for 'x'\n");
         return;
     }
 
-    output("s_char passed!\n");
+    output("s_byte passed!\n");
 }
 
 const test_copy -> fn () void {
     // Create source string "Test"
-    let src: *char = cast<*char>(mem::calloc(5, sizeof<char>));
-    let dest: *char = cast<*char>(mem::calloc(10, sizeof<char>));
+    let src: *byte = cast<*byte>(mem::calloc(5, sizeof<byte>));
+    let dest: *byte = cast<*byte>(mem::calloc(10, sizeof<byte>));
     defer { free(src); free(dest); }
     
     src[0] = 'T'; // 'T'
     src[1] = 'e'; // 'e'
     src[2] = 's'; // 's'
     src[3] = 't'; // 't'
-    src[4] = cast<char>(0);   // null terminator
+    src[4] = cast<byte>(0);   // null terminator
 
     // Copy string
     string::copy(dest, src);
@@ -147,8 +147,8 @@ const test_copy -> fn () void {
 
 const test_n_copy -> fn () void {
     // Create source string "Testing"
-    let src: *char = cast<*char>(mem::calloc(8, sizeof<char>));
-    let dest: *char = cast<*char>(mem::calloc(10, sizeof<char>));
+    let src: *byte = cast<*byte>(mem::calloc(8, sizeof<byte>));
+    let dest: *byte = cast<*byte>(mem::calloc(10, sizeof<byte>));
     defer { free(src); free(dest); }
     
     src[0] = 'T'; // 'T'
@@ -158,15 +158,15 @@ const test_n_copy -> fn () void {
     src[4] = 'i'; // 'i'
     src[5] = 'n'; // 'n'
     src[6] = 'g'; // 'g'
-    src[7] = cast<char>(0);   // null terminator
+    src[7] = cast<byte>(0);   // null terminator
 
     // Initialize dest with garbage
     mem::memset(cast<*void>(dest), 65, 10); // Fill with 'A'
 
-    // Copy only first 4 characters
+    // Copy only first 4 byteacters
     string::n_copy(dest, src, 4);
 
-    // Verify first 4 characters copied
+    // Verify first 4 byteacters copied
     loop [i: int = 0](i < 4) : (++i) {
         if (dest[i] != src[i]) {
             output("n_copy failed at index ", i, "\n");
@@ -176,7 +176,7 @@ const test_n_copy -> fn () void {
 
     // Verify rest of destination unchanged (should still be 'A')
     if (dest[4] != 'A') {
-        output("n_copy failed: overwrote beyond n characters\n");
+        output("n_copy failed: overwrote beyond n byteacters\n");
         return;
     }
 
@@ -185,9 +185,9 @@ const test_n_copy -> fn () void {
 
 const test_cat -> fn () void {
     // Create strings "Hello" and " World"
-    let s1: *char = cast<*char>(mem::calloc(6, sizeof<char>));
-    let s2: *char = cast<*char>(mem::calloc(7, sizeof<char>));
-    let dest: *char = cast<*char>(mem::calloc(20, sizeof<char>));
+    let s1: *byte = cast<*byte>(mem::calloc(6, sizeof<byte>));
+    let s2: *byte = cast<*byte>(mem::calloc(7, sizeof<byte>));
+    let dest: *byte = cast<*byte>(mem::calloc(20, sizeof<byte>));
     defer { free(s1); free(s2); free(dest); }
     
     // s1 = "Hello"
@@ -196,7 +196,7 @@ const test_cat -> fn () void {
     s1[2] = 'l';
     s1[3] = 'l'; 
     s1[4] = 'o'; 
-    s1[5] = cast<char>(0);
+    s1[5] = cast<byte>(0);
     
     // s2 = " World"
     s2[0] = ' ';
@@ -205,13 +205,13 @@ const test_cat -> fn () void {
     s2[3] = 'r'; 
     s2[4] = 'l'; 
     s2[5] = 'd';
-    s2[6] = cast<char>(0);
+    s2[6] = cast<byte>(0);
 
     // Concatenate
     string::cat(dest, s1, s2);
 
-    // Expected result: "Hello World" (11 characters + null terminator)
-    let expected: *char = cast<*char>(mem::calloc(12, sizeof<char>));
+    // Expected result: "Hello World" (11 byteacters + null terminator)
+    let expected: *byte = cast<*byte>(mem::calloc(12, sizeof<byte>));
     defer { free(expected); }
     
     expected[0]  = 'H';  // 'H'
@@ -225,7 +225,7 @@ const test_cat -> fn () void {
     expected[8]  = 'r'; // 'r'
     expected[9]  = 'l'; // 'l'
     expected[10] = 'd'; // 'd'
-    expected[11] = cast<char>(0);   // null terminator
+    expected[11] = cast<byte>(0);   // null terminator
 
     // Verify concatenation
     loop [i: int = 0](i < 12) : (++i) {
@@ -240,26 +240,26 @@ const test_cat -> fn () void {
 }
 
 const test_edge_cases -> fn () void {
-    // Test strlen with single character
-    let single_char: *char = cast<*char>(mem::calloc(2, sizeof<char>));
-    defer { free(single_char); }
-    single_char[0] = 'A'; // 'A'
-    single_char[1] = cast<char>(0);
+    // Test strlen with single byteacter
+    let single_byte: *byte = cast<*byte>(mem::calloc(2, sizeof<byte>));
+    defer { free(single_byte); }
+    single_byte[0] = 'A'; // 'A'
+    single_byte[1] = cast<byte>(0);
     
-    if (string::strlen(single_char) != 1) {
-        output("edge case failed: single char length\n");
+    if (string::strlen(single_byte) != 1) {
+        output("edge case failed: single byte length\n");
         return;
     }
 
     // Test copy with empty string
-    let empty_src: *char = cast<*char>(mem::calloc(1, sizeof<char>));
-    let empty_dest: *char = cast<*char>(mem::calloc(5, sizeof<char>));
+    let empty_src: *byte = cast<*byte>(mem::calloc(1, sizeof<byte>));
+    let empty_dest: *byte = cast<*byte>(mem::calloc(5, sizeof<byte>));
     defer { free(empty_src); free(empty_dest); }
     
     mem::memset(cast<*void>(empty_dest), 88, 5); // Fill with 'X'
     string::copy(empty_dest, empty_src);
     
-    if (empty_dest[0] != cast<char>(0)) {
+    if (empty_dest[0] != cast<byte>(0)) {
         output("edge case failed: empty string copy\n");
         return;
     }
@@ -272,7 +272,7 @@ const run_all_string_tests -> fn () void {
     
     test_strlen();
     test_strcmp();
-    test_s_char();
+    test_s_byte();
     test_copy();
     test_n_copy();
     test_cat();

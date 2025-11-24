@@ -61,13 +61,6 @@ static const KeywordEntry keywords[] = {
     {"false", TOK_FALSE},
     {"pub", TOK_PUBLIC},
     {"priv", TOK_PRIVATE},
-    {"void", TOK_VOID},
-    {"char", TOK_CHAR},
-    {"str", TOK_STRINGT},
-    {"int", TOK_INT},
-    {"float", TOK_FLOAT},
-    {"double", TOK_DOUBLE},
-    {"bool", TOK_BOOL},
     {"let", TOK_VAR},
     {"fn", TOK_FN},
     {"output", TOK_PRINT},
@@ -84,6 +77,14 @@ static const KeywordEntry keywords[] = {
     {"impl", TOK_IMPL},
     {"input", TOK_INPUT},
     {"system", TOK_SYSTEM},
+
+    {"void", TOK_VOID},
+    {"byte", TOK_CHAR},
+    {"str", TOK_STRINGT},
+    {"int", TOK_INT},
+    {"float", TOK_FLOAT},
+    {"double", TOK_DOUBLE},
+    {"bool", TOK_BOOL},
 
     {"__syscall__", TOK_SYSCALL},
 };

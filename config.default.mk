@@ -1,6 +1,6 @@
 # config.default.mk
 
-CC       ?= gcc
+CC       := gcc
 CFLAGS   ?= -Wall -Wextra -std=c17 -Wno-unused-variable -O2
 LDFLAGS  ?= 
 INCLUDES ?= -Isrc

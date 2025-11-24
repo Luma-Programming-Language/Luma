@@ -28,12 +28,12 @@ const parse_literal -> fn (psr: *Parser) *Expr {
       return ast::create_number_node(value);
     }
     lexer::TokenType::TOK_IDENT -> {
-      let name: *char = tok.value;
+      let name: *byte = tok.value;
       helper::advance(psr);
       return ast::create_ident_node(name);
     }
     lexer::TokenType::TOK_STRING -> {
-      let value: *char = tok.value;
+      let value: *byte = tok.value;
       helper::advance(psr);
       return ast::create_string_node(value);
     }
@@ -64,7 +64,7 @@ const nud -> fn (psr: *Parser) *Expr {
       return ast::create_group_node(expr);
     }
     lexer::TokenType::TOK_PLUS, lexer::TokenType::TOK_MINUS -> {
-      let op: *char = tok.value;
+      let op: *byte = tok.value;
       helper::advance(psr);
       let right: *Expr = parse_expr(psr, helper::BindingPower::BP_UNARY);
       return ast::create_unary_node(op[0], right);
@@ -80,7 +80,7 @@ const led -> fn (psr: *Parser, left: *Expr, token: Token) *Expr {
   switch (token.type) {
     lexer::TokenType::TOK_EQEQ, lexer::TokenType::TOK_NOTEQ, lexer::TokenType::TOK_PLUS,
     lexer::TokenType::TOK_MINUS, lexer::TokenType::TOK_STAR, lexer::TokenType::TOK_SLASH -> {
-      let op: *char = psr.tks.list[psr.pos].value; 
+      let op: *byte = psr.tks.list[psr.pos].value; 
       helper::advance(psr);
       let right: *Expr = parse_expr(psr, get_infix_bp(token.type));
       return ast::create_binary_node(op[0], left, right);
@@ -106,7 +106,7 @@ const parse_expr -> fn (psr: *Parser, bp: int) *Expr {
   return left;
 }
 
-pub const parse -> fn (tks: *Token, path: *char) *Stmt {
+pub const parse -> fn (tks: *Token, path: *byte) *Stmt {
   let psr: Parser;
   helper::init_parser(&psr, tks, path);
   
