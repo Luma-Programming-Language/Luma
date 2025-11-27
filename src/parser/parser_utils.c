@@ -158,12 +158,17 @@ Token p_consume(Parser *psr, LumaTokenType type, const char *error_msg) {
   int line = p_current(psr).line;
   int col = p_current(psr).col;
 
-  if (p_current(psr).type_ == type)
+  if (p_current(psr).type_ == type) {
     return p_advance(psr);
-  else {
-    parser_error(psr, "SyntaxError", "unknown_file", error_msg, line, col,
+  } else {
+    parser_error(psr, "SyntaxError", psr->file_path, error_msg, line, col,
                  CURRENT_TOKEN_LENGTH(psr));
-    return (Token){.type_ = TOK_EOF}; // Return an error token
+
+    // CRITICAL: Set a flag or return a recognizable error token
+    // The parser should check for this and abort
+    Token error_tok = {
+        .type_ = TOK_EOF, .line = line, .col = col, .length = 0, .value = NULL};
+    return error_tok;
   }
 }
 

@@ -2,14 +2,22 @@ LUMA = ./../../luma
 NAME = lpbs
 
 MAIN = ./src/main.lx
-SRCS := $(filter-out $(MAIN), $(shell find . -type f -name '*.lx'))
-SRCS := $(filter-out ,$(SRCS))   # remove any empty strings
+
+# recursively find .lx files
+define walk
+$(wildcard $1/*.lx) \
+$(foreach d,$(wildcard $1/*),$(call walk,$(d)))
+endef
+
+SRCS := $(call walk,./src)
+SRCS := $(filter-out $(MAIN),$(SRCS))
+
 
 STD_LIBS = ../../std/time.lx \
            ../../std/string.lx \
-		   ../../std/sys.lx \
-		   ../../std/io.lx \
-		   ../../std/memory.lx
+		       ../../std/sys.lx \
+		       ../../std/io.lx \
+		       ../../std/memory.lx
 
 ALL_SRCS = $(MAIN) $(SRCS) $(STD_LIBS)
 

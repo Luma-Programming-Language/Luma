@@ -5,28 +5,58 @@
 
 // *Type
 Type *pointer(Parser *parser) {
-  // parse_type() will handle advancing through the pointee type
+  int line = p_current(parser).line;
+  int col = p_current(parser).col;
+
   Type *pointee_type = parse_type(parser);
   if (!pointee_type) {
-    fprintf(stderr, "Expected type after '*'\n");
+    parser_error(parser, "TypeError", parser->file_path,
+                 "Expected type after '*' in pointer type", line, col, 1);
     return NULL;
   }
 
-  return create_pointer_type(parser->arena, pointee_type,
-                             p_current(parser).line, p_current(parser).col);
+  return create_pointer_type(parser->arena, pointee_type, line, col);
 }
 
 // [Type; Size]
 Type *array_type(Parser *parser) {
   int line = p_current(parser).line;
   int col = p_current(parser).col;
-  
+
   Type *element_type = parse_type(parser);
+  if (!element_type) {
+    parser_error(parser, "TypeError", parser->file_path,
+                 "Expected type after '[' in array type",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
 
-  p_consume(parser, TOK_SEMICOLON, "Expected ';' after array element type");
-  Expr *size_expr = parse_expr(parser, BP_LOWEST);
+  Expr *size_expr = NULL;
 
-  p_consume(parser, TOK_RBRACKET, "Expected ']' to close array type declaration");
+  // Require: [Type; Size]
+  if (p_current(parser).type_ == TOK_SEMICOLON) {
+    p_consume(parser, TOK_SEMICOLON, "Expected ';' after array element type");
+
+    size_expr = parse_expr(parser, BP_LOWEST);
+    if (!size_expr) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected size expression after ';' in array type",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
+  } else {
+    parser_error(
+        parser, "TypeError", parser->file_path,
+        "Array types must declare a size, expected ';' after element type",
+        p_current(parser).line, p_current(parser).col,
+        p_current(parser).length);
+    return NULL;
+  }
+
+  p_consume(parser, TOK_RBRACKET,
+            "Expected ']' to close array type declaration");
 
   return create_array_type(parser->arena, element_type, size_expr, line, col);
 }
@@ -36,25 +66,25 @@ Type *array_type(Parser *parser) {
 Type *resolution_type(Parser *parser) {
   int line = p_current(parser).line;
   int col = p_current(parser).col;
-  
+
   // We start with an identifier (the namespace or first part)
   char *first_name = get_name(parser);
   p_advance(parser); // Consume the identifier
-  
+
   // Check if we have a resolution operator
   if (p_current(parser).type_ != TOK_RESOLVE) {
     // Just a simple identifier type, not a resolution
     // We already advanced, so we're done
     return create_basic_type(parser->arena, first_name, line, col);
   }
-  
+
   // Build the resolution chain: namespace::name or namespace::sub::name
   GrowableArray parts;
   if (!growable_array_init(&parts, parser->arena, 4, sizeof(char *))) {
     fprintf(stderr, "Failed to initialize resolution parts array\n");
     return NULL;
   }
-  
+
   // Add the first part (namespace)
   char **slot = (char **)growable_array_push(&parts);
   if (!slot) {
@@ -62,22 +92,21 @@ Type *resolution_type(Parser *parser) {
     return NULL;
   }
   *slot = first_name;
-  
+
   // Parse remaining parts separated by '::'
   while (p_current(parser).type_ == TOK_RESOLVE) {
     p_advance(parser); // Consume '::'
-    
+
     if (p_current(parser).type_ != TOK_IDENTIFIER) {
       parser_error(parser, "SyntaxError", parser->file_path,
-                   "Expected identifier after '::'",
-                   p_current(parser).line, p_current(parser).col,
-                   p_current(parser).length);
+                   "Expected identifier after '::'", p_current(parser).line,
+                   p_current(parser).col, p_current(parser).length);
       return NULL;
     }
-    
+
     char *part = get_name(parser);
     p_advance(parser); // Consume the identifier
-    
+
     slot = (char **)growable_array_push(&parts);
     if (!slot) {
       fprintf(stderr, "Out of memory while growing resolution parts\n");
@@ -85,17 +114,17 @@ Type *resolution_type(Parser *parser) {
     }
     *slot = part;
   }
-  
+
   // Create a resolution type with the collected parts
-  return create_resolution_type(parser->arena, (char **)parts.data, 
-                                parts.count, line, col);
+  return create_resolution_type(parser->arena, (char **)parts.data, parts.count,
+                                line, col);
 }
 
 // tnud() is responsible for parsing a type and ADVANCING past it
 Type *tnud(Parser *parser) {
   int line = p_current(parser).line;
   int col = p_current(parser).col;
-  
+
   switch (p_current(parser).type_) {
   case TOK_INT:
     p_advance(parser);
@@ -127,7 +156,7 @@ Type *tnud(Parser *parser) {
   case TOK_LBRACKET:   // Array type
     p_advance(parser); // Consume the '[' token
     return array_type(parser);
-  case TOK_IDENTIFIER: // Could be simple type or namespace::Type
+  case TOK_IDENTIFIER:              // Could be simple type or namespace::Type
     return resolution_type(parser); // This handles its own advancing
   default:
     fprintf(stderr, "Unexpected token in type: %d\n", p_current(parser).type_);

@@ -105,16 +105,29 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
 
   p_consume(parser, TOK_CONST, "Expected 'const' keyword");
   const char *name = get_name(parser);
-  p_advance(parser); // Advance past the identifier token
+  p_advance(parser);
 
-  // Handle explicit type annotation: const name: Type = value
   if (p_current(parser).type_ == TOK_COLON) {
     p_consume(parser, TOK_COLON, "Expected ':' after const name");
 
     Type *type = parse_type(parser);
+    if (!type) {
+      parser_error(parser, "TypeError", parser->file_path,
+                   "Expected type after ':' in const declaration",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
 
     p_consume(parser, TOK_EQUAL, "Expected '=' after const type");
     Expr *value = parse_expr(parser, BP_LOWEST);
+    if (!value) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected value after '=' in const declaration",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
 
     p_consume(parser, TOK_SEMICOLON,
               "Expected semicolon after const declaration");
@@ -124,7 +137,6 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
 
   p_consume(parser, TOK_RIGHT_ARROW, "Expected '->' after const name");
 
-  // Handle complex constant types (functions, structs, enums)
   switch (p_current(parser).type_) {
   case TOK_FN:
     return fn_stmt(parser, name, is_public, returns_ownership, takes_ownership);
@@ -133,8 +145,10 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
   case TOK_ENUM:
     return enum_stmt(parser, name, is_public);
   default: {
-    fprintf(stderr, "Expected function, struct, or enum after const '%s'\n",
-            name);
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected function, struct, or enum after const declaration",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
     return NULL;
   }
   }
@@ -174,25 +188,28 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
   p_consume(parser, TOK_FN, "Expected 'fn' keyword");
   p_consume(parser, TOK_LPAREN, "Expected '(' after function name");
 
-  // Parse parameter list: param_name: param_type, ...
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RPAREN) {
     if (p_current(parser).type_ != TOK_IDENTIFIER) {
-      fprintf(stderr, "Expected identifier for function parameter\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected identifier for function parameter",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
 
     char *param_name = get_name(parser);
-    p_advance(parser); // Advance past the identifier token
+    p_advance(parser);
 
     p_consume(parser, TOK_COLON, "Expected ':' after parameter name");
 
     Type *param_type = parse_type(parser);
     if (!param_type) {
-      fprintf(stderr, "Failed to parse type for parameter '%s'\n", param_name);
+      parser_error(parser, "TypeError", parser->file_path,
+                   "Failed to parse type for parameter", p_current(parser).line,
+                   p_current(parser).col, p_current(parser).length);
       return NULL;
     }
 
-    // Store parameter name and type
     char **name_slot = (char **)growable_array_push(&param_names);
     Type **type_slot = (Type **)growable_array_push(&param_types);
     if (!name_slot || !type_slot) {
@@ -204,23 +221,37 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
     *type_slot = param_type;
 
     if (p_current(parser).type_ == TOK_COMMA) {
-      p_advance(parser); // Advance past the comma
+      p_advance(parser);
     }
   }
 
   p_consume(parser, TOK_RPAREN, "Expected ')' after function parameters");
 
   Type *return_type = parse_type(parser);
+  if (!return_type) {
+    parser_error(parser, "TypeError", parser->file_path,
+                 "Expected return type after function parameters",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
 
   if (p_current(parser).type_ == TOK_SEMICOLON) {
-    p_consume(parser, TOK_SEMICOLON, "Expected semicolon after function prototype");
-    return create_func_decl_stmt(parser->arena, name, (char **)param_names.data,
-                                 (AstNode **)param_types.data, param_names.count,
-                                 return_type, is_public, returns_ownership,
-                                 takes_ownership, true, NULL, line, col);
+    p_consume(parser, TOK_SEMICOLON,
+              "Expected semicolon after function prototype");
+    return create_func_decl_stmt(
+        parser->arena, name, (char **)param_names.data,
+        (AstNode **)param_types.data, param_names.count, return_type, is_public,
+        returns_ownership, takes_ownership, true, NULL, line, col);
   }
 
   Stmt *body = block_stmt(parser);
+  if (!body) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected function body", p_current(parser).line,
+                 p_current(parser).col, p_current(parser).length);
+    return NULL;
+  }
 
   return create_func_decl_stmt(parser->arena, name, (char **)param_names.data,
                                (AstNode **)param_types.data, param_names.count,
@@ -450,12 +481,20 @@ Stmt *var_stmt(Parser *parser, bool is_public) {
   int line = p_current(parser).line;
   int col = p_current(parser).col;
 
-  p_consume(parser, TOK_VAR, "Expected 'let' keyword");
+  p_consume(parser, TOK_VAR, "Expected 'var' keyword");
   const char *name = get_name(parser);
-  p_advance(parser); // Advance past the identifier token
+  p_advance(parser);
 
   p_consume(parser, TOK_COLON, "Expected ':' after variable name");
   Type *type = parse_type(parser);
+
+  if (!type) {
+    parser_error(parser, "TypeError", parser->file_path,
+                 "Expected type after ':' in variable declaration",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
 
   if (p_current(parser).type_ != TOK_EQUAL) {
     p_consume(parser, TOK_SEMICOLON,
@@ -467,11 +506,17 @@ Stmt *var_stmt(Parser *parser, bool is_public) {
   p_consume(parser, TOK_EQUAL, "Expected '=' after variable declaration");
 
   Expr *value = parse_expr(parser, BP_LOWEST);
+  if (!value) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected value after '=' in variable declaration",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
+
   p_consume(parser, TOK_SEMICOLON,
             "Expected semicolon after variable declaration");
 
-  // const are not changable aka immutable and vars are mutable so we set
-  // is_mutable to true
   return create_var_decl_stmt(parser->arena, name, type, value, true, is_public,
                               line, col);
 }
@@ -598,11 +643,31 @@ Stmt *if_stmt(Parser *parser) {
 
   p_consume(parser, TOK_LPAREN, "Expected '(' after 'if' keyword");
   Expr *condition = parse_expr(parser, BP_LOWEST);
+  if (!condition) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected condition expression after '('",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
   p_consume(parser, TOK_RPAREN, "Expected ')' after if condition");
 
-  Stmt *then_stmt = block_stmt(parser);
+  // Allow either block statement or single statement
+  Stmt *then_stmt;
+  if (p_current(parser).type_ == TOK_LBRACE) {
+    then_stmt = block_stmt(parser);
+  } else {
+    then_stmt = parse_stmt(parser);
+  }
 
-  // Collect all elif statements in a list/array instead of recursing
+  if (!then_stmt) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected statement or block after if condition",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
+
   Stmt **elif_stmts =
       (Stmt **)arena_alloc(parser->arena, sizeof(Stmt *) * 4, alignof(Stmt *));
   int elif_count = 0;
@@ -615,11 +680,31 @@ Stmt *if_stmt(Parser *parser) {
     p_consume(parser, TOK_LPAREN, "Expected '(' after 'elif' keyword");
 
     Expr *elif_condition = parse_expr(parser, BP_LOWEST);
+    if (!elif_condition) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected condition expression after '('",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
     p_consume(parser, TOK_RPAREN, "Expected ')' after elif condition");
 
-    Stmt *elif_stmt = block_stmt(parser);
+    // Allow either block statement or single statement
+    Stmt *elif_stmt;
+    if (p_current(parser).type_ == TOK_LBRACE) {
+      elif_stmt = block_stmt(parser);
+    } else {
+      elif_stmt = parse_stmt(parser);
+    }
 
-    // Store the elif condition and statement
+    if (!elif_stmt) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected statement or block after elif condition",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
+
     elif_stmts[elif_count] =
         create_if_stmt(parser->arena, elif_condition, elif_stmt, NULL,
                        elif_count, NULL, elif_line, elif_col);
@@ -629,7 +714,21 @@ Stmt *if_stmt(Parser *parser) {
   Stmt *else_stmt = NULL;
   if (p_current(parser).type_ == TOK_ELSE) {
     p_consume(parser, TOK_ELSE, "Expected 'else' keyword");
-    else_stmt = block_stmt(parser);
+
+    // Allow either block statement or single statement
+    if (p_current(parser).type_ == TOK_LBRACE) {
+      else_stmt = block_stmt(parser);
+    } else {
+      else_stmt = parse_stmt(parser);
+    }
+
+    if (!else_stmt) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected statement or block after else",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
   }
 
   return create_if_stmt(parser->arena, condition, then_stmt, elif_stmts,
@@ -724,11 +823,13 @@ Stmt *for_loop_stmt(Parser *parser, int line, int col) {
   }
 
   p_consume(parser, TOK_LBRACKET, "Expected '[' after 'loop' keyword");
-  // Parse initializers: i: int = 0, j: int = 1
+
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RBRACKET) {
     Expr *init = loop_init(parser, line, col);
     if (!init) {
-      fprintf(stderr, "Failed to parse loop initializer\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Failed to parse loop initializer", p_current(parser).line,
+                   p_current(parser).col, p_current(parser).length);
       return NULL;
     }
 
@@ -741,26 +842,46 @@ Stmt *for_loop_stmt(Parser *parser, int line, int col) {
     *slot = init;
 
     if (p_current(parser).type_ == TOK_COMMA) {
-      p_advance(parser); // Advance past the comma
+      p_advance(parser);
     }
   }
   p_consume(parser, TOK_RBRACKET, "Expected ']' after loop initializer");
 
   p_consume(parser, TOK_LPAREN, "Expected '(' after loop initializer");
   Expr *condition = parse_expr(parser, BP_LOWEST);
-  p_consume(parser, TOK_RPAREN, "Expected ')' after loop initializer");
+  if (!condition) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected condition expression in for loop",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
+  p_consume(parser, TOK_RPAREN, "Expected ')' after loop condition");
 
-  // Check for the optional condition
   Expr *optional_condition = NULL;
   if (p_current(parser).type_ == TOK_COLON) {
     p_consume(parser, TOK_COLON, "Expected ':' after loop condition");
     p_consume(parser, TOK_LPAREN, "Expected '(' after ':' in loop statement");
     optional_condition = parse_expr(parser, BP_LOWEST);
+    if (!optional_condition) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected optional condition expression",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
     p_consume(parser, TOK_RPAREN,
               "Expected ')' after optional condition in loop statement");
   }
 
   Stmt *body = block_stmt(parser);
+  if (!body) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected loop body block statement", p_current(parser).line,
+                 p_current(parser).col, p_current(parser).length);
+    return NULL;
+  }
+
   return create_for_loop_stmt(parser->arena, (AstNode **)intializers.data,
                               intializers.count, condition, optional_condition,
                               body, line, col);
@@ -795,33 +916,49 @@ Stmt *loop_stmt(Parser *parser) {
 
   p_consume(parser, TOK_LOOP, "Expected 'loop' keyword");
 
-  if (p_current(parser).type_ ==
-      TOK_LBRACE) { // Aka we have a infinite loop 'loop { ... }'
+  if (p_current(parser).type_ == TOK_LBRACE) {
     return infinite_loop_stmt(parser, line, col);
   }
 
-  if (p_current(parser).type_ ==
-      TOK_LBRACKET) { // Aka we have a for loop 'loop [ ... ] { ... }'
+  if (p_current(parser).type_ == TOK_LBRACKET) {
     return for_loop_stmt(parser, line, col);
   }
 
-  // else we have a standard while loop 'loop (condition) { ... }'
   p_consume(parser, TOK_LPAREN, "Expected '(' after 'loop' keyword");
   Expr *condition = parse_expr(parser, BP_LOWEST);
+  if (!condition) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected condition expression after '('",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
   p_consume(parser, TOK_RPAREN, "Expected ')' after loop condition");
 
-  // check if there is an optional condition 'loop (condition) :
-  // (optional_condition) { ... }'
   Expr *optional_condition = NULL;
   if (p_current(parser).type_ == TOK_COLON) {
-    p_advance(parser); // Advance past the colon
+    p_advance(parser);
     p_consume(parser, TOK_LPAREN, "Expected '(' after ':' in loop statement");
     optional_condition = parse_expr(parser, BP_LOWEST);
+    if (!optional_condition) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected optional condition expression after '('",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
+      return NULL;
+    }
     p_consume(parser, TOK_RPAREN,
               "Expected ')' after optional condition in loop statement");
   }
 
   Stmt *body = block_stmt(parser);
+  if (!body) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected loop body block statement", p_current(parser).line,
+                 p_current(parser).col, p_current(parser).length);
+    return NULL;
+  }
+
   return create_loop_stmt(parser->arena, condition, optional_condition, body,
                           line, col);
 }
@@ -941,6 +1078,13 @@ Stmt *switch_stmt(Parser *parser) {
   p_consume(parser, TOK_SWITCH, "Expected 'switch' keyword");
   p_consume(parser, TOK_LPAREN, "Expected '(' after 'switch' keyword");
   Expr *condition = parse_expr(parser, BP_LOWEST);
+  if (!condition) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected condition expression after '('",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
+    return NULL;
+  }
   p_consume(parser, TOK_RPAREN, "Expected ')' after switch condition");
   p_consume(parser, TOK_LBRACE, "Expected '{' to start switch body");
 
@@ -952,16 +1096,13 @@ Stmt *switch_stmt(Parser *parser) {
 
   Stmt *default_case = NULL;
 
-  // Parse all cases and default
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RBRACE) {
     int case_line = p_current(parser).line;
     int case_col = p_current(parser).col;
 
-    // Check if this is the default case
     if (p_current(parser).type_ == TOK_IDENTIFIER &&
         strcmp(get_name(parser), "_") == 0) {
-      // Handle default case: _: { ... }
-      p_advance(parser); // consume '_'
+      p_advance(parser);
       p_consume(parser, TOK_RIGHT_ARROW,
                 "Expected '=>' after default case '_'");
 
@@ -972,22 +1113,30 @@ Stmt *switch_stmt(Parser *parser) {
         default_body = parse_stmt(parser);
       }
 
+      if (!default_body) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected statement or block after '=>'",
+                     p_current(parser).line, p_current(parser).col,
+                     p_current(parser).length);
+        return NULL;
+      }
+
       default_case =
           create_default_stmt(parser->arena, default_body, case_line, case_col);
       continue;
     }
 
-    // Parse case values: can be single value or comma-separated list
     GrowableArray case_values;
     if (!growable_array_init(&case_values, parser->arena, 4, sizeof(Expr *))) {
       fprintf(stderr, "Failed to initialize case values array.\n");
       return NULL;
     }
 
-    // Parse first case value
     Expr *case_expr = parse_expr(parser, BP_LOWEST);
     if (!case_expr) {
-      fprintf(stderr, "Failed to parse case expression\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected case value expression", p_current(parser).line,
+                   p_current(parser).col, p_current(parser).length);
       return NULL;
     }
 
@@ -998,13 +1147,15 @@ Stmt *switch_stmt(Parser *parser) {
     }
     *value_slot = case_expr;
 
-    // Parse additional case values if comma-separated
     while (p_current(parser).type_ == TOK_COMMA) {
-      p_advance(parser); // consume comma
+      p_advance(parser);
 
       Expr *additional_case = parse_expr(parser, BP_LOWEST);
       if (!additional_case) {
-        fprintf(stderr, "Failed to parse additional case expression\n");
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected case value expression after ','",
+                     p_current(parser).line, p_current(parser).col,
+                     p_current(parser).length);
         return NULL;
       }
 
@@ -1018,21 +1169,21 @@ Stmt *switch_stmt(Parser *parser) {
 
     p_consume(parser, TOK_RIGHT_ARROW, "Expected '=>' after case value(s)");
 
-    // Parse case body (either block or single statement)
     Stmt *case_body;
     if (p_current(parser).type_ == TOK_LBRACE) {
       case_body = block_stmt(parser);
     } else {
-      // Single statement
       case_body = parse_stmt(parser);
     }
 
     if (!case_body) {
-      fprintf(stderr, "Failed to parse case body\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected statement or block after '=>'",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
 
-    // Create case statement and add to cases array
     Stmt *case_stmt =
         create_case_stmt(parser->arena, (AstNode **)case_values.data,
                          case_values.count, case_body, case_line, case_col);
@@ -1050,6 +1201,7 @@ Stmt *switch_stmt(Parser *parser) {
   return create_switch_stmt(parser->arena, condition, (AstNode **)cases.data,
                             cases.count, (AstNode *)default_case, line, col);
 }
+
 // Impl [fun1: void, fun2: void, ...] -> [struct1, struct2, ...]
 Stmt *impl_stmt(Parser *parser) {
   int line = p_current(parser).line;

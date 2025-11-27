@@ -21,14 +21,14 @@
 
 /** Macro to access token at index in a token growable array */
 #define TOKEN_AT(i) (((Token *)tokens.data)[(i)])
-#define MAX_TOKENS 100
+#define MAX_TOKENS 300
 
 #define BAR_WIDTH 40
 
 /** Enable debug logs for arena allocator (comment to disable) */
 #define DEBUG_ARENA_ALLOC 1
 
-#define Luma_Compiler_version "v0.1.0"
+#define Luma_Compiler_version "v0.1.2"
 
 /** Error codes returned by the compiler */
 typedef enum {

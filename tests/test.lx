@@ -1,19 +1,14 @@
 @module "main"
 
-@use "io" as io
+// pub const foo -> fn () [int] {
+//  return [];
+// }
 
-pub const Point -> struct {
-  vertex: *byte,
-  x: int,
-  y: int
-};
+pub const main -> fn () int {
+  let x: int = 20;
 
-pub const main -> fn () int { 
-  let y: Point = Point { vertex: "A" ,x: 50, y: 10 };
-
-  io::print_int("Point coordinates: (%d, %d)\n", [y.x, y.y]);
-  io::print_str("Point vertex: %s\n", [y.vertex]);
-  io::print_byte("Point vertex first byte: %c\n", [y.vertex[0]]);
-
-  return 0; 
+  if (x > 10) output(x, "\n");
+  else output("Hello, World!\n");
+  
+  return 0;
 }

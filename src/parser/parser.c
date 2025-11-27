@@ -109,6 +109,7 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
   Token module_tok = p_current(&parser);
   const char *module_name = parse_module_declaration(&parser);
   if (!module_name) {
+    error_report(); // CRITICAL: Report errors before returning
     return NULL;
   }
 
@@ -127,13 +128,15 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
   while (p_current(&parser).type_ != TOK_EOF) {
     Stmt *stmt = parse_stmt(&parser);
     if (!stmt) {
-      // Error already reported in parse_stmt
+      // CRITICAL: Report accumulated errors before returning
+      error_report();
       return NULL;
     }
 
     Stmt **slot = (Stmt **)growable_array_push(&stmts);
     if (!slot) {
       fprintf(stderr, "Out of memory while growing statements array\n");
+      error_report(); // Report any errors before returning
       return NULL;
     }
     *slot = stmt;
@@ -148,6 +151,7 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
   return create_program_node(parser.arena, (AstNode **)modules.data,
                              modules.count, 0, 0);
 }
+
 /**
  * @brief Gets the binding power (precedence) for a given token type
  *
@@ -524,8 +528,8 @@ Type *parse_type(Parser *parser) {
   case TOK_STRINGT:
   case TOK_VOID:
   case TOK_CHAR:
-  case TOK_STAR:     // Pointer type
-  case TOK_LBRACKET: // Array type
+  case TOK_STAR:       // Pointer type
+  case TOK_LBRACKET:   // Array type
   case TOK_IDENTIFIER: // Could be simple type or namespace::Type
     return tnud(parser);
 

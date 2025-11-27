@@ -92,8 +92,14 @@ Expr *unary(Parser *parser) {
   UnaryOp op = TOKEN_TO_UNOP_MAP[current.type_];
 
   if (op) {
-    p_advance(parser); // Consume the token
+    p_advance(parser);
     Expr *operand = parse_expr(parser, BP_UNARY);
+    if (!operand) {
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected expression after unary operator", line, col,
+                   current.length);
+      return NULL;
+    }
     return create_unary_expr(parser->arena, op, operand, line, col);
   }
 
@@ -116,8 +122,15 @@ Expr *binary(Parser *parser, Expr *left, BindingPower bp) {
 
   Token current = p_current(parser);
   BinaryOp op = TOKEN_TO_BINOP_MAP[current.type_];
-  p_advance(parser); // Consume the token
+  p_advance(parser);
   Expr *right = parse_expr(parser, bp);
+
+  if (!right) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected expression after binary operator", line, col,
+                 current.length);
+    return NULL;
+  }
 
   return create_binary_expr(parser->arena, op, left, right, line, col);
 }
@@ -509,24 +522,24 @@ Expr *free_expr(Parser *parser) {
 Expr *cast_expr(Parser *parser) {
   int line = p_current(parser).line;
   int col = p_current(parser).col;
-  
+
   p_advance(parser); // Advance past 'cast'
 
   p_consume(parser, TOK_LT,
             "Expected a '<' before you declare the type you want to cast to.");
-  
+
   Type *cast_type = parse_type(parser);
   // parse_type() has already advanced past the type
-  
+
   p_consume(parser, TOK_GT,
             "Expected a '>' after defining the type you want to cast to, but "
             "before defining what you are casting");
-  
+
   p_consume(parser, TOK_LPAREN,
             "Expected a '(' before defining what you are casting");
-  
+
   Expr *castee = parse_expr(parser, BP_NONE);
-  
+
   p_consume(parser, TOK_RPAREN,
             "Expected a ')' after defining what you are casting");
 
@@ -537,23 +550,23 @@ Expr *cast_expr(Parser *parser) {
 Expr *input_expr(Parser *parser) {
   int line = p_current(parser).line;
   int col = p_current(parser).col;
-  
+
   p_advance(parser); // Advance past 'input'
 
   p_consume(parser, TOK_LT,
             "Expected a '<' before you declare the type you want to input.");
-  
+
   Type *type = parse_type(parser);
   // parse_type() has already advanced past the type
-  
+
   p_consume(parser, TOK_GT,
             "Expected a '>' after defining the type you want to input");
-  
+
   p_consume(parser, TOK_LPAREN,
             "Expected a '(' before defining the input message");
-  
+
   Expr *msg = parse_expr(parser, BP_NONE);
-  
+
   p_consume(parser, TOK_RPAREN,
             "Expected a ')' after defining the input message");
 
@@ -622,13 +635,13 @@ Expr *syscall_expr(Parser *parser) {
 Expr *sizeof_expr(Parser *parser) {
   int line = p_current(parser).line;
   int col = p_current(parser).col;
-  
+
   p_advance(parser); // Advance past 'sizeof'
-  
+
   p_consume(parser, TOK_LT,
             "Expected a '<' before defining the var or type you want to get "
             "the size of.");
-  
+
   AstNode *object = NULL;
   bool is_type = false;
 
@@ -643,7 +656,7 @@ Expr *sizeof_expr(Parser *parser) {
     object = (AstNode *)parse_expr(parser, BP_NONE);
     is_type = false;
   }
-  
+
   p_consume(parser, TOK_GT,
             "Expected a '>' after defining the var or type you want to get the "
             "size of.");
