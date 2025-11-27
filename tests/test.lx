@@ -1,8 +1,8 @@
 @module "main"
 
-// pub const foo -> fn () [int] {
-//  return [];
-// }
+pub const foo -> fn () [int] {
+  return [];
+}
 
 pub const main -> fn () int {
   let x: int = 20;
