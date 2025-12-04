@@ -600,6 +600,16 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
   if (target->type == AST_EXPR_IDENTIFIER) {
     LLVM_Symbol *sym = find_symbol(ctx, target->expr.identifier.name);
     if (sym && !sym->is_function) {
+      // NEW: If assigning a cast expression, update element type
+      if (node->expr.assignment.value->type == AST_EXPR_CAST) {
+        AstNode *cast_node = node->expr.assignment.value;
+        LLVMTypeRef new_element_type =
+            extract_element_type_from_ast(ctx, cast_node->expr.cast.type);
+        if (new_element_type) {
+          sym->element_type = new_element_type;
+        }
+      }
+
       LLVMBuildStore(ctx->builder, value, sym->value);
       return value;
     }
@@ -874,7 +884,8 @@ LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
 
   AstNode **elements = node->expr.array.elements;
   size_t element_count = node->expr.array.element_count;
-  size_t target_size = node->expr.array.target_size; // NEW: Get target size for padding
+  size_t target_size =
+      node->expr.array.target_size; // NEW: Get target size for padding
 
   if (element_count == 0) {
     fprintf(stderr, "Error: Empty array literals not supported\n");
@@ -889,17 +900,19 @@ LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
   }
 
   LLVMTypeRef element_type = LLVMTypeOf(first_element);
-  
-  // NEW: Use target_size if set (for padding), otherwise use actual element_count
+
+  // NEW: Use target_size if set (for padding), otherwise use actual
+  // element_count
   size_t actual_array_size = (target_size > 0) ? target_size : element_count;
   LLVMTypeRef array_type = LLVMArrayType(element_type, actual_array_size);
 
   // Check if all elements are constants
   bool all_constants = LLVMIsConstant(first_element);
-  
+
   // NEW: Allocate for the FULL size (including padding)
   LLVMValueRef *element_values = (LLVMValueRef *)arena_alloc(
-      ctx->arena, sizeof(LLVMValueRef) * actual_array_size, alignof(LLVMValueRef));
+      ctx->arena, sizeof(LLVMValueRef) * actual_array_size,
+      alignof(LLVMValueRef));
 
   element_values[0] = first_element;
 
@@ -931,11 +944,11 @@ LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
   // NEW: Pad remaining elements with zeros if target_size > element_count
   if (target_size > element_count) {
     LLVMValueRef zero_value = LLVMConstNull(element_type);
-    
+
     for (size_t i = element_count; i < target_size; i++) {
       element_values[i] = zero_value;
     }
-    
+
     // If we're padding, we can't be all constants unless zeros count
     // (which they do, so keep checking)
     // zero_value is always constant, so all_constants remains unchanged
@@ -1172,25 +1185,31 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
     // Direct array value indexing (from array literals)
     LLVMTypeRef element_type = LLVMGetElementType(object_type);
 
-    // We need to store the array and get a pointer to it for GEP
+    // Allocate with proper alignment for the array type
     LLVMValueRef array_alloca =
         LLVMBuildAlloca(ctx->builder, object_type, "temp_array");
-    LLVMBuildStore(ctx->builder, object, array_alloca);
 
-    // Create GEP indices: [0, index] for array access
+    // Store with proper alignment - CRITICAL for i64 arrays!
+    LLVMValueRef store_inst =
+        LLVMBuildStore(ctx->builder, object, array_alloca);
+    // For i64 arrays, we need 8-byte alignment
+    LLVMSetAlignment(store_inst, 8);
+
+    // Use InBoundsGEP for safety
     LLVMValueRef indices[2];
     indices[0] = LLVMConstInt(LLVMInt32TypeInContext(ctx->context), 0, false);
     indices[1] = index;
 
     LLVMValueRef element_ptr =
-        LLVMBuildGEP2(ctx->builder, object_type, array_alloca, indices, 2,
-                      "array_element_ptr");
+        LLVMBuildInBoundsGEP2(ctx->builder, object_type, array_alloca, indices,
+                              2, "array_element_ptr");
 
-    // CRITICAL FIX: Always load the element value
-    // If it's an inner array, load it so the next indexing operation
-    // receives an array value (not a pointer)
-    return LLVMBuildLoad2(ctx->builder, element_type, element_ptr,
-                          "array_element");
+    // Load with proper alignment
+    LLVMValueRef load_inst = LLVMBuildLoad2(ctx->builder, element_type,
+                                            element_ptr, "array_element");
+    LLVMSetAlignment(load_inst, 8);
+
+    return load_inst;
 
   } else if (object_kind == LLVMPointerTypeKind) {
     // Handle pointer indexing - check if it's a symbol first for better type
@@ -1241,38 +1260,114 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
         }
       }
     } else if (node->expr.index.object->type == AST_EXPR_INDEX) {
-      // Second-level indexing: ptr[i][j]
-      // Trace back to find the base variable
-      AstNode *base_node = node->expr.index.object;
-      while (base_node->type == AST_EXPR_INDEX) {
-        base_node = base_node->expr.index.object;
+      // Second-level indexing: either arr[i][j] for arrays OR ptr[i][j] for
+      // pointers We need to handle these differently!
+
+      // First, let's check what the FIRST indexing returns
+      // Generate it to see if we get an array value or a pointer
+      LLVMValueRef first_index_result =
+          codegen_expr(ctx, node->expr.index.object);
+      if (!first_index_result) {
+        return NULL;
       }
-      if (base_node->type == AST_EXPR_IDENTIFIER) {
-        const char *base_var_name = base_node->expr.identifier.name;
-        LLVM_Symbol *base_sym = find_symbol(ctx, base_var_name);
-        if (base_sym && base_sym->element_type) {
-          // For multi-dimensional arrays, the element type after first index
-          // would be a pointer to the inner type
-          if (LLVMGetTypeKind(base_sym->element_type) == LLVMPointerTypeKind) {
-            // This needs more sophisticated handling for multi-dimensional
-            // arrays
-            pointee_type = LLVMInt64TypeInContext(ctx->context); // fallback
+
+      LLVMTypeRef first_result_type = LLVMTypeOf(first_index_result);
+      LLVMTypeKind first_result_kind = LLVMGetTypeKind(first_result_type);
+
+      // CASE 1: First indexing returned an ARRAY value (nested array literal)
+      // Example: directions[d] where directions is [[int; 2]; 8]
+      if (first_result_kind == LLVMArrayTypeKind) {
+        // This is a nested array access - the first index gave us an array
+        // Now index into that array
+        LLVMTypeRef inner_element_type = LLVMGetElementType(first_result_type);
+
+        // Store the array value so we can GEP into it
+        LLVMValueRef temp_alloca = LLVMBuildAlloca(
+            ctx->builder, first_result_type, "nested_array_temp");
+
+        // CRITICAL: Store with proper alignment for i64 arrays
+        LLVMValueRef store_inst =
+            LLVMBuildStore(ctx->builder, first_index_result, temp_alloca);
+        LLVMSetAlignment(store_inst, 8);
+
+        // Use InBoundsGEP with proper indices
+        LLVMValueRef gep_indices[2];
+        gep_indices[0] =
+            LLVMConstInt(LLVMInt32TypeInContext(ctx->context), 0, false);
+        gep_indices[1] = index;
+
+        LLVMValueRef element_ptr =
+            LLVMBuildInBoundsGEP2(ctx->builder, first_result_type, temp_alloca,
+                                  gep_indices, 2, "nested_element_ptr");
+
+        // Load with proper alignment
+        LLVMValueRef load_inst = LLVMBuildLoad2(
+            ctx->builder, inner_element_type, element_ptr, "nested_element");
+        LLVMSetAlignment(load_inst, 8);
+
+        return load_inst;
+      }
+
+      // CASE 2: First indexing returned a POINTER (double pointer like **byte)
+      else if (first_result_kind == LLVMPointerTypeKind) {
+        // This is pointer indexing: grid[r][c] where grid is **byte
+        // first_index_result is the result of grid[r], which is a *byte
+
+        // Trace back to find the base variable for type info
+        AstNode *base_node = node->expr.index.object;
+        while (base_node->type == AST_EXPR_INDEX) {
+          base_node = base_node->expr.index.object;
+        }
+
+        if (base_node->type == AST_EXPR_IDENTIFIER) {
+          const char *base_var_name = base_node->expr.identifier.name;
+          LLVM_Symbol *base_sym = find_symbol(ctx, base_var_name);
+
+          if (base_sym && base_sym->element_type) {
+            // For **byte, element_type is *byte (pointer to byte)
+            // We need to dereference once more to get byte
+            if (LLVMGetTypeKind(base_sym->element_type) ==
+                LLVMPointerTypeKind) {
+              // Check the base variable name to infer the final type
+              if (strstr(base_var_name, "byte") ||
+                  strstr(base_var_name, "char")) {
+                pointee_type = LLVMInt8TypeInContext(ctx->context);
+              } else if (strstr(base_var_name, "int") &&
+                         !strstr(base_var_name, "byte")) {
+                pointee_type = LLVMInt64TypeInContext(ctx->context);
+              } else if (strstr(base_var_name, "double")) {
+                pointee_type = LLVMDoubleTypeInContext(ctx->context);
+              } else if (strstr(base_var_name, "float")) {
+                pointee_type = LLVMFloatTypeInContext(ctx->context);
+              } else {
+                pointee_type = LLVMInt8TypeInContext(ctx->context);
+              }
+            } else {
+              pointee_type = base_sym->element_type;
+            }
           } else {
-            pointee_type = base_sym->element_type;
+            // Fallback based on variable name
+            if (strstr(base_var_name, "byte") ||
+                strstr(base_var_name, "char")) {
+              pointee_type = LLVMInt8TypeInContext(ctx->context);
+            } else if (strstr(base_var_name, "double")) {
+              pointee_type = LLVMDoubleTypeInContext(ctx->context);
+            } else if (strstr(base_var_name, "float")) {
+              pointee_type = LLVMFloatTypeInContext(ctx->context);
+            } else if (strstr(base_var_name, "int")) {
+              pointee_type = LLVMInt64TypeInContext(ctx->context);
+            } else {
+              pointee_type = LLVMInt8TypeInContext(ctx->context);
+            }
           }
-        } else {
-          // Old name-based fallback
-          if (strstr(base_var_name, "double")) {
-            pointee_type = LLVMDoubleTypeInContext(ctx->context);
-          } else if (strstr(base_var_name, "float")) {
-            pointee_type = LLVMFloatTypeInContext(ctx->context);
-          } else if (strstr(base_var_name, "int") &&
-                     !strstr(base_var_name, "char")) {
-            pointee_type = LLVMInt64TypeInContext(ctx->context);
-          } else if (strstr(base_var_name, "char") ||
-                     strstr(base_var_name, "_buf")) {
-            pointee_type = LLVMInt8TypeInContext(ctx->context);
-          }
+
+          // Now we have the pointer from first indexing and the element type
+          // Do the second level of pointer indexing
+          LLVMValueRef element_ptr =
+              LLVMBuildGEP2(ctx->builder, pointee_type, first_index_result,
+                            &index, 1, "ptr_ptr_element");
+          return LLVMBuildLoad2(ctx->builder, pointee_type, element_ptr,
+                                "ptr_ptr_element_val");
         }
       }
     } else if (node->expr.index.object->type == AST_EXPR_CAST) {
