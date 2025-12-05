@@ -237,6 +237,7 @@ bool lsp_document_analyze(LSPDocument *doc, LSPServer *server,
 // MODULE & IMPORT RESOLUTION
 // ============================================================================
 
+void scan_std_library(LSPServer *server);
 void extract_imports(LSPDocument *doc, ArenaAllocator *arena);
 void resolve_imports(LSPServer *server, LSPDocument *doc, BuildConfig *config,
                      GrowableArray *imported_modules);

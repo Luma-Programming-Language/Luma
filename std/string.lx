@@ -218,3 +218,45 @@ pub const atio -> fn (value: *byte) int {
   }
   return num;
 }
+
+pub const string_add -> fn (num1: *byte, num2: *byte) *byte {
+  let len1: int = strlen(num1);
+  let len2: int = strlen(num2);
+  let max_len: int = 0;
+  if (len1 > len2) max_len = len1; else max_len = len2;
+  
+  // Result can be at most max_len + 1 digits
+  let result: *byte = cast<*byte>(alloc(max_len + 2));
+  let carry: int = 0;
+  let result_idx: int = 0;
+  
+  let i1: int = len1 - 1;
+  let i2: int = len2 - 1;
+  
+  // Add digits from right to left
+  loop (i1 >= 0 || i2 >= 0 || carry > 0) {
+    let digit1: int = 0;
+    let digit2: int = 0;
+
+    if (i1 >= 0) digit1 = (cast<int>(num1[i1]) - 48); else digit1 = 0;
+    if (i2 >= 0) digit2 = (cast<int>(num2[i2]) - 48); else digit2 = 0;
+
+    
+    let sum: int = digit1 + digit2 + carry;
+    carry = sum / 10;
+    result[result_idx++] = cast<byte>((sum % 10) + 48);
+    
+    i1--;
+    i2--;
+  }
+  
+  // Reverse the result
+  loop [i: int = 0](i < result_idx / 2) : (++i) {
+    let temp: byte = result[i];
+    result[i] = result[result_idx - 1 - i];
+    result[result_idx - 1 - i] = temp;
+  }
+  
+  result[result_idx] = '\0';
+  return result;
+}

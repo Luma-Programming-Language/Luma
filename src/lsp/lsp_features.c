@@ -51,58 +51,128 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
   GrowableArray completions;
   growable_array_init(&completions, arena, 32, sizeof(LSPCompletionItem));
 
-  // Add keyword snippets
   const struct {
     const char *label;
     const char *snippet;
     const char *detail;
   } keywords[] = {
-      {"const fn",
-       "const ${1:name} -> fn (${2:params}) ${3:Type} {\\n\\t$0\\n}",
+      // Function declarations
+      {"const fn", "const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}",
        "Function declaration"},
       {"pub const fn",
-       "pub const ${1:name} -> fn (${2:params}) ${3:Type} {\\n\\t$0\\n}",
+       "pub const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}",
        "Public function"},
 
+      // Generic functions
+      {"const fn<T>",
+       "const ${1:name} = fn<${2:T}>(${3:params}) ${4:Type} {\n\t$0\n}",
+       "Generic function"},
+      {"pub const fn<T>",
+       "pub const ${1:name} = fn<${2:T}>(${3:params}) ${4:Type} {\n\t$0\n}",
+       "Public generic function"},
+
+      // Type declarations
       {"const struct",
-       "const ${1:Name} -> struct {\\n\\t${2:field}: ${3:Type}$0,\\n};",
+       "const ${1:Name} -> struct {\n\t${2:field}: ${3:Type}$0,\n};",
        "Struct definition"},
-      {"const enum", "const ${1:Name} -> enum {\\n\\t${2:Variant}$0,\\n};",
+      {"const struct<T>",
+       "const ${1:Name} -> struct<${2:T}> {\n\t${3:field}: ${4:Type}$0,\n};",
+       "Generic struct"},
+      {"const enum", "const ${1:Name} -> enum {\n\t${2:Variant}$0,\n};",
        "Enum definition"},
       {"const var", "const ${1:name}: ${2:Type} = ${3:value};$0",
        "Top-level constant"},
 
-      {"if", "if ${1:condition} {\\n\\t$0\\n}", "If statement"},
-      {"if else", "if ${1:condition} {\\n\\t${2}\\n} else {\\n\\t$0\\n}",
+      // Control flow - if/elif/else
+      {"if", "if (${1:condition}) {\n\t$0\n}", "If statement"},
+      {"if else", "if (${1:condition}) {\n\t${2}\n} else {\n\t$0\n}",
        "If-else statement"},
+      {"elif", "elif (${1:condition}) {\n\t$0\n}", "Elif clause"},
 
-      {"loop", "loop {\\n\\t$0\\n}", "Infinite loop"},
+      // Loop patterns
+      {"loop", "loop {\n\t$0\n}", "Infinite loop"},
+      {"loop while", "loop (${1:condition}) {\n\t$0\n}", "While-style loop"},
       {"loop for",
-       "loop [${1:i}: int = 0](${1:i} < ${2:10}) : (++${1:i}) {\\n\\t$0\\n}",
+       "loop [${1:i}: int = 0](${1:i} < ${2:10}) : (++${1:i}) {\n\t$0\n}",
        "For-style loop"},
+      {"loop for multi",
+       "loop [${1:i}: int = 0, ${2:j}: int = 0](${1:i} < ${3:10}) : (++${1:i}) "
+       "{\n\t$0\n}",
+       "Multi-variable for loop"},
 
-      {"switch", "switch (${1:value}) {\\n\\t${2:case} => ${3:result};$0\\n}",
+      // Switch patterns
+      {"switch", "switch (${1:value}) {\n\t${2:case} -> ${3:result};$0\n}",
        "Switch statement"},
+      {"switch default",
+       "switch (${1:value}) {\n\t${2:case} -> ${3:result};\n\t_ -> "
+       "${4:default};$0\n}",
+       "Switch with default case"},
 
+      // Variable declaration
       {"let", "let ${1:name}: ${2:Type} = ${3:value};$0",
        "Variable declaration"},
 
-      {"defer", "defer free(${1:ptr});$0", "Defer statement"},
-      {"defer block", "defer {\\n\\t${1:cleanup()};\\n\\t$0\\n}",
-       "Defer block"},
+      // Defer patterns
+      {"defer block", "defer {\n\t${1:cleanup()};$0\n}", "Defer block"},
 
-      {"@module", "@module \\\"${1:name}\\\"$0", "Module declaration"},
-      {"@use", "@use \\\"${1:module}\\\" as ${2:alias}$0", "Import module"},
+      // Module system
+      {"@module", "@module \"${1:name}\"$0", "Module declaration"},
+      {"@use", "@use \"${1:module}\" as ${2:alias}$0", "Import module"},
 
+      // Flow control
       {"return", "return ${1:value};$0", "Return statement"},
       {"break", "break;$0", "Break statement"},
       {"continue", "continue;$0", "Continue statement"},
 
-      {"main", "const main -> fn () int {\\n\\t$0\\n\\treturn 0;\\n};",
+      // Common functions
+      {"main", "const main -> fn () int {\n\t$0\n\treturn 0;\n};",
        "Main function"},
       {"outputln", "outputln(${1:message});$0", "Output with newline"},
+      {"output", "output(${1:message});$0", "Output without newline"},
+
+      // Built-in functions
+      {"input", "input<${1:Type}>(\"${2:prompt}\")$0", "Read typed input"},
+      {"system", "system(\"${1:command}\");$0", "Execute system command"},
+
+      // Type operations
       {"cast", "cast<${1:Type}>(${2:value})$0", "Type cast"},
       {"sizeof", "sizeof<${1:Type}>$0", "Size of type"},
+
+      // Memory operations
+      {"alloc", "cast<${1:*Type}>(alloc(${2:size} * sizeof<${3:Type}>))$0",
+       "Allocate memory"},
+      {"alloc defer",
+       "let ${1:ptr}: ${2:*Type} = cast<${2:*Type}>(alloc(${3:size} * "
+       "sizeof<${4:Type}>));\ndefer free(${1:ptr});$0",
+       "Allocate with defer cleanup"},
+
+      // Struct patterns
+      {"struct method", "${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}",
+       "Struct method"},
+      {"struct pub", "pub:\n\t${1:field}: ${2:Type},$0",
+       "Public struct fields"},
+      {"struct priv", "priv:\n\t${1:field}: ${2:Type},$0",
+       "Private struct fields"},
+
+      // Array patterns
+      {"array", "[${1:Type}; ${2:size}]$0", "Array type"},
+      {"array init", "let ${1:arr}: [${2:Type}; ${3:size}] = [${4:values}];$0",
+       "Array initialization"},
+
+      // Pointer patterns
+      {"pointer", "*${1:Type}$0", "Pointer type"},
+      {"address of", "&${1:variable}$0", "Address-of operator"},
+      {"dereference", "*${1:pointer}$0", "Dereference pointer"},
+
+      // Function attributes
+      {"#returns_ownership",
+       "#returns_ownership\nconst ${1:name} -> fn (${2:params}) ${3:*Type} "
+       "{\n\t$0\n}",
+       "Function returns owned pointer"},
+      {"#takes_ownership",
+       "#takes_ownership\nconst ${1:name} -> fn (${2:ptr}: ${3:*Type}) void "
+       "{\n\t$0\n}",
+       "Function takes ownership"},
   };
 
   for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {

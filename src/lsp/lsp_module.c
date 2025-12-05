@@ -8,6 +8,8 @@
 
 #include "lsp.h"
 
+#define LUMA_STD_PATH "/usr/local/lib/luma/std"
+
 // Extract @module declaration from file content
 const char *extract_module_name(const char *content, ArenaAllocator *arena) {
   if (!content)
@@ -217,8 +219,8 @@ void build_module_registry(LSPServer *server, const char *workspace_uri) {
   arena_destroy(&temp_arena);
 }
 
-// Look up module in registry
 const char *lookup_module(LSPServer *server, const char *module_name) {
+  // First check workspace registry
   for (size_t i = 0; i < server->module_registry.count; i++) {
     if (strcmp(server->module_registry.entries[i].module_name, module_name) ==
         0) {
@@ -226,6 +228,31 @@ const char *lookup_module(LSPServer *server, const char *module_name) {
     }
   }
 
+  // If not found, check standard library
+  ArenaAllocator temp_arena;
+  arena_allocator_init(&temp_arena, 4096);
+
+  // Build path to std lib module
+  size_t path_len = strlen(LUMA_STD_PATH) + strlen(module_name) + 10;
+  char *std_path = arena_alloc(&temp_arena, path_len, 1);
+  snprintf(std_path, path_len, "%s/%s.lx", LUMA_STD_PATH, module_name);
+
+  // Check if file exists
+  FILE *test = fopen(std_path, "r");
+  if (test) {
+    fclose(test);
+    const char *uri = lsp_path_to_uri(std_path, server->arena);
+    arena_destroy(&temp_arena);
+
+    fprintf(stderr, "[LSP] Found module '%s' in std lib: %s\n", module_name,
+            uri);
+    return uri;
+  }
+
+  arena_destroy(&temp_arena);
+
+  fprintf(stderr, "[LSP] Module '%s' not found in workspace or std lib\n",
+          module_name);
   return NULL;
 }
 
