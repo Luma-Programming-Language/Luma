@@ -133,7 +133,6 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
   bool is_mutable = node->stmt.var_decl.is_mutable;
 
   // Track memory allocation
-  // Track memory allocation
   if (initializer && contains_alloc_expression(initializer)) {
     StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
     if (analyzer) {
@@ -178,6 +177,7 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
   }
 
   // Track ownership transfer from function return values
+  // CRITICAL FIX: Only track if the returned type is a POINTER
   if (initializer && initializer->type == AST_EXPR_CALL) {
     AstNode *callee = initializer->expr.call.callee;
     Symbol *func_symbol = NULL;
@@ -194,14 +194,27 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     }
 
     // If function returns ownership, track as allocation
+    // BUT ONLY if the return type is actually a pointer
     if (func_symbol && func_symbol->returns_ownership) {
-      StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-      if (analyzer) {
-        const char *func_name = get_current_function_name(scope);
-        static_memory_track_alloc(analyzer, node->line, node->column, name,
-                                  func_name, g_tokens, g_token_count,
-                                  g_file_path);
+      // Get the actual return type
+      AstNode *return_type = NULL;
+      if (func_symbol->type && func_symbol->type->type == AST_TYPE_FUNCTION) {
+        return_type = func_symbol->type->type_data.function.return_type;
       }
+
+      // CRITICAL: Only track if return type is a pointer
+      if (return_type && is_pointer_type(return_type)) {
+        StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+        if (analyzer) {
+          const char *func_name = get_current_function_name(scope);
+          static_memory_track_alloc(analyzer, node->line, node->column, name,
+                                    func_name, g_tokens, g_token_count,
+                                    g_file_path);
+        }
+      }
+      // If return type is a struct with pointer fields, we DON'T track the
+      // struct itself The struct is a value type, not a heap allocation Only
+      // the pointer FIELDS need to be freed (which the user handles with defer)
     }
   }
 

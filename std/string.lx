@@ -219,6 +219,7 @@ pub const atio -> fn (value: *byte) int {
   return num;
 }
 
+#returns_ownership
 pub const string_add -> fn (num1: *byte, num2: *byte) *byte {
   let len1: int = strlen(num1);
   let len2: int = strlen(num2);
