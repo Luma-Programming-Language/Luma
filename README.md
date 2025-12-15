@@ -357,7 +357,7 @@ Interested in contributing to Luma? We'd love to have you!
 
 - Check out our [GitHub repository](https://github.com/TheDevConnor/luma)
 - Join our [Discord community](https://bit.ly/lux-discord)
-- Look at the [doxygen-generated](https://thedevconnor.github.io/Luma/) docs for architecture details
+- Look at the [doxygen-generated](https://luma-programming-language.github.io/Luma/) docs for architecture details
 - If you would like to contribute, please read our [contribution guidelines](CONTRIBUTING.md).
 
 ---
