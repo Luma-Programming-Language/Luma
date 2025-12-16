@@ -85,6 +85,34 @@ pub const print_byte -> fn (s: *byte, args: [byte; 256]) int {
     return written;
 }
 
+pub const print_err -> fn (s: *byte, args: [int; 256]) int {
+  // Simple implementation: only supports %d for integers
+  let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
+  let buf_index: int = 0; let arg_index: int = 0;
+  defer { free(buffer); }
+  
+  loop [i: int = 0](s[i] != '\0') : (++i) {
+      if (s[i] == '%' && s[i + 1] == 'd' && arg_index < 256) {
+          let num_str: *byte = string::from_int(args[arg_index]);
+          defer { free(num_str); }
+
+          loop [j: int = 0](num_str[j] != '\0') : (++j) {
+              buffer[buf_index] = num_str[j];
+              buf_index = buf_index + 1;
+          }
+          arg_index = arg_index + 1;
+          i = i + 1; // Skip 'd'
+      } else {
+          buffer[buf_index] = s[i];
+          buf_index = buf_index + 1;
+      }
+  }
+  buffer[buf_index] = '\0'; // Null-terminate
+
+  let written: int = sys::write_str(sys::STDERR, buffer);
+  return written;
+}
+
 #returns_ownership
 pub const read_file -> fn (path: *byte) *byte {
   let fd: int = sys::open(path, sys::O_RDONLY, 0);

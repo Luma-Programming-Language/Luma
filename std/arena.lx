@@ -2,6 +2,7 @@
 
 @use "string" as string
 @use "memory" as mem
+@use "io" as io
 
 const ARENA_DEFAULT_SIZE: int = 1024 * 1024;
 
@@ -11,125 +12,6 @@ pub:
     buf_len: int,
     prev_offset: int,
     curr_offset: int,
-
-    alloc_arena -> fn (size: int) *void {
-        let alignment: int = 8;
-        let padding: int = (alignment - (self.curr_offset % alignment)) % alignment;
-        let aligned_offset: int = self.curr_offset + padding;
-
-        if (aligned_offset + size > self.buf_len) {
-            let new_size: int = self.buf_len * 2;
-            if (new_size < aligned_offset + size) {
-                new_size = aligned_offset + size;
-            }
-            
-            let new_buf: *byte = cast<*byte>(mem::realloc(cast<*void>(self.buf), new_size));
-            if (new_buf == cast<*byte>(0)) {
-                return cast<*void>(0);
-            }
-            
-            self.buf = new_buf;
-            self.buf_len = new_size;
-        }
-
-        let ptr: *void = cast<*void>(cast<int>(self.buf) + aligned_offset);
-        self.prev_offset = aligned_offset;
-        self.curr_offset = aligned_offset + size;
-
-        return ptr;
-    },
-
-    // Allocate with custom alignment (useful for SIMD, cache lines, etc.)
-    alloc_arena_aligned -> fn (size: int, alignment: int) *void {
-        let padding: int = (alignment - (self.curr_offset % alignment)) % alignment;
-        let aligned_offset: int = self.curr_offset + padding;
-
-        if (aligned_offset + size > self.buf_len) {
-            let new_size: int = self.buf_len * 2;
-            if (new_size < aligned_offset + size) {
-                new_size = aligned_offset + size;
-            }
-            
-            let new_buf: *byte = cast<*byte>(mem::realloc(cast<*void>(self.buf), new_size));
-            if (new_buf == cast<*byte>(0)) {
-                return cast<*void>(0);
-            }
-            
-            self.buf = new_buf;
-            self.buf_len = new_size;
-        }
-
-        let ptr: *void = cast<*void>(cast<int>(self.buf) + aligned_offset);
-        self.prev_offset = aligned_offset;
-        self.curr_offset = aligned_offset + size;
-
-        return ptr;
-    },
-
-    // Allocate and zero memory (calloc equivalent)
-    alloc_arena_zero -> fn (size: int) *void {
-        let ptr: *void = self.alloc_arena(size);
-        if (ptr != cast<*void>(0)) {
-            mem::memzero(ptr, size);
-        }
-        return ptr;
-    },
-
-    // Duplicate a memory block into arena
-    alloc_arena_dup -> fn (src: *void, size: int) *void {
-        let ptr: *void = self.alloc_arena(size);
-        if (ptr != cast<*void>(0)) {
-            mem::memcpy(ptr, src, size);
-        }
-        return ptr;
-    },
-
-    // Duplicate a string into arena
-    alloc_arena_string -> fn (source: *byte) *byte {
-        let len: int = string::strlen(source) + 1; // +1 for null terminator
-        let ptr: *byte = cast<*byte>(self.alloc_arena(len));
-        if (ptr != cast<*byte>(0)) {
-            string::copy(ptr, source);
-        }
-        return ptr;
-    },
-
-    // Get current usage statistics
-    get_usage -> fn () int { return self.curr_offset; },
-
-    get_capacity -> fn () int { return self.buf_len; },
-
-    get_remaining -> fn () int { return self.buf_len - self.curr_offset; },
-
-    // Check if pointer is within arena bounds (useful for debugging)
-    contains_ptr -> fn (ptr: *void) bool {
-        let addr: int = cast<int>(ptr);
-        let start: int = cast<int>(self.buf);
-        let end: int = start + self.buf_len;
-        return (addr >= start && addr < end);
-    },
-
-    // Rewind to a previous offset (checkpoint/restore pattern)
-    save_checkpoint -> fn () int { return self.curr_offset; },
-
-    restore_checkpoint -> fn (checkpoint: int) void {
-        if (checkpoint >= 0 && checkpoint <= self.buf_len) {
-            self.curr_offset = checkpoint;
-        }
-    },
-
-    reset_arena -> fn () void {
-        self.curr_offset = 0;
-        self.prev_offset = 0;
-    },
-
-    free_arena -> fn () void {
-        free(self.buf);
-        self.buf = cast<*byte>(0);
-        self.buf_len = 0;
-        self.curr_offset = 0;
-        self.prev_offset = 0;
-    }
 };
 
 #returns_ownership
@@ -145,4 +27,36 @@ pub const create_arena_sized -> fn (size: int) Arena {
 #returns_ownership
 pub const create_arena -> fn () Arena {
     return create_arena_sized(ARENA_DEFAULT_SIZE);
+}
+
+pub const reset_arena -> fn (a: *Arena) void {
+    a.curr_offset = 0;
+    a.prev_offset = 0;
+}
+
+#takes_ownership
+pub const free_arena -> fn (a: *Arena) void {
+    free(a.buf);
+    a.buf = cast<*byte>(0);
+    a.buf_len = 0;
+    a.curr_offset = 0;
+    a.prev_offset = 0;
+}
+
+pub const alloc_arena -> fn (a: *Arena, size: int) *void {
+    let alignment: int = 8;
+    let padding: int = (alignment - (a.curr_offset % alignment)) % alignment;
+    let aligned_offset: int = a.curr_offset + padding;
+
+    if (aligned_offset + size > a.buf_len) {
+        io::print_err("Arena allocator: insufficient space (requested: %d bytes, available: %d bytes)\n", 
+                [size, (a.buf_len - aligned_offset)]);
+        return cast<*void>(0);
+    }
+
+    let ptr: *void = cast<*void>(cast<int>(a.buf) + aligned_offset);
+    a.prev_offset = aligned_offset;
+    a.curr_offset = aligned_offset + size;
+
+    return ptr;
 }

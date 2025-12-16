@@ -313,10 +313,10 @@ const max = fn<T>(a: T, b: T) T {                     // Generic function
 
 ```luma
 const x: int = 5;
-x = 10; // ❌ Error: `x` is immutable
+x = 10; // Error: `x` is immutable
 
 const add -> fn (a: int, b: int) int { return a + b; };
-add = something_else; // ❌ Error: cannot reassign function binding
+add = something_else; // Error: cannot reassign function binding
 ```
 
 ---
@@ -328,14 +328,14 @@ Inside functions, use `let` to declare local variables:
 ```luma
 const main -> fn () int {
     let x: int = 10;        // Mutable local variable
-    x = 20;                 // ✅ Can be reassigned
+    x = 20;                 // Can be reassigned
     
     let y: int = 5;
-    y = y + 1;              // ✅ Can be modified
+    y = y + 1;              // Can be modified
     
     let counter: int = 0;
     loop (counter < 10) {
-        counter = counter + 1;  // ✅ Mutating in loop
+        counter = counter + 1;  // Mutating in loop
     }
     
     return 0;
@@ -1139,7 +1139,7 @@ const main -> fn () int {
     *data = 42;
     
     consume_buffer(data);  // Ownership transferred
-    // ❌ Error: data was freed inside consume_buffer
+    // Error: data was freed inside consume_buffer
     
     return 0;
 }
@@ -1147,161 +1147,146 @@ const main -> fn () int {
 
 ### Static Memory Analysis
 
-Luma's compiler includes a static analyzer that tracks memory at compile time:
+Luma's compiler includes a static analyzer that tracks memory at compile time to prevent common memory management errors.
 
-- **Allocation/Deallocation Pairs**: Ensures every `alloc()` has a corresponding `free()`
-- **Double-Free Detection**: Prevents freeing the same pointer twice
-- **Memory Leaks**: Identifies allocated memory that's never freed
-- **Use-After-Free**: Detects access to freed memory
-- **Ownership Transfer**: Monitors ownership through attributes
+#### What the Analyzer Tracks
 
-**Example:**
+**Verified at Compile Time:**
+- **Memory Leaks**: Detects `alloc()` calls without corresponding `free()`
+- **Double-Free**: Prevents freeing the same pointer twice
+- **Use-After-Free**: Catches access to freed memory within the same function
+- **Ownership Transfer**: Validates `#returns_ownership` and `#takes_ownership` annotations
+- **Defer Statement Cleanup**: Ensures deferred frees execute properly
+
+**How It Works:**
 
 ```luma
 const good_memory_usage -> fn () void {
     let ptr: *int = cast<*int>(alloc(sizeof<int>));
-    defer free(ptr);  // ✅ Analyzer confirms cleanup
+    defer free(ptr);  // Analyzer confirms cleanup
     *ptr = 42;
-}
+}  // No leak reported
 
 const bad_memory_usage -> fn () void {
     let ptr: *int = cast<*int>(alloc(sizeof<int>));
     *ptr = 42;
-    // ❌ Compiler error: memory leak - ptr never freed
+    // Compiler error: memory leak - ptr never freed
 }
-```
 
----
-
-## Error Handling
-
-Luma doesn't have exceptions. Use these patterns:
-
-### Pattern 1: Error Return Codes
-
-```luma
-const SUCCESS: int = 0;
-const ERROR_NULL_PTR: int = -1;
-const ERROR_OUT_OF_BOUNDS: int = -2;
-
-const safe_divide -> fn (a: int, b: int, result: *int) int {
-    if (b == 0) {
-        return ERROR_OUT_OF_BOUNDS;
-    }
-    
-    if (result == cast<*int>(0)) {
-        return ERROR_NULL_PTR;
-    }
-    
-    *result = a / b;
-    return SUCCESS;
-}
+#returns_ownership
+const create_buffer -> fn (size: int) *int {
+    let buffer: *int = cast<*int>(alloc(size));
+    return buffer;  // Ownership transferred to caller
+}  // No leak reported - caller is responsible
 
 const main -> fn () int {
-    let quotient: int;
-    let status: int = safe_divide(10, 2, &quotient);
-    
-    if (status != SUCCESS) {
-        outputln("Error: ", status);
-        return 1;
-    }
-    
-    outputln("Result: ", quotient);
+    let data: *int = create_buffer(100);
+    defer free(data);  // Caller properly handles ownership
     return 0;
 }
 ```
 
-### Pattern 2: Nullable Pointers
+**Ownership Tracking:**
+
+The analyzer understands three ownership patterns:
+
+1. **`#returns_ownership` functions**: Allocations inside are NOT tracked as leaks because ownership transfers to the caller
+2. **`#takes_ownership` functions**: Parameters marked with this receive ownership and are responsible for cleanup
+3. **`defer` statements**: Deferred cleanup is tracked and validated at function exit
+
+**Transitive Ownership:**
 
 ```luma
-const find_element -> fn (arr: *int, size: int, value: int) *int {
-    loop [i: int = 0](i < size) : (++i) {
-        if (arr[i] == value) {
-            let addr: int = cast<int>(arr) + (i * sizeof<int>);
-            return cast<*int>(addr);
-        }
-    }
-    return cast<*int>(0);  // Not found - return null
+#returns_ownership
+const create_arena_sized -> fn (size: int) Arena {
+    let a: Arena;
+    a.buf = alloc(size);  // Not tracked - inside #returns_ownership
+    return a;
 }
 
-const main -> fn () int {
-    let numbers: [int; 5] = [10, 20, 30, 40, 50];
-    let found: *int = find_element(cast<*int>(&numbers), 5, 30);
-    
-    if (found == cast<*int>(0)) {
-        outputln("Not found");
-    } else {
-        outputln("Found: ", *found);
-    }
-    
-    return 0;
+const create_arena -> fn () Arena {
+    return create_arena_sized(1024);
+    // Warning: Should add #returns_ownership annotation
+    // for API clarity (ownership is being passed through)
 }
 ```
 
-### Pattern 3: Result Struct
+#### Current Limitations
 
-```luma
-const Result -> struct {
-    success: bool,
-    value: int,
-    error_code: int
-};
+**Known Edge Cases:**
 
-const safe_operation -> fn (x: int) Result {
-    if (x < 0) {
-        return Result {
-            success: false,
-            value: 0,
-            error_code: -1
-        };
-    }
-    
-    return Result {
-        success: true,
-        value: x * 2,
-        error_code: 0
-    };
-}
+The analyzer currently has limitations in these areas:
 
-const main -> fn () int {
-    let result: Result = safe_operation(-5);
-    
-    if (!result.success) {
-        outputln("Error: ", result.error_code);
-        return 1;
-    }
-    
-    outputln("Result: ", result.value);
-    return 0;
-}
-```
+1. **Struct Field Granularity**: When tracking `a.buf = alloc(...)`, the analyzer tracks the entire struct `a`, not the specific field `a.buf`. This works for single-pointer structs but may cause issues with:
+   ```luma
+   const Container -> struct {
+       data1: *int,
+       data2: *int
+   };
+   
+   let c: Container;
+   c.data1 = alloc(10);  // Tracked as "c"
+   c.data2 = alloc(20);  // Also tracked as "c" - potential confusion
+   free(c.data1);        // Marks "c" as freed, but c.data2 still allocated
+   ```
 
-### Best Practices
+2. **Conditional Allocations**: The analyzer may report false positives for conditional paths:
+   ```luma
+   let ptr: *int;
+   if (condition) {
+       ptr = alloc(sizeof<int>);
+   }
+   // May warn even if you don't need to free in else branch
+   ```
 
-**Always check return values:**
-```luma
-// Bad
-let ptr: *void = alloc(size);
-*cast<*int>(ptr) = 42;  // Might crash if allocation failed
+3. **Allocations in Loops**: Each loop iteration's allocations should be independent, but edge cases may exist:
+   ```luma
+   loop [i: int = 0](i < 10) : (++i) {
+       let temp: *int = alloc(4);
+       // Use temp...
+       free(temp);  // Should work correctly
+   }
+   ```
 
-// Good
-let ptr: *void = alloc(size);
-if (ptr == cast<*void>(0)) {
-    return ERROR_ALLOCATION;
-}
-defer free(ptr);
-*cast<*int>(ptr) = 42;
-```
+4. **Early Returns with Defer**: While generally working, complex control flow with multiple early returns may need testing:
+   ```luma
+   const process -> fn () int {
+       let a: *int = alloc(sizeof<int>);
+       defer free(a);
+       
+       if (error) { return -1; }  // Defer should fire
+       if (warning) { return 0; } // Defer should fire
+       return 1;                  // Defer should fire
+   }
+   ```
 
-**Use consistent error codes:**
-```luma
-const SUCCESS: int = 0;
-const ERR_NULL_PTR: int = -1;
-const ERR_OUT_OF_BOUNDS: int = -2;
-const ERR_ALLOCATION: int = -3;
-```
+5. **Stack vs Heap**: The analyzer doesn't currently detect returning pointers to stack variables:
+   ```luma
+   const dangerous -> fn () *int {
+       let local: int = 42;
+       return &local;  // NOT DETECTED - returns dangling pointer
+   }
+   ```
 
----
+6. **Arrays of Pointers**: Complex allocation patterns may not be fully tracked:
+   ```luma
+   let arr: [*int; 5];
+   loop [i: int = 0](i < 5) : (++i) {
+       arr[i] = alloc(sizeof<int>);  // Each needs individual free
+   }
+   ```
+
+#### Best Practices
+
+To work effectively with the analyzer:
+
+1. **Use ownership annotations consistently**: Mark all functions that allocate and return resources with `#returns_ownership`
+2. **Use defer for cleanup**: Always pair allocations with `defer free()` for automatic cleanup
+3. **One allocation per variable**: Avoid reassigning pointer variables after allocation without freeing
+4. **Clear ownership semantics**: Document which functions own their pointer parameters vs. borrowing them
+5. **Test early returns**: Ensure defer statements properly handle all exit paths
+
+The analyzer is conservative - it may report false positives to prevent missed leaks. When in doubt, it will warn about potential issues rather than silently allowing them.
 
 ## Performance
 

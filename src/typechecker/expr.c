@@ -185,6 +185,42 @@ AstNode *typecheck_assignment_expr(AstNode *expr, Scope *scope,
   if (!target_type || !value_type)
     return NULL;
 
+  // NEW: Track allocations in assignments (e.g., a.buf = alloc(size))
+  // Check if we're assigning an allocation to a variable/field
+  if (contains_alloc_expression(expr->expr.assignment.value)) {
+    // Check if we're inside a #returns_ownership function
+    bool in_returns_ownership_func = false;
+    Scope *func_scope = scope;
+    while (func_scope && !func_scope->is_function_scope) {
+      func_scope = func_scope->parent;
+    }
+    if (func_scope && func_scope->associated_node) {
+      in_returns_ownership_func = 
+          func_scope->associated_node->stmt.func_decl.returns_ownership;
+    }
+
+    // Only track if NOT in a #returns_ownership function
+    if (!in_returns_ownership_func) {
+      StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+      if (analyzer) {
+        // Extract the variable name from the assignment target
+        // For "a.buf = alloc(10)", we want to track "a.buf" or just "a"
+        const char *var_name = extract_variable_name(expr->expr.assignment.target);
+        
+        if (var_name) {
+          const char *func_name = NULL;
+          if (func_scope && func_scope->associated_node) {
+            func_name = func_scope->associated_node->stmt.func_decl.name;
+          }
+          
+          static_memory_track_alloc(analyzer, expr->line, expr->column, var_name,
+                                    func_name, g_tokens, g_token_count,
+                                    g_file_path);
+        }
+      }
+    }
+  }
+
   // Check for pointer assignment that might transfer ownership
   if (is_pointer_type(target_type) && is_pointer_type(value_type)) {
     // Extract variable names from both sides
@@ -218,9 +254,6 @@ AstNode *typecheck_assignment_expr(AstNode *expr, Scope *scope,
 
   return target_type;
 }
-
-// Complete typecheck_call_expr function with ownership tracking
-// Place this entire function in expr.c, replacing the existing one
 
 AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
                              ArenaAllocator *arena) {
@@ -459,18 +492,15 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
     TypeMatchResult match = types_match(param_types[i], arg_type);
     
     // NEW: Special handling for array argument padding
-    // If the parameter expects a larger array than provided, allow it with padding
     if (match == TYPE_MATCH_NONE && 
         param_types[i]->type == AST_TYPE_ARRAY && 
         arg_type->type == AST_TYPE_ARRAY) {
       
-      // Check if element types match
       TypeMatchResult element_match = 
           types_match(param_types[i]->type_data.array.element_type,
                       arg_type->type_data.array.element_type);
       
       if (element_match != TYPE_MATCH_NONE) {
-        // Element types match, check sizes
         AstNode *param_size = param_types[i]->type_data.array.size;
         AstNode *arg_size = arg_type->type_data.array.size;
         
@@ -483,20 +513,12 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
           long long param_size_val = param_size->expr.literal.value.int_val;
           long long arg_size_val = arg_size->expr.literal.value.int_val;
           
-          // If argument array is smaller than parameter, allow it with padding
           if (arg_size_val <= param_size_val) {
-            // Set a flag on the argument node to indicate it needs padding
-            // This will be handled by the code generator
             if (arguments[i]->type == AST_EXPR_ARRAY) {
-              // Mark this array for padding to param_size_val elements
-              // Store the target size for the code generator to use
               arguments[i]->expr.array.target_size = (size_t)param_size_val;
             }
-            
-            // Continue to next argument - this is valid
             continue;
           } else {
-            // Argument array is LARGER than parameter - this is an error
             tc_error_help(
                 expr, "Array Size Mismatch",
                 "Cannot pass larger array to function expecting smaller array",
@@ -519,13 +541,46 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
   }
 
   // Handle ownership transfer from caller to function
+  // CRITICAL FIX: Properly handle defer blocks for #takes_ownership
   if (func_symbol->takes_ownership) {
+    StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+    
     for (size_t i = 0; i < arg_count; i++) {
       if (param_types[i] && is_pointer_type(param_types[i])) {
         const char *arg_var = extract_variable_name(arguments[i]);
-        if (arg_var) {
-          StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-          if (analyzer) {
+        if (arg_var && analyzer) {
+          
+          // Check if we're in a defer block
+          if (analyzer->skip_memory_tracking) {
+            // We're in a defer block - add to deferred_frees list
+            Scope *func_scope = scope;
+            while (func_scope && !func_scope->is_function_scope) {
+              func_scope = func_scope->parent;
+            }
+
+            if (func_scope) {
+              // Check if already in deferred list (avoid duplicates)
+              bool already_deferred = false;
+              for (size_t j = 0; j < func_scope->deferred_frees.count; j++) {
+                const char **existing =
+                    (const char **)((char *)func_scope->deferred_frees.data +
+                                    j * sizeof(const char *));
+                if (*existing && strcmp(*existing, arg_var) == 0) {
+                  already_deferred = true;
+                  break;
+                }
+              }
+
+              if (!already_deferred) {
+                const char **slot =
+                    (const char **)growable_array_push(&func_scope->deferred_frees);
+                if (slot) {
+                  *slot = arg_var;
+                }
+              }
+            }
+          } else {
+            // Normal (non-defer) call - track immediately as freed
             const char *current_func = get_current_function_name(scope);
             static_memory_track_free(analyzer, arg_var, current_func);
           }
@@ -540,12 +595,9 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
     if (arguments[0]) {
       const char *self_var = NULL;
 
-      // Check if we injected &obj for the self parameter
       if (arguments[0]->type == AST_EXPR_ADDR) {
-        // Extract the object from &obj
         self_var = extract_variable_name(arguments[0]->expr.addr.object);
       } else {
-        // Direct parameter (less common, but handle it)
         self_var = extract_variable_name(arguments[0]);
       }
 
@@ -553,7 +605,6 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
         StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
         if (analyzer) {
           const char *current_func = get_current_function_name(scope);
-          // Method takes ownership of self - mark as freed
           static_memory_track_free(analyzer, self_var, current_func);
         }
       }

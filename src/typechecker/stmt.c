@@ -132,37 +132,34 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
   bool is_public = node->stmt.var_decl.is_public;
   bool is_mutable = node->stmt.var_decl.is_mutable;
 
+  // Check if we're inside a function with #returns_ownership
+  // If so, skip ALL allocation tracking within this function
+  bool in_returns_ownership_func = false;
+  Scope *func_scope = scope;
+  while (func_scope && !func_scope->is_function_scope) {
+    func_scope = func_scope->parent;
+  }
+  if (func_scope && func_scope->associated_node) {
+    in_returns_ownership_func = 
+        func_scope->associated_node->stmt.func_decl.returns_ownership;
+  }
+
   // Track memory allocation
   if (initializer && contains_alloc_expression(initializer)) {
-    StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-    if (analyzer) {
-      // Get the containing function name
-      const char *func_name = NULL;
-      Scope *func_scope = scope;
-      while (func_scope && !func_scope->is_function_scope) {
-        func_scope = func_scope->parent;
-      }
-      if (func_scope && func_scope->associated_node) {
-        func_name = func_scope->associated_node->stmt.func_decl.name;
-
-        // NEW: Check if this function returns ownership
-        bool returns_ownership =
-            func_scope->associated_node->stmt.func_decl.returns_ownership;
-
-        // If the function returns ownership, we assume any allocation
-        // will be returned and ownership transferred to the caller
-        // So we DON'T track it as a potential leak within this function
-        if (returns_ownership) {
-          // Skip tracking - ownership will be transferred to caller
-          goto skip_allocation_tracking;
+    // CRITICAL: Skip tracking if we're in a #returns_ownership function
+    // The caller will be responsible for tracking the returned resource
+    if (!in_returns_ownership_func) {
+      StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+      if (analyzer) {
+        const char *func_name = NULL;
+        if (func_scope) {
+          func_name = func_scope->associated_node->stmt.func_decl.name;
         }
+
+        static_memory_track_alloc(analyzer, node->line, node->column, name,
+                                  func_name, g_tokens, g_token_count,
+                                  g_file_path);
       }
-
-      static_memory_track_alloc(analyzer, node->line, node->column, name,
-                                func_name, g_tokens, g_token_count,
-                                g_file_path);
-
-    skip_allocation_tracking:;
     }
   }
   // Track pointer aliasing in variable initialization
@@ -177,7 +174,11 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
   }
 
   // Track ownership transfer from function return values
-  // CRITICAL FIX: Only track if the returned type is a POINTER
+  // Functions with #returns_ownership return resources that need cleanup
+  // This applies to:
+  // 1. Pointer types (direct heap allocations)
+  // 2. Struct types containing pointers (like Arena with buf: *byte)
+  // 3. Any other type where cleanup is semantically required
   if (initializer && initializer->type == AST_EXPR_CALL) {
     AstNode *callee = initializer->expr.call.callee;
     Symbol *func_symbol = NULL;
@@ -194,27 +195,16 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     }
 
     // If function returns ownership, track as allocation
-    // BUT ONLY if the return type is actually a pointer
+    // The #returns_ownership annotation means the caller is responsible
+    // for cleanup, regardless of whether it's a pointer or struct
     if (func_symbol && func_symbol->returns_ownership) {
-      // Get the actual return type
-      AstNode *return_type = NULL;
-      if (func_symbol->type && func_symbol->type->type == AST_TYPE_FUNCTION) {
-        return_type = func_symbol->type->type_data.function.return_type;
+      StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+      if (analyzer) {
+        const char *func_name = get_current_function_name(scope);
+        static_memory_track_alloc(analyzer, node->line, node->column, name,
+                                  func_name, g_tokens, g_token_count,
+                                  g_file_path);
       }
-
-      // CRITICAL: Only track if return type is a pointer
-      if (return_type && is_pointer_type(return_type)) {
-        StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-        if (analyzer) {
-          const char *func_name = get_current_function_name(scope);
-          static_memory_track_alloc(analyzer, node->line, node->column, name,
-                                    func_name, g_tokens, g_token_count,
-                                    g_file_path);
-        }
-      }
-      // If return type is a struct with pointer fields, we DON'T track the
-      // struct itself The struct is a value type, not a heap allocation Only
-      // the pointer FIELDS need to be freed (which the user handles with defer)
     }
   }
 
@@ -433,16 +423,22 @@ bool typecheck_func_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
       return false;
     }
 
-    // If this function takes ownership of a pointer parameter, track it as an
-    // allocation
-    if (takes_ownership && is_pointer_type(param_types[i])) {
-      StaticMemoryAnalyzer *analyzer = get_static_analyzer(func_scope);
-      if (analyzer) {
-        static_memory_track_alloc(analyzer, node->line, node->column,
-                                  param_names[i], name, g_tokens, g_token_count,
-                                  g_file_path);
-      }
-    }
+    // REMOVED: The incorrect tracking of #takes_ownership parameters
+    // The old code was:
+    // if (takes_ownership && is_pointer_type(param_types[i])) {
+    //   static_memory_track_alloc(analyzer, node->line, node->column,
+    //                            param_names[i], name, ...);
+    // }
+    //
+    // This was wrong because:
+    // 1. It tracked parameters as allocations within the function
+    // 2. Cleanup functions like free_arena() would report false leaks
+    // 3. The actual tracking should happen at call sites, not here
+    //
+    // The correct behavior:
+    // - Caller tracks allocation before calling #takes_ownership function
+    // - At call site, ownership transfer is recorded (in typecheck_call_expr)
+    // - No tracking needed in the function receiving ownership
   }
 
   // Typecheck function body
@@ -948,6 +944,42 @@ bool typecheck_return_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     if (func_scope && func_scope->associated_node) {
       bool returns_ownership =
           func_scope->associated_node->stmt.func_decl.returns_ownership;
+
+      // NEW: Check for transitive ownership violations
+      // If returning a value from a call to a #returns_ownership function,
+      // this function should also have #returns_ownership
+      if (!returns_ownership && return_value->type == AST_EXPR_CALL) {
+        AstNode *callee = return_value->expr.call.callee;
+        Symbol *called_func = NULL;
+
+        // Look up the called function
+        if (callee->type == AST_EXPR_IDENTIFIER) {
+          called_func = scope_lookup(scope, callee->expr.identifier.name);
+        } else if (callee->type == AST_EXPR_MEMBER) {
+          const char *base_name = callee->expr.member.object->expr.identifier.name;
+          const char *member_name = callee->expr.member.member;
+          if (callee->expr.member.is_compiletime) {
+            called_func = lookup_qualified_symbol(scope, base_name, member_name);
+          }
+        }
+
+        // Check if the called function has #returns_ownership
+        if (called_func && called_func->returns_ownership) {
+          const char *current_func_name = 
+              func_scope->associated_node->stmt.func_decl.name;
+          const char *called_func_name = called_func->name;
+          
+          tc_error_help(
+              node, "Ownership Transfer Warning",
+              "Add #returns_ownership annotation to this function",
+              "Function '%s' returns a value from '%s' which has #returns_ownership. "
+              "Consider adding #returns_ownership to '%s' to make ownership transfer explicit.",
+              current_func_name, called_func_name, current_func_name);
+          
+          // For now, treat as warning (return true to continue compilation)
+          // Change to 'return false' to make it an error
+        }
+      }
 
       if (returns_ownership && is_pointer_type(actual_return_type)) {
         const char *returned_var = extract_variable_name(return_value);

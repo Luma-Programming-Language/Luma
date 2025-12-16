@@ -239,6 +239,7 @@ const char *type_to_string(AstNode *type, ArenaAllocator *arena);
 // Type Checking
 // ============================================================================
 
+bool contains_alloc_expression(AstNode *expr);
 bool typecheck(AstNode *node, Scope *scope, ArenaAllocator *arena,
                BuildConfig *config);
 AstNode *typecheck_expression(AstNode *expr, Scope *scope,

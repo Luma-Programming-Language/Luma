@@ -1,14 +1,49 @@
 @module "main"
 
-pub const foo -> fn () [int] {
-  return [];
-}
+@use "string" as string
+@use "arena" as arena
 
 pub const main -> fn () int {
-  let x: int = 20;
+    let a: Arena = arena::create_arena();
+    defer { arena::free_arena(&a); }
 
-  if (x > 10) output(x, "\n");
-  else output("Hello, World!\n");
-  
-  return 0;
+    let nums: *int = cast<*int>(arena::alloc_arena(&a, sizeof<int> * 5));
+    if (nums != cast<*int>(0)) {
+        loop [i: int = 0](i < 5) : (++i) { nums[i] = i * 10; }
+
+        output("Integers: ");
+        loop [i: int = 0](i < 5) : (++i) { output(nums[i], " "); }
+        output("\n");
+    }
+
+    let strings: *byte = cast<*byte>(arena::alloc_arena(&a, 20));
+    if (strings != cast<*byte>(0)) {
+        string::copy(strings, "Hello, Arena!");
+        output("String: ", strings, "\n");
+    }
+    
+    const Point -> struct {
+        x: int,
+        y: int,
+        z: double
+    };
+
+    let p: *Point = cast<*Point>(arena::alloc_arena(&a, sizeof<Point>));
+    if (p != cast<*Point>(0)) {
+        p.x = 10;
+        p.y = 20;
+        p.z = 3.1459;
+        output("Points: (", p.x, ", ", p.y, ", ", p.z, ")\n");
+    }
+
+    output("Testing resize...\n");
+    let large_array: *int = cast<*int>(arena::alloc_arena(&a, sizeof<int> * 500000));
+    if (large_array != cast<*int>(0)) {
+        large_array[0] = 42;
+        large_array[49999] = 100;
+        output("Large allocation succeeded! First: ", large_array[0], ", Last: ", large_array[49999], "\n");
+        output("Arena after resize: ", a.curr_offset, " / ", a.buf_len, "\n");
+    } 
+    
+    return 0;
 }
