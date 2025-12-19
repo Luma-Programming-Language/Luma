@@ -1,0 +1,124 @@
+@module "vector"
+
+@use "memory" as memory
+
+const DEFAULT_VECTOR_CAPACITY: int = 1024;
+const NULL: *void = cast<*void>(0);
+
+pub const Vector -> struct {
+pub:
+    data: *void,
+    capacity: int,
+    size: int,          
+    element_size: int, 
+
+    insert -> fn (elem: *void, index: int) int {
+        if (index < 0 || index > self.size) return 0;
+
+        if (self.size >= self.capacity) {
+            self.capacity = self.capacity * 2;
+            self.data = memory::realloc(
+                self.data,
+                self.capacity * self.element_size
+            );
+        }
+
+        // shift elements right
+        let src: *void = cast<*void>(
+            cast<int>(self.data) + (index * self.element_size)
+        );
+
+        let dst: *void = cast<*void>(
+            cast<int>(self.data) + ((index + 1) * self.element_size)
+        );
+
+        let bytes: int = (self.size - index) * self.element_size;
+        memory::memcpy(dst, src, bytes);
+
+        // write new element
+        memory::memcpy(src, elem, self.element_size);
+        self.size = self.size + 1;
+        return 1;
+    },
+
+    push_back -> fn (elem: *void) void {
+        if (self.size >= self.capacity) {
+            self.capacity = self.capacity * 2;
+            self.data = memory::realloc(self.data, self.capacity * self.element_size);
+        }
+
+        let dest: *void = cast<*void>(
+            cast<int>(self.data) + (self.size * self.element_size)
+        );
+
+        memory::memcpy(dest, elem, self.element_size);
+        self.size = self.size + 1;
+    },
+
+
+    pop_back -> fn (out: *void) int {
+        if (self.size == 0) return 0;
+
+        self.size = self.size - 1;
+
+        if (out != NULL) {
+            let src: *void = cast<*void>(
+                cast<int>(self.data) + (self.size * self.element_size)
+            );
+            memory::memcpy(out, src, self.element_size);
+        }
+
+        return 1;
+    },
+
+    remove_at -> fn (index: int) int {
+        if (index < 0 || index >= self.size) return 0;
+
+        let src: *void = cast<*void>(
+            cast<int>(self.data) + ((index + 1) * self.element_size)
+        );
+
+        let dst: *void = cast<*void>(
+            cast<int>(self.data) + (index * self.element_size)
+        );
+
+        let bytes_to_move: int =
+            (self.size - index - 1) * self.element_size;
+
+        memory::memcpy(dst, src, bytes_to_move);
+
+        self.size = self.size - 1;
+        return 1;
+    },
+
+    get -> fn (index: int) *void {
+        if (index < 0 || index >= self.size) return NULL;
+        return cast<*void>(
+            cast<int>(self.data) + (index * self.element_size)
+        );
+    }
+};
+
+#returns_ownership
+pub const create_vector_capacity -> fn (init_capacity: int, element_size: int) Vector {
+    let v: Vector;
+    v.data = cast<*void>(alloc(init_capacity * element_size));
+    v.size = 0;
+    v.capacity = init_capacity;
+    v.element_size = element_size;
+    return v;
+} 
+
+#returns_ownership
+pub const create_vector -> fn (element_size: int) Vector {
+    return create_vector_capacity(DEFAULT_VECTOR_CAPACITY, element_size);
+}
+
+#takes_ownership
+pub const free_vector -> fn (v: *Vector) void {
+    free(v.data);
+    v.data = NULL;
+    v.capacity = 0;
+    v.size = 0;
+    v.element_size = 0;
+}

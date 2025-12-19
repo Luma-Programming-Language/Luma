@@ -326,7 +326,10 @@ AstNode *get_struct_member_type(AstNode *struct_type, const char *member_name) {
     return NULL;
   }
 
+  // fprintf(stderr, "DEBUG: Looking for member '%s' in struct with %zu members:\n",
+          // member_name, struct_type->type_data.struct_type.member_count);
   for (size_t i = 0; i < struct_type->type_data.struct_type.member_count; i++) {
+    // fprintf(stderr, "  - %s\n", struct_type->type_data.struct_type.member_names[i]);
     if (strcmp(struct_type->type_data.struct_type.member_names[i],
                member_name) == 0) {
       return struct_type->type_data.struct_type.member_types[i];

@@ -51,24 +51,25 @@ void generate_external_declarations(CodeGenContext *ctx,
     if (source_module == target_module)
       continue;
 
-    // Look through source module's symbols for public functions
-    for (LLVM_Symbol *sym = source_module->symbols; sym; sym = sym->next) {
-      if (sym->is_function) {
-        // Check if this function is already declared in target module
-        LLVMValueRef existing =
-            LLVMGetNamedFunction(target_module->module, sym->name);
+    // Iterate through ALL functions in the source module (not just symbols)
+    LLVMValueRef func = LLVMGetFirstFunction(source_module->module);
+    while (func) {
+      // Check if this function has external linkage (is public)
+      if (LLVMGetLinkage(func) == LLVMExternalLinkage) {
+        const char *func_name = LLVMGetValueName(func);
+        
+        // Check if already declared in target module
+        LLVMValueRef existing = LLVMGetNamedFunction(target_module->module, func_name);
         if (!existing) {
           // Create external declaration
-          LLVMTypeRef func_type = LLVMGlobalGetValueType(sym->value);
+          LLVMTypeRef func_type = LLVMGlobalGetValueType(func);
           LLVMValueRef external_func =
-              LLVMAddFunction(target_module->module, sym->name, func_type);
+              LLVMAddFunction(target_module->module, func_name, func_type);
           LLVMSetLinkage(external_func, LLVMExternalLinkage);
-
-          // Add to target module's symbol table
-          add_symbol_to_module(target_module, sym->name, external_func,
-                               func_type, true);
         }
       }
+      
+      func = LLVMGetNextFunction(func);
     }
   }
 }

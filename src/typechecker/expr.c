@@ -885,12 +885,11 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
       if (pointee && pointee->type == AST_TYPE_BASIC) {
         const char *type_name = pointee->type_data.basic.name;
 
-        // First try direct lookup
+        // Try lookup through normal scope chain first
         Symbol *struct_symbol = scope_lookup(scope, type_name);
 
-        // If not found, try looking in imported modules
+        // If not found through normal lookup, explicitly search imported modules
         if (!struct_symbol) {
-          // Check each imported module for this type
           Scope *current = scope;
           while (current && !struct_symbol) {
             for (size_t i = 0; i < current->imported_modules.count; i++) {
@@ -898,8 +897,8 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
                   (ModuleImport *)((char *)current->imported_modules.data +
                                    i * sizeof(ModuleImport));
 
-              // Try to find the type in the imported module's scope
-              struct_symbol = scope_lookup_current_only_with_visibility(
+              // CRITICAL FIX: Use full scope_lookup with visibility
+              struct_symbol = scope_lookup_with_visibility(
                   import->module_scope, type_name, scope);
 
               if (struct_symbol && struct_symbol->type &&
@@ -925,10 +924,10 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
     if (base_type->type == AST_TYPE_BASIC) {
       const char *type_name = base_type->type_data.basic.name;
 
-      // First try direct lookup
+      // Try lookup through normal scope chain first
       Symbol *struct_symbol = scope_lookup(scope, type_name);
 
-      // If not found, try looking in imported modules
+      // If not found through normal lookup, explicitly search imported modules
       if (!struct_symbol) {
         Scope *current = scope;
         while (current && !struct_symbol) {
@@ -937,7 +936,8 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
                 (ModuleImport *)((char *)current->imported_modules.data +
                                  i * sizeof(ModuleImport));
 
-            struct_symbol = scope_lookup_current_only_with_visibility(
+            // CRITICAL FIX: Use full scope_lookup with visibility
+            struct_symbol = scope_lookup_with_visibility(
                 import->module_scope, type_name, scope);
 
             if (struct_symbol && struct_symbol->type &&
@@ -977,7 +977,6 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
     }
   }
 }
-
 AstNode *typecheck_deref_expr(AstNode *expr, Scope *scope,
                               ArenaAllocator *arena) {
   if (expr->expr.deref.object->type == AST_EXPR_IDENTIFIER) {

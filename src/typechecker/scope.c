@@ -168,6 +168,21 @@ Symbol *scope_lookup_with_visibility(Scope *scope, const char *name,
         return NULL;
       }
     }
+    
+    for (size_t i = 0; i < current->imported_modules.count; i++) {
+      ModuleImport *import =
+          (ModuleImport *)((char *)current->imported_modules.data +
+                           i * sizeof(ModuleImport));
+      
+      // Search in the imported module's scope
+      Symbol *found = scope_lookup_current_only_with_visibility(
+          import->module_scope, name, scope);
+      
+      if (found) {
+        return found;
+      }
+    }
+    
     current = current->parent;
   }
 

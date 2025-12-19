@@ -5,6 +5,7 @@
 @use "io" as io
 
 const ARENA_DEFAULT_SIZE: int = 1024 * 1024;
+const NULL: *void = cast<*void>(0);
 
 pub const Arena -> struct {
 pub:
@@ -37,7 +38,7 @@ pub const reset_arena -> fn (a: *Arena) void {
 #takes_ownership
 pub const free_arena -> fn (a: *Arena) void {
     free(a.buf);
-    a.buf = cast<*byte>(0);
+    a.buf = NULL;
     a.buf_len = 0;
     a.curr_offset = 0;
     a.prev_offset = 0;
@@ -51,7 +52,7 @@ pub const alloc_arena -> fn (a: *Arena, size: int) *void {
     if (aligned_offset + size > a.buf_len) {
         io::print_err("Arena allocator: insufficient space (requested: %d bytes, available: %d bytes)\n", 
                 [size, (a.buf_len - aligned_offset)]);
-        return cast<*void>(0);
+        return NULL;
     }
 
     let ptr: *void = cast<*void>(cast<int>(a.buf) + aligned_offset);
