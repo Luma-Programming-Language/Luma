@@ -1,12 +1,36 @@
+//! Input/Output operations module
+//!
+//! This module provides formatted printing functions and file reading capabilities.
+//! It supports basic format specifiers (%d, %s, %c) for printing different types
+//! and includes a dynamic buffer system for efficient file reading.
+
 @module "io"
 
 @use "string" as string
 @use "memory" as mem
 @use "sys" as sys
 
+/// Initial buffer size for file reading operations (4KB)
 const INITIAL_BUFFER_SIZE: int = 4096;  // Start with 4KB
+
+/// Factor by which buffers grow when they need to expand
 const BUFFER_GROWTH_FACTOR: int = 2;     // Double size when growing
 
+/// Prints a formatted string with integer arguments to stdout
+///
+/// This function performs simple printf-style formatting, supporting only the %d
+/// format specifier for integers. The format string is scanned character by character,
+/// and %d sequences are replaced with the corresponding integer from the args array.
+///
+/// # Parameters
+/// * `s` - Format string containing text and %d placeholders
+/// * `args` - Array of up to 256 integers to substitute into the format string
+///
+/// # Returns
+/// The number of bytes written to stdout, or an error code if writing fails
+///
+/// # Memory
+/// Allocates a 256-byte temporary buffer which is automatically freed via defer
 pub const print_int -> fn (s: *byte, args: [int; 256]) int {
     // Simple implementation: only supports %d for integers
     let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
@@ -35,6 +59,21 @@ pub const print_int -> fn (s: *byte, args: [int; 256]) int {
     return written;
 }
 
+/// Prints a formatted string with string arguments to stdout
+///
+/// This function performs simple printf-style formatting, supporting only the %s
+/// format specifier for strings. The format string is scanned character by character,
+/// and %s sequences are replaced with the corresponding string from the args array.
+///
+/// # Parameters
+/// * `s` - Format string containing text and %s placeholders
+/// * `args` - Array of up to 256 string pointers to substitute into the format string
+///
+/// # Returns
+/// The number of bytes written to stdout, or an error code if writing fails
+///
+/// # Memory
+/// Allocates a 256-byte temporary buffer which is automatically freed via defer
 pub const print_str -> fn (s: *byte, args: [*byte; 256]) int {
     // Simple implementation: only supports %s for strings
     let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
@@ -61,6 +100,22 @@ pub const print_str -> fn (s: *byte, args: [*byte; 256]) int {
     return written;
 }
 
+/// Prints a formatted string with byte (character) arguments to stdout
+///
+/// This function performs simple printf-style formatting, supporting only the %c
+/// format specifier for individual bytes/characters. The format string is scanned
+/// character by character, and %c sequences are replaced with the corresponding
+/// byte from the args array.
+///
+/// # Parameters
+/// * `s` - Format string containing text and %c placeholders
+/// * `args` - Array of up to 256 bytes to substitute into the format string
+///
+/// # Returns
+/// The number of bytes written to stdout, or an error code if writing fails
+///
+/// # Memory
+/// Allocates a 256-byte temporary buffer which is automatically freed via defer
 pub const print_byte -> fn (s: *byte, args: [byte; 256]) int {
     // Simple implementation: only supports %c for byteacters
     let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
@@ -85,6 +140,21 @@ pub const print_byte -> fn (s: *byte, args: [byte; 256]) int {
     return written;
 }
 
+/// Prints a formatted error message with integer arguments to stderr
+///
+/// This function is similar to print_int but writes to stderr instead of stdout.
+/// It supports only the %d format specifier for integers and is intended for
+/// error reporting.
+///
+/// # Parameters
+/// * `s` - Format string containing text and %d placeholders
+/// * `args` - Array of up to 256 integers to substitute into the format string
+///
+/// # Returns
+/// The number of bytes written to stderr, or an error code if writing fails
+///
+/// # Memory
+/// Allocates a 256-byte temporary buffer which is automatically freed via defer
 pub const print_err -> fn (s: *byte, args: [int; 256]) int {
   // Simple implementation: only supports %d for integers
   let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
@@ -113,6 +183,32 @@ pub const print_err -> fn (s: *byte, args: [int; 256]) int {
   return written;
 }
 
+/// Reads the entire contents of a file into a dynamically allocated buffer
+///
+/// This function opens a file, reads its complete contents into memory using a
+/// dynamic buffer that grows as needed, and returns a pointer to the null-terminated
+/// string. The buffer starts at INITIAL_BUFFER_SIZE (4KB) and doubles in size when
+/// full until the entire file is read. After reading, the buffer is shrunk to the
+/// exact size needed to minimize memory usage.
+///
+/// # Parameters
+/// * `path` - Null-terminated string containing the file path to read
+///
+/// # Returns
+/// A pointer to a newly allocated null-terminated string containing the file contents,
+/// or a null pointer (0) if an error occurs. The caller is responsible for freeing
+/// this memory.
+///
+/// # Memory
+/// The returned buffer is heap-allocated and ownership is transferred to the caller.
+/// The caller MUST free the returned pointer when done. Returns null on allocation
+/// failures or read errors.
+///
+/// # Errors
+/// Returns null pointer and prints error message to stderr if:
+/// * File cannot be opened
+/// * Memory allocation fails
+/// * Read operation fails
 #returns_ownership
 pub const read_file -> fn (path: *byte) *byte {
   let fd: int = sys::open(path, sys::O_RDONLY, 0);

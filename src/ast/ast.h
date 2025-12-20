@@ -1,3 +1,8 @@
+/**
+ * @file ast.h
+ * @brief Abstract Syntax Tree definitions with documentation comment support
+ */
+
 #pragma once
 
 #include <stdbool.h>
@@ -142,13 +147,14 @@ struct AstNode {
         // Preprocessor-specific data
         struct {
           char *name;
+          char *doc_comment;     
           int potions;
           AstNode **body;
           size_t body_count;
           const char *file_path;
           Token *tokens;
           size_t token_count;
-          void *scope; // NEW: Add this field
+          void *scope;
         } module;
 
         // @use "module_name" as module;
@@ -182,57 +188,57 @@ struct AstNode {
         // Binary expression
         struct {
           BinaryOp op;
-          AstNode *left;  // Changed from Expr* to AstNode*
-          AstNode *right; // Changed from Expr* to AstNode*
+          AstNode *left;
+          AstNode *right;
         } binary;
 
         // Unary expression
         struct {
           UnaryOp op;
-          AstNode *operand; // Changed from Expr* to AstNode*
+          AstNode *operand;
         } unary;
 
         // Function call expression
         struct {
-          AstNode *callee; // Changed from Expr* to AstNode*
-          AstNode **args;  // Changed from Expr** to AstNode**
+          AstNode *callee;
+          AstNode **args;
           size_t arg_count;
         } call;
 
         // Assignment expression
         struct {
-          AstNode *target; // Changed from Expr* to AstNode*
-          AstNode *value;  // Changed from Expr* to AstNode*
+          AstNode *target;
+          AstNode *value;
         } assignment;
 
         // Ternary expression
         struct {
-          AstNode *condition; // Changed from Expr* to AstNode*
-          AstNode *then_expr; // Changed from Expr* to AstNode*
-          AstNode *else_expr; // Changed from Expr* to AstNode*
+          AstNode *condition;
+          AstNode *then_expr;
+          AstNode *else_expr;
         } ternary;
 
         // Member access expression
         struct {
           bool is_compiletime;
-          AstNode *object; // Changed from Expr* to AstNode*
+          AstNode *object;
           char *member;
         } member;
 
         // Index expression
         struct {
-          AstNode *object; // Changed from Expr* to AstNode*
-          AstNode *index;  // Changed from Expr* to AstNode*
+          AstNode *object;
+          AstNode *index;
         } index;
 
         // Grouping expression
         struct {
-          AstNode *expr; // Changed from Expr* to AstNode*
+          AstNode *expr;
         } grouping;
 
         // Array expression
         struct {
-          AstNode **elements; // Changed from Expr** to AstNode**
+          AstNode **elements;
           size_t element_count;
           size_t target_size;
         } array;
@@ -307,67 +313,63 @@ struct AstNode {
       union {
         // Program root node
         struct {
-          AstNode **modules; // Changed from Stmt** to AstNode**
+          AstNode **modules;
           size_t module_count;
         } program;
 
         // Expression statement
         struct {
-          AstNode *expression; // Changed from Expr* to AstNode*
+          AstNode *expression;
         } expr_stmt;
 
         // Variable declaration
         struct {
           const char *name;
-          AstNode *var_type;    // Changed from Type* to AstNode*
-          AstNode *initializer; // Changed from Expr* to AstNode*
-          bool is_mutable;      // Whether the variable is mutable
+          char *doc_comment;    // NEW: Variable documentation (///)
+          AstNode *var_type;
+          AstNode *initializer;
+          bool is_mutable;
           bool is_public;
         } var_decl;
 
-        // const Persion = struct {
-        // pub:
-        //   name: str;
-        //   age: int;
-        // priv:
-        //   ssn: str;
-        // };
         // Struct declaration
         struct {
           const char *name;
-          AstNode **public_members; // Changed from Stmt** to AstNode**
+          char *doc_comment;         // NEW: Struct documentation (///)
+          AstNode **public_members;
           size_t public_count;
-          AstNode **private_members; // Changed from Stmt** to AstNode**
+          AstNode **private_members;
           size_t private_count;
-          bool is_public; // Whether the struct is public (which is
-                          // true by default)
+          bool is_public;
         } struct_decl;
 
         struct {
           const char *name;
-          AstNode *type;     // Changed from Type* to AstNode*
-          AstNode *function; // Changed from Stmt* to AstNode*
-          bool is_public;    // Whether the field is public
+          char *doc_comment;    
+          AstNode *type;
+          AstNode *function;
+          bool is_public;
         } field_decl;
 
         // Enumeration declaration
         struct {
           const char *name;
-          char **members; // Changed from char** to AstNode**
+          char *doc_comment;    // NEW: Enum documentation (///)
+          char **members;
           size_t member_count;
-          bool is_public; // same as struct, enums are public by
-                          // default
+          bool is_public;
         } enum_decl;
 
         // Function declaration
         struct {
           const char *name;
+          char *doc_comment;        // NEW: Function documentation (///)
           char **param_names;
-          AstNode **param_types; // Changed from Type** to AstNode**
+          AstNode **param_types;
           size_t param_count;
-          AstNode *return_type; // Changed from Type* to AstNode*
+          AstNode *return_type;
           bool is_public;
-          AstNode *body; // Changed from Stmt* to AstNode*
+          AstNode *body;
           bool returns_ownership;
           bool takes_ownership;
           bool forward_declared;
@@ -398,7 +400,7 @@ struct AstNode {
 
         // Return statement
         struct {
-          AstNode *value; // Changed from Expr* to AstNode*
+          AstNode *value;
         } return_stmt;
 
         struct {
@@ -409,13 +411,13 @@ struct AstNode {
 
         // Print statement
         struct {
-          AstNode **expressions; // Changed from Expr** to AstNode**
+          AstNode **expressions;
           size_t expr_count;
-          bool ln; // Whether to print with a newline
+          bool ln;
         } print_stmt;
 
         struct {
-          bool is_continue; // true for continue, false for break
+          bool is_continue;
         } break_continue;
 
         struct {
@@ -437,19 +439,18 @@ struct AstNode {
           char **struct_name_list;
           size_t function_name_count;
           size_t struct_name_count;
-
           AstNode *body;
         } impl_stmt;
 
         // Case clause node
         struct {
-          AstNode **values;   // Array of expressions (0, 1, 2, 3, ...)
-          size_t value_count; // Number of values in this case
-          AstNode *body;      // Block statement for this case
+          AstNode **values;
+          size_t value_count;
+          AstNode *body;
         } case_clause;
 
         struct {
-          AstNode *body; // Block statement for default case
+          AstNode *body;
         } default_clause;
       };
     } stmt;
@@ -464,40 +465,39 @@ struct AstNode {
 
         // Pointer type
         struct {
-          AstNode *pointee_type; // Changed from Type* to AstNode*
+          AstNode *pointee_type;
         } pointer;
 
         // Array type
         struct {
-          AstNode *element_type; // Changed from Type* to AstNode*
-          AstNode *size;         // Changed from Expr* to AstNode*
+          AstNode *element_type;
+          AstNode *size;
         } array;
 
         // Function type
         struct {
-          AstNode **param_types; // Changed from Type** to AstNode**
+          AstNode **param_types;
           size_t param_count;
-          AstNode *return_type; // Changed from Type* to AstNode*
+          AstNode *return_type;
         } function;
 
         struct {
-          char **parts;      // Array of namespace/type parts
-          size_t part_count; // Number of parts
+          char **parts;
+          size_t part_count;
         } resolution;
 
-        // AST_TYPE_STRUCT - ADD THIS STRUCT
         struct {
-          const char *name;          // Name of the struct type
-          AstNode **member_types;    // Array of member types
-          const char **member_names; // Array of member names
-          size_t member_count;       // Number of members
+          const char *name;
+          AstNode **member_types;
+          const char **member_names;
+          size_t member_count;
         } struct_type;
       };
     } type_data;
   };
 };
 
-// Type aliases for cleaner code (defined AFTER the struct)
+// Type aliases for cleaner code
 typedef AstNode Preprocessor;
 typedef AstNode Expr;
 typedef AstNode Stmt;
@@ -524,18 +524,18 @@ AstNode *create_type_node(ArenaAllocator *arena, NodeType type, size_t line,
 #define create_type(arena, type, line, column)                                 \
   create_type_node(arena, type, line, column)
 
-// Create the AstNode
 AstNode *create_ast_node(ArenaAllocator *arena, NodeType type,
                          NodeCategory category, size_t line, size_t column);
 
-// Preprocessor creation macros
+// Preprocessor creation functions
 AstNode *create_module_node(ArenaAllocator *arena, const char *name,
-                            int potions, AstNode **body, size_t body_count,
+                            const char *doc_comment, int potions,
+                            AstNode **body, size_t body_count,
                             size_t line, size_t column);
 AstNode *create_use_node(ArenaAllocator *arena, const char *module_name,
                          const char *alias, size_t line, size_t column);
 
-// Expression creation macros
+// Expression creation functions
 AstNode *create_literal_expr(ArenaAllocator *arena, LiteralType lit_type,
                              void *value, size_t line, size_t column);
 AstNode *create_identifier_expr(ArenaAllocator *arena, const char *name,
@@ -584,37 +584,40 @@ Expr *create_struct_expr(ArenaAllocator *arena, char *name, char **field_names,
                          AstNode **field_values, size_t field_count, int line,
                          int col);
 
-// Statement creation macros
+// Statement creation functions (UPDATED with doc_comment parameters)
 AstNode *create_program_node(ArenaAllocator *arena, AstNode **statements,
                              size_t stmt_count, size_t line, size_t column);
 AstNode *create_expr_stmt(ArenaAllocator *arena, Expr *expression, size_t line,
                           size_t column);
 AstNode *create_var_decl_stmt(ArenaAllocator *arena, const char *name,
-                              AstNode *var_type, Expr *initializer,
-                              bool is_mutable, bool is_public, size_t line,
-                              size_t column);
+                              const char *doc_comment, AstNode *var_type,
+                              Expr *initializer, bool is_mutable,
+                              bool is_public, size_t line, size_t column);
 AstNode *create_func_decl_stmt(ArenaAllocator *arena, const char *name,
-                               char **param_names, AstNode **param_types,
-                               size_t param_count, AstNode *return_type,
-                               bool is_public, bool returns_ownership,
-                               bool takes_ownership, bool forward_declared,
-                               AstNode *body, size_t line, size_t column);
+                               const char *doc_comment, char **param_names,
+                               AstNode **param_types, size_t param_count,
+                               AstNode *return_type, bool is_public,
+                               bool returns_ownership, bool takes_ownership,
+                               bool forward_declared, AstNode *body,
+                               size_t line, size_t column);
 AstNode *create_struct_decl_stmt(ArenaAllocator *arena, const char *name,
+                                 const char *doc_comment,
                                  AstNode **public_members, size_t public_count,
                                  AstNode **private_members,
-                                 size_t private_count, bool is_piblic,
+                                 size_t private_count, bool is_public,
                                  size_t line, size_t column);
 AstNode *create_field_decl_stmt(ArenaAllocator *arena, const char *name,
-                                AstNode *type, AstNode *function,
-                                bool is_public, size_t line, size_t column);
+                                const char *doc_comment, AstNode *type,
+                                AstNode *function, bool is_public, size_t line,
+                                size_t column);
 AstNode *create_enum_decl_stmt(ArenaAllocator *arena, const char *name,
-                               char **members, size_t member_count,
-                               bool is_public, size_t line, size_t column);
+                               const char *doc_comment, char **members,
+                               size_t member_count, bool is_public, size_t line,
+                               size_t column);
 AstNode *create_if_stmt(ArenaAllocator *arena, Expr *condition,
                         AstNode *then_stmt, AstNode **elif_stmts,
                         int elif_count, AstNode *else_stmt, size_t line,
                         size_t column);
-
 AstNode *create_infinite_loop_stmt(ArenaAllocator *arena, AstNode *body,
                                    size_t line, size_t column);
 AstNode *create_for_loop_stmt(ArenaAllocator *arena, AstNode **initializers,
@@ -624,7 +627,6 @@ AstNode *create_for_loop_stmt(ArenaAllocator *arena, AstNode **initializers,
 AstNode *create_loop_stmt(ArenaAllocator *arena, Expr *condition,
                           Expr *optional, AstNode *body, size_t line,
                           size_t column);
-
 AstNode *create_return_stmt(ArenaAllocator *arena, Expr *value, size_t line,
                             size_t column);
 AstNode *create_block_stmt(ArenaAllocator *arena, AstNode **statements,
@@ -639,19 +641,17 @@ AstNode *create_defer_stmt(ArenaAllocator *arena, AstNode *statement,
 AstNode *create_switch_stmt(ArenaAllocator *arena, AstNode *condition,
                             AstNode **cases, size_t case_count,
                             AstNode *default_case, size_t line, size_t column);
-
 AstNode *create_impl_stmt(ArenaAllocator *arena, char **function_name_list,
                           AstNode **function_type_list, AstNode *body,
                           char **struct_name_list, size_t function_name_count,
                           size_t struct_name_count, size_t line, size_t column);
-
 AstNode *create_case_stmt(ArenaAllocator *arena, AstNode **values,
                           size_t value_count, AstNode *body, size_t line,
                           size_t column);
 AstNode *create_default_stmt(ArenaAllocator *arena, AstNode *body, size_t line,
                              size_t column);
 
-// Type creation macros
+// Type creation functions
 AstNode *create_basic_type(ArenaAllocator *arena, const char *name, size_t line,
                            size_t column);
 AstNode *create_pointer_type(ArenaAllocator *arena, AstNode *pointee_type,

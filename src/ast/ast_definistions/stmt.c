@@ -18,11 +18,12 @@ AstNode *create_expr_stmt(ArenaAllocator *arena, Expr *expression, size_t line,
 }
 
 AstNode *create_var_decl_stmt(ArenaAllocator *arena, const char *name,
-                              AstNode *var_type, Expr *initializer,
-                              bool is_mutable, bool is_public, size_t line,
-                              size_t column) {
+                              const char *doc_comment, AstNode *var_type,
+                              Expr *initializer, bool is_mutable,
+                              bool is_public, size_t line, size_t column) {
   AstNode *node = create_stmt_node(arena, AST_STMT_VAR_DECL, line, column);
   node->stmt.var_decl.name = name;
+  node->stmt.var_decl.doc_comment = (char *)doc_comment;
   node->stmt.var_decl.var_type = var_type;
   node->stmt.var_decl.initializer = initializer;
   node->stmt.var_decl.is_mutable = is_mutable;
@@ -31,13 +32,15 @@ AstNode *create_var_decl_stmt(ArenaAllocator *arena, const char *name,
 }
 
 AstNode *create_func_decl_stmt(ArenaAllocator *arena, const char *name,
-                               char **param_names, AstNode **param_types,
-                               size_t param_count, AstNode *return_type,
-                               bool is_public, bool returns_ownership,
-                               bool takes_ownership, bool forward_declared,
-                               AstNode *body, size_t line, size_t column) {
+                               const char *doc_comment, char **param_names,
+                               AstNode **param_types, size_t param_count,
+                               AstNode *return_type, bool is_public,
+                               bool returns_ownership, bool takes_ownership,
+                               bool forward_declared, AstNode *body,
+                               size_t line, size_t column) {
   AstNode *node = create_stmt_node(arena, AST_STMT_FUNCTION, line, column);
   node->stmt.func_decl.name = name;
+  node->stmt.func_decl.doc_comment = (char *)doc_comment;
   node->stmt.func_decl.param_names = param_names;
   node->stmt.func_decl.param_types = param_types;
   node->stmt.func_decl.param_count = param_count;
@@ -51,12 +54,14 @@ AstNode *create_func_decl_stmt(ArenaAllocator *arena, const char *name,
 }
 
 AstNode *create_struct_decl_stmt(ArenaAllocator *arena, const char *name,
+                                 const char *doc_comment,
                                  AstNode **public_members, size_t public_count,
                                  AstNode **private_members,
                                  size_t private_count, bool is_public,
                                  size_t line, size_t column) {
   AstNode *node = create_stmt_node(arena, AST_STMT_STRUCT, line, column);
   node->stmt.struct_decl.name = name;
+  node->stmt.struct_decl.doc_comment = (char *)doc_comment;
   node->stmt.struct_decl.public_members = public_members;
   node->stmt.struct_decl.public_count = public_count;
   node->stmt.struct_decl.private_members = private_members;
@@ -66,10 +71,12 @@ AstNode *create_struct_decl_stmt(ArenaAllocator *arena, const char *name,
 }
 
 AstNode *create_field_decl_stmt(ArenaAllocator *arena, const char *name,
-                                AstNode *type, AstNode *function,
-                                bool is_public, size_t line, size_t column) {
+                                const char *doc_comment, AstNode *type,
+                                AstNode *function, bool is_public, size_t line,
+                                size_t column) {
   AstNode *node = create_stmt_node(arena, AST_STMT_FIELD_DECL, line, column);
   node->stmt.field_decl.name = name;
+  node->stmt.field_decl.doc_comment = (char *)doc_comment;
   node->stmt.field_decl.type = type;
   node->stmt.field_decl.function = function;
   node->stmt.field_decl.is_public = is_public;
@@ -77,10 +84,12 @@ AstNode *create_field_decl_stmt(ArenaAllocator *arena, const char *name,
 }
 
 AstNode *create_enum_decl_stmt(ArenaAllocator *arena, const char *name,
-                               char **members, size_t member_count,
-                               bool is_public, size_t line, size_t column) {
+                               const char *doc_comment, char **members,
+                               size_t member_count, bool is_public, size_t line,
+                               size_t column) {
   AstNode *node = create_stmt_node(arena, AST_STMT_ENUM, line, column);
   node->stmt.enum_decl.name = name;
+  node->stmt.enum_decl.doc_comment = (char *)doc_comment;
   node->stmt.enum_decl.members = members;
   node->stmt.enum_decl.member_count = member_count;
   node->stmt.enum_decl.is_public = is_public;
@@ -130,7 +139,7 @@ AstNode *create_loop_stmt(ArenaAllocator *arena, Expr *condition,
   AstNode *node = create_stmt_node(arena, AST_STMT_LOOP, line, column);
   node->stmt.loop_stmt.condition = condition;
   node->stmt.loop_stmt.optional = optional;
-  node->stmt.loop_stmt.initializer = NULL; // No initializers for standard loops
+  node->stmt.loop_stmt.initializer = NULL;
   node->stmt.loop_stmt.init_count = 0;
   node->stmt.loop_stmt.body = body;
   return node;

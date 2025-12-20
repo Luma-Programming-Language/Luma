@@ -220,7 +220,58 @@ bool init_parser_arrays(Parser *parser, GrowableArray *stmts,
 }
 
 // Helper function to validate and consume module declaratio
-const char *parse_module_declaration(Parser *parser) {
+const char *parse_module_declaration(Parser *parser, char **out_module_doc) {
+  // Collect leading doc comments (//!)
+  GrowableArray doc_lines;
+  if (!growable_array_init(&doc_lines, parser->arena, 4, sizeof(char *))) {
+    fprintf(stderr, "Failed to initialize module doc lines\n");
+    if (out_module_doc)
+      *out_module_doc = NULL;
+  } else {
+    while (p_has_tokens(parser) &&
+           (p_current(parser).type_ == TOK_MODULE_DOC ||
+            p_current(parser).type_ == TOK_DOC_COMMENT)) {
+      Token doc = p_current(parser);
+
+      char *line =
+          (char *)arena_alloc(parser->arena, doc.length + 1, alignof(char));
+      memcpy(line, doc.value, doc.length);
+      line[doc.length] = '\0';
+
+      char **slot = (char **)growable_array_push(&doc_lines);
+      if (slot)
+        *slot = line;
+
+      p_advance(parser);
+    }
+
+    // Concatenate doc lines
+    if (doc_lines.count > 0 && out_module_doc) {
+      int total_len = 0;
+      for (size_t i = 0; i < doc_lines.count; i++) {
+        total_len += strlen(((char **)doc_lines.data)[i]) + 1;
+      }
+
+      char *module_doc =
+          (char *)arena_alloc(parser->arena, total_len + 1, alignof(char));
+      char *ptr = module_doc;
+
+      for (size_t i = 0; i < doc_lines.count; i++) {
+        char *line = ((char **)doc_lines.data)[i];
+        int len = strlen(line);
+        memcpy(ptr, line, len);
+        ptr += len;
+        *ptr++ = '\n';
+      }
+      *ptr = '\0';
+
+      *out_module_doc = module_doc;
+    } else if (out_module_doc) {
+      *out_module_doc = NULL;
+    }
+  }
+
+  // Now expect @module
   if (!p_has_tokens(parser) || p_current(parser).type_ != TOK_MODULE) {
     fprintf(stderr, "Error: file must begin with @module declaration\n");
     return NULL;
@@ -235,4 +286,133 @@ const char *parse_module_declaration(Parser *parser) {
   const char *module_name = get_name(parser);
   p_advance(parser); // consume module name
   return module_name;
+}
+
+/**
+ * @brief Collects consecutive documentation comments before a declaration
+ *
+ * Accumulates all doc comments (/// or //!) that appear immediately before
+ * the current token. Returns them as a single string with newlines preserved.
+ *
+ * @param parser Pointer to the parser instance
+ * @return Concatenated doc comment string, or NULL if no doc comments found
+ */
+char *collect_doc_comments(Parser *parser) {
+  // Look backward through tokens to find doc comments
+  // We need to track which comments we've already consumed
+
+  GrowableArray doc_lines;
+  if (!growable_array_init(&doc_lines, parser->arena, 4, sizeof(char *))) {
+    return NULL;
+  }
+
+  // Look backward from current position to find doc comments
+  int doc_start = parser->pos - 1;
+
+  // Skip backward over any doc comment tokens
+  while (doc_start >= 0) {
+    Token tk = parser->tks[doc_start];
+
+    if (tk.type_ == TOK_DOC_COMMENT || tk.type_ == TOK_MODULE_DOC) {
+      doc_start--;
+    } else if (tk.type_ == TOK_WHITESPACE || tk.type_ == TOK_COMMENT) {
+      // Skip whitespace and regular comments between doc comments
+      doc_start--;
+    } else {
+      // Hit a non-doc-comment token, stop
+      break;
+    }
+  }
+
+  doc_start++; // Move back to first doc comment
+
+  if (doc_start >= (int)parser->pos) {
+    // No doc comments found
+    return NULL;
+  }
+
+  // Collect all doc comments forward
+  int total_length = 0;
+  for (int i = doc_start; i < (int)parser->pos; i++) {
+    Token tk = parser->tks[i];
+    if (tk.type_ == TOK_DOC_COMMENT || tk.type_ == TOK_MODULE_DOC) {
+      total_length += tk.length + 1; // +1 for newline
+    }
+  }
+
+  if (total_length == 0) {
+    return NULL;
+  }
+
+  // Allocate buffer and concatenate
+  char *result =
+      (char *)arena_alloc(parser->arena, total_length + 1, alignof(char));
+  char *ptr = result;
+
+  for (int i = doc_start; i < (int)parser->pos; i++) {
+    Token tk = parser->tks[i];
+    if (tk.type_ == TOK_DOC_COMMENT || tk.type_ == TOK_MODULE_DOC) {
+      memcpy(ptr, tk.value, tk.length);
+      ptr += tk.length;
+      *ptr++ = '\n';
+    }
+  }
+  *ptr = '\0';
+
+  return result;
+}
+
+void consume_doc_comments(Parser *parser) {
+  GrowableArray lines;
+  if (!growable_array_init(&lines, parser->arena, 4, sizeof(char *))) {
+    return;
+  }
+
+  int doc_count = 0;
+
+  // Consume all consecutive doc comments
+  while (p_has_tokens(parser) && (p_current(parser).type_ == TOK_DOC_COMMENT ||
+                                  p_current(parser).type_ == TOK_MODULE_DOC)) {
+
+    Token doc = p_current(parser);
+    doc_count++;
+
+    // Store this line
+    char *line =
+        (char *)arena_alloc(parser->arena, doc.length + 1, alignof(char));
+    memcpy(line, doc.value, doc.length);
+    line[doc.length] = '\0';
+
+    char **slot = (char **)growable_array_push(&lines);
+    if (slot) {
+      *slot = line;
+    }
+
+    p_advance(parser); // Move past the doc comment
+  }
+
+  if (lines.count == 0) {
+    parser->pending_doc_comment = NULL;
+    return;
+  }
+
+  // Concatenate all lines
+  int total_len = 0;
+  for (size_t i = 0; i < lines.count; i++) {
+    total_len += strlen(((char **)lines.data)[i]) + 1;
+  }
+
+  char *result =
+      (char *)arena_alloc(parser->arena, total_len + 1, alignof(char));
+  char *ptr = result;
+
+  for (size_t i = 0; i < lines.count; i++) {
+    char *line = ((char **)lines.data)[i];
+    int len = strlen(line);
+    memcpy(ptr, line, len);
+    ptr += len;
+    *ptr++ = '\n';
+  }
+  *ptr = '\0';
+  parser->pending_doc_comment = result;
 }

@@ -26,5 +26,8 @@ pub const main -> fn () int {
         output(cast<*int>(v.data)[i], "\n");
     }
 
+    // let get: int = *cast<*int>(v.get(5));
+    // io::print_int("get value (5): %d\n", [get]);
+
     return 0;
 }

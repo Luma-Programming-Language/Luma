@@ -1,20 +1,65 @@
+// ============================================================================
+// arena.lx - Arena/bump allocator
+// ============================================================================
+
+//! Arena/bump allocator for fast temporary allocations
+//!
+//! Provides a simple arena allocator that can allocate quickly from
+//! a pre-allocated buffer and free all allocations at once. Ideal for
+//! temporary data that has the same lifetime.
+//!
+//! # Example
+//! ```luma
+//! let arena: Arena = arena::create_arena();
+//! defer { arena::free_arena(&arena); }
+//! 
+//! let ptr1: *int = cast<*int>(arena::alloc_arena(&arena, sizeof<int>));
+//! let ptr2: *int = cast<*int>(arena::alloc_arena(&arena, sizeof<int>));
+//! // ... use allocations ...
+//! // All freed when arena is freed
+//! ```
+
 @module "arena"
 
 @use "string" as string
 @use "memory" as mem
 @use "io" as io
 
+/// Default arena size (1MB)
 const ARENA_DEFAULT_SIZE: int = 1024 * 1024;
+/// Null pointer constant
 const NULL: *void = cast<*void>(0);
 
+/// Arena allocator state
+///
+/// Contains a pre-allocated buffer and tracks current/previous allocation offsets.
 pub const Arena -> struct {
 pub:
+    /// Pointer to memory buffer
     buf: *byte,
+    /// Total size of buffer in bytes
     buf_len: int,
+    /// Offset of previous allocation (for potential deallocation)
     prev_offset: int,
+    /// Current allocation offset
     curr_offset: int,
 };
 
+/// Creates an arena with custom size
+///
+/// Allocates a buffer of the specified size for the arena.
+///
+/// # Parameters
+/// * `size` - Size in bytes for the arena buffer
+///
+/// # Returns
+/// Newly created arena
+///
+/// # Example
+/// ```luma
+/// let big_arena: Arena = arena::create_arena_sized(10 * 1024 * 1024); // 10MB
+/// defer { arena::free_arena(&big_arena); }
+/// ```
 #returns_ownership
 pub const create_arena_sized -> fn (size: int) Arena {
     let a: Arena;
@@ -25,16 +70,46 @@ pub const create_arena_sized -> fn (size: int) Arena {
     return a;
 }
 
+/// Creates an arena with default size (1MB)
+///
+/// # Returns
+/// Newly created arena
+///
+/// # Example
+/// ```luma
+/// let arena: Arena = arena::create_arena();
+/// defer { arena::free_arena(&arena); }
+/// ```
 #returns_ownership
 pub const create_arena -> fn () Arena {
     return create_arena_sized(ARENA_DEFAULT_SIZE);
 }
 
+/// Resets arena to empty state
+///
+/// Resets allocation pointers without freeing the underlying buffer.
+/// All previous allocations become invalid.
+///
+/// # Parameters
+/// * `a` - Pointer to arena to reset
+///
+/// # Example
+/// ```luma
+/// arena::alloc_arena(&arena, 1000);
+/// // ... use allocation ...
+/// arena::reset_arena(&arena); // Reuse arena
+/// ```
 pub const reset_arena -> fn (a: *Arena) void {
     a.curr_offset = 0;
     a.prev_offset = 0;
 }
 
+/// Frees arena and its buffer
+///
+/// Frees the underlying buffer and resets all fields.
+///
+/// # Parameters
+/// * `a` - Pointer to arena to free
 #takes_ownership
 pub const free_arena -> fn (a: *Arena) void {
     free(a.buf);
@@ -44,6 +119,25 @@ pub const free_arena -> fn (a: *Arena) void {
     a.prev_offset = 0;
 }
 
+/// Allocates memory from arena
+///
+/// Performs fast bump-pointer allocation with 8-byte alignment.
+/// Returns NULL if insufficient space.
+///
+/// # Parameters
+/// * `a` - Pointer to arena
+/// * `size` - Number of bytes to allocate
+///
+/// # Returns
+/// Pointer to allocated memory, or NULL if insufficient space
+///
+/// # Example
+/// ```luma
+/// let ptr: *int = cast<*int>(arena::alloc_arena(&arena, sizeof<int>));
+/// if (ptr == cast<*int>(0)) {
+///     output("Arena full!\n");
+/// }
+/// ```
 pub const alloc_arena -> fn (a: *Arena, size: int) *void {
     let alignment: int = 8;
     let padding: int = (alignment - (a.curr_offset % alignment)) % alignment;

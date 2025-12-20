@@ -90,6 +90,7 @@ int print_help() {
   printf("  -debug                  Enable debug mode\n");
   printf("  --no-sanitize           Disable memory sanitization\n");
   printf("  -l, -link <files...>    Link additional files\n");
+  printf("  -doc                    Generates Documantation based on comments\n");
   printf("\nOptimization:\n");
   printf("  -O0                     No optimization (fastest compilation)\n");
   printf("  -O1                     Basic optimization\n");
@@ -266,6 +267,8 @@ bool parse_args(int argc, char *argv[], BuildConfig *config,
         lsp_server_shutdown(&server);
         arena_destroy(arena);
         return true;
+      } else if (strcmp(arg, "-doc") == 0) {
+        config->is_document = true;
       } else if (strcmp(arg, "-name") == 0 && i + 1 < argc) {
         config->name = argv[++i];
       } else if (strcmp(arg, "-save") == 0) {

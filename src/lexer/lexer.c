@@ -330,6 +330,11 @@ int skip_whitespace(Lexer *lx) {
       advance(lx);
       whitespace_count = 0; // Reset because we're on a new line
     } else if (c == '/' && peek(lx, 1) == '/') {
+      if (peek(lx, 2) == '/' || peek(lx, 2) == '!') {
+        // This is a doc comment - don't skip it!
+        // Let next_token() handle it
+        break;
+      }
       // Skip single-line comment
       while (!is_at_end(lx) && peek(lx, 0) != '\n') {
         advance(lx);
@@ -358,6 +363,50 @@ Token next_token(Lexer *lx) {
   int wh_count = skip_whitespace(lx);
   if (is_at_end(lx)) {
     return MAKE_TOKEN(TOK_EOF, lx->current, lx, 0, wh_count);
+  }
+
+  if (peek(lx, 0) == '/' && peek(lx, 1) == '/' && peek(lx, 2) == '/') {
+    // This is a /// doc comment
+    const char *start = lx->current;
+    advance(lx); // first /
+    advance(lx); // second /
+    advance(lx); // third /
+    
+    // Skip optional space after ///
+    if (peek(lx, 0) == ' ') {
+      advance(lx);
+    }
+    
+    // Collect the rest of the line
+    const char *content_start = lx->current;
+    while (!is_at_end(lx) && peek(lx, 0) != '\n') {
+      advance(lx);
+    }
+    
+    int content_len = (int)(lx->current - content_start);
+    return MAKE_TOKEN(TOK_DOC_COMMENT, content_start, lx, content_len, wh_count);
+  }
+  
+  if (peek(lx, 0) == '/' && peek(lx, 1) == '/' && peek(lx, 2) == '!') {
+    // This is a //! module doc comment
+    const char *start = lx->current;
+    advance(lx); // first /
+    advance(lx); // second /
+    advance(lx); // third (!)
+    
+    // Skip optional space after //!
+    if (peek(lx, 0) == ' ') {
+      advance(lx);
+    }
+    
+    // Collect the rest of the line
+    const char *content_start = lx->current;
+    while (!is_at_end(lx) && peek(lx, 0) != '\n') {
+      advance(lx);
+    }
+    
+    int content_len = (int)(lx->current - content_start);
+    return MAKE_TOKEN(TOK_MODULE_DOC, content_start, lx, content_len, wh_count);
   }
 
   const char *start = lx->current;

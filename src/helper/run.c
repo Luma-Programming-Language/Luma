@@ -1,4 +1,5 @@
 #include "../ast/ast_utils.h"
+#include "../auto_docs/doc_generator.h"
 #include "../c_libs/error/error.h"
 #include "../llvm/llvm.h"
 #include "../parser/parser.h"
@@ -324,7 +325,8 @@ AstNode *lex_and_parse_file(const char *path, ArenaAllocator *allocator,
 
 bool run_build(BuildConfig config, ArenaAllocator *allocator) {
   bool success = false;
-  int total_stages = 10;
+  int total_stages =
+      config.is_document ? 4 : 10; // Fewer stages for doc generation
   int step = 0;
 
   // START TIMER
@@ -373,7 +375,37 @@ bool run_build(BuildConfig config, ArenaAllocator *allocator) {
   if (!combined_program)
     goto cleanup;
 
-  // print_ast(combined_program, "", false, false);
+  // CHECK FOR DOCUMENTATION MODE
+  if (config.is_document) {
+    print_progress_with_time(++step, total_stages, "Generating Documentation",
+                             &timer);
+
+    // Create documentation configuration
+    DocGenConfig doc_config = create_doc_config(allocator, "docs");
+    doc_config.include_private = false; // Only document public APIs
+
+    // Generate documentation
+    success = generate_documentation(combined_program, doc_config);
+
+    if (success) {
+      print_progress_with_time(++step, total_stages, "Completed", &timer);
+      timer_stop(&timer);
+
+      if (timer.elapsed_ms < 1000.0) {
+        printf("Documentation generated successfully! (%.0fms)\n",
+               timer.elapsed_ms);
+      } else {
+        printf("Documentation generated successfully! (%.2fs)\n",
+               timer.elapsed_ms / 1000.0);
+      }
+    } else {
+      fprintf(stderr, "Failed to generate documentation\n");
+    }
+
+    goto cleanup;
+  }
+
+  // NORMAL BUILD PROCESS (if not in documentation mode)
 
   // Stage 4: Typechecking
   print_progress_with_time(++step, total_stages, "Typechecking", &timer);

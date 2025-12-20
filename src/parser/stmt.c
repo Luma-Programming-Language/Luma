@@ -100,6 +100,8 @@ Stmt *use_stmt(Parser *parser) {
  */
 Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
                  bool takes_ownership) {
+  char *doc_comment = parser->pending_doc_comment;
+
   int line = p_current(parser).line;
   int col = p_current(parser).col;
 
@@ -131,8 +133,8 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
 
     p_consume(parser, TOK_SEMICOLON,
               "Expected semicolon after const declaration");
-    return create_var_decl_stmt(parser->arena, name, type, value, false,
-                                is_public, line, col);
+    return create_var_decl_stmt(parser->arena, name, doc_comment, type, value,
+                                false, is_public, line, col);
   }
 
   p_consume(parser, TOK_RIGHT_ARROW, "Expected '->' after const name");
@@ -175,6 +177,9 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
  */
 Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
               bool returns_ownership, bool takes_ownership) {
+  char *doc_comment = parser->pending_doc_comment;
+  parser->pending_doc_comment = NULL;
+
   int line = p_current(parser).line;
   int col = p_current(parser).col;
 
@@ -240,7 +245,7 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
     p_consume(parser, TOK_SEMICOLON,
               "Expected semicolon after function prototype");
     return create_func_decl_stmt(
-        parser->arena, name, (char **)param_names.data,
+        parser->arena, name, doc_comment, (char **)param_names.data,
         (AstNode **)param_types.data, param_names.count, return_type, is_public,
         returns_ownership, takes_ownership, true, NULL, line, col);
   }
@@ -253,10 +258,10 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
     return NULL;
   }
 
-  return create_func_decl_stmt(parser->arena, name, (char **)param_names.data,
-                               (AstNode **)param_types.data, param_names.count,
-                               return_type, is_public, returns_ownership,
-                               takes_ownership, false, body, line, col);
+  return create_func_decl_stmt(
+      parser->arena, name, doc_comment, (char **)param_names.data,
+      (AstNode **)param_types.data, param_names.count, return_type, is_public,
+      returns_ownership, takes_ownership, false, body, line, col);
 }
 
 /**
@@ -278,6 +283,9 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
  * @see create_enum_decl_stmt()
  */
 Stmt *enum_stmt(Parser *parser, const char *name, bool is_public) {
+  char *doc_comment = parser->pending_doc_comment;
+  parser->pending_doc_comment = NULL;
+
   int line = p_current(parser).line;
   int col = p_current(parser).col;
 
@@ -315,8 +323,9 @@ Stmt *enum_stmt(Parser *parser, const char *name, bool is_public) {
   p_consume(parser, TOK_RBRACE, "Expected '}' to end enum declaration");
   p_consume(parser, TOK_SEMICOLON, "Expected semicolon after enum declaration");
 
-  return create_enum_decl_stmt(parser->arena, name, (char **)members.data,
-                               members.count, is_public, line, col);
+  return create_enum_decl_stmt(parser->arena, name, doc_comment,
+                               (char **)members.data, members.count, is_public,
+                               line, col);
 }
 
 /**
@@ -347,21 +356,25 @@ Stmt *enum_stmt(Parser *parser, const char *name, bool is_public) {
  * @see fn_stmt(), create_field_decl_stmt(), create_struct_decl_stmt()
  */
 Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
+  // Struct doc comment should already be consumed by caller (const_stmt via
+  // parse_stmt)
+  char *struct_doc = parser->pending_doc_comment;
+  parser->pending_doc_comment = NULL;
+
   int line = p_current(parser).line;
   int col = p_current(parser).col;
 
   p_consume(parser, TOK_STRUCT, "Expected 'struct' keyword");
   p_consume(parser, TOK_LBRACE, "Expected '{' after struct name");
 
-  GrowableArray public_fields;
-  GrowableArray private_fields;
+  GrowableArray public_fields, private_fields;
   if (!growable_array_init(&public_fields, parser->arena, 4, sizeof(Stmt *)) ||
       !growable_array_init(&private_fields, parser->arena, 4, sizeof(Stmt *))) {
     fprintf(stderr, "Failed to initialize field arrays.\n");
     return NULL;
   }
 
-  bool public_member = true; // default: everything is public
+  bool public_member = true;
 
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RBRACE) {
     LumaTokenType tok = p_current(parser).type_;
@@ -374,11 +387,15 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
       continue;
     }
 
-    // Parse a field or method
+    // CRITICAL: Consume doc comments for EACH field INSIDE the struct loop
+    consume_doc_comments(parser);
+    char *field_doc = parser->pending_doc_comment;
+    parser->pending_doc_comment = NULL;
+
     int field_line = p_current(parser).line;
     int field_col = p_current(parser).col;
 
-    // CRITICAL FIX: Check for ownership modifiers BEFORE parsing the field name
+    // Check for ownership modifiers
     bool takes_ownership = false;
     bool returns_ownership = false;
 
@@ -390,14 +407,7 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
       p_advance(parser);
     }
 
-    // Now parse the field name (after consuming any ownership modifiers)
     char *field_name = get_name(parser);
-    if (!field_name) {
-      parser_error(parser, "Parse Error", __FILE__,
-                   "Expected field or method name", field_line, field_col, 1);
-      return NULL;
-    }
-
     p_advance(parser);
 
     Stmt *field_function = NULL;
@@ -405,26 +415,26 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
 
     // Method: field_name -> fn(...)
     if (p_current(parser).type_ == TOK_RIGHT_ARROW) {
+      // For methods, store the doc comment in pending so fn_stmt can retrieve
+      // it
+      parser->pending_doc_comment = field_doc;
       p_consume(parser, TOK_RIGHT_ARROW, "Expected '->' after field name");
       field_function = fn_stmt(parser, field_name, public_member,
                                returns_ownership, takes_ownership);
     } else {
-      // Data field: field_name: Type
+      // Data field
       p_consume(parser, TOK_COLON, "Expected ':' after field name");
       field_type = parse_type(parser);
 
-      // Data fields shouldn't have ownership modifiers
       if (takes_ownership || returns_ownership) {
-        parser_error(
-            parser, "Invalid Modifier", __FILE__,
-            "Ownership modifiers (#takes_ownership, #returns_ownership) "
-            "are only valid for methods, not data fields",
-            field_line, field_col, 1);
+        parser_error(parser, "Invalid Modifier", __FILE__,
+                     "Ownership modifiers are only valid for methods",
+                     field_line, field_col, 1);
         return NULL;
       }
     }
 
-    // Handle field separators
+    // Handle field separator
     if (p_current(parser).type_ == TOK_COMMA) {
       p_advance(parser);
     } else if (p_current(parser).type_ != TOK_RBRACE) {
@@ -434,10 +444,10 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
       return NULL;
     }
 
-    // Create field declaration and add to appropriate visibility list
+    // Create field declaration WITH doc comment
     Stmt *field_decl = create_field_decl_stmt(
-        parser->arena, field_name, field_type, field_function, public_member,
-        field_line, field_col);
+        parser->arena, field_name, field_doc, field_type, field_function,
+        public_member, field_line, field_col);
 
     Stmt **slot = public_member ? (Stmt **)growable_array_push(&public_fields)
                                 : (Stmt **)growable_array_push(&private_fields);
@@ -446,7 +456,6 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
       fprintf(stderr, "Failed to add field to struct.\n");
       return NULL;
     }
-
     *slot = field_decl;
   }
 
@@ -454,9 +463,11 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
   p_consume(parser, TOK_SEMICOLON,
             "Expected semicolon after struct declaration");
 
+  // Pass struct doc comment to creation function
   return create_struct_decl_stmt(
-      parser->arena, name, (Stmt **)public_fields.data, public_fields.count,
-      (Stmt **)private_fields.data, private_fields.count, is_public, line, col);
+      parser->arena, name, struct_doc, (Stmt **)public_fields.data,
+      public_fields.count, (Stmt **)private_fields.data, private_fields.count,
+      is_public, line, col);
 }
 
 /**
@@ -478,6 +489,10 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
  * @see parse_type(), parse_expr(), create_var_decl_stmt()
  */
 Stmt *var_stmt(Parser *parser, bool is_public) {
+  // Consume doc comments first
+  char *doc_comment = parser->pending_doc_comment;
+  parser->pending_doc_comment = NULL;
+
   int line = p_current(parser).line;
   int col = p_current(parser).col;
 
@@ -488,37 +503,20 @@ Stmt *var_stmt(Parser *parser, bool is_public) {
   p_consume(parser, TOK_COLON, "Expected ':' after variable name");
   Type *type = parse_type(parser);
 
-  if (!type) {
-    parser_error(parser, "TypeError", parser->file_path,
-                 "Expected type after ':' in variable declaration",
-                 p_current(parser).line, p_current(parser).col,
-                 p_current(parser).length);
-    return NULL;
-  }
-
   if (p_current(parser).type_ != TOK_EQUAL) {
     p_consume(parser, TOK_SEMICOLON,
               "Expected semicolon after variable declaration");
-    return create_var_decl_stmt(parser->arena, name, type, NULL, true,
-                                is_public, line, col);
+    return create_var_decl_stmt(parser->arena, name, doc_comment, type, NULL,
+                                true, is_public, line, col);
   }
 
   p_consume(parser, TOK_EQUAL, "Expected '=' after variable declaration");
-
   Expr *value = parse_expr(parser, BP_LOWEST);
-  if (!value) {
-    parser_error(parser, "SyntaxError", parser->file_path,
-                 "Expected value after '=' in variable declaration",
-                 p_current(parser).line, p_current(parser).col,
-                 p_current(parser).length);
-    return NULL;
-  }
-
   p_consume(parser, TOK_SEMICOLON,
             "Expected semicolon after variable declaration");
 
-  return create_var_decl_stmt(parser->arena, name, type, value, true, is_public,
-                              line, col);
+  return create_var_decl_stmt(parser->arena, name, doc_comment, type, value,
+                              true, is_public, line, col);
 }
 
 /**
@@ -789,8 +787,8 @@ Stmt *loop_init(Parser *parser, int line, int col) {
 
   p_consume(parser, TOK_EQUAL, "Expected '=' after loop initializer");
   Expr *initializer = parse_expr(parser, BP_LOWEST);
-  return create_var_decl_stmt(parser->arena, name, type, initializer, true,
-                              false, line, col);
+  return create_var_decl_stmt(parser->arena, name, NULL, type, initializer,
+                              true, false, line, col);
 }
 
 /**

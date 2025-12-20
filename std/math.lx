@@ -1,13 +1,37 @@
+// ============================================================================
+// math.lx - Mathematical functions and constants
+// ============================================================================
+
+//! Mathematical functions and constants
+//!
+//! Provides trigonometric functions using lookup table interpolation,
+//! basic arithmetic operations, random number generation, and common
+//! mathematical constants.
+//!
+//! # Trigonometry
+//! The sine function uses a 128-entry lookup table with linear interpolation
+//! for efficiency. Other trig functions are derived from sine.
+
 @module "math"
 
+/// Pi constant (π ≈ 3.14159...)
 pub const PI: double = 3.14159265358979323846;
+/// Two pi (2π ≈ 6.28318...)
 pub const TWO_PI: double = 6.28318530717958647692528;
+/// Half pi (π/2 ≈ 1.5708...)
 pub const HALF_PI: double = 1.570796327;
 
+/// Depth parameter for derivative calculations (unused)
 pub const DEPTH: int = 3;
-pub const DT: double = 0.005525661; // 0.000034339 - 0.0055 - 0.00007;
+/// Time delta for derivative calculations (unused)
+pub const DT: double = 0.005525661;
 
+/// Size of sine lookup table
 pub const SIN_TABLE_COUNT: int = 128;
+
+/// Pre-computed sine lookup table
+///
+/// Contains 129 values (0 to π/2) for sine interpolation.
 pub const SIN_TABLE: [double; 129] = [
     0.0000000000000000, 0.0122715382857199, 0.0245412285229123, 0.0368072229413588,
     0.0490676743274180, 0.0613207363022086, 0.0735645635996674, 0.0857973123444399,
@@ -44,14 +68,44 @@ pub const SIN_TABLE: [double; 129] = [
     1.0000000000000000
 ];
 
+/// Simple linear congruential random number generator
+///
+/// Updates the seed and returns a pseudo-random number.
+///
+/// # Parameters
+/// * `seed` - Pointer to seed value (will be modified)
+///
+/// # Returns
+/// Pseudo-random integer
+///
+/// # Example
+/// ```luma
+/// let seed: int = 12345;
+/// let r1: int = math::rand(&seed);
+/// let r2: int = math::rand(&seed);
+/// ```
 pub const rand -> fn (seed: *int) int {
     *seed = (*seed * 1103515245 + 12345) % 2147483648;
     return *seed;
 }
 
-pub const add      -> fn (x: int, y: int) int { return x + y; }
+/// Adds two integers
+pub const add -> fn (x: int, y: int) int { return x + y; }
+
+/// Subtracts two integers
 pub const subtract -> fn (x: int, y: int) int { return x - y; }
+
+/// Multiplies two integers
 pub const multiply -> fn (x: int, y: int) int { return x * y; }
+
+/// Divides two integers with zero check
+///
+/// # Parameters
+/// * `x` - Dividend
+/// * `y` - Divisor
+///
+/// # Returns
+/// Quotient, or 0 if divisor is zero (with error message)
 pub const divide -> fn (x: int, y: int) int { 
     if (y == 0) {
         output("(Division by zero error) ");
@@ -60,6 +114,14 @@ pub const divide -> fn (x: int, y: int) int {
     return x / y;
 }
 
+/// Modulo operation with zero check
+///
+/// # Parameters
+/// * `x` - Dividend
+/// * `y` - Modulus
+///
+/// # Returns
+/// Remainder, or 0 if modulus is zero (with error message)
 pub const mod -> fn (x: int, y: int) int {
     if (y == 0) {
         output("(Division by zero error) ");
@@ -68,12 +130,39 @@ pub const mod -> fn (x: int, y: int) int {
     return x % y;
 }
 
+/// Fibonacci number calculator (tail-recursive)
+///
+/// # Parameters
+/// * `n` - Index of Fibonacci number to calculate
+/// * `a` - Accumulator (start with 0)
+/// * `b` - Accumulator (start with 1)
+///
+/// # Returns
+/// The nth Fibonacci number
+///
+/// # Example
+/// ```luma
+/// let fib10: int = math::fib(10, 0, 1); // 55
+/// ```
 pub const fib -> fn (n: int, a: int, b: int) int {
     if (n == 0) { return a; }
     if (n == 1) { return b; }
     return fib(n - 1, b, a + b);
 }
 
+/// Raises base to integer exponent
+///
+/// # Parameters
+/// * `base` - Base value
+/// * `exponent` - Integer exponent
+///
+/// # Returns
+/// base^exponent
+///
+/// # Example
+/// ```luma
+/// let result: double = math::power(2.0, 10); // 1024.0
+/// ```
 pub const power -> fn (base: double, exponent: int) double {
     if (exponent == 0) { return 1.0; } 
 
@@ -92,16 +181,33 @@ pub const power -> fn (base: double, exponent: int) double {
     return result;
 } 
 
+/// Returns maximum of two integers
 pub const max_size -> fn (a: int, b: int) int {
     if (a > b) { return a; }
     return b; 
 }
 
+/// Returns minimum of two integers
 pub const min_size -> fn (a: int, b: int) int {
     if (a < b) { return a; }
     return b; 
 }
 
+/// Sine function using lookup table interpolation
+///
+/// Uses a 128-entry lookup table with linear interpolation for efficiency.
+/// Normalizes input to [0, 2π) and uses quadrant symmetry.
+///
+/// # Parameters
+/// * `a` - Angle in radians
+///
+/// # Returns
+/// Sine of the angle (-1.0 to 1.0)
+///
+/// # Example
+/// ```luma
+/// let s: double = math::sin(math::PI / 2.0); // 1.0
+/// ```
 pub const sin -> fn (a: double) double {
   // Normalize into [0, TWO_PI)
   let k: int = cast<int>(a / TWO_PI);
@@ -138,51 +244,39 @@ pub const sin -> fn (a: double) double {
   }
 }
 
-pub const cos -> fn (x: double) double { return sin(x + HALF_PI); }
+/// Cosine function (derived from sine)
+///
+/// # Parameters
+/// * `x` - Angle in radians
+///
+/// # Returns
+/// Cosine of the angle
+pub const cos -> fn (x: double) double { 
+    return sin(x + HALF_PI); 
+}
 
-pub const tan -> fn (x: double) double { return sin(x)/(cos(x)+0.000000001); }
+/// Tangent function
+///
+/// # Parameters
+/// * `x` - Angle in radians
+///
+/// # Returns
+/// Tangent of the angle
+pub const tan -> fn (x: double) double { 
+    return sin(x)/(cos(x)+0.000000001); 
+}
 
-pub const sec -> fn (x: double) double { return 1/(cos(x)+0.000000001); }
+/// Secant function (1/cos)
+pub const sec -> fn (x: double) double { 
+    return 1/(cos(x)+0.000000001); 
+}
 
-pub const csc -> fn (x: double) double { return 1/(sin(x)+0.000000001); }
+/// Cosecant function (1/sin)
+pub const csc -> fn (x: double) double { 
+    return 1/(sin(x)+0.000000001); 
+}
 
-pub const cot -> fn (x: double) double { return cos(x)/(sin(x)+0.000000001); }
-
-// const f = fn (x: double) double {
-//     return math::sin(x); 
-// }
-// const d = fn (x: double) double {
-//    return math::cos(x);
-// }
-// const derivative = fn (x: double) double {
-//     let hp: **double = cast<**double>(alloc((DEPTH - 1) * sizeof<*double>));
-//     defer { 
-//       loop [c: int = 0](c < DEPTH - 1) : (++c) {
-//         free(hp[c]);
-//       }
-//       free(hp); 
-//     }
-//     loop [c: int = 0](c < DEPTH - 1) : (++c) {
-//       let size: int = DEPTH - c;
-//       hp[c] = cast<*double>(alloc(size * sizeof<double>));
-//     }
-//     loop [c: int = 0, b: int = 0](c < DEPTH - 1) : (++c) {
-//       let size: int = DEPTH - c;
-//       loop (b < size) : (++b) {
-//         if (c == 0) {                                                                    
-//           hp[0][b] = f(x + (DT * b)) - ((f(x + (DT * b)) + f(x + (DT * (b + 1)))) / 2.0);
-//         } else {                                                                         
-//           hp[c][b] = hp[c - 1][b] - ((hp[c - 1][b] + hp[c - 1][b + 1]) / 2.0);           
-//         } 
-//       }
-//     } 
-//     let d1: double = (f(x) - f(x + DT)) / DT;
-//     loop [c: int = 0](c < DEPTH - 1) : (++c) {
-//         d1 = d1 + ((hp[c][0] - hp[c][1]) / DT);
-//     }
-//     return -d1;
-// }
-// 
-// const deriv_error = fn (x: double) double {
-//     return d(x) - derivative(x);
-// }
+/// Cotangent function (cos/sin)
+pub const cot -> fn (x: double) double { 
+    return cos(x)/(sin(x)+0.000000001); 
+}

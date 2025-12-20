@@ -1,18 +1,57 @@
+//! Time and sleep utilities
+//!
+//! Provides functions for getting current time, sleeping, and measuring
+//! elapsed time with nanosecond precision using Linux system calls.
+//!
+//! # Example
+//! ```luma
+//! let start: Timer = time::timer_start();
+//! // ... do work ...
+//! let elapsed: int = time::timer_elapsed_ms(start);
+//! outputln("Took ", elapsed, " milliseconds");
+//! ```
+
 @module "time"
 
+/// Nanosleep system call number
 const NANOSLEEP: int = 35; 
+/// Clock_gettime system call number
 const CLOCK_GETTIME: int = 228;
+/// Realtime clock ID
 const CLOCK_REALTIME: int = 0;
 
+/// Nanosecond precision time specification
+///
+/// Represents a point in time with second and nanosecond components.
 const TimeSpec -> struct {
+   /// Seconds since Unix epoch
    sec: int,
+   /// Nanoseconds (0-999,999,999)
    nsec: int,
 };
 
+/// Timer for measuring elapsed time
+///
+/// Stores a start time for duration measurements.
 const Timer -> struct {
+    /// Starting time point
     start_time: TimeSpec,
 };
 
+/// Sleeps for microseconds
+///
+/// Uses the nanosleep system call for precise sleeping.
+///
+/// # Parameters
+/// * `usec` - Number of microseconds to sleep
+///
+/// # Returns
+/// 0 on success, negative error code on failure
+///
+/// # Example
+/// ```luma
+/// time::usleep(500000); // Sleep for 0.5 seconds
+/// ```
 pub const usleep -> fn (usec: int) int {
     let req: TimeSpec;
 
@@ -22,34 +61,95 @@ pub const usleep -> fn (usec: int) int {
     return __syscall__(NANOSLEEP, cast<*int>(&req), 0);
 }
 
+/// Converts TimeSpec to milliseconds
+///
+/// # Parameters
+/// * `t` - TimeSpec to convert
+///
+/// # Returns
+/// Time in milliseconds
 pub const to_millis -> fn (t: TimeSpec) int {
     return (t.sec * 1000) + (t.nsec / 1000000);
 }
 
+/// Converts TimeSpec to microseconds
+///
+/// # Parameters
+/// * `t` - TimeSpec to convert
+///
+/// # Returns
+/// Time in microseconds
 pub const to_micros -> fn (t: TimeSpec) int {
     return (t.sec * 1000000) + (t.nsec / 1000);
 }
 
+/// Converts TimeSpec to nanoseconds
+///
+/// # Parameters
+/// * `t` - TimeSpec to convert
+///
+/// # Returns
+/// Time in nanoseconds
 pub const to_nanos -> fn (t: TimeSpec) int {
     return (t.sec * 1000000000) + t.nsec;
 }
 
+/// Gets current time from system clock
+///
+/// # Parameters
+/// * `clk_id` - Clock identifier (use CLOCK_REALTIME)
+/// * `ts` - Pointer to TimeSpec to fill
+///
+/// # Returns
+/// 0 on success, negative error code on failure
 pub const clock_gettime -> fn (clk_id: int, ts: *TimeSpec) int {
     return __syscall__(CLOCK_GETTIME, clk_id, cast<*int>(ts));
 }
 
+/// Gets current time
+///
+/// # Returns
+/// Current time as TimeSpec
+///
+/// # Example
+/// ```luma
+/// let current: TimeSpec = time::now();
+/// ```
 pub const now -> fn () TimeSpec {
     let ts: TimeSpec;
     clock_gettime(CLOCK_REALTIME, &ts);
     return ts;
 }
 
+/// Starts a timer
+///
+/// Captures the current time as the start point for elapsed time measurements.
+///
+/// # Returns
+/// Timer initialized with current time
+///
+/// # Example
+/// ```luma
+/// let timer: Timer = time::timer_start();
+/// // ... do work ...
+/// let ms: int = time::timer_elapsed_ms(timer);
+/// ```
 pub const timer_start -> fn () Timer {
     let t: Timer;
     t.start_time = now();
     return t;
 }
 
+/// Subtracts two TimeSpec values
+///
+/// Calculates the difference between two time points, handling nanosecond borrowing.
+///
+/// # Parameters
+/// * `a` - Later time
+/// * `b` - Earlier time
+///
+/// # Returns
+/// Duration between the two times
 pub const timespec_sub -> fn (a: TimeSpec, b: TimeSpec) TimeSpec {
     let res: TimeSpec;
 
@@ -64,11 +164,41 @@ pub const timespec_sub -> fn (a: TimeSpec, b: TimeSpec) TimeSpec {
     return res;
 }
 
+/// Calculates elapsed time in milliseconds
+///
+/// # Parameters
+/// * `start` - Start time
+/// * `end` - End time
+///
+/// # Returns
+/// Elapsed time in milliseconds
+///
+/// # Example
+/// ```luma
+/// let start: TimeSpec = time::now();
+/// // ... do work ...
+/// let end: TimeSpec = time::now();
+/// let ms: int = time::elapsed_ms(start, end);
+/// ```
 pub const elapsed_ms -> fn (start: TimeSpec, end: TimeSpec) int {
     let diff: TimeSpec = timespec_sub(end, start);
     return to_millis(diff);
 }
 
+/// Gets elapsed time from a timer in milliseconds
+///
+/// # Parameters
+/// * `t` - Timer started with timer_start()
+///
+/// # Returns
+/// Milliseconds elapsed since timer was started
+///
+/// # Example
+/// ```luma
+/// let timer: Timer = time::timer_start();
+/// // ... do work ...
+/// outputln("Elapsed: ", time::timer_elapsed_ms(timer), "ms");
+/// ```
 pub const timer_elapsed_ms -> fn (t: Timer) int {
     let end: TimeSpec = now();
     return elapsed_ms(t.start_time, end);

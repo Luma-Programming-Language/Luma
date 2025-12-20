@@ -1,65 +1,160 @@
+//! Terminal color and formatting escape codes
+//!
+//! This module provides ANSI escape sequences for terminal colors, text styles,
+//! and cursor control. These codes work on most Unix terminals and modern
+//! terminal emulators that support ANSI escape sequences.
+//!
+//! # Usage
+//! Simply output the desired escape sequence before your text, then use RESET
+//! to return to default formatting.
+//!
+//! # Example
+//! ```luma
+//! output(fx::RED);
+//! output("This is red text");
+//! output(fx::RESET);
+//! output("\n");
+//! 
+//! output(fx::BG_BLUE);
+//! output(fx::BRIGHT_WHITE);
+//! output("White text on blue background");
+//! output(fx::RESET);
+//! ```
+
 @module "termfx"
 
 @use "string" as string
 
+/// Reset all terminal formatting to default
 pub const RESET: *byte   = "\x1b[0m";
+
+/// Foreground color: Black
 pub const BLACK: *byte   = "\x1b[30m";
+/// Foreground color: Red
 pub const RED: *byte     = "\x1b[31m";
+/// Foreground color: Green
 pub const GREEN: *byte   = "\x1b[32m";
+/// Foreground color: Yellow
 pub const YELLOW: *byte  = "\x1b[33m";
+/// Foreground color: Blue
 pub const BLUE: *byte    = "\x1b[34m";
+/// Foreground color: Magenta
 pub const MAGENTA: *byte = "\x1b[35m";
+/// Foreground color: Cyan
 pub const CYAN: *byte    = "\x1b[36m";
+/// Foreground color: White
 pub const WHITE: *byte   = "\x1b[37m";
 
+/// Bright foreground color: Black (gray)
 pub const BRIGHT_BLACK: *byte   = "\x1b[1;90m";
+/// Bright foreground color: Red
 pub const BRIGHT_RED: *byte     = "\x1b[1;91m";
+/// Bright foreground color: Green
 pub const BRIGHT_GREEN: *byte   = "\x1b[1;92m";
+/// Bright foreground color: Yellow
 pub const BRIGHT_YELLOW: *byte  = "\x1b[1;93m";
+/// Bright foreground color: Blue
 pub const BRIGHT_BLUE: *byte    = "\x1b[1;94m";
+/// Bright foreground color: Magenta
 pub const BRIGHT_MAGENTA: *byte = "\x1b[1;95m";
+/// Bright foreground color: Cyan
 pub const BRIGHT_CYAN: *byte    = "\x1b[1;96m";
+/// Bright foreground color: White
 pub const BRIGHT_WHITE: *byte   = "\x1b[1;97m";
 
+/// Background color: Black
 pub const BG_BLACK: *byte   = "\x1b[40m";
+/// Background color: Red
 pub const BG_RED: *byte     = "\x1b[41m";
+/// Background color: Green
 pub const BG_GREEN: *byte   = "\x1b[42m";
+/// Background color: Yellow
 pub const BG_YELLOW: *byte  = "\x1b[43m";
+/// Background color: Blue
 pub const BG_BLUE: *byte    = "\x1b[44m";
+/// Background color: Magenta
 pub const BG_MAGENTA: *byte = "\x1b[45m";
+/// Background color: Cyan
 pub const BG_CYAN: *byte    = "\x1b[46m";
+/// Background color: White
 pub const BG_WHITE: *byte   = "\x1b[47m";
 
+/// Bright background color: Black (gray)
 pub const BG_BRIGHT_BLACK: *byte   = "\x1b[100m";
+/// Bright background color: Red
 pub const BG_BRIGHT_RED: *byte     = "\x1b[101m";
+/// Bright background color: Green
 pub const BG_BRIGHT_GREEN: *byte   = "\x1b[102m";
+/// Bright background color: Yellow
 pub const BG_BRIGHT_YELLOW: *byte  = "\x1b[103m";
+/// Bright background color: Blue
 pub const BG_BRIGHT_BLUE: *byte    = "\x1b[104m";
+/// Bright background color: Magenta
 pub const BG_BRIGHT_MAGENTA: *byte = "\x1b[105m";
+/// Bright background color: Cyan
 pub const BG_BRIGHT_CYAN: *byte    = "\x1b[106m";
+/// Bright background color: White
 pub const BG_BRIGHT_WHITE: *byte   = "\x1b[107m";
 
+/// Text style: Bold
 pub const BOLD: *byte          = "\x1b[1m";
+/// Text style: Dim (less bright)
 pub const DIM: *byte           = "\x1b[2m";
-pub const ITALIC: *byte        = "\x1b[3m";  // not always supported
+/// Text style: Italic (not always supported)
+pub const ITALIC: *byte        = "\x1b[3m";
+/// Text style: Underline
 pub const UNDERLINE: *byte     = "\x1b[4m";
-pub const BLINK: *byte         = "\x1b[5m";  // rarely supported
-pub const INVERT: *byte        = "\x1b[7m";  // swap fg/bg
-pub const HIDDEN: *byte        = "\x1b[8m";  // invisible text
+/// Text style: Blink (rarely supported)
+pub const BLINK: *byte         = "\x1b[5m";
+/// Text style: Invert (swap foreground and background)
+pub const INVERT: *byte        = "\x1b[7m";
+/// Text style: Hidden (invisible text)
+pub const HIDDEN: *byte        = "\x1b[8m";
+/// Text style: Strikethrough
 pub const STRIKETHROUGH: *byte = "\x1b[9m";
 
+/// Clears entire screen
 pub const CLEAR_SCREEN: *byte  = "\x1b[2J";
+/// Clears current line
 pub const CLEAR_LINE: *byte    = "\x1b[2K";
+/// Moves cursor to home position (top-left)
 pub const CURSOR_HOME: *byte   = "\x1b[H";
+/// Hides the cursor
 pub const CURSOR_HIDE: *byte   = "\x1b[?25l";
+/// Shows the cursor
 pub const CURSOR_SHOW: *byte   = "\x1b[?25h";
 
+/// Saves current cursor position
 pub const SAVE_CURSOR: *byte    = "\x1b[s";
+/// Restores saved cursor position
 pub const RESTORE_CURSOR: *byte = "\x1b[u";
 
+/// Clears from cursor to end of line
 pub const CLEAR_TO_EOL: *byte = "\x1b[K";
+/// Clears from cursor to end of screen
 pub const CLEAR_TO_EOS: *byte = "\x1b[J";
 
+/// Creates a foreground RGB color escape sequence
+///
+/// Generates an ANSI escape code for 24-bit true color.
+/// Requires terminal support for RGB colors.
+///
+/// # Parameters
+/// * `r` - Red component (0-255)
+/// * `g` - Green component (0-255)
+/// * `b` - Blue component (0-255)
+///
+/// # Returns
+/// ANSI escape sequence string for the RGB color
+///
+/// # Example
+/// ```luma
+/// let purple: *byte = fx::fg_rgb(128, 0, 128);
+/// defer { free(purple); }
+/// output(purple);
+/// output("Purple text");
+/// output(fx::RESET);
+/// ```
 #returns_ownership
 pub const fg_rgb -> fn (r: int, g: int, b: int) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
@@ -75,6 +170,27 @@ pub const fg_rgb -> fn (r: int, g: int, b: int) *byte {
     return msg; 
 }
 
+/// Creates a background RGB color escape sequence
+///
+/// Generates an ANSI escape code for 24-bit true color background.
+/// Requires terminal support for RGB colors.
+///
+/// # Parameters
+/// * `r` - Red component (0-255)
+/// * `g` - Green component (0-255)
+/// * `b` - Blue component (0-255)
+///
+/// # Returns
+/// ANSI escape sequence string for the RGB background color
+///
+/// # Example
+/// ```luma
+/// let bg: *byte = fx::bg_rgb(50, 50, 50);
+/// defer { free(bg); }
+/// output(bg);
+/// output("Text on dark gray background");
+/// output(fx::RESET);
+/// ```
 #returns_ownership
 pub const bg_rgb -> fn (r: int, g: int, b: int) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
@@ -90,6 +206,25 @@ pub const bg_rgb -> fn (r: int, g: int, b: int) *byte {
     return msg;
 }
 
+/// Moves cursor to specific row and column
+///
+/// Creates an ANSI escape sequence to position the cursor.
+/// Coordinates are 1-based (top-left is row=1, col=1).
+///
+/// # Parameters
+/// * `row` - Row number (1-based)
+/// * `col` - Column number (1-based)
+///
+/// # Returns
+/// ANSI escape sequence to move cursor
+///
+/// # Example
+/// ```luma
+/// let pos: *byte = fx::move_cursor(10, 20);
+/// defer { free(pos); }
+/// output(pos);
+/// output("Text at row 10, column 20");
+/// ```
 #returns_ownership
 pub const move_cursor -> fn (row: int, col: int) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));

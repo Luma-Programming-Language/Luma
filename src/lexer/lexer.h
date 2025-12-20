@@ -120,7 +120,10 @@ typedef enum {
   TOK_LEFT_ARROW,  /**< <- */
   TOK_MODL,        /**< % */
   TOK_WHITESPACE,  /**< whitespace */
-  TOK_COMMENT      /**< comment */
+  TOK_COMMENT,     /**< comment */
+  TOK_DOC_COMMENT,    /**< /// documentation comment */
+  TOK_MODULE_DOC,     /**< //! module documentation comment */
+  TOK_DOCUMENT        // You already have this one
 } LumaTokenType;
 
 /**

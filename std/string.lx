@@ -1,8 +1,36 @@
+//! String manipulation and conversion utilities
+//!
+//! This module provides functions for working with null-terminated C-style strings,
+//! including concatenation, comparison, conversion, and character classification.
+//! All strings are represented as pointers to byte arrays (`*byte`) and must be
+//! null-terminated.
+//!
+//! # Memory Management
+//! Functions that create new strings (prefixed with `from_` or returning `#returns_ownership`)
+//! allocate memory that the caller must free. Use `defer { free(str); }` to ensure cleanup.
+
 @module "string"
 
+/// Forward declarations for functions used within this module
 pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte;
 pub const strlen -> fn (s: *byte) int;
 
+/// Converts a single byte to a string
+///
+/// Creates a 2-byte string containing the character and a null terminator.
+///
+/// # Parameters
+/// * `c` - Character to convert
+///
+/// # Returns
+/// Newly allocated string containing the character
+///
+/// # Example
+/// ```luma
+/// let str: *byte = string::from_byte('A');
+/// defer { free(str); }
+/// output(str); // Prints "A"
+/// ```
 #returns_ownership 
 pub const from_byte -> fn (c: byte) *byte {
   let s: *byte = cast<*byte>(alloc(2 * sizeof<byte>));
@@ -11,6 +39,22 @@ pub const from_byte -> fn (c: byte) *byte {
   return s;
 }
 
+/// Converts an integer to a string
+///
+/// Handles both positive and negative integers. For zero, returns "0".
+///
+/// # Parameters
+/// * `n` - Integer to convert
+///
+/// # Returns
+/// Newly allocated string representation of the integer
+///
+/// # Example
+/// ```luma
+/// let str: *byte = string::from_int(-42);
+/// defer { free(str); }
+/// output(str); // Prints "-42"
+/// ```
 #returns_ownership
 pub const from_int -> fn (n: int) *byte {
   if (n == 0) {
@@ -48,6 +92,24 @@ pub const from_int -> fn (n: int) *byte {
   return s;
 }
 
+/// Converts a float to a string with specified precision
+///
+/// Separates integer and fractional parts, then combines them with
+/// a decimal point. Precision determines number of decimal places.
+///
+/// # Parameters
+/// * `f` - Float value to convert
+/// * `precision` - Number of decimal places to include
+///
+/// # Returns
+/// Newly allocated string representation of the float
+///
+/// # Example
+/// ```luma
+/// let str: *byte = string::from_float(3.14159, 2);
+/// defer { free(str); }
+/// output(str); // Prints "3.14"
+/// ```
 #returns_ownership
 pub const from_float -> fn (f: float, precision: int) *byte {
   let int_part: int = cast<int>(f);
@@ -76,6 +138,22 @@ pub const from_float -> fn (f: float, precision: int) *byte {
   return result;
 }
 
+/// Converts integer to string into a provided buffer
+///
+/// Writes the string representation directly into the provided buffer
+/// instead of allocating new memory.
+///
+/// # Parameters
+/// * `num` - Integer to convert
+/// * `buf` - Buffer to write string into
+/// * `buf_size` - Size of buffer in bytes
+///
+/// # Example
+/// ```luma
+/// let buffer: [byte; 32];
+/// string::int_to_str(12345, &buffer[0], 32);
+/// output(&buffer[0]); // Prints "12345"
+/// ```
 pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
   let idx: int = 0;
   let temp: int = num;
@@ -104,12 +182,46 @@ pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
   buf[idx] = '\0';
 }
 
+/// Returns the length of a null-terminated string
+///
+/// Counts characters until the null terminator is found.
+///
+/// # Parameters
+/// * `s` - String to measure
+///
+/// # Returns
+/// Number of characters before null terminator
+///
+/// # Example
+/// ```luma
+/// let len: int = string::strlen("Hello");
+/// // len will be 5
+/// ```
 pub const strlen -> fn (s: *byte) int {
   let length: int = 0;
   loop (s[length] != cast<byte>(0)) : (++length) {}
   return length;
 }
 
+/// Compares two strings for equality
+///
+/// First checks if lengths differ, then compares contents byte by byte.
+///
+/// # Parameters
+/// * `s1` - First string
+/// * `s2` - Second string
+///
+/// # Returns
+/// * `0` if strings are equal
+/// * `-1` if lengths differ
+/// * `1` if contents differ but lengths match
+///
+/// # Example
+/// ```luma
+/// if (string::strcmp("hello", "hello") == 0) {
+///     output("Strings are equal\n");
+/// }
+/// ```
 pub const strcmp -> fn (s1: *byte, s2: *byte) int {
   let ls1: int = strlen(s1);
   let ls2: int = strlen(s2);
@@ -123,6 +235,24 @@ pub const strcmp -> fn (s1: *byte, s2: *byte) int {
   return 0;
 }
 
+/// Searches for a character in a string
+///
+/// Returns the first occurrence of the character, or null byte if not found.
+///
+/// # Parameters
+/// * `s` - String to search
+/// * `c` - Character to find (as int)
+///
+/// # Returns
+/// The matching character if found, null byte otherwise
+///
+/// # Example
+/// ```luma
+/// let ch: byte = string::s_byte("Hello", cast<int>('l'));
+/// if (ch != cast<byte>(0)) {
+///     output("Found 'l'\n");
+/// }
+/// ```
 pub const s_byte -> fn (s: *byte, c: int) byte{
   loop [i: int = 0](s[i] != cast<byte>(0)) : (++i) {
     if (s[i] == cast<byte>(c)) {
@@ -133,12 +263,45 @@ pub const s_byte -> fn (s: *byte, c: int) byte{
   return cast<byte>(0);
 }
 
+/// Copies a string from source to destination
+///
+/// Copies characters including the null terminator.
+///
+/// # Parameters
+/// * `dest` - Destination buffer (must be large enough)
+/// * `src` - Source string
+///
+/// # Returns
+/// Destination pointer
+///
+/// # Example
+/// ```luma
+/// let buffer: [byte; 100];
+/// string::copy(&buffer[0], "Hello");
+/// ```
 pub const copy -> fn (dest: *byte, src: *byte) *byte {
   let i: int = 0;
   loop((dest[i] = src[i]) != cast<byte>(0)) : (++i) {}
   return dest;
 }
 
+/// Copies at most n bytes of a string
+///
+/// Stops at null terminator or after n characters, whichever comes first.
+///
+/// # Parameters
+/// * `dest` - Destination buffer
+/// * `src` - Source string
+/// * `n` - Maximum bytes to copy
+///
+/// # Returns
+/// Destination pointer
+///
+/// # Example
+/// ```luma
+/// let buffer: [byte; 10];
+/// string::n_copy(&buffer[0], "Hello World", 5); // Copies "Hello"
+/// ```
 pub const n_copy -> fn (dest: *byte, src: *byte, n: int) *byte {
   let i: int = 0;
   loop(i < n && src[i] != cast<byte>(0)) : (++i) {
@@ -147,6 +310,24 @@ pub const n_copy -> fn (dest: *byte, src: *byte, n: int) *byte {
   return dest;
 }
 
+/// Concatenates two strings into a destination buffer
+///
+/// Writes s1 followed by s2 into dest, with null terminator.
+///
+/// # Parameters
+/// * `dest` - Destination buffer (must be large enough)
+/// * `s1` - First string
+/// * `s2` - Second string
+///
+/// # Returns
+/// Destination pointer
+///
+/// # Example
+/// ```luma
+/// let buffer: [byte; 100];
+/// string::cat(&buffer[0], "Hello ", "World");
+/// output(&buffer[0]); // Prints "Hello World"
+/// ```
 pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
   let ls1: int = strlen(s1);
   let lt: int = ls1 + strlen(s2) + 1;
@@ -165,13 +346,29 @@ pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
   return dest;
 }
 
+/// Outputs a single character to the terminal
+///
+/// Handles special characters with proper shell escaping using system commands.
+/// Special handling for newline, tab, quotes, backslash, etc.
+///
+/// # Parameters
+/// * `c` - Character to output
+///
+/// # Returns
+/// The character as an int
+///
+/// # Example
+/// ```luma
+/// string::putbyte('A');
+/// string::putbyte('\n');
+/// ```
 pub const putbyte -> fn(c: byte) int {
   // allocate buffer for command + escaped byte (32 bytes is enough)
   let cmd: *byte = cast<*byte>(alloc(32 * sizeof<byte>));
   defer { free(cmd); }
 
   // build command inline
-  // Use integer values instead of byteacter literals with escapes
+  // Use integer values instead of character literals with escapes
   let byte_val: int = cast<int>(c);
   
   switch(byte_val) {
@@ -195,18 +392,81 @@ pub const putbyte -> fn(c: byte) int {
   return cast<int>(c);
 }
 
+/// Checks if a character is a digit (0-9)
+///
+/// # Parameters
+/// * `ch` - Character to test
+///
+/// # Returns
+/// true if character is '0' through '9', false otherwise
+///
+/// # Example
+/// ```luma
+/// if (string::is_digit('5')) {
+///     output("It's a digit!\n");
+/// }
+/// ```
 pub const is_digit -> fn (ch: byte) bool {
   return (ch >= '0' && ch <= '9');
 }
 
+/// Checks if a character is alphabetic or underscore
+///
+/// Accepts uppercase letters (A-Z), lowercase letters (a-z),
+/// underscore (_), and at sign (@).
+///
+/// # Parameters
+/// * `ch` - Character to test
+///
+/// # Returns
+/// true if alphabetic or underscore/at, false otherwise
+///
+/// # Example
+/// ```luma
+/// if (string::is_alpha('_')) {
+///     output("Valid identifier character\n");
+/// }
+/// ```
 pub const is_alpha -> fn (ch: byte) bool {
   return ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '@');
 }
 
+/// Checks if a character is alphanumeric
+///
+/// Returns true if character is a letter, digit, underscore, or at sign.
+///
+/// # Parameters
+/// * `ch` - Character to test
+///
+/// # Returns
+/// true if alphanumeric, false otherwise
+///
+/// # Example
+/// ```luma
+/// if (string::is_alnum('A')) {
+///     output("Valid identifier character\n");
+/// }
+/// ```
 pub const is_alnum -> fn (ch: byte) bool {
   return (is_alpha(ch) || is_digit(ch));
 }
 
+/// Converts ASCII string to integer
+///
+/// Parses digits from the string until a non-digit character is encountered.
+/// Does not handle negative numbers or leading whitespace.
+///
+/// # Parameters
+/// * `value` - String to parse
+///
+/// # Returns
+/// Parsed integer value
+///
+/// # Example
+/// ```luma
+/// let num: int = string::atio("12345");
+/// // num will be 12345
+/// ```
 pub const atio -> fn (value: *byte) int {
   let num: int = 0;
   loop [i: int = 0](value[i] != '\0') : (++i) { 
@@ -219,6 +479,24 @@ pub const atio -> fn (value: *byte) int {
   return num;
 }
 
+/// Adds two large integers represented as strings
+///
+/// Performs arbitrary-precision addition digit by digit with carry propagation.
+/// Both input strings must contain only digits.
+///
+/// # Parameters
+/// * `num1` - First number as string
+/// * `num2` - Second number as string
+///
+/// # Returns
+/// Sum as newly allocated string
+///
+/// # Example
+/// ```luma
+/// let result: *byte = string::string_add("999", "1");
+/// defer { free(result); }
+/// output(result); // Prints "1000"
+/// ```
 #returns_ownership
 pub const string_add -> fn (num1: *byte, num2: *byte) *byte {
   let len1: int = strlen(num1);

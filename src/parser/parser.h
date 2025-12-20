@@ -115,11 +115,12 @@ static const UnaryOp TOKEN_TO_UNOP_MAP[] = {
  */
 typedef struct {
   const char *file_path;
-  ArenaAllocator *arena; /**< Memory arena for AST node allocations */
-  Token *tks;            /**< Array of tokens to parse */
-  size_t tk_count;       /**< Number of tokens in the array */
-  size_t capacity;       /**< Capacity for statements and expressions */
-  size_t pos;            /**< Current token position */
+  ArenaAllocator *arena;
+  Token *tks;
+  size_t tk_count;
+  size_t capacity;
+  size_t pos;
+  char *pending_doc_comment; // NEW: Doc comment waiting to be attached
 } Parser;
 
 /**
@@ -136,6 +137,8 @@ typedef struct {
 void parser_error(Parser *psr, const char *error_type, const char *file,
                   const char *msg, int line, int col, int tk_length);
 
+char *collect_doc_comments(Parser *parser);
+void consume_doc_comments(Parser *parser);
 bool p_has_tokens(Parser *psr);
 Token p_peek(Parser *psr, size_t offset);
 Token p_current(Parser *psr);
@@ -158,7 +161,7 @@ Type *parse_type(Parser *parser);
 // Helper functions for the parser
 bool init_parser_arrays(Parser *parser, GrowableArray *stmts,
                         GrowableArray *modules);
-const char *parse_module_declaration(Parser *parser);
+const char *parse_module_declaration(Parser *parser, char **out_module_doc);
 
 Expr *nud(Parser *parser);
 

@@ -83,6 +83,14 @@ void parser_error(Parser *psr, const char *error_type, const char *file,
  * @see Parser, parse_stmt(), create_program_node()
  */
 
+/**
+ * @brief Main parsing function that converts tokens into an AST
+ *
+ * This is the entry point for the parser. It takes a growable array of tokens
+ * and converts them into a complete program AST node containing all parsed
+ * statements.
+ */
+
 Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
   // Initialize parser
   Parser parser = {
@@ -106,15 +114,22 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
   }
 
   // Parse module declaration
+  char *module_doc = NULL;
   Token module_tok = p_current(&parser);
-  const char *module_name = parse_module_declaration(&parser);
+  const char *module_name = parse_module_declaration(&parser, &module_doc);
   if (!module_name) {
-    error_report(); // CRITICAL: Report errors before returning
+    error_report();
     return NULL;
   }
 
-  // Create initial module node and add to modules array
-  Stmt *module_stmt = create_module_node(parser.arena, module_name, 0, NULL, 0,
+  // Create module node with doc comment
+  // Signature: create_module_node(arena, name, doc_comment, potions, body,
+  // body_count, line, column)
+  Stmt *module_stmt = create_module_node(parser.arena, module_name,
+                                         module_doc, // doc_comment parameter
+                                         0,          // potions
+                                         NULL,       // body (initially NULL)
+                                         0,          // body_count
                                          module_tok.line, module_tok.col);
 
   Stmt **module_slot = (Stmt **)growable_array_push(&modules);
@@ -143,9 +158,12 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
   }
 
   // Update module with parsed statements
-  *module_slot =
-      create_module_node(parser.arena, module_name, 0, (Stmt **)stmts.data,
-                         stmts.count, module_tok.line, module_tok.col);
+  *module_slot = create_module_node(parser.arena, module_name,
+                                    module_doc, // doc_comment parameter
+                                    0,          // potions
+                                    (Stmt **)stmts.data, // body
+                                    stmts.count,         // body_count
+                                    module_tok.line, module_tok.col);
 
   // Create and return program node
   return create_program_node(parser.arena, (AstNode **)modules.data,
@@ -436,6 +454,8 @@ Expr *parse_expr(Parser *parser, BindingPower bp) {
  *      loop_stmt(), print_stmt(), break_continue_stmt(), expr_stmt()
  */
 Stmt *parse_stmt(Parser *parser) {
+  consume_doc_comments(parser);
+
   bool returns_ownership = false;
   bool takes_ownership = false;
   bool is_public = false;

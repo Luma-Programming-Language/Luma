@@ -1,17 +1,51 @@
+// ============================================================================
+// terminal.lx - Terminal input/output and raw mode control
+// ============================================================================
+
+//! Terminal input/output and raw mode control
+//!
+//! This module provides functions for reading keyboard input without
+//! line buffering, password input, and terminal mode control. It uses
+//! shell commands (stty) to manipulate terminal settings.
+//!
+//! # Raw Mode
+//! Raw mode disables line buffering and echo, allowing character-by-character
+//! input without waiting for Enter. Always call disable_raw_mode() when done
+//! or use defer to ensure cleanup.
+//!
+//! # Example
+//! ```luma
+//! terminal::enable_raw_mode();
+//! defer { terminal::disable_raw_mode(); }
+//! 
+//! output("Press any key: ");
+//! let key: byte = terminal::getch_raw();
+//! output("You pressed: ");
+//! string::putbyte(key);
+//! ```
+
 @module "terminal"
 
 @use "string" as string
 @use "termfx" as fx
 
-// Global flag to track raw mode state
+/// Global flag to track raw mode state
 let raw_mode_enabled: int = 0;
 
-// Enable raw mode - BLOCKING (waits for input)
+/// Enables raw terminal mode for blocking character input
+///
+/// In raw mode:
+/// - Input is read character-by-character (no line buffering)
+/// - Echo is disabled (typed characters don't appear)
+/// - Special keys like Ctrl+C don't generate signals
+/// - Cursor is hidden
+///
+/// This blocks waiting for input. Call disable_raw_mode() when done.
 pub const enable_raw_mode -> fn () void {
     if (raw_mode_enabled == 1) {
         return; // Already enabled
     }
-   // nooo
+   
     // Save terminal state and set up restoration on exit
     system("stty -g > /tmp/luma_termios_backup");
     
@@ -21,7 +55,7 @@ pub const enable_raw_mode -> fn () void {
     // -isig: disable interrupt signals (Ctrl+C, Ctrl+Z)
     // -ixon: disable software flow control (Ctrl+S, Ctrl+Q)
     // -icrnl: don't translate CR to NL
-    // min 1 time 0: blocking read (wait for at least 1 byteacter)
+    // min 1 time 0: blocking read (wait for at least 1 character)
     system("stty -icanon -echo -isig -ixon -icrnl min 0 time 0");
     
     // Hide cursor
@@ -30,7 +64,10 @@ pub const enable_raw_mode -> fn () void {
     raw_mode_enabled = 1;
 }
 
-// Disable raw mode - restore terminal to normal
+/// Disables raw mode and restores normal terminal settings
+///
+/// Restores the terminal to its state before enable_raw_mode() was called.
+/// Shows the cursor and resets colors.
 pub const disable_raw_mode -> fn () void {
     if (raw_mode_enabled == 0) {
         return; // Already disabled
@@ -49,8 +86,20 @@ pub const disable_raw_mode -> fn () void {
     raw_mode_enabled = 0;
 }
 
-// Blocking input in raw mode - waits for a key but no Enter needed
-// Use with enable_raw_mode() (not enable_raw_mode_nonblock)
+/// Reads a single character in raw mode (blocking)
+///
+/// Waits for a key press and returns it immediately without requiring Enter.
+/// Automatically enables raw mode if not already enabled.
+///
+/// # Returns
+/// The character that was pressed
+///
+/// # Example
+/// ```luma
+/// terminal::enable_raw_mode();
+/// defer { terminal::disable_raw_mode(); }
+/// let ch: byte = terminal::getch_raw();
+/// ```
 pub const getch_raw -> fn () byte {
     if (raw_mode_enabled == 0) {
         enable_raw_mode();
@@ -60,14 +109,30 @@ pub const getch_raw -> fn () byte {
     return c;
 }
 
-// Get a single byteacter without waiting for Enter
+/// Gets a single character without waiting for Enter
+///
+/// Simple character input without modifying terminal settings.
+///
+/// # Returns
+/// The character that was entered
 pub const getch -> fn () byte {
     // Just try to read input; don't touch stty here
     let c: byte = input<byte>(""); 
     return c;
 }
 
-// Get a single byteacter without waiting for Enter (no echo)
+/// Gets a single character without echo (silent input)
+///
+/// Temporarily disables echo, reads one character, then restores echo.
+///
+/// # Returns
+/// The character that was pressed (not displayed)
+///
+/// # Example
+/// ```luma
+/// output("Enter secret code: ");
+/// let code: byte = terminal::getch_silent();
+/// ```
 pub const getch_silent -> fn () byte {
     // Already has -echo, so it won't display
     system("stty -icanon -echo");
@@ -76,6 +141,12 @@ pub const getch_silent -> fn () byte {
     return c;
 }
 
+/// Gets a single character with echo
+///
+/// Reads one character and displays it.
+///
+/// # Returns
+/// The character that was entered
 #returns_ownership
 pub const getche -> fn () byte {
     // Disable canonical mode but keep echo
@@ -85,8 +156,15 @@ pub const getche -> fn () byte {
     return c;
 }
 
-// Check if a key is pressed (non-blocking)
-// WARNING: This consumes the byteacter! Don't use in raw mode.
+/// Checks if a key is pressed (non-blocking)
+///
+/// Tests for available input without blocking.
+///
+/// # Returns
+/// 1 if a key is available, 0 otherwise
+///
+/// # Warning
+/// This consumes the character! Don't use in raw mode.
 pub const kbhit -> fn () int {
     // Non-blocking test only
     let result: int = system("read -t 0 -n 1 key < /dev/tty");
@@ -98,14 +176,23 @@ pub const kbhit -> fn () int {
     return 0;
 }
 
-// Wait for any key press
+/// Waits for any key press with prompt
+///
+/// Displays a prompt and waits for any key to be pressed.
+///
+/// # Example
+/// ```luma
+/// terminal::wait_for_key();
+/// ```
 pub const wait_for_key -> fn () void {
     output("Press any key to continue...");
     getch();
     output("\n");
 }
 
-// Clear input buffer
+/// Clears the input buffer
+///
+/// Reads and discards any pending input.
 pub const clear_input_buffer -> fn () void {
     system("stty -icanon -echo");
     
@@ -123,7 +210,23 @@ pub const clear_input_buffer -> fn () void {
     system("stty icanon echo");
 }
 
-// Get password input (hidden)
+/// Gets password input with hidden characters
+///
+/// Displays a prompt and reads input without echo, showing asterisks
+/// for each character typed. Handles backspace.
+///
+/// # Parameters
+/// * `prompt` - Prompt to display before reading
+///
+/// # Returns
+/// Newly allocated string containing the password
+///
+/// # Example
+/// ```luma
+/// let pass: *byte = terminal::getpass("Enter password: ");
+/// defer { free(pass); }
+/// // ... use password ...
+/// ```
 #returns_ownership
 pub const getpass -> fn (prompt: *byte) *byte {
     output(prompt);
@@ -146,14 +249,14 @@ pub const getpass -> fn (prompt: *byte) *byte {
         if (c == cast<byte>(127) || c == cast<byte>(8)) {
             if (i > 0) {
                 i = i - 1;
-                output("\b \b"); // Erase byteacter visually
+                output("\b \b"); // Erase character visually
             }
             continue;
         }
         
         password[i] = c;
         i = i + 1;
-        output("*"); // Show asterisk for each byteacter
+        output("*"); // Show asterisk for each character
     }
     
     password[i] = cast<byte>(0); // Null terminate
@@ -163,7 +266,19 @@ pub const getpass -> fn (prompt: *byte) *byte {
     return password;
 }
 
-// Sleep for milliseconds (more precise than system("sleep"))
+/// Sleeps for milliseconds
+///
+/// More precise than system("sleep"). Uses usleep internally.
+///
+/// # Parameters
+/// * `ms` - Milliseconds to sleep
+///
+/// # Example
+/// ```luma
+/// output("Waiting...\n");
+/// terminal::sleep_ms(1000); // Wait 1 second
+/// output("Done!\n");
+/// ```
 pub const sleep_ms -> fn (ms: int) void {
     let cmd: *byte = cast<*byte>(alloc(64 * sizeof<byte>));
     defer { free(cmd); }
@@ -174,13 +289,30 @@ pub const sleep_ms -> fn (ms: int) void {
     system(cmd);
 }
 
-// Get terminal size
+/// Gets terminal size (stub - writes to temp files)
+///
+/// Writes terminal dimensions to temporary files.
+/// Implementation incomplete - needs file reading.
 pub const get_terminal_size -> fn () void {
     system("tput cols > /tmp/luma_cols");
     system("tput lines > /tmp/luma_lines");
     // Read back from files...
 }
 
+/// Reads a line of input with prompt
+///
+/// Displays a prompt and reads characters until Enter is pressed.
+///
+/// # Parameters
+/// * `prompt` - Prompt to display
+/// * `buffer` - Buffer to store input
+/// * `size` - Size of buffer
+///
+/// # Example
+/// ```luma
+/// let buffer: [byte; 100];
+/// terminal::get_line("Enter name: ", &buffer[0], 100);
+/// ```
 pub const get_line -> fn (prompt: *byte, buffer: *byte, size: int) void {
   output(prompt);
   let i: int = 0;

@@ -1,17 +1,60 @@
+//! Dynamic array (vector) implementation for Luma.
+//! 
+//! Provides a generic, resizable array container that can hold elements of any type.
+//! The vector automatically grows when capacity is exceeded and provides efficient
+//! random access, insertion, and removal operations.
+//!
+//! # Example
+//! ```luma
+//! let v: Vector = create_vector(sizeof<int>);
+//! defer free_vector(&v);
+//! 
+//! let x: int = 42;
+//! v.push_back(cast<*void>(&x));
+//! ```
+
 @module "vector"
 
 @use "memory" as memory
 
+/// Default initial capacity for vectors (1024 elements)
 const DEFAULT_VECTOR_CAPACITY: int = 1024;
+
+/// Null pointer constant
 const NULL: *void = cast<*void>(0);
 
+/// A dynamic array that can grow as needed.
+///
+/// Vector stores elements of a fixed size in contiguous memory.
+/// All elements must be of the same type (specified by element_size).
+/// The vector automatically reallocates when capacity is exceeded.
+///
+/// # Fields
+/// - `data`: Pointer to the underlying data buffer
+/// - `capacity`: Maximum number of elements before reallocation
+/// - `size`: Current number of elements stored
+/// - `element_size`: Size in bytes of each element
 pub const Vector -> struct {
-pub:
-    data: *void,
-    capacity: int,
-    size: int,          
-    element_size: int, 
+    data: *void,        /// Pointer to contiguous data buffer
+    capacity: int,      /// Maximum elements before resize
+    size: int,          /// Current number of elements
+    element_size: int,  /// Size of each element in bytes
 
+    /// Inserts an element at a specific index.
+    ///
+    /// Shifts all elements at and after the index one position to the right.
+    /// Automatically grows the vector if capacity is exceeded.
+    ///
+    /// @param elem Pointer to the element to insert
+    /// @param index Position to insert at (0 <= index <= size)
+    /// @return 1 on success, 0 if index is out of bounds
+    ///
+    /// # Example
+    /// ```luma
+    /// let v: Vector = create_vector(sizeof<int>);
+    /// let x: int = 10;
+    /// v.insert(cast<*void>(&x), 0); // Insert at beginning
+    /// ```
     insert -> fn (elem: *void, index: int) int {
         if (index < 0 || index > self.size) return 0;
 
@@ -41,6 +84,21 @@ pub:
         return 1;
     },
 
+    /// Appends an element to the end of the vector.
+    ///
+    /// This is the most efficient way to add elements.
+    /// Automatically grows the vector if capacity is exceeded.
+    ///
+    /// @param elem Pointer to the element to append
+    ///
+    /// # Example
+    /// ```luma
+    /// let v: Vector = create_vector(sizeof<int>);
+    /// let nums: [int; 3] = [1, 2, 3];
+    /// loop [i: int = 0](i < 3) : (++i) {
+    ///     v.push_back(cast<*void>(&nums[i]));
+    /// }
+    /// ```
     push_back -> fn (elem: *void) void {
         if (self.size >= self.capacity) {
             self.capacity = self.capacity * 2;
@@ -55,7 +113,20 @@ pub:
         self.size = self.size + 1;
     },
 
-
+    /// Removes and retrieves the last element from the vector.
+    ///
+    /// @param out Pointer to store the removed element (can be NULL to just remove)
+    /// @return 1 on success, 0 if vector is empty
+    ///
+    /// # Example
+    /// ```luma
+    /// let v: Vector = create_vector(sizeof<int>);
+    /// // ... add elements ...
+    /// let value: int;
+    /// if (v.pop_back(cast<*void>(&value))) {
+    ///     outputln("Popped: ", value);
+    /// }
+    /// ```
     pop_back -> fn (out: *void) int {
         if (self.size == 0) return 0;
 
@@ -71,6 +142,20 @@ pub:
         return 1;
     },
 
+    /// Removes the element at a specific index.
+    ///
+    /// Shifts all elements after the index one position to the left.
+    /// Does not reduce capacity.
+    ///
+    /// @param index Position of element to remove (0 <= index < size)
+    /// @return 1 on success, 0 if index is out of bounds
+    ///
+    /// # Example
+    /// ```luma
+    /// let v: Vector = create_vector(sizeof<int>);
+    /// // ... add elements ...
+    /// v.remove_at(2); // Remove third element
+    /// ```
     remove_at -> fn (index: int) int {
         if (index < 0 || index >= self.size) return 0;
 
@@ -91,6 +176,23 @@ pub:
         return 1;
     },
 
+    /// Retrieves a pointer to the element at a specific index.
+    ///
+    /// Returns a void pointer that must be cast to the appropriate type.
+    /// Does not remove the element from the vector.
+    ///
+    /// @param index Position of element to retrieve (0 <= index < size)
+    /// @return Pointer to element, or NULL if index is out of bounds
+    ///
+    /// # Example
+    /// ```luma
+    /// let v: Vector = create_vector(sizeof<int>);
+    /// // ... add elements ...
+    /// let ptr: *int = cast<*int>(v.get(0));
+    /// if (ptr != cast<*int>(0)) {
+    ///     outputln("First element: ", *ptr);
+    /// }
+    /// ```
     get -> fn (index: int) *void {
         if (index < 0 || index >= self.size) return NULL;
         return cast<*void>(
@@ -99,6 +201,22 @@ pub:
     }
 };
 
+/// Creates a vector with a specific initial capacity.
+///
+/// Allocates memory for init_capacity elements upfront.
+/// Use this when you know approximately how many elements you'll need
+/// to avoid multiple reallocations.
+///
+/// @param init_capacity Initial number of elements to allocate space for
+/// @param element_size Size in bytes of each element (use sizeof<T>)
+/// @return Newly created vector (caller must call free_vector when done)
+///
+/// # Example
+/// ```luma
+/// let v: Vector = create_vector_capacity(100, sizeof<double>);
+/// defer free_vector(&v);
+/// // Vector can hold 100 doubles before first reallocation
+/// ```
 #returns_ownership
 pub const create_vector_capacity -> fn (init_capacity: int, element_size: int) Vector {
     let v: Vector;
@@ -109,11 +227,42 @@ pub const create_vector_capacity -> fn (init_capacity: int, element_size: int) V
     return v;
 } 
 
+/// Creates a vector with default initial capacity.
+///
+/// Uses DEFAULT_VECTOR_CAPACITY (1024) as the initial capacity.
+/// This is the most common way to create a vector.
+///
+/// @param element_size Size in bytes of each element (use sizeof<T>)
+/// @return Newly created vector (caller must call free_vector when done)
+///
+/// # Example
+/// ```luma
+/// let v: Vector = create_vector(sizeof<int>);
+/// defer free_vector(&v);
+/// 
+/// loop [i: int = 0](i < 10) : (++i) {
+///     v.push_back(cast<*void>(&i));
+/// }
+/// ```
 #returns_ownership
 pub const create_vector -> fn (element_size: int) Vector {
     return create_vector_capacity(DEFAULT_VECTOR_CAPACITY, element_size);
 }
 
+/// Frees all memory associated with a vector.
+///
+/// After calling this function, the vector should not be used.
+/// This function takes ownership of the vector.
+///
+/// @param v Pointer to the vector to free
+///
+/// # Example
+/// ```luma
+/// let v: Vector = create_vector(sizeof<int>);
+/// // ... use vector ...
+/// free_vector(&v);
+/// // v is now invalid
+/// ```
 #takes_ownership
 pub const free_vector -> fn (v: *Vector) void {
     free(v.data);
