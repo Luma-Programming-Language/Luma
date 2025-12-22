@@ -209,11 +209,12 @@ pub const print_err -> fn (s: *byte, args: [int; 256]) int {
 /// * File cannot be opened
 /// * Memory allocation fails
 /// * Read operation fails
+
 #returns_ownership
 pub const read_file -> fn (path: *byte) *byte {
   let fd: int = sys::open(path, sys::O_RDONLY, 0);
   if (sys::is_error(fd)) {
-    sys::eprint("Error: Failed to open file for reading\n");
+    sys::eprint("Error: File does not exist, can not read from file\n");
     return cast<*byte>(0);
   }
 
@@ -280,4 +281,26 @@ pub const read_file -> fn (path: *byte) *byte {
 
   sys::close(fd);
   return buffer;
+}
+
+pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) int {
+    // check file exists and open file
+    let fd: int = sys::open(path, sys::O_RDWR, 0);
+    if (sys:is_error(fd)) {
+       sys::eprint("Error: File does not exist, can not to file.\n")
+       return -1;
+    }
+    // check buffer > 0
+    int bytes_to_write = string::strlen(buffer) + 1;
+    if (bytes_to_write <= 0) {
+       sys::eprint("Error: buffer size <= 0.\n");
+       sys::close(fd);
+       return -1;
+    }
+    // dump in one syscall
+    int written = sys::write(fd, buffer, bytes_to_write);
+    sys::close(fd);
+
+    // return the bytes written to the file
+    return written;
 }

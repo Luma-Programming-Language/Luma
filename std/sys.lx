@@ -28,6 +28,7 @@ pub const SYS_OPEN: int = 2;
 pub const SYS_CLOSE: int = 3;
 pub const SYS_STAT: int = 4;
 pub const SYS_FSTAT: int = 5;
+pub const SYS_LSTAT: int = 6;
 pub const SYS_LSEEK: int = 8;
 pub const SYS_MMAP: int = 9;
 pub const SYS_MUNMAP: int = 11;
@@ -84,6 +85,9 @@ pub const S_IRWXO: int = 7;    // 0007 - other rwx
 pub const S_IROTH: int = 4;    // 0004 - other read
 pub const S_IWOTH: int = 2;    // 0002 - other write
 pub const S_IXOTH: int = 1;    // 0001 - other execute
+
+// File metadata
+
 
 // Common permission combinations
 pub const MODE_0644: int = 420;  // rw-r--r--

@@ -197,6 +197,8 @@ pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
 /// let len: int = string::strlen("Hello");
 /// // len will be 5
 /// ```
+
+
 pub const strlen -> fn (s: *byte) int {
   let length: int = 0;
   loop (s[length] != cast<byte>(0)) : (++length) {}
@@ -345,6 +347,8 @@ pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
 
   return dest;
 }
+
+pub const string_to_buffer()
 
 /// Outputs a single character to the terminal
 ///
