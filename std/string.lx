@@ -348,8 +348,6 @@ pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
   return dest;
 }
 
-pub const string_to_buffer()
-
 /// Outputs a single character to the terminal
 ///
 /// Handles special characters with proper shell escaping using system commands.

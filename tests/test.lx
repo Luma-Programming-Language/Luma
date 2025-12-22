@@ -1,33 +1,122 @@
 @module "main"
 
-@use "vector" as vector
+@use "string" as string
 @use "io" as io
 
+const Slice  -> struct { 
+    ptr: *byte, len: int,
+
+    slice_end -> fn () *byte { return cast<*byte>(cast<int>(self.ptr) + self.len); },
+
+    null_terminated_slice -> fn (s: *byte) Slice {
+        let len: int = 0;
+        let cursor: *byte = s;
+
+        loop (cursor != cast<*byte>(0) && *cursor != '\0') 
+            : (cursor = cast<*byte>(cast<int>(cursor) + 1)) {
+            len++;
+        }
+
+        return Slice { ptr: s, len: len };
+    }
+};
+
+const NULL_BYTE: Slice = Slice { ptr: "", len: 0 };
+const String -> struct { 
+    slice: Slice, cap: int, 
+
+    #returns_ownership
+    concat_strs -> fn (start: *Slice, len: int) String {
+        let end: *Slice = cast<*Slice>(cast<int>(start) + len * sizeof<Slice>);
+        let total_len: int = 0;
+
+        loop [cursor: *Slice = start](cursor != end)
+            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
+            total_len = total_len + cursor.len;
+        }
+
+        let ptr: *byte = cast<*byte>(alloc(total_len + 1));
+        let out_cursor: *byte = ptr;
+
+        loop [cursor: *Slice = start](cursor != end)
+            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
+
+            let slice_end: *byte = cursor.slice_end();
+
+            loop [slice_cursor: *byte = cursor.ptr](slice_cursor != slice_end)
+                : (slice_cursor = cast<*byte>(cast<int>(slice_cursor) + 1)) {
+                *out_cursor = *slice_cursor;
+                out_cursor = cast<*byte>(cast<int>(out_cursor) + 1);
+            }
+        }
+        *out_cursor = '\0';
+
+        return String { slice: Slice { ptr: ptr, len: total_len }, cap: total_len };
+    },
+
+    as_slice -> fn () Slice { return self.slice; }
+};
+
+#takes_ownership
+const free_string -> fn (s: *String) void {
+    free(s.slice.ptr);
+}
+
 pub const main -> fn () int {
-    let v: Vector = vector::create_vector(sizeof<int>);
-    defer { vector::free_vector(&v); }
+    let project_name: *byte = "project";
 
-    loop [i: int = 0](i < 10) : (++i) {
-        v.push_back(cast<*void>(&i));
+    let make_root_command: *byte = cast<*byte>(alloc(64));
+    defer { free(make_root_command); }
+    string::cat(make_root_command, "mkdir -p ", project_name);
+
+    if (cast<int>(system(make_root_command)) != 0) {
+        io::print_str(
+            "Something prevented %s from being created\n",
+            [project_name]
+        );
+        return 1;
     }
 
-    v.remove_at(5);
-    v.remove_at(0);
+    io::print_str(
+        "Created %s root\n",
+        [project_name]
+    );
 
-    let val: int = 40;
-    v.push_back(cast<*void>(&val));
+    system("touch project/build.bolt");
+    let build_info_dump: *byte = cast<*byte>(alloc(sizeof<*byte> * 1024));
+    defer { free(build_info_dump); }
 
-    let popped: int;
-    v.pop_back(cast<*void>(&popped));
-    io::print_int("Popped value: %d\n", [popped]);
+    let slices: *Slice = cast<*Slice>(alloc(5 * sizeof<Slice>));
+    defer { free(slices); }
 
+    let abc: *byte = "abc";
+    let de: *byte = "de";
+    let jk:*byte = "jk";
 
-    loop [i: int = 0](i < v.size) : (++i) {
-        output(cast<*int>(v.data)[i], "\n");
-    }
+    slices[0] = slices.null_terminated_slice(abc);
+    slices[1] = slices.null_terminated_slice(de);
+    slices[2] = slices.null_terminated_slice("fghi");
+    slices[3] = slices.null_terminated_slice(jk);
+    slices[4] = NULL_BYTE;
 
-    // let get: int = *cast<*int>(v.get(5));
-    // io::print_int("get value (5): %d\n", [get]);
+    let front: String;
+    front = front.concat_strs(slices, 4);
+    defer { free_string(&front); }
+
+    front.slice.len = front.slice.len - 1;
+
+    let more: *Slice = cast<*Slice>(alloc(3 * sizeof<Slice>));
+    defer { free(more); }
+
+    more[0] = front.as_slice();
+    more[1] = more.null_terminated_slice("lmnop");
+    more[2] = NULL_BYTE;
+    
+    let final: String;
+    final = final.concat_strs(more, 3);
+    defer { free_string(&final); }
+
+    io::write_buffer_to_file("project/build.bolt", final.slice.ptr);
 
     return 0;
 }

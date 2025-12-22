@@ -286,19 +286,19 @@ pub const read_file -> fn (path: *byte) *byte {
 pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) int {
     // check file exists and open file
     let fd: int = sys::open(path, sys::O_RDWR, 0);
-    if (sys:is_error(fd)) {
-       sys::eprint("Error: File does not exist, can not to file.\n")
+    if (sys::is_error(fd)) {
+       sys::eprint("Error: File does not exist, can not to file.\n");
        return -1;
     }
     // check buffer > 0
-    int bytes_to_write = string::strlen(buffer) + 1;
+    let bytes_to_write: int = string::strlen(buffer);
     if (bytes_to_write <= 0) {
        sys::eprint("Error: buffer size <= 0.\n");
        sys::close(fd);
        return -1;
     }
     // dump in one syscall
-    int written = sys::write(fd, buffer, bytes_to_write);
+    let written: int = sys::write(fd, cast<*void>(buffer), bytes_to_write);
     sys::close(fd);
 
     // return the bytes written to the file
