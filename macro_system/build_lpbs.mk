@@ -1,4 +1,4 @@
-LUMA = ./../../luma
+LUMA = ../luma
 NAME = lpbs
 
 MAIN = ./src/main.lx
@@ -13,11 +13,11 @@ SRCS := $(call walk,./src)
 SRCS := $(filter-out $(MAIN),$(SRCS))
 
 
-STD_LIBS = ../../std/time.lx \
-           ../../std/string.lx \
-		       ../../std/sys.lx \
-		       ../../std/io.lx \
-		       ../../std/memory.lx
+STD_LIBS = ../std/time.lx \
+           ../std/string.lx \
+		   ../std/sys.lx \
+		   ../std/io.lx \
+		   ../std/memory.lx
 
 ALL_SRCS = $(MAIN) $(SRCS) $(STD_LIBS)
 
@@ -42,7 +42,7 @@ all: $(TARGET)
 # Build spinning cube demo
 $(TARGET): $(ALL_SRCS)
 	@echo "Building LPBS..."
-	$(LUMA) $(MAIN) -name $(NAME) -l $(SRCS) $(STD_LIBS)
+	$(LUMA) $(MAIN) -name $(NAME) -l $(SRCS) $(STD_LIBS) --no-sanitize -save
 ifeq ($(OS),Windows_NT)
 	@if exist nul del nul
 else

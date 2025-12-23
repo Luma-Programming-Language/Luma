@@ -81,7 +81,7 @@ const k_symbol: [K_Symbol_Map; 10] = [
 ];
 
 const d_symbol: [D_Symbol_Map; 4] = [
-  D_Symbol_Map{value: "==", type: TokenType::TOK_EQEQ},
+  D_Symbol_Map{value: "==", type: TokenType::TOK_EQEQ},1
   D_Symbol_Map{value: "!=", type: TokenType::TOK_NOTEQ},
   D_Symbol_Map{value: "->", type: TokenType::TOK_ARROW},
   D_Symbol_Map{value: "::", type: TokenType::TOK_DCOLON}

@@ -6,7 +6,8 @@
 @use "ast" as ast
 @use "sys" as sys
 
-const parse_expr -> fn (psr: *Parser, bp: int) *Expr;
+
+#returns_ownership const parse_expr -> fn (psr: *Parser, bp: int) *Expr;
 
 const get_infix_bp -> fn (token_type: int) int {
   switch (token_type) {
@@ -18,6 +19,7 @@ const get_infix_bp -> fn (token_type: int) int {
   }
 }
 
+#returns_ownership
 const parse_literal -> fn (psr: *Parser) *Expr {
   let tok: Token = helper::peek(psr);
   
@@ -44,6 +46,7 @@ const parse_literal -> fn (psr: *Parser) *Expr {
   }
 }
 
+#returns_ownership
 const nud -> fn (psr: *Parser) *Expr {
   let tok: Token = helper::peek(psr);
   
@@ -76,6 +79,7 @@ const nud -> fn (psr: *Parser) *Expr {
   }
 }
 
+#returns_ownership
 const led -> fn (psr: *Parser, left: *Expr, token: Token) *Expr {
   switch (token.type) {
     lexer::TokenType::TOK_EQEQ, lexer::TokenType::TOK_NOTEQ, lexer::TokenType::TOK_PLUS,
@@ -92,6 +96,7 @@ const led -> fn (psr: *Parser, left: *Expr, token: Token) *Expr {
   }
 }
 
+#returns_ownership
 const parse_expr -> fn (psr: *Parser, bp: int) *Expr {
   let left: *Expr = nud(psr);
   
@@ -106,6 +111,7 @@ const parse_expr -> fn (psr: *Parser, bp: int) *Expr {
   return left;
 }
 
+#returns_ownership
 pub const parse -> fn (tks: *Token, path: *byte) *Stmt {
   let psr: Parser;
   helper::init_parser(&psr, tks, path);
