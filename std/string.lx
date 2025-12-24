@@ -197,7 +197,66 @@ pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
 /// let len: int = string::strlen("Hello");
 /// // len will be 5
 /// ```
+//
+pub const Slice -> struct {
+    ptr: *byte, len: int,
 
+    slice_end -> fn () *byte { return cast<*byte>(cast<int>(self.ptr) + self.len); },
+
+    null_terminated_slice -> fn (s: *byte) Slice {
+        let len: int = 0;
+        let cursor: *byte = s;
+
+        loop (cursor != cast<*byte>(0) && *cursor != '\0')
+            : (cursor = cast<*byte>(cast<int>(cursor) + 1)) {
+            len++;
+        }
+
+        return Slice { ptr: s, len: len };
+    }
+};
+
+//
+pub const String -> struct {
+    slice: Slice, cap: int,
+
+    #returns_ownership
+    concat_strs -> fn (start: *Slice, len: int) String {
+        let end: *Slice = cast<*Slice>(cast<int>(start) + len * sizeof<Slice>);
+        let total_len: int = 0;
+
+        loop [cursor: *Slice = start](cursor != end)
+            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
+            total_len = total_len + cursor.len;
+        }
+
+        let ptr: *byte = cast<*byte>(alloc(total_len + 1));
+        let out_cursor: *byte = ptr;
+
+        loop [cursor: *Slice = start](cursor != end)
+            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
+
+            let slice_end: *byte = cursor.slice_end();
+
+            loop [slice_cursor: *byte = cursor.ptr](slice_cursor != slice_end)
+                : (slice_cursor = cast<*byte>(cast<int>(slice_cursor) + 1)) {
+                *out_cursor = *slice_cursor;
+                out_cursor = cast<*byte>(cast<int>(out_cursor) + 1);
+            }
+        }
+        *out_cursor = '\0';
+
+        return String { slice: Slice { ptr: ptr, len: total_len }, cap: total_len };
+    },
+
+    as_slice -> fn () Slice { return self.slice; }
+};
+//
+#takes_ownership
+pub const free_string -> fn (s: *String) void {
+    free(s.slice.ptr);
+}
+//
 
 pub const strlen -> fn (s: *byte) int {
   let length: int = 0;
