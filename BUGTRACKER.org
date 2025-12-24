@@ -1,0 +1,23 @@
+* Bug Tracking
+
+** Major Bugs [0%]
+*** TODO Parser crashes on empty input
+    - file :: src/parser.lx
+    - repro :: luma ""
+    - expected :: error message
+    - actual :: crash
+    - severity :: critical
+
+*** TODO Type checker accepts invalid AST
+    - file :: src/typecheck.lx
+    - repro :: malformed tree
+    - severity :: high
+
+** Minor Bugs [0%]
+*** TODO Error messages missing line numbers
+    - file :: src/errors.lx
+    - severity :: low
+
+** Fixed Bugs [0%]
+*** TODO Memory leak in lexer
+    - fixed :: 2025-12-24
