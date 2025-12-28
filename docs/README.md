@@ -3,7 +3,7 @@
 *A low-level compiled alternative to C, C++, and more!*
 
 <p align="center">
-  <img src="assets/luma.png" alt="Luma Logo" width="160"/>
+  <img src="../assets/luma.png" alt="Luma Logo" width="160"/>
 </p>
 
 [Why?](#why) • [Goals](#language-goals) • [Performance](#performance) • [Static Analysis & Ownership](#static-analysis-and-ownership) • [Status](#project-status) • [Getting Started](#getting-started) • [Join Us](#join-us)
