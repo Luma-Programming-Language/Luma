@@ -4,14 +4,12 @@
 @use "io" as io
 @use "types" as types
 
-
 pub const main -> fn () int {
-
     // make the project folder
     let project_name: *byte = "mkdir -p project";
-    system(make_root_command)
-    io::print_str("Created %s root\n", [project_name]);
-
+    system(project_name);
+    io::print("Created %s root %d: %c\n", 
+              [io::str_arg(project_name), io::int_arg(140), io::byte_arg('4')]);
 
     system("touch project/build.bolt");
 
@@ -49,6 +47,7 @@ pub const main -> fn () int {
     defer { string::free_string(&final); }
 
     io::write_buffer_to_file("project/build.bolt", final.slice.ptr);
+    io::print("Wrote build.bolt with content: %s\n", [io::str_arg(final.slice.ptr)]);
 
     return 0;
 }

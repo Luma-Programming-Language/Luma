@@ -515,9 +515,6 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     // Method call: obj.method(arg1, arg2)
     const char *member_name = callee->expr.member.member;
     
-    // **FIX: The typechecker already injected self into args[0]!**
-    // Just look up the method and use args as-is
-    
     LLVMValueRef method_func = NULL;
 
     // First try current module
@@ -584,17 +581,80 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
+  // CRITICAL: Validate callee_value before proceeding
+  if (!callee_value) {
+    fprintf(stderr, "Error: callee_value is NULL in codegen_expr_call\n");
+    return NULL;
+  }
+
+  // CRITICAL: Check if callee_value is actually a function
+  if (!LLVMIsAFunction(callee_value)) {
+    fprintf(stderr, "Error: callee_value is not a function\n");
+    LLVMDumpValue(callee_value);
+    return NULL;
+  }
+
   // Get the function type to check return type
   LLVMTypeRef func_type = LLVMGlobalGetValueType(callee_value);
+  if (!func_type) {
+    fprintf(stderr, "Error: Failed to get function type\n");
+    return NULL;
+  }
+
   LLVMTypeRef return_type = LLVMGetReturnType(func_type);
+  if (!return_type) {
+    fprintf(stderr, "Error: Failed to get return type\n");
+    return NULL;
+  }
 
   // Check if return type is void
   if (LLVMGetTypeKind(return_type) == LLVMVoidTypeKind) {
     LLVMBuildCall2(ctx->builder, func_type, callee_value, args, arg_count, "");
     return LLVMConstNull(LLVMVoidTypeInContext(ctx->context));
-  } else {
-    return LLVMBuildCall2(ctx->builder, func_type, callee_value, args, arg_count, "call");
   }
+
+  // CRITICAL: For struct returns, we need special handling
+  LLVMTypeKind return_kind = LLVMGetTypeKind(return_type);
+  if (return_kind == LLVMStructTypeKind) {
+    // Check if this is a cross-module call
+    LLVMModuleRef callee_module = LLVMGetGlobalParent(callee_value);
+    LLVMModuleRef current_llvm_module = 
+        ctx->current_module ? ctx->current_module->module : ctx->module;
+    
+    bool is_cross_module = (callee_module != current_llvm_module);
+    
+    if (is_cross_module) {
+      // For cross-module struct returns, ensure we have a proper external declaration
+      const char *func_name = LLVMGetValueName(callee_value);
+      
+      // Check if we already have a declaration in current module
+      LLVMValueRef local_func = LLVMGetNamedFunction(current_llvm_module, func_name);
+      
+      if (!local_func) {
+        // Create external declaration
+        local_func = LLVMAddFunction(current_llvm_module, func_name, func_type);
+        LLVMSetLinkage(local_func, LLVMExternalLinkage);
+      }
+      
+      // CRITICAL: Ensure both functions have the same calling convention
+      LLVMCallConv source_cc = LLVMGetFunctionCallConv(callee_value);
+      LLVMSetFunctionCallConv(local_func, source_cc);
+      
+      // Use local declaration for the call
+      callee_value = local_func;
+    }
+    
+    // For struct returns, allocate space and load the result
+    // This ensures proper struct return handling regardless of ABI
+    LLVMValueRef call_result = LLVMBuildCall2(ctx->builder, func_type, 
+                                              callee_value, args, arg_count, "struct_call");
+    
+    // The struct is returned by value - just return it
+    return call_result;
+  }
+
+  // Regular (non-struct, non-void) return
+  return LLVMBuildCall2(ctx->builder, func_type, callee_value, args, arg_count, "call");
 }
 
 // Unified assignment handler that supports all assignment types

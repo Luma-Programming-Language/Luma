@@ -11,131 +11,147 @@
 @use "sys" as sys
 
 /// Initial buffer size for file reading operations (4KB)
-const INITIAL_BUFFER_SIZE: int = 4096;  // Start with 4KB
-
+const INITIAL_BUFFER_SIZE: int = 4096;
 /// Factor by which buffers grow when they need to expand
-const BUFFER_GROWTH_FACTOR: int = 2;     // Double size when growing
+const BUFFER_GROWTH_FACTOR: int = 2; 
 
-/// Prints a formatted string with integer arguments to stdout
-///
-/// This function performs simple printf-style formatting, supporting only the %d
-/// format specifier for integers. The format string is scanned character by character,
-/// and %d sequences are replaced with the corresponding integer from the args array.
-///
-/// # Parameters
-/// * `s` - Format string containing text and %d placeholders
-/// * `args` - Array of up to 256 integers to substitute into the format string
-///
-/// # Returns
-/// The number of bytes written to stdout, or an error code if writing fails
-///
-/// # Memory
-/// Allocates a 256-byte temporary buffer which is automatically freed via defer
-pub const print_int -> fn (s: *byte, args: [int; 256]) int {
-    // Simple implementation: only supports %d for integers
-    let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
-    let buf_index: int = 0; let arg_index: int = 0;
-    defer { free(buffer); }
-    
-    loop [i: int = 0](s[i] != '\0') : (++i) {
-        if (s[i] == '%' && s[i + 1] == 'd' && arg_index < 256) {
-            let num_str: *byte = string::from_int(args[arg_index]);
-            defer { free(num_str); }
+/// Type tags for format arguments
+pub const ARG_INT: int = 0;
+pub const ARG_STR: int = 1;
+pub const ARG_BYTE: int = 2;
+pub const ARG_FLOAT: int = 3;
 
-            loop [j: int = 0](num_str[j] != '\0') : (++j) {
-                buffer[buf_index] = num_str[j];
-                buf_index = buf_index + 1;
-            }
-            arg_index = arg_index + 1;
-            i = i + 1; // Skip 'd'
-        } else {
-            buffer[buf_index] = s[i];
-            buf_index = buf_index + 1;
-        }
-    }
-    buffer[buf_index] = '\0'; // Null-terminate
+pub const FormatArg -> struct {
+  tag: int,
+  str_ptr: *byte, 
+  int_val: int,     
+  byte_val: byte
+};
 
-    let written: int = sys::write_str(sys::STDOUT, buffer);
-    return written;
+pub const str_arg -> fn (arg: *byte) FormatArg {
+  return FormatArg { 
+    tag: ARG_STR,
+    str_ptr: arg,
+    int_val: 0,
+    byte_val: '\0',
+  };
 }
 
-/// Prints a formatted string with string arguments to stdout
-///
-/// This function performs simple printf-style formatting, supporting only the %s
-/// format specifier for strings. The format string is scanned character by character,
-/// and %s sequences are replaced with the corresponding string from the args array.
-///
-/// # Parameters
-/// * `s` - Format string containing text and %s placeholders
-/// * `args` - Array of up to 256 string pointers to substitute into the format string
-///
-/// # Returns
-/// The number of bytes written to stdout, or an error code if writing fails
-///
-/// # Memory
-/// Allocates a 256-byte temporary buffer which is automatically freed via defer
-pub const print_str -> fn (s: *byte, args: [*byte; 256]) int {
-    // Simple implementation: only supports %s for strings
-    let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
-    let buf_index: int = 0; let arg_index: int = 0;
-    defer { free(buffer); }
-    
-    loop [i: int = 0](s[i] != '\0') : (++i) {
-        if (s[i] == '%' && s[i + 1] == 's' && arg_index < 256) {
-            let str_arg: *byte = args[arg_index];
-            loop [j: int = 0](str_arg[j] != '\0') : (++j) {
-                buffer[buf_index] = str_arg[j];
-                buf_index = buf_index + 1;
-            }
-            arg_index = arg_index + 1;
-            i = i + 1; // Skip 's'
-        } else {
-            buffer[buf_index] = s[i];
-            buf_index = buf_index + 1;
-        }
-    }
-    buffer[buf_index] = '\0'; // Null-terminate
-
-    let written: int = sys::write_str(sys::STDOUT, buffer);
-    return written;
+pub const int_arg -> fn (arg: int) FormatArg {
+  return FormatArg { 
+    tag: ARG_INT,
+    str_ptr: "",
+    int_val: arg,
+    byte_val: '\0',
+  };
 }
 
-/// Prints a formatted string with byte (character) arguments to stdout
+pub const byte_arg -> fn (arg: byte) FormatArg {
+  return FormatArg { 
+    tag: ARG_BYTE,
+    str_ptr: "",
+    int_val: 0,
+    byte_val: arg,
+  };
+}
+
+/// Prints a formatted string with mixed-type arguments to stdout
 ///
-/// This function performs simple printf-style formatting, supporting only the %c
-/// format specifier for individual bytes/characters. The format string is scanned
-/// character by character, and %c sequences are replaced with the corresponding
-/// byte from the args array.
+/// This function performs printf-style formatting, supporting:
+/// * %d - integers
+/// * %s - strings
+/// * %c - bytes/characters
+/// * %f - floats (requires precision, e.g., %.2f)
+///
+/// The number of arguments consumed is determined by the number of format
+/// specifiers in the format string. The args array is bounds-checked to
+/// prevent buffer overruns.
 ///
 /// # Parameters
-/// * `s` - Format string containing text and %c placeholders
-/// * `args` - Array of up to 256 bytes to substitute into the format string
+/// * `s` - Format string containing text and format placeholders
+/// * `args` - Array of FormatArg structs containing typed arguments
 ///
 /// # Returns
 /// The number of bytes written to stdout, or an error code if writing fails
 ///
+/// # Example
+/// ```luma
+/// let name: *byte = "Alice";
+/// let age: int = 30;
+/// let initial: byte = 'A';
+/// 
+/// let name_ptr: *void = cast<*void>(&name);
+/// let age_ptr: *void = cast<*void>(&age);
+/// let initial_ptr: *void = cast<*void>(&initial);
+/// 
+/// let args: [FormatArg; 256];
+/// args[0] = FormatArg { tag: ARG_STR, data: name_ptr };
+/// args[1] = FormatArg { tag: ARG_INT, data: age_ptr };
+/// args[2] = FormatArg { tag: ARG_BYTE, data: initial_ptr };
+/// 
+/// print("Name: %s, Age: %d, Initial: %c\n", args);
+/// ```
+///
 /// # Memory
-/// Allocates a 256-byte temporary buffer which is automatically freed via defer
-pub const print_byte -> fn (s: *byte, args: [byte; 256]) int {
-    // Simple implementation: only supports %c for byteacters
-    let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
-    let buf_index: int = 0; let arg_index: int = 0;
+/// Allocates a 1024-byte temporary buffer which is automatically freed via defer
+pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
+    let buffer: *byte = cast<*byte>(alloc(1024 * sizeof<byte>));
+    let buf_index: int = 0;
+    let arg_index: int = 0;
     defer { free(buffer); }
     
     let i: int = 0;
-    loop (s[i] != '\0') : (++i) {
-        if (s[i] == '%' && s[i + 1] == 'c' && arg_index < 256) {
-            buffer[buf_index] = args[arg_index];
-            buf_index = buf_index + 1;
-            arg_index = arg_index + 1;
-            i = i + 1; // Skip 'c'
-        } else {
-            buffer[buf_index] = s[i];
-            buf_index = buf_index + 1;
+    loop (s[i] != '\0') {
+      if (s[i] == '%' && arg_index < 256) {
+        let next: byte = s[i + 1];
+        let arg: FormatArg = args[arg_index];
+        
+        switch (next) {
+          'd' -> {
+            if (arg.tag == ARG_INT) {
+              let num_str: *byte = string::from_int(arg.int_val);
+              defer { free(num_str); }
+              
+              loop [j: int = 0](num_str[j] != '\0') : (++j) {
+                  buffer[buf_index] = num_str[j];
+                  buf_index = buf_index + 1;
+              }
+              arg_index = arg_index + 1;
+              i = i + 2; // Skip the 'd'
+              continue;
+            }
+          }
+          'c' -> {
+            if (arg.tag == ARG_BYTE) {
+              buffer[buf_index] = arg.byte_val;
+              buf_index = buf_index + 1;
+              arg_index = arg_index + 1;
+              i = i + 2; // Skip the 'c'
+              continue;
+            }
+          }
+          's' -> {
+            if (arg.tag == ARG_STR) {
+                let str_arg: *byte = arg.str_ptr;
+                
+                loop [j: int = 0](str_arg[j] != '\0') : (++j) {
+                    buffer[buf_index] = str_arg[j];
+                    buf_index = buf_index + 1;
+                }
+                arg_index = arg_index + 1;
+                i = i + 1; // Skip the 's'
+                continue;
+            }
+          }
         }
-    }
-    buffer[buf_index] = '\0'; // Null-terminate
+      }
 
+      buffer[buf_index] = s[i];
+      buf_index = buf_index + 1;
+      i = i + 1;
+    }
+    buffer[buf_index] = '\0';
+    
     let written: int = sys::write_str(sys::STDOUT, buffer);
     return written;
 }

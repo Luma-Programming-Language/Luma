@@ -1,6 +1,7 @@
 //! These are more advanced types.
 
 @module "types"
+
 @use "string" as string
 
 /// null-terminate type.

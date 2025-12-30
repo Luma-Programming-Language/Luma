@@ -41,7 +41,6 @@ void set_current_module(CodeGenContext *ctx, ModuleCompilationUnit *module) {
   ctx->current_module = module;
 }
 
-// Generate external function declarations for cross-module calls
 void generate_external_declarations(CodeGenContext *ctx,
                                     ModuleCompilationUnit *target_module) {
   // Go through all other modules and create external declarations for public
@@ -51,24 +50,44 @@ void generate_external_declarations(CodeGenContext *ctx,
     if (source_module == target_module)
       continue;
 
-    // Iterate through ALL functions in the source module (not just symbols)
+    // Iterate through ALL functions in the source module
     LLVMValueRef func = LLVMGetFirstFunction(source_module->module);
     while (func) {
       // Check if this function has external linkage (is public)
       if (LLVMGetLinkage(func) == LLVMExternalLinkage) {
         const char *func_name = LLVMGetValueName(func);
-        
+
         // Check if already declared in target module
-        LLVMValueRef existing = LLVMGetNamedFunction(target_module->module, func_name);
+        LLVMValueRef existing =
+            LLVMGetNamedFunction(target_module->module, func_name);
         if (!existing) {
           // Create external declaration
           LLVMTypeRef func_type = LLVMGlobalGetValueType(func);
           LLVMValueRef external_func =
               LLVMAddFunction(target_module->module, func_name, func_type);
           LLVMSetLinkage(external_func, LLVMExternalLinkage);
+
+          // **NEW: Copy calling convention and attributes for struct returns**
+          LLVMTypeRef return_type = LLVMGetReturnType(func_type);
+          if (LLVMGetTypeKind(return_type) == LLVMStructTypeKind) {
+            // Copy calling convention
+            LLVMCallConv cc = LLVMGetFunctionCallConv(func);
+            LLVMSetFunctionCallConv(external_func, cc);
+
+            // Copy parameter attributes
+            unsigned param_count = LLVMCountParams(func);
+            for (unsigned i = 0; i < param_count; i++) {
+              LLVMValueRef src_param = LLVMGetParam(func, i);
+              LLVMValueRef dst_param = LLVMGetParam(external_func, i);
+
+              if (LLVMGetAlignment(src_param) > 0) {
+                LLVMSetAlignment(dst_param, LLVMGetAlignment(src_param));
+              }
+            }
+          }
         }
       }
-      
+
       func = LLVMGetNextFunction(func);
     }
   }
@@ -170,17 +189,17 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
   // Create output directory if it doesn't exist
   struct stat st = {0};
   if (stat(output_dir, &st) == -1) {
-  #ifdef _WIN32
+#ifdef _WIN32
     if (mkdir(output_dir) != 0) {
       fprintf(stderr, "Failed to create output directory: %s\n", output_dir);
       return false;
     }
-  #else
+#else
     if (mkdir(output_dir, 0755) != 0) {
       fprintf(stderr, "Failed to create output directory: %s\n", output_dir);
       return false;
     }
-  #endif 
+#endif
   }
 
   bool success = true;
@@ -233,10 +252,10 @@ CodeGenContext *init_codegen_context(ArenaAllocator *arena) {
   ctx->loop_break_block = NULL;
   ctx->struct_types = NULL;
   ctx->arena = arena;
-  
+
   // ADD THIS LINE:
-  ctx->module = NULL;  // Initialize legacy module field
-  
+  ctx->module = NULL; // Initialize legacy module field
+
   // OR initialize deferred statements if they exist:
   ctx->deferred_statements = NULL;
   ctx->deferred_count = 0;
@@ -455,7 +474,7 @@ char *process_escape_sequences(const char *input) {
         output[out_idx++] = '\\';
         i++;
         break;
-      
+
       case '"':
         output[out_idx++] = '"';
         i++;

@@ -52,6 +52,15 @@ LLVMTypeRef extract_element_type_from_ast(CodeGenContext *ctx,
   return NULL; // Not a pointer type
 }
 
+static void set_struct_return_convention(LLVMValueRef function, LLVMTypeRef return_type) {
+  if (LLVMGetTypeKind(return_type) != LLVMStructTypeKind) {
+    return; // Not a struct, nothing to do
+  }
+  
+  // Use C calling convention which handles struct returns properly on all platforms
+  LLVMSetFunctionCallConv(function, LLVMCCallConv);
+}
+
 // Modified variable declaration function
 LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
   LLVMTypeRef var_type = codegen_type(ctx, node->stmt.var_decl.var_type);
@@ -180,7 +189,6 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
     // Function already declared - validate signature matches
     LLVMTypeRef existing_type = LLVMGlobalGetValueType(existing_function);
 
-    // Compare return types
     if (LLVMGetReturnType(existing_type) != return_type) {
       fprintf(stderr,
               "Error: Function '%s' redeclared with different return type\n",
@@ -188,9 +196,7 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
       return NULL;
     }
 
-    // Compare parameter counts
-    if (LLVMCountParamTypes(existing_type) !=
-        node->stmt.func_decl.param_count) {
+    if (LLVMCountParamTypes(existing_type) != node->stmt.func_decl.param_count) {
       fprintf(
           stderr,
           "Error: Function '%s' redeclared with different parameter count\n",
@@ -198,7 +204,6 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
       return NULL;
     }
 
-    // Compare parameter types
     LLVMTypeRef *existing_param_types = (LLVMTypeRef *)arena_alloc(
         ctx->arena, sizeof(LLVMTypeRef) * node->stmt.func_decl.param_count,
         alignof(LLVMTypeRef));
@@ -207,31 +212,27 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
     for (size_t i = 0; i < node->stmt.func_decl.param_count; i++) {
       if (existing_param_types[i] != param_types[i]) {
         fprintf(stderr,
-                "Error: Function '%s' redeclared with different parameter %zu "
-                "type\n",
+                "Error: Function '%s' redeclared with different parameter %zu type\n",
                 func_name, i);
         return NULL;
       }
     }
 
-    // Signatures match
     if (forward_declared) {
-      // This is another prototype - already exists, just return it
       return existing_function;
     }
 
-    // This is the implementation - check if it already has a body
     if (LLVMCountBasicBlocks(existing_function) > 0) {
       fprintf(stderr, "Error: Function '%s' already has an implementation\n",
               func_name);
       return NULL;
     }
 
-    // Use the existing declaration for the implementation
     LLVMValueRef function = existing_function;
-
-    // Update symbol table if needed (it should already be there)
-    // Just proceed to generate the body
+    
+    // CRITICAL: Ensure calling convention is set for struct returns
+    set_struct_return_convention(function, return_type);
+    
     goto generate_body;
 
   } else {
@@ -247,6 +248,9 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
 
     // Set linkage
     LLVMSetLinkage(function, get_function_linkage(node));
+    
+    // CRITICAL: Set calling convention for struct returns
+    set_struct_return_convention(function, return_type);
 
     // Add to symbol table
     add_symbol(ctx, func_name, function, func_type, true);
@@ -258,17 +262,14 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
                         strlen(node->stmt.func_decl.param_names[i]));
     }
 
-    // If this is just a forward declaration (prototype), we're done
     if (forward_declared) {
       return function;
     }
 
-    // Otherwise, proceed to generate the body
     goto generate_body;
   }
 
 generate_body: {
-  // At this point, 'function' or 'existing_function' is set
   LLVMValueRef function =
       existing_function ? existing_function
                         : LLVMGetNamedFunction(current_llvm_module, func_name);
@@ -278,7 +279,6 @@ generate_body: {
     return NULL;
   }
 
-  // Function must have a body at this point
   if (!node->stmt.func_decl.body) {
     fprintf(stderr, "Error: Function '%s' implementation missing body\n",
             func_name);
@@ -306,7 +306,6 @@ generate_body: {
                                           node->stmt.func_decl.param_names[i]);
     LLVMBuildStore(ctx->builder, param, alloca);
 
-    // Extract element type for the pointer
     LLVMTypeRef element_type =
         extract_element_type_from_ast(ctx, node->stmt.func_decl.param_types[i]);
     add_symbol_with_element_type(ctx, node->stmt.func_decl.param_names[i],
@@ -334,10 +333,8 @@ generate_body: {
   LLVMPositionBuilderAtEnd(ctx->builder, cleanup_entry);
 
   if (ctx->deferred_statements) {
-    // Branch to the first cleanup block
     LLVMBuildBr(ctx->builder, ctx->deferred_statements->cleanup_block);
   } else {
-    // No deferred statements, go straight to normal return
     LLVMBuildBr(ctx->builder, normal_return);
   }
 
@@ -347,7 +344,6 @@ generate_body: {
   if (LLVMGetTypeKind(return_type) == LLVMVoidTypeKind) {
     LLVMBuildRetVoid(ctx->builder);
   } else {
-    // Return default value for the type
     LLVMValueRef default_val = LLVMConstNull(return_type);
     LLVMBuildRet(ctx->builder, default_val);
   }
