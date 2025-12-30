@@ -5,36 +5,33 @@
 //! All strings are represented as pointers to byte arrays (`*byte`) and must be
 //! null-terminated.
 //!
+//! This module is completely self-contained with no external dependencies.
+//!
 //! # Memory Management
 //! Functions that create new strings (prefixed with `from_` or returning `#returns_ownership`)
 //! allocate memory that the caller must free. Use `defer { free(str); }` to ensure cleanup.
 
 @module "string"
 
-/// Forward declarations for functions used within this module
-pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte;
-pub const strlen -> fn (s: *byte) int;
+// ============= Local System Call for putbyte =============
 
-/// Returns the length of a null-terminated string
-///
-/// Counts characters until the null terminator is found.
-///
-/// # Parameters
-/// * `s` - String to measure
-///
-/// # Returns
-/// Number of characters before null terminator
-///
-/// # Example
-/// ```luma
-/// let len: int = string::strlen("Hello");
-/// // len will be 5
-/// ```
-//
+const SYS_WRITE: int = 1;
+const STDOUT: int = 1;
+
+const local_write -> fn (fd: int, buf: *void, count: int) int {
+    return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
+}
+
+// ============= Core String Types =============
+
+/// String slice with pointer and length
 pub const Slice -> struct {
-    ptr: *byte, len: int,
+    ptr: *byte, 
+    len: int,
 
-    slice_end -> fn () *byte { return cast<*byte>(cast<int>(self.ptr) + self.len); },
+    slice_end -> fn () *byte { 
+        return cast<*byte>(cast<int>(self.ptr) + self.len); 
+    },
 
     null_terminated_slice -> fn (s: *byte) Slice {
         let len: int = 0;
@@ -49,9 +46,10 @@ pub const Slice -> struct {
     }
 };
 
-//
+/// String with slice and capacity
 pub const String -> struct {
-    slice: Slice, cap: int,
+    slice: Slice, 
+    cap: int,
 
     #returns_ownership
     concat_strs -> fn (start: *Slice, len: int) String {
@@ -88,6 +86,27 @@ pub const String -> struct {
 #takes_ownership
 pub const free_string -> fn (s: *String) void {
     free(s.slice.ptr);
+}
+
+/// Returns the length of a null-terminated string
+///
+/// Counts characters until the null terminator is found.
+///
+/// # Parameters
+/// * `s` - String to measure
+///
+/// # Returns
+/// Number of characters before null terminator
+///
+/// # Example
+/// ```luma
+/// let len: int = string::strlen("Hello");
+/// // len will be 5
+/// ```
+pub const strlen -> fn (s: *byte) int {
+  let length: int = 0;
+  loop (s[length] != cast<byte>(0)) : (++length) {}
+  return length;
 }
 
 /// Converts a single byte to a string
@@ -257,11 +276,7 @@ pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
   buf[idx] = '\0';
 }
 
-pub const strlen -> fn (s: *byte) int {
-  let length: int = 0;
-  loop (s[length] != cast<byte>(0)) : (++length) {}
-  return length;
-}
+// ============= String Comparison =============
 
 /// Compares two strings for equality
 ///

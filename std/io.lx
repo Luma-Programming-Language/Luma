@@ -1,14 +1,77 @@
 //! Input/Output operations module
 //!
 //! This module provides formatted printing functions and file reading capabilities.
-//! It supports basic format specifiers (%d, %s, %c) for printing different types
-//! and includes a dynamic buffer system for efficient file reading.
+//! It is completely self-contained with no external module dependencies.
+//! All required syscalls and memory operations are implemented locally.
 
 @module "io"
 
-@use "string" as string
-@use "memory" as mem
-@use "sys" as sys
+/// Syscall numbers (Linux x86_64)
+const SYS_READ: int = 0;
+const SYS_WRITE: int = 1;
+const SYS_OPEN: int = 2;
+const SYS_CLOSE: int = 3;
+
+const O_RDONLY: int = 0;
+const O_RDWR: int = 2;
+
+const STDOUT: int = 1;
+const STDERR: int = 2;
+
+/// Syscall numbers (Macos x86_64) 
+/// Syscall numbers (Windows x86_64)
+
+/// Local memcpy implementation - copies n bytes from src to dest
+const local_memcpy -> fn (dest: *void, src: *void, n: int) *void {
+    let d: *byte = cast<*byte>(dest);
+    let s: *byte = cast<*byte>(src);
+    loop [i: int = 0](i < n) : (++i) {
+        d[i] = s[i];
+    }
+    return dest;
+}
+
+/// Local realloc implementation
+#returns_ownership 
+const local_realloc -> fn (ptr: *void, new_size: int) *void {
+    if (ptr == cast<*void>(0)) {
+        return alloc(new_size);
+    }
+    let new_ptr: *void = alloc(new_size);
+    local_memcpy(new_ptr, ptr, new_size);
+    free(ptr);
+    return new_ptr;
+}
+
+const local_write -> fn (fd: int, buf: *void, count: int) int {
+    return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
+}
+
+const local_read -> fn (fd: int, buf: *void, count: int) int {
+    return __syscall__(SYS_READ, fd, cast<int>(buf), count);
+}
+
+const local_open -> fn (path: *byte, flags: int, mode: int) int {
+    return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
+}
+
+const local_close -> fn (fd: int) int {
+    return __syscall__(SYS_CLOSE, fd);
+}
+
+const local_is_error -> fn (result: int) bool {
+    return result < 0 && result >= -4095;
+}
+
+const local_write_str -> fn (fd: int, s: *byte) int {
+    let len: int = 0;
+    loop (s[len] != cast<byte>(0)) : (++len) {}
+    return local_write(fd, cast<*void>(s), len);
+}
+
+const local_eprint -> fn (s: *byte) int {
+    return local_write_str(STDERR, s);
+}
 
 /// Initial buffer size for file reading operations (4KB)
 const INITIAL_BUFFER_SIZE: int = 4096;
@@ -16,16 +79,23 @@ const INITIAL_BUFFER_SIZE: int = 4096;
 const BUFFER_GROWTH_FACTOR: int = 2; 
 
 /// Type tags for format arguments
-pub const ARG_INT: int = 0;
-pub const ARG_STR: int = 1;
-pub const ARG_BYTE: int = 2;
-pub const ARG_FLOAT: int = 3;
+const ARG_INT: int = 0;
+const ARG_STR: int = 1;
+const ARG_BYTE: int = 2;
+const ARG_FLOAT: int = 3;
 
 pub const FormatArg -> struct {
   tag: int,
   str_ptr: *byte, 
   int_val: int,     
   byte_val: byte
+};
+
+pub const NULL_FORMAT_ARG: FormatArg = FormatArg {
+  tag: -1,
+  str_ptr: cast<*byte>(0),
+  int_val: 0,
+  byte_val: '\0'
 };
 
 pub const str_arg -> fn (arg: *byte) FormatArg {
@@ -55,6 +125,41 @@ pub const byte_arg -> fn (arg: byte) FormatArg {
   };
 }
 
+#returns_ownership
+const from_int -> fn (n: int) *byte {
+  if (n == 0) { return "0"; }
+
+  let negative: int = 0;
+  if (n < 0) {
+    negative = 1;
+    n = -n;
+  }
+
+  let buffer: [byte; 20]; // enough for 64-bit int
+  let i: int = 0;
+
+  loop (n != 0) {
+    let digit: int = n % 10;
+    buffer[i] = cast<byte>(digit + cast<int>('0'));
+    n = n / 10;
+    i = i + 1;
+  }
+
+  if (negative == 1) {
+    buffer[i] = '-';
+    i = i + 1;
+  }
+
+  // Reverse the string
+  let s: *byte = cast<*byte>(alloc((i + 1) * sizeof<byte>));
+  loop [j: int = 0](j < i) : (j = j + 1) {
+    s[j] = buffer[i - j - 1];
+  }
+  s[i] = cast<byte>(0); // null terminator
+
+  return s;
+}
+
 /// Prints a formatted string with mixed-type arguments to stdout
 ///
 /// This function performs printf-style formatting, supporting:
@@ -76,19 +181,10 @@ pub const byte_arg -> fn (arg: byte) FormatArg {
 ///
 /// # Example
 /// ```luma
-/// let name: *byte = "Alice";
-/// let age: int = 30;
-/// let initial: byte = 'A';
-/// 
-/// let name_ptr: *void = cast<*void>(&name);
-/// let age_ptr: *void = cast<*void>(&age);
-/// let initial_ptr: *void = cast<*void>(&initial);
-/// 
 /// let args: [FormatArg; 256];
-/// args[0] = FormatArg { tag: ARG_STR, data: name_ptr };
-/// args[1] = FormatArg { tag: ARG_INT, data: age_ptr };
-/// args[2] = FormatArg { tag: ARG_BYTE, data: initial_ptr };
-/// 
+/// args[0] = str_arg("Alice");
+/// args[1] = int_arg(30);
+/// args[2] = byte_arg('A');
 /// print("Name: %s, Age: %d, Initial: %c\n", args);
 /// ```
 ///
@@ -109,7 +205,7 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
         switch (next) {
           'd' -> {
             if (arg.tag == ARG_INT) {
-              let num_str: *byte = string::from_int(arg.int_val);
+              let num_str: *byte = from_int(arg.int_val);
               defer { free(num_str); }
               
               loop [j: int = 0](num_str[j] != '\0') : (++j) {
@@ -152,7 +248,7 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
     }
     buffer[buf_index] = '\0';
     
-    let written: int = sys::write_str(sys::STDOUT, buffer);
+    let written: int = local_write_str(STDOUT, buffer);
     return written;
 }
 
@@ -172,14 +268,14 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
 /// # Memory
 /// Allocates a 256-byte temporary buffer which is automatically freed via defer
 pub const print_err -> fn (s: *byte, args: [int; 256]) int {
-  // Simple implementation: only supports %d for integers
   let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
-  let buf_index: int = 0; let arg_index: int = 0;
+  let buf_index: int = 0; 
+  let arg_index: int = 0;
   defer { free(buffer); }
   
   loop [i: int = 0](s[i] != '\0') : (++i) {
       if (s[i] == '%' && s[i + 1] == 'd' && arg_index < 256) {
-          let num_str: *byte = string::from_int(args[arg_index]);
+          let num_str: *byte = from_int(args[arg_index]);
           defer { free(num_str); }
 
           loop [j: int = 0](num_str[j] != '\0') : (++j) {
@@ -193,9 +289,9 @@ pub const print_err -> fn (s: *byte, args: [int; 256]) int {
           buf_index = buf_index + 1;
       }
   }
-  buffer[buf_index] = '\0'; // Null-terminate
+  buffer[buf_index] = '\0';
 
-  let written: int = sys::write_str(sys::STDERR, buffer);
+  let written: int = local_write_str(STDERR, buffer);
   return written;
 }
 
@@ -225,12 +321,11 @@ pub const print_err -> fn (s: *byte, args: [int; 256]) int {
 /// * File cannot be opened
 /// * Memory allocation fails
 /// * Read operation fails
-
 #returns_ownership
 pub const read_file -> fn (path: *byte) *byte {
-  let fd: int = sys::open(path, sys::O_RDONLY, 0);
-  if (sys::is_error(fd)) {
-    sys::eprint("Error: File does not exist, can not read from file\n");
+  let fd: int = local_open(path, O_RDONLY, 0);
+  if (local_is_error(fd)) {
+    local_eprint("Error: File does not exist, can not read from file\n");
     return cast<*byte>(0);
   }
 
@@ -238,8 +333,8 @@ pub const read_file -> fn (path: *byte) *byte {
   let buffer_size: int = INITIAL_BUFFER_SIZE;
   let buffer: *byte = cast<*byte>(alloc(buffer_size * sizeof<byte>));
   if (buffer == cast<*byte>(0)) {
-    sys::eprint("Error: Failed to allocate initial buffer\n");
-    sys::close(fd);
+    local_eprint("Error: Failed to allocate initial buffer\n");
+    local_close(fd);
     return cast<*byte>(0);
   }
 
@@ -249,11 +344,11 @@ pub const read_file -> fn (path: *byte) *byte {
   loop {
     // Read into buffer at current position
     let read_size: int = buffer_size - total_read - 1; // Leave room for null terminator
-    bytes_read = sys::read(fd, cast<*void>(cast<int>(buffer) + total_read), read_size);
+    bytes_read = local_read(fd, cast<*void>(cast<int>(buffer) + total_read), read_size);
 
-    if (sys::is_error(bytes_read)) {
-      sys::eprint("Error: Failed to read from file\n");
-      sys::close(fd);
+    if (local_is_error(bytes_read)) {
+      local_eprint("Error: Failed to read from file\n");
+      local_close(fd);
       free(buffer);
       return cast<*byte>(0);
     }
@@ -268,11 +363,11 @@ pub const read_file -> fn (path: *byte) *byte {
     // If buffer is full (minus null terminator space), grow it
     if (total_read >= buffer_size - 1) {
       let new_size: int = buffer_size * BUFFER_GROWTH_FACTOR;
-      let new_buffer: *byte = cast<*byte>(mem::realloc(cast<*void>(buffer), new_size * sizeof<byte>));
+      let new_buffer: *byte = cast<*byte>(local_realloc(cast<*void>(buffer), new_size * sizeof<byte>));
       
       if (new_buffer == cast<*byte>(0)) {
-        sys::eprint("Error: Failed to grow buffer\n");
-        sys::close(fd);
+        local_eprint("Error: Failed to grow buffer\n");
+        local_close(fd);
         free(buffer);
         return cast<*byte>(0);
       }
@@ -285,38 +380,53 @@ pub const read_file -> fn (path: *byte) *byte {
   // Null terminate the string
   buffer[total_read] = cast<byte>(0);
 
-  // shrink buffer to exact size to save memory
+  // Shrink buffer to exact size to save memory
   if (total_read < buffer_size - 1) {
     let final_buffer: *byte = cast<*byte>(alloc((total_read + 1) * sizeof<byte>));
     if (final_buffer != cast<*byte>(0)) {
-      mem::memcpy(cast<*void>(final_buffer), cast<*void>(buffer), total_read + 1);
+      local_memcpy(cast<*void>(final_buffer), cast<*void>(buffer), total_read + 1);
       free(buffer);
       buffer = final_buffer;
     }
   }
 
-  sys::close(fd);
+  local_close(fd);
   return buffer;
 }
 
+/// Writes a buffer to a file
+///
+/// Opens an existing file and writes the entire buffer contents to it.
+///
+/// # Parameters
+/// * `path` - Path to the file to write to
+/// * `buffer` - Null-terminated string to write
+///
+/// # Returns
+/// Number of bytes written, or -1 on error
 pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) int {
-    // check file exists and open file
-    let fd: int = sys::open(path, sys::O_RDWR, 0);
-    if (sys::is_error(fd)) {
-       sys::eprint("Error: File does not exist, can not to file.\n");
+    // Check file exists and open file
+    let fd: int = local_open(path, O_RDWR, 0);
+    if (local_is_error(fd)) {
+       local_eprint("Error: File does not exist, can not write to file.\n");
        return -1;
     }
-    // check buffer > 0
-    let bytes_to_write: int = string::strlen(buffer);
-    if (bytes_to_write <= 0) {
-       sys::eprint("Error: buffer size <= 0.\n");
-       sys::close(fd);
-       return -1;
+    
+    // Calculate buffer length
+    let length: int = 0;
+    loop (buffer[length] != '\0') {
+       length = length + 1;
     }
-    // dump in one syscall
-    let written: int = sys::write(fd, cast<*void>(buffer), bytes_to_write);
-    sys::close(fd);
 
-    // return the bytes written to the file
+    if (length <= 0) {
+       local_eprint("Error: buffer size <= 0.\n");
+       local_close(fd);
+       return -1;
+    }
+    
+    // Write in one syscall
+    let written: int = local_write(fd, cast<*void>(buffer), length);
+    local_close(fd);
+
     return written;
 }

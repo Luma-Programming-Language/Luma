@@ -1,53 +1,22 @@
 @module "main"
 
-@use "string" as string
+@use "vector" as vec
 @use "io" as io
-@use "types" as types
 
 pub const main -> fn () int {
-    // make the project folder
-    let project_name: *byte = "mkdir -p project";
-    system(project_name);
-    io::print("Created %s root %d: %c\n", 
-              [io::str_arg(project_name), io::int_arg(140), io::byte_arg('4')]);
-
-    system("touch project/build.bolt");
-
-    let build_info_dump: *byte = cast<*byte>(alloc(sizeof<*byte> * 1024));
-    defer { free(build_info_dump); }
-
-    let slices: *Slice = cast<*Slice>(alloc(5 * sizeof<Slice>));
-    defer { free(slices); }
-
-    let abc: *byte = "abc";
-    let de: *byte = "de";
-    let jk:*byte = "jk";
-
-    slices[0] = slices.null_terminated_slice(abc);
-    slices[1] = slices.null_terminated_slice(de);
-    slices[2] = slices.null_terminated_slice("fghi");
-    slices[3] = slices.null_terminated_slice(jk);
-    slices[4] = types::NULL_BYTE;
-
-    let front: String;
-    front = front.concat_strs(slices, 4);
-    defer { string::free_string(&front); }
-
-    front.slice.len = front.slice.len - 1;
-
-    let more: *Slice = cast<*Slice>(alloc(3 * sizeof<Slice>));
-    defer { free(more); }
-
-    more[0] = front.as_slice();
-    more[1] = more.null_terminated_slice("lmnop");
-    more[2] = types::NULL_BYTE;
+    let v: Vector = create_vector(sizeof<int>);
+    defer { vec::free_vector(&v); } 
     
-    let final: String;
-    final = final.concat_strs(more, 3);
-    defer { string::free_string(&final); }
+    let x: int = 42;
+    v.push_back(cast<*void>(&x));
+    
+    let elem_ptr: *int = cast<*int>(v.get(0));
+    if (elem_ptr != cast<*int>(0)) {
+        io::print("First element in vector: %d\n", [io::int_arg(*elem_ptr)]);
+    } else {
+        io::print_err("Failed to retrieve element from vector\n", [0]);
+    }
 
-    io::write_buffer_to_file("project/build.bolt", final.slice.ptr);
-    io::print("Wrote build.bolt with content: %s\n", [io::str_arg(final.slice.ptr)]);
-
+    io::print("Vector size after one push_back: %d\n", [io::int_arg(v.size)]);
     return 0;
 }

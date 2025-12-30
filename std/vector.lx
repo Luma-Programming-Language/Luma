@@ -15,13 +15,36 @@
 
 @module "vector"
 
-@use "memory" as memory
-
 /// Default initial capacity for vectors (1024 elements)
 const DEFAULT_VECTOR_CAPACITY: int = 1024;
 
 /// Null pointer constant
 const NULL: *void = cast<*void>(0);
+
+/// Local allocation functions
+const local_memcpy -> fn (dest: *void, src: *void, n: int) *void {
+    let d: *byte = cast<*byte>(dest);
+    let s: *byte = cast<*byte>(src);
+
+    loop [i: int = 0](i < n) : (++i) {
+        d[i] = s[i];
+    }
+
+    return dest;
+}
+
+#returns_ownership
+const local_realloc -> fn (ptr: *void, new_size: int) *void {
+    if (ptr == cast<*void>(0)) {
+        return alloc(new_size);
+    }
+ 
+    let new_ptr: *void = alloc(new_size);
+    local_memcpy(new_ptr, ptr, new_size);
+    free(ptr);
+ 
+    return new_ptr;
+}
 
 /// A dynamic array that can grow as needed.
 ///
@@ -60,7 +83,7 @@ pub const Vector -> struct {
 
         if (self.size >= self.capacity) {
             self.capacity = self.capacity * 2;
-            self.data = memory::realloc(
+            self.data = local_realloc(
                 self.data,
                 self.capacity * self.element_size
             );
@@ -76,10 +99,10 @@ pub const Vector -> struct {
         );
 
         let bytes: int = (self.size - index) * self.element_size;
-        memory::memcpy(dst, src, bytes);
+        local_memcpy(dst, src, bytes);
 
         // write new element
-        memory::memcpy(src, elem, self.element_size);
+        local_memcpy(src, elem, self.element_size);
         self.size = self.size + 1;
         return 1;
     },
@@ -102,14 +125,14 @@ pub const Vector -> struct {
     push_back -> fn (elem: *void) void {
         if (self.size >= self.capacity) {
             self.capacity = self.capacity * 2;
-            self.data = memory::realloc(self.data, self.capacity * self.element_size);
+            self.data = local_realloc(self.data, self.capacity * self.element_size);
         }
 
         let dest: *void = cast<*void>(
             cast<int>(self.data) + (self.size * self.element_size)
         );
 
-        memory::memcpy(dest, elem, self.element_size);
+        local_memcpy(dest, elem, self.element_size);
         self.size = self.size + 1;
     },
 
@@ -136,7 +159,7 @@ pub const Vector -> struct {
             let src: *void = cast<*void>(
                 cast<int>(self.data) + (self.size * self.element_size)
             );
-            memory::memcpy(out, src, self.element_size);
+            local_memcpy(out, src, self.element_size);
         }
 
         return 1;
@@ -170,7 +193,7 @@ pub const Vector -> struct {
         let bytes_to_move: int =
             (self.size - index - 1) * self.element_size;
 
-        memory::memcpy(dst, src, bytes_to_move);
+        local_memcpy(dst, src, bytes_to_move);
 
         self.size = self.size - 1;
         return 1;

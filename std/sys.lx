@@ -18,8 +18,6 @@
  */
 @module "sys"
 
-@use "string" as string
-
 // TODO: Allow enums to have a custom assigned value
 // Syscall numbers (Linux x86_64)
 pub const SYS_READ: int = 0;

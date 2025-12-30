@@ -1,8 +1,0 @@
-//! These are more advanced types.
-
-@module "types"
-
-@use "string" as string
-
-/// null-terminate type.
-pub const NULL_BYTE: Slice = Slice { ptr: "", len: 0 };
