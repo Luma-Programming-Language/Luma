@@ -12,10 +12,13 @@
 
 ## Introduction
 
-Luma is a modern systems programming language designed to provide the performance and control of low-level languages while maintaining developer productivity and code clarity.  
-It's built from the ground up to address common pain points in systems programming — offering explicit memory control, compile-time verification, and minimal abstraction overhead.
+Luma is a modern systems programming language focused on **explicit control, fast compilation, and static verification**.
 
-Luma uses **manual memory management with static analysis**, giving developers full control over when and how memory is allocated or freed, while the type checker verifies correctness before code generation.
+It is designed for developers who want C-level performance and transparency, but with stronger compile-time tooling to catch common memory errors early — **without a borrow checker, lifetimes, or runtime overhead**.
+
+Luma uses **manual memory management with static analysis**. Memory allocation and deallocation are always explicit, while the compiler performs ownership-aware checks during type checking to detect common classes of bugs before code generation.
+
+> Luma is intentionally **memory-unsafe by design**, but provides static checks for specific error patterns such as use-after-free, double-free, and forgotten deallocations.
 
 ---
 
@@ -26,8 +29,6 @@ Luma aims to bridge that gap by providing:
 
 - **Manual memory control** with **compile-time static analysis**  
   — The type checker validates use-after-free, double-free, and unfreed allocations before codegen.
-- **Blazing fast compilation** — 50ms for a complete 3D graphics application
-- **Tiny binaries** — 24KB stripped executables (comparable to C)
 - **Direct hardware access** and predictable performance  
 - **Readable, minimal syntax** that doesn't hide control flow or introduce lifetimes
 - **Zero runtime overhead** — all verification is done statically
@@ -35,113 +36,44 @@ Luma aims to bridge that gap by providing:
 
 Unlike Rust, Luma doesn't use lifetimes or a borrow checker. Instead, developers can annotate functions with lightweight ownership hints like `#returns_ownership` and `#takes_ownership` so the analyzer can reason about ownership transfers — for example, when returning an allocated pointer.
 
-The result: **C-level control with static guarantees**, and no runtime or hidden semantics.
-
----
-
-## Performance
-
-Luma is designed for **speed at every stage** — from compilation to execution:
-
-### Compilation Speed
-
-```bash
-# 3D graphics application with 4 standard libraries
-$ luma 3d_spinning_cube.lx -l math.lx memory.lx string.lx termfx.lx
-[========================================] 100% - Completed (51ms)
-Build succeeded! Written to '3d_test' (51ms)
-```
-
-**Real-world metrics:**
-
-- **51ms**: Complete 3D graphics app with math, memory management, strings, and terminal effects
-- **+1ms**: Memory safety analysis overhead (essentially free)
-- **Sub-100ms**: Typical compilation times for most projects
-
-### Binary Size
-
-```bash
-$ ls -lh 3d_test_stripped
--rwxr-xr-x 1 user user 24K Oct 9 19:27 3d_test_stripped
-```
-
-**Comparable to C** — Luma produces tiny, efficient binaries:
-
-- **24KB**: Stripped 3D graphics application
-- **29KB**: With debug symbols
-- **Zero runtime**: No garbage collector, no hidden allocations
-
-### Comparison Table
-
-| Language | Compile Time Range | Your Test | Binary Size |
-|----------|--------------------|-----------|-------------|
-| C/C++    | 100-800ms          | ~300ms    | 40-80KB     |
-| Rust     | 2-15s              | ~3-5s     | 150-400KB   |
-| Go       | 100-400ms          | ~200ms    | 1.5-2MB     |
-| Zig      | 200-600ms          | ~400ms    | 30-50KB     |
-| **Luma** | **50-52ms**        | **51ms**  | **24KB**    |
+The result: C-level control with targeted compile-time checks, and no runtime or hidden semantics.
 
 ---
 
 ## Language Goals
 
-- **🎯 Minimal & Explicit Syntax** – No hidden control flow or implicit behavior  
-- **⚡ Lightning-Fast Compilation** – Sub-100ms builds for rapid iteration  
-- **🚀 Zero-Cost Abstractions** – No runtime overhead for safety or ergonomics  
-- **📦 Tiny Binaries** – Comparable to C in size and efficiency  
-- **🔧 Manual Memory Control** – You decide when to `alloc()` and `free()`  
-- **🧠 Static Verification** – The type checker validates memory safety (use-after-free, double-free, leaks) before codegen  
-- **🔍 Optional Ownership Annotations** – Use `#returns_ownership` and `#takes_ownership` to make ownership transfer explicit  
+- **Minimal & Explicit Syntax** – No hidden control flow or implicit behavior  
+- **Lightning-Fast Compilation** – Sub-100ms builds for rapid iteration  
+- **Zero-Cost Abstractions** – No runtime overhead for safety or ergonomics  
+- **Tiny Binaries** – Comparable to C in size and efficiency  
+- **Manual Memory Control** – You decide when to `alloc()` and `free()`  
+- **Static Verification** – The type checker validates common memory errors (use-after-free, double-free, leaks) before codegen 
+- **Optional Ownership Annotations** – Use `#returns_ownership` and `#takes_ownership` to make ownership transfer explicit  
 
 ---
 
 ## Static Analysis and Ownership
 
-Luma performs **end-of-type-check static analysis** to ensure memory safety without runtime overhead.
+Luma performs **ownership-aware static analysis** at the end of type checking to detect common memory management errors — without introducing runtime overhead.
 
-The analyzer checks for:
+### What Luma *does* check
 
-- Memory allocated but never freed  
-- Double frees  
-- Use-after-free errors  
+- Use-after-free
+- Double free
+- Memory allocated but never freed
+- Ownership transfer across function boundaries (when annotated)
 
-It doesn't use lifetimes or a borrow checker — instead, it relies on **explicit ownership annotations** to clarify intent.
+### What Luma does *not* guarantee
 
-### Example
+Luma does **not** claim full memory safety. The following are currently **not prevented**:
 
-```luma
-#returns_ownership 
-pub const calloc = fn (count: int, size: int) *void {
-    let total_size: int = count * size;
-    let ptr: *void = alloc(total_size);
- 
-    if (ptr != cast<*void>(0)) {
-        memzero(ptr, total_size);
-    }
- 
-    return ptr;
-}
+- Out-of-bounds memory access
+- Uninitialized memory reads
+- Pointer arithmetic misuse
+- Aliasing violations
+- Invalid pointer dereference
 
-#takes_ownership 
-pub const destroy_buffer = fn (buf: *byte) void {
-    free(buf);
-}
-
-pub const main = fn() int {
-    let buf = calloc(128, 1);
-    defer destroy_buffer(buf);
-
-    // Safe - verified at compile time in 51ms
-    return 0;
-}
-```
-
-**Key Features:**
-
-- `#returns_ownership` — Function returns newly allocated memory
-- `#takes_ownership` — Function takes responsibility for freeing memory
-- `defer` — Ensures cleanup happens at scope exit
-- **Compile-time verification** — All memory safety checks happen during type checking
+These are deliberate design trade-offs to preserve simplicity, performance, and low-level control.
 
 ---
 
@@ -153,12 +85,12 @@ Luma is currently in active development. Core language features are being implem
 
 **What Works:**
 
-- ✅ Complete lexer and parser
-- ✅ Full type system with structs, enums, functions
-- ✅ Static memory analysis with ownership tracking
-- ✅ LLVM backend for native code generation
-- ✅ Standard library (math, memory, strings, terminal effects)
-- ✅ Real-world applications (3D graphics, memory management)
+- Complete lexer and parser
+- Full type system with structs, enums, functions
+- Static memory analysis with ownership tracking
+- LLVM backend for native code generation
+- Standard library (math, memory, strings, terminal effects)
+- Real-world applications (3D graphics, memory management)
 
 Check out the [todo](todo.md) to see what is being worked on or that is done.
 
@@ -346,7 +278,7 @@ See [tests/3d_spinning_cube.lx](tests/3d_spinning_cube.lx) for a complete 3D gra
 
 - Renders rotating 3D cubes
 - Uses sine/cosine lookup tables for performance
-- Manages memory safely with `defer`
+- Uses `defer` and ownership annotations for correct memory cleanup
 - Compiles in **51ms** to a **24KB** binary
 
 ---
