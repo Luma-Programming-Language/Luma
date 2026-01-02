@@ -1,0 +1,27 @@
+@module "common"
+
+const STACK_SIZE: int = 256;
+const PROGRAM_SIZE: int = 1024;
+
+pub const Opcode -> enum {
+  OP_PUSH,    // Push constant onto stack
+  OP_POP,     // Pop value from stack
+  OP_ADD,     // Add top two values
+  OP_SUB,     // Subtract top from second
+  OP_MUL,     // Multiply top two values
+  OP_DIV,     // Divide second by top
+  OP_PRINT,   // Print top of stack
+  OP_JMP,     // Unconditional jump
+  OP_JZ,      // Jump if top of stack is zero
+  OP_LT,      // Less than comparison
+  OP_EQ,      // Equality comparison
+  OP_NEG,     // Negate a value
+  OP_HALT     // Stop execution
+};
+
+pub const VM -> struct {
+  stack: *int, 
+  program: *byte,
+  sp: int, // stack pointer
+  pc: int, // program counter
+};

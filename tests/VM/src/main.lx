@@ -1,0 +1,28 @@
+@module "main"  
+
+@use "vm" as vm
+@use "common" as common
+
+pub const main -> fn () int {
+    let v: VM = vm::create_vm();
+    defer { vm::free_vm(&v); }
+
+    let values: [int; 5] = [10, 13, 6, 25, 42];
+
+    let pc: int = 0;
+    loop [i: int = 0](i < 5) : (++i) {
+        v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
+        vm::write_int(v.program, &pc, values[i]);
+        v.program[pc++] = cast<byte>(common::Opcode::OP_PRINT);
+    }
+    
+    v.program[pc++] = cast<byte>(common::Opcode::OP_MUL);
+    v.program[pc++] = cast<byte>(common::Opcode::OP_ADD);
+    v.program[pc++] = cast<byte>(common::Opcode::OP_NEG);
+    v.program[pc++] = cast<byte>(common::Opcode::OP_PRINT);
+    v.program[pc++] = cast<byte>(common::Opcode::OP_HALT);
+
+    vm::vm_execute(&v);
+
+    return 0;
+}

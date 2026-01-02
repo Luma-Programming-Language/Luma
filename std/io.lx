@@ -127,7 +127,12 @@ pub const byte_arg -> fn (arg: byte) FormatArg {
 
 #returns_ownership
 const from_int -> fn (n: int) *byte {
-  if (n == 0) { return "0"; }
+  if (n == 0) { 
+    let s: *byte = cast<*byte>(alloc(2 * sizeof<byte>));
+    s[0] = '0';
+    s[1] = cast<byte>(0);
+    return s;
+  }
 
   let negative: int = 0;
   if (n < 0) {
@@ -206,7 +211,6 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
           'd' -> {
             if (arg.tag == ARG_INT) {
               let num_str: *byte = from_int(arg.int_val);
-              defer { free(num_str); }
               
               loop [j: int = 0](num_str[j] != '\0') : (++j) {
                   buffer[buf_index] = num_str[j];
@@ -214,6 +218,8 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
               }
               arg_index = arg_index + 1;
               i = i + 2; // Skip the 'd'
+
+              free(num_str);
               continue;
             }
           }
@@ -235,7 +241,7 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
                     buf_index = buf_index + 1;
                 }
                 arg_index = arg_index + 1;
-                i = i + 1; // Skip the 's'
+                i = i + 2; // Skip the 's'
                 continue;
             }
           }

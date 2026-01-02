@@ -1,0 +1,71 @@
+@module "debug"
+
+@use "io" as io
+@use "common" as common
+
+pub let ENABLED: int = 0;
+
+pub const opcode_name -> fn (op: int) *byte {
+  switch (op) {
+    common::Opcode::OP_PUSH  -> return "OP_PUSH";
+    common::Opcode::OP_POP   -> return "OP_POP";
+    common::Opcode::OP_ADD   -> return "OP_ADD";
+    common::Opcode::OP_SUB   -> return "OP_SUB";
+    common::Opcode::OP_MUL   -> return "OP_MUL";
+    common::Opcode::OP_DIV   -> return "OP_DIV";
+    common::Opcode::OP_PRINT -> return "OP_PRINT";
+    common::Opcode::OP_JMP   -> return "OP_JMP";
+    common::Opcode::OP_JZ    -> return "OP_JZ";
+    common::Opcode::OP_LT    -> return "OP_LT";
+    common::Opcode::OP_EQ    -> return "OP_EQ";
+    common::Opcode::OP_NEG   -> return "OP_NEG";
+    common::Opcode::OP_HALT  -> return "OP_HALT";
+    _                        -> return "UNKNOWN";
+  }
+}
+
+pub const print_stack -> fn (v: *VM) void {
+  if (ENABLED == 0) { return; }
+  
+  io::print("    Stack [sp=%d]: [ ", [io::int_arg(v.sp)]);
+  
+  if (v.sp < 0) {
+    io::print("]\n", [io::NULL_FORMAT_ARG]);
+    return;
+  }
+  
+  loop [i: int = 0](i <= v.sp) : (++i) {
+    io::print("%d ", [io::int_arg(v.stack[i])]);
+  }
+  io::print("]\n", [io::NULL_FORMAT_ARG]);
+}
+
+pub const trace_instruction -> fn (pc: int, opcode: int) void {
+  if (ENABLED == 0) { return; }
+  io::print("[PC=%d] %s\n", [io::int_arg(pc), io::str_arg(opcode_name(opcode))]);
+}
+
+pub const trace_push -> fn (value: int) void {
+  if (ENABLED == 0) { return; }
+  io::print("        PUSH %d\n", [io::int_arg(value)]);
+}
+
+pub const trace_pop -> fn (value: int) void {
+  if (ENABLED == 0) { return; }
+  io::print("        POP  %d\n", [io::int_arg(value)]);
+}
+
+pub const trace_header -> fn () void {
+  if (ENABLED == 0) { return; }
+  io::print("\n=== VM Execution Trace ===\n\n", [io::NULL_FORMAT_ARG]);
+}
+
+pub const trace_halt -> fn () void {
+  if (ENABLED == 0) { return; }
+  io::print("\n=== Execution Halted ===\n", [io::NULL_FORMAT_ARG]);
+}
+
+pub const trace_separator -> fn () void {
+  if (ENABLED == 0) { return; }
+  io::print("\n", [io::NULL_FORMAT_ARG]);
+}

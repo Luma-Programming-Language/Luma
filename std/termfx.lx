@@ -23,8 +23,6 @@
 
 @module "termfx"
 
-@use "string" as string
-
 /// Reset all terminal formatting to default
 pub const RESET: *byte   = "\x1b[0m";
 
@@ -134,6 +132,70 @@ pub const CLEAR_TO_EOL: *byte = "\x1b[K";
 /// Clears from cursor to end of screen
 pub const CLEAR_TO_EOS: *byte = "\x1b[J";
 
+#returns_ownership
+const from_int -> fn (n: int) *byte {
+  if (n == 0) { 
+    let s: *byte = cast<*byte>(alloc(2 * sizeof<byte>));
+    s[0] = '0';
+    s[1] = cast<byte>(0);
+    return s;
+  }
+
+  let negative: int = 0;
+  if (n < 0) {
+    negative = 1;
+    n = -n;
+  }
+
+  let buffer: [byte; 20]; // enough for 64-bit int
+  let i: int = 0;
+
+  loop (n != 0) {
+    let digit: int = n % 10;
+    buffer[i] = cast<byte>(digit + cast<int>('0'));
+    n = n / 10;
+    i = i + 1;
+  }
+
+  if (negative == 1) {
+    buffer[i] = '-';
+    i = i + 1;
+  }
+
+  // Reverse the string
+  let s: *byte = cast<*byte>(alloc((i + 1) * sizeof<byte>));
+  loop [j: int = 0](j < i) : (j = j + 1) {
+    s[j] = buffer[i - j - 1];
+  }
+  s[i] = cast<byte>(0); // null terminator
+
+  return s;
+}
+
+const strlen -> fn (s: *byte) int {
+  let length: int = 0;
+  loop (s[length] != cast<byte>(0)) : (++length) {}
+  return length;
+}
+
+const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
+  let ls1: int = strlen(s1);
+  let lt: int = ls1 + strlen(s2) + 1;
+
+  loop [i: int = 0](i < lt) : (++i) {
+    if (i < ls1) {
+      dest[i] = s1[i];
+    } else {
+      dest[i] = s2[i - ls1];
+    }
+  }
+
+  // null terminator
+  dest[lt - 1] = cast<byte>(0);
+
+  return dest;
+}
+
 /// Creates a foreground RGB color escape sequence
 ///
 /// Generates an ANSI escape code for 24-bit true color.
@@ -159,13 +221,13 @@ pub const CLEAR_TO_EOS: *byte = "\x1b[J";
 pub const fg_rgb -> fn (r: int, g: int, b: int) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
     
-    string::cat(msg, msg, "\x1b[38;2;");
-    string::cat(msg, msg, string::from_int(r));
-    string::cat(msg, msg, ";");
-    string::cat(msg, msg, string::from_int(g));
-    string::cat(msg, msg, ";");
-    string::cat(msg, msg, string::from_int(b));
-    string::cat(msg, msg, "m");
+    cat(msg, msg, "\x1b[38;2;");
+    cat(msg, msg, from_int(r));
+    cat(msg, msg, ";");
+    cat(msg, msg, from_int(g));
+    cat(msg, msg, ";");
+    cat(msg, msg, from_int(b));
+    cat(msg, msg, "m");
 
     return msg; 
 }
@@ -195,13 +257,13 @@ pub const fg_rgb -> fn (r: int, g: int, b: int) *byte {
 pub const bg_rgb -> fn (r: int, g: int, b: int) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
 
-    string::cat(msg, msg, "\x1b[48;2;");
-    string::cat(msg, msg, string::from_int(r));
-    string::cat(msg, msg, ";");
-    string::cat(msg, msg, string::from_int(g));
-    string::cat(msg, msg, ";");
-    string::cat(msg, msg, string::from_int(b));
-    string::cat(msg, msg, "m");
+    cat(msg, msg, "\x1b[48;2;");
+    cat(msg, msg, from_int(r));
+    cat(msg, msg, ";");
+    cat(msg, msg, from_int(g));
+    cat(msg, msg, ";");
+    cat(msg, msg, from_int(b));
+    cat(msg, msg, "m");
 
     return msg;
 }
@@ -229,11 +291,11 @@ pub const bg_rgb -> fn (r: int, g: int, b: int) *byte {
 pub const move_cursor -> fn (row: int, col: int) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
 
-    string::cat(msg, msg, "\x1b[");
-    string::cat(msg, msg, string::from_int(row));
-    string::cat(msg, msg, ";");
-    string::cat(msg, msg, string::from_int(col));
-    string::cat(msg, msg, "H");
+    cat(msg, msg, "\x1b[");
+    cat(msg, msg, from_int(row));
+    cat(msg, msg, ";");
+    cat(msg, msg, from_int(col));
+    cat(msg, msg, "H");
 
     return msg;
 }
