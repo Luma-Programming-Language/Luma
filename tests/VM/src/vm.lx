@@ -27,6 +27,15 @@ pub const free_vm -> fn (vm: *VM) void {
   vm.pc = 0;
 }
 
+// Helper: Check if stack has enough values for an operation
+const check_stack_has_values -> fn (v: *VM, count: int) void {
+  if (v.sp < count - 1) {
+    io::print_err("Stack Underflow! Need %d value(s), but stack has %d\n", 
+      [count, v.sp + 1]);
+    sys::exit(1);
+  }
+}
+
 pub const push -> fn (v: *VM, value: int) void {
   if (v.sp >= STACK_SIZE - 1) {
     io::print_err("Stack Overflow!\n", [0]);
@@ -40,10 +49,7 @@ pub const push -> fn (v: *VM, value: int) void {
 }
 
 pub const pop -> fn (v: *VM) int {
-  if (v.sp < 0) {
-    io::print_err("Stack Underflow!\n", [0]);
-    sys::exit(1);
-  }
+  check_stack_has_values(v, 1);
 
   let result: int = v.stack[v.sp];
   v.sp = v.sp - 1;
@@ -61,26 +67,30 @@ pub const write_int -> fn (prog: *byte, pc: *int, val: int) void {
 }
 
 const preform_binary -> fn (v: *VM, op: byte) void {
+  check_stack_has_values(v, 2);
+  
   let b: int = pop(v);
   let a: int = pop(v);
   let result: int = 0;
 
   switch (op) {
-    '+' -> result = a + b;
-    '-' -> result = a - b;
-    '*' -> result = a * b;
-    '/' -> result = a / b;
+    '+' -> result = b + a;
+    '-' -> result = b - a;
+    '*' -> result = b * a;
+    '/' -> result = b / a;
   }
   
   push(v, result);
 }
 
 const preform_unary -> fn (v: *VM, op: byte) void {
-  let b: int = pop(v);
+  check_stack_has_values(v, 1);
+  
+  let a: int = pop(v);
   let result: int = 0;
 
   switch (op) {
-    '-' -> result = -b;
+    '-' -> result = -a;
   }
   
   push(v, result);
@@ -116,11 +126,8 @@ pub const vm_execute -> fn (v: *VM) void {
         return;
       }
       common::Opcode::OP_PRINT -> {
-        if (v.sp < 0) {
-          io::print_err("Cannot print: stack is empty\n", [0]);
-        } else {
-          io::print("%d\n", [io::int_arg(v.stack[v.sp])]);
-        }
+        check_stack_has_values(v, 1);
+        io::print("%d\n", [io::int_arg(v.stack[v.sp])]);
       }
 
       // Binary Instructions

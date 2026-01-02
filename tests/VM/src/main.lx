@@ -13,12 +13,13 @@ pub const main -> fn () int {
     loop [i: int = 0](i < 5) : (++i) {
         v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
         vm::write_int(v.program, &pc, values[i]);
-        v.program[pc++] = cast<byte>(common::Opcode::OP_PRINT);
     }
     
     v.program[pc++] = cast<byte>(common::Opcode::OP_MUL);
     v.program[pc++] = cast<byte>(common::Opcode::OP_ADD);
     v.program[pc++] = cast<byte>(common::Opcode::OP_NEG);
+    v.program[pc++] = cast<byte>(common::Opcode::OP_DIV);
+    v.program[pc++] = cast<byte>(common::Opcode::OP_SUB);
     v.program[pc++] = cast<byte>(common::Opcode::OP_PRINT);
     v.program[pc++] = cast<byte>(common::Opcode::OP_HALT);
 

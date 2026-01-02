@@ -2,8 +2,9 @@
 
 @use "io" as io
 @use "common" as common
+@use "termfx" as fx
 
-pub let ENABLED: int = 0;
+pub let ENABLED: int = 1;
 
 pub const opcode_name -> fn (op: int) *byte {
   switch (op) {
@@ -24,45 +25,90 @@ pub const opcode_name -> fn (op: int) *byte {
   }
 }
 
+// Helper function to print colored text
+const print_colored -> fn (color: *byte, text: *byte) void {
+  io::print("%s%s%s", [io::str_arg(color), io::str_arg(text), io::str_arg(fx::RESET)]);
+}
+
+// Helper function to print label with colored value
+const print_label_value -> fn (label_color: *byte, label: *byte, value_color: *byte, value: int) void {
+  io::print("%s%s %s%d%s", [
+    io::str_arg(label_color),
+    io::str_arg(label),
+    io::str_arg(value_color),
+    io::int_arg(value),
+    io::str_arg(fx::RESET)
+  ]);
+}
+
+// Helper function to print stack operation (PUSH/POP)
+const print_stack_op -> fn (op_color: *byte, op_name: *byte, value: int) void {
+  io::print("%s        %s%s %s%d%s\n", [
+    io::str_arg(fx::DIM),
+    io::str_arg(op_color),
+    io::str_arg(op_name),
+    io::str_arg(fx::BRIGHT_YELLOW),
+    io::int_arg(value),
+    io::str_arg(fx::RESET)
+  ]);
+}
+
 pub const print_stack -> fn (v: *VM) void {
   if (ENABLED == 0) { return; }
   
-  io::print("    Stack [sp=%d]: [ ", [io::int_arg(v.sp)]);
+  io::print("%s    Stack ", [io::str_arg(fx::DIM)]);
+  print_label_value(fx::CYAN, "[sp=", fx::CYAN, v.sp);
+  io::print("%s]: [ %s", [io::str_arg(fx::DIM), io::str_arg(fx::RESET)]);
   
   if (v.sp < 0) {
-    io::print("]\n", [io::NULL_FORMAT_ARG]);
+    io::print("%s]%s\n", [io::str_arg(fx::DIM), io::str_arg(fx::RESET)]);
     return;
   }
   
   loop [i: int = 0](i <= v.sp) : (++i) {
-    io::print("%d ", [io::int_arg(v.stack[i])]);
+    io::print("%s%d ", [io::str_arg(fx::YELLOW), io::int_arg(v.stack[i])]);
   }
-  io::print("]\n", [io::NULL_FORMAT_ARG]);
+  io::print("%s]%s\n", [io::str_arg(fx::DIM), io::str_arg(fx::RESET)]);
 }
 
 pub const trace_instruction -> fn (pc: int, opcode: int) void {
   if (ENABLED == 0) { return; }
-  io::print("[PC=%d] %s\n", [io::int_arg(pc), io::str_arg(opcode_name(opcode))]);
+  
+  io::print("%s[PC=", [io::str_arg(fx::BRIGHT_BLUE)]);
+  io::print("%s%d", [io::str_arg(fx::BRIGHT_CYAN), io::int_arg(pc)]);
+  io::print("%s] ", [io::str_arg(fx::BRIGHT_BLUE)]);
+  io::print("%s%s%s%s\n", [
+    io::str_arg(fx::GREEN),
+    io::str_arg(fx::BOLD),
+    io::str_arg(opcode_name(opcode)),
+    io::str_arg(fx::RESET)
+  ]);
 }
 
 pub const trace_push -> fn (value: int) void {
   if (ENABLED == 0) { return; }
-  io::print("        PUSH %d\n", [io::int_arg(value)]);
+  print_stack_op(fx::MAGENTA, "PUSH", value);
 }
 
 pub const trace_pop -> fn (value: int) void {
   if (ENABLED == 0) { return; }
-  io::print("        POP  %d\n", [io::int_arg(value)]);
+  print_stack_op(fx::RED, "POP ", value);
 }
 
 pub const trace_header -> fn () void {
   if (ENABLED == 0) { return; }
-  io::print("\n=== VM Execution Trace ===\n\n", [io::NULL_FORMAT_ARG]);
+  io::print("\n", [io::NULL_FORMAT_ARG]);
+  print_colored(fx::BRIGHT_CYAN, fx::BOLD);
+  print_colored(fx::BRIGHT_CYAN, "=== VM Execution Trace ===");
+  io::print("%s\n\n", [io::str_arg(fx::RESET)]);
 }
 
 pub const trace_halt -> fn () void {
   if (ENABLED == 0) { return; }
-  io::print("\n=== Execution Halted ===\n", [io::NULL_FORMAT_ARG]);
+  io::print("\n", [io::NULL_FORMAT_ARG]);
+  print_colored(fx::BRIGHT_RED, fx::BOLD);
+  print_colored(fx::BRIGHT_RED, "=== Execution Halted ===");
+  io::print("%s\n", [io::str_arg(fx::RESET)]);
 }
 
 pub const trace_separator -> fn () void {
