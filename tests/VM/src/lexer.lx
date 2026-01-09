@@ -1,0 +1,137 @@
+@module "lexer"
+
+pub const TokenKind -> enum {
+  Number,
+  
+  LParen,
+  RParen,
+
+  Plus,
+  Minus,
+  Star,
+  Slash,
+
+  EOF,
+};
+
+pub const number_to_tokenkind -> fn (val: int) *byte {
+  switch (val) {
+    TokenKind::Number -> return "Number";
+    TokenKind::LParen -> return "LParen";
+    TokenKind::RParen -> return "RParen";
+    TokenKind::Plus   -> return "Plus";
+    TokenKind::Minus  -> return "Minus";
+    TokenKind::Star   -> return "Star";
+    TokenKind::Slash  -> return "Slash";
+    TokenKind::EOF    -> return "EOF";
+  }
+}
+
+pub const Lexer -> struct {
+  line: int, col: int,
+  current: *byte,
+  src: *byte,
+};
+
+pub const create_lexer -> fn (path: *byte) Lexer {
+  return Lexer { line: 1, col: 0, src: path, current: path };
+}
+
+pub const Token -> struct {
+  val: *byte,
+  kind: int,
+  len: int
+};
+
+const SINGLE_SYMBOL_COUNT: int = 6;
+const SingleSymbol -> struct { val: byte, kind: int }; 
+const  single_symbol_map: [SingleSymbol; 6] = [
+  SingleSymbol { val: '(', kind: TokenKind::LParen }, 
+  SingleSymbol { val: ')', kind: TokenKind::RParen },
+  SingleSymbol { val: '+', kind: TokenKind::Plus   }, 
+  SingleSymbol { val: '-', kind: TokenKind::Minus  },
+  SingleSymbol { val: '*', kind: TokenKind::Star   }, 
+  SingleSymbol { val: '/', kind: TokenKind::Slash  }
+];
+
+const lookup_single -> fn (val: byte) int {
+  loop [i: int = 0](i < SINGLE_SYMBOL_COUNT) : (++i) {
+    if (single_symbol_map[i].val == val) 
+      return single_symbol_map[i].kind;
+  }
+  return -1;
+}
+
+const peek -> fn (lx: *Lexer, offset: int) byte { 
+  return lx.current[offset]; 
+}
+
+const advance -> fn (lx: *Lexer) byte {
+  let c: byte = peek(lx, 0);
+  lx.current = cast<*byte>(cast<int>(lx.current) + 1);
+
+  if (c == '\n') {
+    lx.line = lx.line + 1;
+    lx.col = 0;
+  } elif (c != '\0') {
+    lx.col = lx.col + 1;
+  }
+  
+  return c;
+}
+
+const is_end -> fn (lx: *Lexer) int { 
+  if (peek(lx, 0) == '\0') return 1;
+  return 0;
+}
+
+const is_digit -> fn (c: byte) bool {
+  return (c >= '0' && c <= '9');
+}
+
+const is_whitespace -> fn (c: byte) bool {
+  return (c == ' ' || c == '\t' || c == '\n' || c == '\r');
+}
+
+const skip_whitespace -> fn (lx: *Lexer) void {
+  loop (is_end(lx) == 0 && 
+        is_whitespace(peek(lx, 0))) {
+    advance(lx);
+  }
+}
+
+const make_token -> fn (val: *byte, kind: int, len: int) Token {
+  return Token { val: val, kind: kind, len: len };
+}
+
+pub const next_token -> fn (lx: *Lexer) Token {
+  skip_whitespace(lx);
+
+  if (is_end(lx) == 1) {
+    return make_token(lx.current, TokenKind::EOF, 0);
+  }
+  
+  let start: *byte = lx.current;
+  let c: byte = peek(lx, 0);
+  
+  // Check for numbers
+  if (is_digit(c)) {
+    let len: int = 0;
+    loop (is_end(lx) == 0 && is_digit(peek(lx, 0))) {
+      advance(lx);
+      len = len + 1;
+    }
+    return make_token(start, TokenKind::Number, len);
+  }
+  
+  // Check for single-character tokens
+  let kind: int = lookup_single(c);
+  if (kind != -1) {
+    advance(lx);
+    return make_token(start, kind, 1);
+  }
+  
+  // Unknown character - skip it and try again
+  advance(lx);
+  return next_token(lx);
+}
