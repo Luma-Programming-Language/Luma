@@ -102,9 +102,9 @@ pub const main -> fn () int {
   
   defer { free(zBuffer); free(_colorBuffer); free(_buffer); }
 
-  io::print_str("%s%s%s3D%s%s Spinning Cubes in Luma%s%s\n", 
-                [fx::CLEAR_SCREEN, fx::CURSOR_HOME, fx::BRIGHT_MAGENTA, 
-                 fx::RESET, fx::BRIGHT_CYAN, fx::RESET, fx::CURSOR_HIDE]);
+  io::print("%s%s%s3D%s%s Spinning Cubes in Luma%s%s\n", 
+                [io::str_arg(fx::CLEAR_SCREEN), io::str_arg(fx::CURSOR_HOME), io::str_arg(fx::BRIGHT_MAGENTA), 
+                 io::str_arg(fx::RESET), io::str_arg(fx::BRIGHT_CYAN), io::str_arg(fx::RESET), io::str_arg(fx::CURSOR_HIDE)]);
 
   let frame_count: int = 0;
 

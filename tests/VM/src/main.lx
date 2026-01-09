@@ -7,23 +7,43 @@ pub const main -> fn () int {
     let v: VM = vm::create_vm();
     defer { vm::free_vm(&v); }
 
-    let values: [int; 5] = [10, 13, 6, 25, 42];
-
     let pc: int = 0;
-    loop [i: int = 0](i < 5) : (++i) {
-        v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
-        vm::write_int(v.program, &pc, values[i]);
-    }
+    let loop_start: int = 0;
     
-    v.program[pc++] = cast<byte>(common::Opcode::OP_MUL);
+    // Push initial counter (0)
+    v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
+    vm::write_int(v.program, &pc, 0);
+    
+    loop_start = pc;  // Mark loop start
+    
+    // Increment counter
+    v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
+    vm::write_int(v.program, &pc, 1);
     v.program[pc++] = cast<byte>(common::Opcode::OP_ADD);
-    v.program[pc++] = cast<byte>(common::Opcode::OP_NEG);
-    v.program[pc++] = cast<byte>(common::Opcode::OP_DIV);
-    v.program[pc++] = cast<byte>(common::Opcode::OP_SUB);
+    
+    // Duplicate the counter for printing (so we don't lose it)
+    v.program[pc++] = cast<byte>(common::Opcode::OP_DUP);
+    
+    // Print current value
     v.program[pc++] = cast<byte>(common::Opcode::OP_PRINT);
+    
+    // Duplicate again for comparison
+    v.program[pc++] = cast<byte>(common::Opcode::OP_DUP);
+    
+    // Check if less than 5
+    v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
+    vm::write_int(v.program, &pc, 5);
+    v.program[pc++] = cast<byte>(common::Opcode::OP_LT);
+    
+    // Jump back if true (counter < 5)
+    v.program[pc++] = cast<byte>(common::Opcode::OP_JNZ);
+    vm::write_int(v.program, &pc, loop_start);
+    
+    // Clean up: pop the final counter value
+    v.program[pc++] = cast<byte>(common::Opcode::OP_POP);
+    
     v.program[pc++] = cast<byte>(common::Opcode::OP_HALT);
-
+    
     vm::vm_execute(&v);
-
     return 0;
 }

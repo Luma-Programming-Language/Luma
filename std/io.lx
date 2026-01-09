@@ -196,10 +196,9 @@ const from_int -> fn (n: int) *byte {
 /// # Memory
 /// Allocates a 1024-byte temporary buffer which is automatically freed via defer
 pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
-    let buffer: *byte = cast<*byte>(alloc(1024 * sizeof<byte>));
+    let buffer: [byte; 1024];
     let buf_index: int = 0;
     let arg_index: int = 0;
-    defer { free(buffer); }
     
     let i: int = 0;
     loop (s[i] != '\0') {
@@ -252,9 +251,8 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
       buf_index = buf_index + 1;
       i = i + 1;
     }
-    buffer[buf_index] = '\0';
-    
-    let written: int = local_write_str(STDOUT, buffer);
+      
+    let written: int = local_write(STDOUT, cast<*void>(&buffer), buf_index);
     return written;
 }
 

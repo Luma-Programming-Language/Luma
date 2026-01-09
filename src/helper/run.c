@@ -94,7 +94,6 @@ const char *resolve_import_path(const char *path, ArenaAllocator *allocator) {
   return path;
 }
 
-// Update your generate_llvm_code_modules function:
 bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
                                 ArenaAllocator *allocator, int *step,
                                 CompileTimer *timer) {
@@ -123,6 +122,8 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
     return false;
   }
 
+  preprocess_all_modules(ctx);
+
   print_progress_with_time(++(*step), 9, "LLVM IR Generation", timer);
 
   if (config.save) {
@@ -140,6 +141,8 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
 
   print_progress_with_time(++(*step), 9, "Linking", timer);
 
+  cleanup_module_caches();
+  
   cleanup_codegen_context(ctx);
   return true;
 }

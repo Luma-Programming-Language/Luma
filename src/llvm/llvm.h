@@ -117,6 +117,12 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir);
 // Generate external function declarations for cross-module calls
 void generate_external_declarations(CodeGenContext *ctx,
                                     ModuleCompilationUnit *target_module);
+void preprocess_all_modules(CodeGenContext *ctx);
+StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
+LLVMValueRef codegen_expr_member_access_optimized(CodeGenContext *ctx, AstNode *node);
+void cleanup_module_caches(void);
+void register_struct_with_cache(CodeGenContext *ctx, StructInfo *struct_info);
+void debug_object_files(const char *output_dir);
 
 // =============================================================================
 // SYMBOL IMPORT AND MODULE INTEROP

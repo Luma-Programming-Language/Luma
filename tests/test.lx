@@ -1,22 +1,79 @@
 @module "main"
 
-@use "vector" as vec
-@use "io" as io
+@use "io" as IO
+
+const is_digit -> fn (c: byte) bool {
+  return c >= '0' && c <= '9';
+}
+
+const calculate -> fn (s: *byte) int {
+  let stack: [int; 256];
+  let top: int = -1;
+  let num: int = 0;
+  let sign: int = 1;  
+  let result: int = 0;
+  let pos: int = 0;
+  
+  loop (s[pos] != '\0') {
+    let c: byte = s[pos];
+    
+    if (is_digit(c)) num = num * 10 + cast<int>(c) - 48;
+    switch(c) {
+      '+' -> {
+        result = result + sign * num;
+        num = 0;
+        sign = 1;
+      }
+      '-' -> {
+        result = result + sign * num;
+        num = 0;
+        sign = -1;
+      }
+      '(' -> {
+        top = top + 1;
+        stack[top] = result;
+        top = top + 1;
+        stack[top] = sign;
+      
+        // Reset for sub-expression
+        result = 0;
+        sign = 1;
+      }
+      ')' -> {
+        result = result + sign * num;
+        num = 0;
+      
+        let prev_sign: int = stack[top];
+        top = top - 1;
+      
+        let prev_result: int = stack[top];
+        top = top - 1;
+      
+        // Combine
+        result = prev_result + prev_sign * result;
+      }
+    }
+    pos = pos + 1;
+  }
+  
+  // Don't forget the last number
+  result = result + sign * num;
+  
+  return result;
+}
 
 pub const main -> fn () int {
-    let v: Vector = create_vector(sizeof<int>);
-    defer { vec::free_vector(&v); } 
-    
-    let x: int = 42;
-    v.push_back(cast<*void>(&x));
-    
-    let elem_ptr: *int = cast<*int>(v.get(0));
-    if (elem_ptr != cast<*int>(0)) {
-        io::print("First element in vector: %d\n", [io::int_arg(*elem_ptr)]);
-    } else {
-        io::print_err("Failed to retrieve element from vector\n", [0]);
-    }
-
-    io::print("Vector size after one push_back: %d\n", [io::int_arg(v.size)]);
-    return 0;
+  let eq1: *byte = "1 + 1";
+  IO::print("%d\n", [IO::int_arg(calculate(eq1))]);  // 2
+  
+  let eq2: *byte = " 2-1 + 2 ";
+  IO::print("%d\n", [IO::int_arg(calculate(eq2))]);  // 3
+  
+  let eq3: *byte = "(1+(4+5+2)-3)+(6+8)";
+  IO::print("%d\n", [IO::int_arg(calculate(eq3))]);  // 23
+  
+  let eq4: *byte = "2-(5-6)";
+  IO::print("%d\n", [IO::int_arg(calculate(eq4))]);  // 3
+  
+  return 0;
 }

@@ -30,8 +30,8 @@ pub const free_vm -> fn (vm: *VM) void {
 // Helper: Check if stack has enough values for an operation
 const check_stack_has_values -> fn (v: *VM, count: int) void {
   if (v.sp < count - 1) {
-    io::print_err("Stack Underflow! Need %d value(s), but stack has %d\n", 
-      [count, v.sp + 1]);
+    io::print_err("Stack Underflow! Need %d value(s),
+                  but stack has %d\n", [count, v.sp + 1]);
     sys::exit(1);
   }
 }
@@ -66,6 +66,17 @@ pub const write_int -> fn (prog: *byte, pc: *int, val: int) void {
   }
 }
 
+const read_int -> fn (v: *VM) int {
+  return ((cast<int>(v.program[v.pc + 0]) & 255) << 0)  |
+         ((cast<int>(v.program[v.pc + 1]) & 255) << 8)  |
+         ((cast<int>(v.program[v.pc + 2]) & 255) << 16) |
+         ((cast<int>(v.program[v.pc + 3]) & 255) << 24) |
+         ((cast<int>(v.program[v.pc + 4]) & 255) << 32) |
+         ((cast<int>(v.program[v.pc + 5]) & 255) << 40) |
+         ((cast<int>(v.program[v.pc + 6]) & 255) << 48) |
+         ((cast<int>(v.program[v.pc + 7]) & 255) << 56); 
+}
+
 const preform_binary -> fn (v: *VM, op: byte) void {
   check_stack_has_values(v, 2);
   
@@ -74,10 +85,12 @@ const preform_binary -> fn (v: *VM, op: byte) void {
   let result: int = 0;
 
   switch (op) {
-    '+' -> result = b + a;
-    '-' -> result = b - a;
-    '*' -> result = b * a;
-    '/' -> result = b / a;
+    '+' -> result = a + b;
+    '-' -> result = a - b;
+    '*' -> result = a * b;
+    '/' -> result = a / b;
+    '<' -> if (a < b)  result = 1; else result = 0;
+    '=' -> if (a == b) result = 1; else result = 0;
   }
   
   push(v, result);
@@ -108,26 +121,25 @@ pub const vm_execute -> fn (v: *VM) void {
 
     switch(cast<int>(op)) {
       common::Opcode::OP_PUSH -> {
-        let val: int = 
-          (cast<int>(v.program[v.pc + 0]) << 0)  |
-          (cast<int>(v.program[v.pc + 1]) << 8)  |
-          (cast<int>(v.program[v.pc + 2]) << 16) |
-          (cast<int>(v.program[v.pc + 3]) << 24) |
-          (cast<int>(v.program[v.pc + 4]) << 32) |
-          (cast<int>(v.program[v.pc + 5]) << 40) |
-          (cast<int>(v.program[v.pc + 6]) << 48) |
-          (cast<int>(v.program[v.pc + 7]) << 56);
+        let val: int = read_int(v); 
         v.pc = v.pc + 8;
         push(v, val);
       }
       common::Opcode::OP_POP  -> { pop(v); }
+      common::Opcode::OP_DUP -> {
+        check_stack_has_values(v, 1);
+        let value: int = v.stack[v.sp];
+        push(v, value);
+      }
       common::Opcode::OP_HALT -> {
         debug::trace_halt();
         return;
       }
+
       common::Opcode::OP_PRINT -> {
         check_stack_has_values(v, 1);
         io::print("%d\n", [io::int_arg(v.stack[v.sp])]);
+        pop(v);
       }
 
       // Binary Instructions
@@ -135,9 +147,36 @@ pub const vm_execute -> fn (v: *VM) void {
       common::Opcode::OP_SUB -> preform_binary(v, '-');
       common::Opcode::OP_MUL -> preform_binary(v, '*');
       common::Opcode::OP_DIV -> preform_binary(v, '/');
+      common::Opcode::OP_LT  -> preform_binary(v, '<');
+      common::Opcode::OP_EQ  -> preform_binary(v, '=');
 
       // Unary Instructions
       common::Opcode::OP_NEG -> preform_unary(v, '-');
+
+      // Jump Instructions
+      common::Opcode::OP_JMP -> v.pc = read_int(v);
+      common::Opcode::OP_JZ  -> {
+        let target: int = read_int(v);
+        v.pc = v.pc + 8;  // Move past the jump target
+  
+        check_stack_has_values(v, 1);
+        let condition: int = pop(v);
+  
+        if (condition == 0) {
+          v.pc = target;
+        }
+      }
+      common::Opcode::OP_JNZ  -> {
+        let target: int = read_int(v);
+        v.pc = v.pc + 8;  // Move past the jump target
+  
+        check_stack_has_values(v, 1);
+        let condition: int = pop(v);
+  
+        if (condition != 0) {
+           v.pc = target;
+        }
+      }
 
       _ -> {
         io::print_err("Unknown Opcode!!\n", [0]);

@@ -2,7 +2,7 @@
 # Example:
 #   ./luma tests/tetris/tetris.lx -name tetris -l std/termfx.lx std/terminal.lx std/string.lx std/sys.lx std/time.lx std/math.lx
 
-LUMA = ./../../luma
+LUMA = luma
 NAME = vm
 
 MAIN = src/vm.lx

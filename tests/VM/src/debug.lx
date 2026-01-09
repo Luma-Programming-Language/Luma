@@ -10,6 +10,7 @@ pub const opcode_name -> fn (op: int) *byte {
   switch (op) {
     common::Opcode::OP_PUSH  -> return "OP_PUSH";
     common::Opcode::OP_POP   -> return "OP_POP";
+    common::Opcode::OP_DUP   -> return "OP_DUP";
     common::Opcode::OP_ADD   -> return "OP_ADD";
     common::Opcode::OP_SUB   -> return "OP_SUB";
     common::Opcode::OP_MUL   -> return "OP_MUL";
@@ -17,6 +18,7 @@ pub const opcode_name -> fn (op: int) *byte {
     common::Opcode::OP_PRINT -> return "OP_PRINT";
     common::Opcode::OP_JMP   -> return "OP_JMP";
     common::Opcode::OP_JZ    -> return "OP_JZ";
+    common::Opcode::OP_JNZ   -> return "OP_JNZ";
     common::Opcode::OP_LT    -> return "OP_LT";
     common::Opcode::OP_EQ    -> return "OP_EQ";
     common::Opcode::OP_NEG   -> return "OP_NEG";
@@ -27,11 +29,13 @@ pub const opcode_name -> fn (op: int) *byte {
 
 // Helper function to print colored text
 const print_colored -> fn (color: *byte, text: *byte) void {
-  io::print("%s%s%s", [io::str_arg(color), io::str_arg(text), io::str_arg(fx::RESET)]);
+  io::print("%s%s%s", [io::str_arg(color), io::str_arg(text), 
+                       io::str_arg(fx::RESET)]);
 }
 
 // Helper function to print label with colored value
-const print_label_value -> fn (label_color: *byte, label: *byte, value_color: *byte, value: int) void {
+const print_label_value -> fn (label_color: *byte, label: *byte, 
+                               value_color: *byte, value: int) void {
   io::print("%s%s %s%d%s", [
     io::str_arg(label_color),
     io::str_arg(label),
