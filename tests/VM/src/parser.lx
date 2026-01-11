@@ -124,7 +124,7 @@ const nud -> fn (p: *Parser) void {
       }
       advance(p);
     }
-    com::TokenKind::At -> {
+    com::TokenKind::Print -> {
       advance(p);
       parse_expr(p, 100);
       emit_simple(p, com::Opcode::OP_PRINT);

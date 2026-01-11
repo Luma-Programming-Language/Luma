@@ -4,7 +4,7 @@
 @use "common" as common
 @use "termfx" as fx
 
-pub let ENABLED: int = 0;
+pub let ENABLED: int = 1;
 
 pub const opcode_name -> fn (op: int) *byte {
   switch (op) {

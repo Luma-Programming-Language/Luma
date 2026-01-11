@@ -14,7 +14,8 @@ pub const Opcode -> enum {
   OP_JMP,   
   OP_JZ,    
   OP_JNZ,   
-  OP_LT,    
+  OP_LT, 
+  OP_GT,
   OP_EQ,    
   OP_NEG,   
   OP_HALT   
@@ -33,6 +34,14 @@ pub const TokenKind -> enum {
   Slash,
   Carrot,
   Mod,
+  Less,
+  Greater,
+  
+  Ident,
+  Let,
+  Print,
+  If,
+  Else,
 
   EOF,
 };
