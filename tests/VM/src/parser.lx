@@ -1,0 +1,231 @@
+@module "parser"
+
+@use "string" as string
+@use "common" as com
+@use "vector" as vec
+@use "io" as io
+@use "vm" as vm
+
+pub const Instruction -> struct {
+  has_operand: int,
+  operand: int,
+  opcode: int,
+};
+
+// Global instruction vector
+let g_instr: Vector;
+
+pub const Parser -> struct {
+  tks: *Token,
+  current: int,
+  count: int,
+};
+
+#returns_ownership
+pub const create_parser -> fn (tks: *Token, count: int) Parser {
+  // Reset global instruction vector
+  g_instr.size = 0;
+  
+  return Parser {
+    tks: tks,
+    count: count,
+    current: 0
+  };
+}
+
+#takes_ownership
+pub const free_parser -> fn (p: *Parser) void {
+  p.current = 0;
+  p.count = 0;
+}
+
+const emit_instruction -> fn (p: *Parser, opcode: int, operand: int) void {
+  let tmp: Instruction;
+  tmp.has_operand = 1;
+  tmp.operand = operand;
+  tmp.opcode = opcode;
+  
+  g_instr.push_back(cast<*void>(&tmp));
+}
+
+const emit_simple -> fn (p: *Parser, opcode: int) void {
+  let tmp: Instruction;
+  tmp.has_operand = 0;
+  tmp.opcode = opcode;
+  tmp.operand = 0;
+  
+  g_instr.push_back(cast<*void>(&tmp));
+}
+
+const at_end -> fn (p: *Parser) int {
+  return cast<int>(p.current >= p.count);
+}
+
+const peek -> fn (p: *Parser) Token {
+  if (p.current >= p.count) {
+    return p.tks[p.count - 1];
+  }
+  return p.tks[p.current];
+}
+
+const advance -> fn (p: *Parser) void {
+  if (p.current < p.count) {
+    p.current = p.current + 1;
+  }
+}
+
+const token_to_int -> fn (tok: *Token) int {
+  if (tok.len <= 0 || tok.len > 100) {
+    io::print_err("Error: Invalid token length: %d\n", [tok.len]);
+    return 0;
+  }
+  
+  let s: *byte = cast<*byte>(alloc((tok.len + 1) * sizeof<byte>));
+  defer { free(s); }
+  
+  loop [i: int = 0](i < tok.len) : (++i) {
+    s[i] = tok.val[i];
+  }
+  s[tok.len] = '\0';
+  
+  return string::atio(s);
+}
+
+const get_infix_bp -> fn (token_type: int) int {
+  switch (token_type) {
+    com::TokenKind::Plus, com::TokenKind::Minus 
+      -> return 10;    
+    com::TokenKind::Star, com::TokenKind::Slash 
+      -> return 20;
+    _ -> return 0;
+  }
+}
+
+const parse_expr -> fn (p: *Parser, bp: int) void;
+
+const nud -> fn (p: *Parser) void {
+  let tok: Token = peek(p);
+  
+  switch (tok.kind) {
+    com::TokenKind::Number -> {
+      let value: int = token_to_int(&tok);
+      emit_instruction(p, com::Opcode::OP_PUSH, value);
+      advance(p);
+    }
+    com::TokenKind::LParen -> {
+      advance(p);
+      parse_expr(p, 0);
+      let next: Token = peek(p);
+      if (next.kind != com::TokenKind::RParen) {
+        io::print_err("Error: Expected ')'\n", [0]);
+      }
+      advance(p);
+    }
+    com::TokenKind::Minus -> {
+      advance(p);
+      parse_expr(p, 100);
+      emit_simple(p, com::Opcode::OP_NEG);
+    }
+    com::TokenKind::Plus -> {
+      advance(p);
+      parse_expr(p, 100);
+    }
+    _ -> {
+      io::print_err("Error: Unexpected token in expression\n", [0]);
+      advance(p);
+    }
+  }
+}
+
+const led -> fn (p: *Parser, token_kind: int, bp: int) void {
+  switch (token_kind) {
+    com::TokenKind::Plus -> {
+      advance(p);
+      parse_expr(p, bp + 1);
+      emit_simple(p, com::Opcode::OP_ADD);
+    }
+    com::TokenKind::Minus -> {
+      advance(p);
+      parse_expr(p, bp + 1);
+      emit_simple(p, com::Opcode::OP_SUB);
+    }
+    com::TokenKind::Star -> {
+      advance(p);
+      parse_expr(p, bp + 1);
+      emit_simple(p, com::Opcode::OP_MUL);
+    }
+    com::TokenKind::Slash -> {
+      advance(p);
+      parse_expr(p, bp + 1);
+      emit_simple(p, com::Opcode::OP_DIV);
+    }
+    _ -> {
+      io::print_err("Error: Unexpected infix operator\n", [0]);
+    }
+  }
+}
+
+const parse_expr -> fn (p: *Parser, bp: int) void {
+  nud(p);
+  
+  loop (at_end(p) == 0 && bp < get_infix_bp(peek(p).kind)) {
+    let tok: Token = peek(p);
+    let next_bp: int = get_infix_bp(tok.kind);
+    led(p, tok.kind, next_bp);
+  }
+}
+
+pub const parse -> fn (p: *Parser) void {
+  g_instr = vec::create_vector(sizeof<Instruction>);
+  parse_expr(p, 0);
+  emit_simple(p, com::Opcode::OP_HALT);
+}
+
+pub const assemble -> fn (p: *Parser, v: *VM) void {
+  let pc: int = 0;
+  
+  loop [i: int = 0](i < g_instr.size) : (++i) {
+    let instr_ptr: *Instruction = cast<*Instruction>(g_instr.get(i));
+    
+    v.program[pc] = cast<byte>(instr_ptr.opcode);
+    pc = pc + 1;
+    
+    if (instr_ptr.has_operand == 1) {
+      vm::write_int(v.program, &pc, instr_ptr.operand);
+    }
+  }
+
+  vec::free_vector(&g_instr);
+}
+
+const opcode_to_string -> fn (op: int) *byte {
+  switch (op) {
+    com::Opcode::OP_PUSH  -> return "PUSH";
+    com::Opcode::OP_POP   -> return "POP";
+    com::Opcode::OP_ADD   -> return "ADD";
+    com::Opcode::OP_SUB   -> return "SUB";
+    com::Opcode::OP_MUL   -> return "MUL";
+    com::Opcode::OP_DIV   -> return "DIV";
+    com::Opcode::OP_NEG   -> return "NEG";
+    com::Opcode::OP_HALT  -> return "HALT";
+    com::Opcode::OP_PRINT -> return "PRINT";
+    _                     -> return "UNKNOWN";
+  }
+}
+
+pub const print_instructions -> fn (p: *Parser) void {
+  io::print("=== Instructions ===\n", [io::NULL_FORMAT_ARG]);
+  
+  loop [i: int = 0](i < g_instr.size) : (++i) {
+    let instr: *Instruction = cast<*Instruction>(g_instr.get(i));
+    
+    io::print("%d: %s", [io::int_arg(i), 
+                         io::str_arg(opcode_to_string(instr.opcode))]);
+    
+    if (instr.has_operand == 1) {
+      io::print(" %d", [io::int_arg(instr.operand)]);
+    }
+    
+    io::print("\n", [io::NULL_FORMAT_ARG]);
+  }
+}

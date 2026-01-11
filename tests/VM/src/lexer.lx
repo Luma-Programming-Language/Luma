@@ -1,57 +1,43 @@
 @module "lexer"
 
-pub const TokenKind -> enum {
-  Number,
-  
-  LParen,
-  RParen,
+@use "common" as com
 
-  Plus,
-  Minus,
-  Star,
-  Slash,
-
-  EOF,
-};
-
-pub const number_to_tokenkind -> fn (val: int) *byte {
+pub const number_to_kind -> fn (val: int) *byte {
   switch (val) {
-    TokenKind::Number -> return "Number";
-    TokenKind::LParen -> return "LParen";
-    TokenKind::RParen -> return "RParen";
-    TokenKind::Plus   -> return "Plus";
-    TokenKind::Minus  -> return "Minus";
-    TokenKind::Star   -> return "Star";
-    TokenKind::Slash  -> return "Slash";
-    TokenKind::EOF    -> return "EOF";
+    com::TokenKind::Number -> return "Number";
+    com::TokenKind::LParen -> return "LParen";
+    com::TokenKind::RParen -> return "RParen";
+    com::TokenKind::Plus   -> return "Plus";
+    com::TokenKind::Minus  -> return "Minus";
+    com::TokenKind::Star   -> return "Star";
+    com::TokenKind::Slash  -> return "Slash";
+    com::TokenKind::EOF    -> return "EOF";
   }
 }
-
-pub const Lexer -> struct {
-  line: int, col: int,
-  current: *byte,
-  src: *byte,
-};
 
 pub const create_lexer -> fn (path: *byte) Lexer {
   return Lexer { line: 1, col: 0, src: path, current: path };
 }
 
-pub const Token -> struct {
-  val: *byte,
-  kind: int,
-  len: int
-};
+#returns_ownership
+pub const token_value_string -> fn (tok: *Token) *byte {
+  let s: *byte = cast<*byte>(alloc((tok.len + 1) * sizeof<byte>));
+  loop [i: int = 0](i < tok.len) : (++i) {
+    s[i] = tok.val[i];
+  }  
+  s[tok.len] = '\0';
+  return s;
+}
 
 const SINGLE_SYMBOL_COUNT: int = 6;
 const SingleSymbol -> struct { val: byte, kind: int }; 
 const  single_symbol_map: [SingleSymbol; 6] = [
-  SingleSymbol { val: '(', kind: TokenKind::LParen }, 
-  SingleSymbol { val: ')', kind: TokenKind::RParen },
-  SingleSymbol { val: '+', kind: TokenKind::Plus   }, 
-  SingleSymbol { val: '-', kind: TokenKind::Minus  },
-  SingleSymbol { val: '*', kind: TokenKind::Star   }, 
-  SingleSymbol { val: '/', kind: TokenKind::Slash  }
+  SingleSymbol { val: '(', kind: com::TokenKind::LParen }, 
+  SingleSymbol { val: ')', kind: com::TokenKind::RParen },
+  SingleSymbol { val: '+', kind: com::TokenKind::Plus   }, 
+  SingleSymbol { val: '-', kind: com::TokenKind::Minus  },
+  SingleSymbol { val: '*', kind: com::TokenKind::Star   }, 
+  SingleSymbol { val: '/', kind: com::TokenKind::Slash  }
 ];
 
 const lookup_single -> fn (val: byte) int {
@@ -107,9 +93,8 @@ const make_token -> fn (val: *byte, kind: int, len: int) Token {
 pub const next_token -> fn (lx: *Lexer) Token {
   skip_whitespace(lx);
 
-  if (is_end(lx) == 1) {
-    return make_token(lx.current, TokenKind::EOF, 0);
-  }
+  if (is_end(lx) == 1)
+    return make_token(lx.current, com::TokenKind::EOF, 0);
   
   let start: *byte = lx.current;
   let c: byte = peek(lx, 0);
@@ -121,7 +106,7 @@ pub const next_token -> fn (lx: *Lexer) Token {
       advance(lx);
       len = len + 1;
     }
-    return make_token(start, TokenKind::Number, len);
+    return make_token(start, com::TokenKind::Number, len);
   }
   
   // Check for single-character tokens

@@ -2254,33 +2254,25 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
                            "array_element_addr");
     }
   } else if (target->type == AST_EXPR_MEMBER) {
-    // Handle address of struct member: &obj.field
-    const char *field_name = target->expr.member.member;
-    AstNode *object = target->expr.member.object;
-
-    if (object->type == AST_EXPR_IDENTIFIER) {
-      LLVM_Symbol *sym = find_symbol(ctx, object->expr.identifier.name);
-      if (sym && !sym->is_function) {
-        // Find the struct type
-        StructInfo *struct_info = NULL;
-        for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-          if (info->llvm_type == sym->type) {
-            struct_info = info;
-            break;
-          }
-        }
-
-        if (struct_info) {
-          int field_index = get_field_index(struct_info, field_name);
-          if (field_index >= 0 &&
-              is_field_access_allowed(ctx, struct_info, field_index)) {
-            // Return pointer to the field
-            return LLVMBuildStructGEP2(ctx->builder, sym->type, sym->value,
-                                       field_index, "field_addr");
-          }
-        }
-      }
+    // Handle &(obj.field) - taking address of a member access expression
+    // This is needed for method calls like obj.method() where the typechecker
+    // injects &obj as the first argument
+    
+    // Just evaluate the member access and allocate temporary storage for it
+    LLVMValueRef member_value = codegen_expr_struct_access(ctx, target);
+    if (!member_value) {
+      fprintf(stderr, "Error: Failed to evaluate member access for address-of\n");
+      return NULL;
     }
+    
+    LLVMTypeRef member_type = LLVMTypeOf(member_value);
+    
+    // Allocate temporary storage and store the value
+    LLVMValueRef temp_storage = LLVMBuildAlloca(ctx->builder, member_type, "member_addr_temp");
+    LLVMBuildStore(ctx->builder, member_value, temp_storage);
+    
+    // Return pointer to the temporary storage
+    return temp_storage;
   }
 
   fprintf(stderr, "Error: Cannot take address of this expression type\n");

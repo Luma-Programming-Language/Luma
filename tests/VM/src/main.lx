@@ -1,65 +1,43 @@
 @module "main"  
 
+@use "parser" as parser
+@use "lexer" as lexer
+@use "vector" as vec
+@use "common" as com
 @use "vm" as vm
 @use "io" as io
-@use "vector" as vec
-@use "lexer" as lexer
-@use "common" as common
 
 pub const main -> fn () int {
-    // let v: VM = vm::create_vm();
-    // defer { vm::free_vm(&v); }
-
-    // let pc: int = 0;
-    // let loop_start: int = 0;
-    // 
-    // // Push initial counter (0)
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
-    // vm::write_int(v.program, &pc, 0);
-    // 
-    // loop_start = pc;  // Mark loop start
-    // 
-    // // Increment counter
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
-    // vm::write_int(v.program, &pc, 1);
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_ADD);
-    // 
-    // // Duplicate the counter for printing (so we don't lose it)
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_DUP);
-    // 
-    // // Print current value
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_PRINT);
-    // 
-    // // Duplicate again for comparison
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_DUP);
-    // 
-    // // Check if less than 5
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_PUSH);
-    // vm::write_int(v.program, &pc, 5);
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_LT);
-    // 
-    // // Jump back if true (counter < 5)
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_JNZ);
-    // vm::write_int(v.program, &pc, loop_start);
-    // 
-    // // Clean up: pop the final counter value
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_POP);
-    // 
-    // v.program[pc++] = cast<byte>(common::Opcode::OP_HALT);
-    // 
-    // vm::vm_execute(&v);
     let token_vector: Vector = vec::create_vector(sizeof<Token>);
     let path: *byte = "/home/connor/projects/Luma/tests/VM/text.txt";
     let file: *byte = io::read_file(path);
-    defer { vec::free_vector(&token_vector); free(file); }
+    defer { 
+        vec::free_vector(&token_vector);
+        free(file); 
+    }
 
     let lx: Lexer = lexer::create_lexer(file);
     loop {
         let tok: Token = lexer::next_token(&lx);
-        io::print("Token kind: %s, len: %d\n", 
-                  [io::str_arg(lexer::number_to_tokenkind(tok.kind)), 
-                   io::int_arg(tok.len)]);
-        if (tok.kind == lexer::TokenKind::EOF) break;
+        if (tok.kind == com::TokenKind::EOF) break;
+        token_vector.push_back(cast<*void>(&tok));
     }
+    
+    let tokens: *Token = cast<*Token>(token_vector.data);
+    let psr: Parser = parser::create_parser(tokens, token_vector.size);
+    defer { parser::free_parser(&psr); }
+    
+    parser::parse(&psr);
+    parser::print_instructions(&psr);
+    
+    // Create VM and assemble the bytecode
+    let virtual_machine: VM = vm::create_vm();
+    defer { vm::free_vm(&virtual_machine); }
+    
+    parser::assemble(&psr, &virtual_machine);
+    
+    // Execute!
+    vm::vm_execute(&virtual_machine);
+
     return 0;
 }

@@ -619,15 +619,17 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
     }
 
   } else if (object->type == AST_EXPR_CALL) {
-    // Function call returning a struct: get_token().field
+    // Function call returning a struct or pointer: get_token().field or peek(p).field
     LLVMValueRef call_result = codegen_expr(ctx, object);
     if (!call_result) {
       return NULL;
     }
 
     LLVMTypeRef result_type = LLVMTypeOf(call_result);
+    LLVMTypeKind result_kind = LLVMGetTypeKind(result_type);
 
-    if (LLVMGetTypeKind(result_type) == LLVMStructTypeKind) {
+    if (result_kind == LLVMStructTypeKind) {
+      // Direct struct return
       // Find struct info
       for (StructInfo *info = ctx->struct_types; info; info = info->next) {
         if (info->llvm_type == result_type) {
@@ -652,6 +654,26 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
         struct_ptr =
             LLVMBuildAlloca(ctx->builder, result_type, "call_result_temp");
         LLVMBuildStore(ctx->builder, call_result, struct_ptr);
+      }
+    } else if (result_kind == LLVMPointerTypeKind) {
+      // Pointer return (like peek(p) returning *Token)
+      // The function returned a pointer to a struct - we need to dereference it
+      
+      // Try to find the struct type this pointer points to
+      for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+        int field_idx = get_field_index(info, field_name);
+        if (field_idx >= 0) {
+          struct_info = info;
+          break;
+        }
+      }
+      
+      if (struct_info) {
+        // The call_result is already a pointer to the struct
+        struct_ptr = call_result;
+      } else {
+        fprintf(stderr, "Error: Could not determine struct type for pointer returned from function call\n");
+        return NULL;
       }
     }
 

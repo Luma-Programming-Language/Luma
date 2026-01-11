@@ -1,8 +1,5 @@
 @module "common"
 
-const STACK_SIZE: int = 256;
-const PROGRAM_SIZE: int = 1024;
-
 pub const Opcode -> enum {
   OP_PUSH,    // Push constant onto stack
   OP_POP,     // Pop value from stack
@@ -21,9 +18,32 @@ pub const Opcode -> enum {
   OP_HALT     // Stop execution
 };
 
+pub const TokenKind -> enum {
+  Number,
+  LParen,
+  RParen,
+  Plus,
+  Minus,
+  Star,
+  Slash,
+  EOF,
+};
+
 pub const VM -> struct {
   stack: *int, 
   program: *byte,
   sp: int, // stack pointer
   pc: int, // program counter
+};
+
+pub const Lexer -> struct {
+  line: int, col: int,
+  current: *byte,
+  src: *byte,
+};
+
+pub const Token -> struct {
+  val: *byte,
+  kind: int,
+  len: int,
 };

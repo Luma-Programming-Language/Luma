@@ -269,11 +269,27 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
     func_name = callee->expr.identifier.name;
     func_symbol = scope_lookup(scope, func_name);
   } else if (callee->type == AST_EXPR_MEMBER) {
-    const char *base_name = callee->expr.member.object->expr.identifier.name;
     const char *member_name = callee->expr.member.member;
     bool is_compiletime = callee->expr.member.is_compiletime;
 
+    // CRITICAL FIX: Handle chained member access (e.g., p.instr.push_back)
+    // First, typecheck the base expression to get its type
+    AstNode *base_expr = callee->expr.member.object;
+    const char *base_name = NULL;
+    
+    // Extract base_name for simple cases (still needed for module checking)
+    if (base_expr->type == AST_EXPR_IDENTIFIER) {
+      base_name = base_expr->expr.identifier.name;
+    }
+
     if (is_compiletime) {
+      // For compile-time access, we still need base_name
+      if (!base_name) {
+        tc_error(expr, "Compile-time Call Error",
+                 "Compile-time access requires simple identifier base");
+        return NULL;
+      }
+      
       func_symbol = lookup_qualified_symbol(scope, base_name, member_name);
       func_name = member_name;
       if (!func_symbol) {
@@ -283,46 +299,45 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
         return NULL;
       }
     } else {
+      // Runtime access - check if it's a module access (only for simple identifiers)
       bool is_module_access = false;
-      Scope *current = scope;
-      while (current) {
-        for (size_t i = 0; i < current->imported_modules.count; i++) {
-          ModuleImport *import =
-              (ModuleImport *)((char *)current->imported_modules.data +
-                               i * sizeof(ModuleImport));
-          if (strcmp(import->alias, base_name) == 0) {
-            is_module_access = true;
-            break;
+      if (base_name) {
+        Scope *current = scope;
+        while (current) {
+          for (size_t i = 0; i < current->imported_modules.count; i++) {
+            ModuleImport *import =
+                (ModuleImport *)((char *)current->imported_modules.data +
+                                 i * sizeof(ModuleImport));
+            if (strcmp(import->alias, base_name) == 0) {
+              is_module_access = true;
+              break;
+            }
           }
+          if (is_module_access)
+            break;
+          current = current->parent;
         }
-        if (is_module_access)
-          break;
-        current = current->parent;
+
+        if (is_module_access) {
+          tc_error_help(expr, "Access Method Error",
+                        "Use '::' for compile-time access to module functions",
+                        "Cannot use runtime access '.' for module function - did "
+                        "you mean '%s::%s()'?",
+                        base_name, member_name);
+          return NULL;
+        }
       }
 
-      if (is_module_access) {
-        tc_error_help(expr, "Access Method Error",
-                      "Use '::' for compile-time access to module functions",
-                      "Cannot use runtime access '.' for module function - did "
-                      "you mean '%s::%s()'?",
-                      base_name, member_name);
-        return NULL;
-      }
-
-      Symbol *base_symbol = scope_lookup(scope, base_name);
-      if (!base_symbol) {
-        tc_error(expr, "Runtime Access Error", "Undefined identifier '%s'",
-                 base_name);
-        return NULL;
-      }
-
-      if (!base_symbol->type) {
+      // CRITICAL FIX: Typecheck the base expression to handle complex cases
+      // like p.instr.push_back where base_expr is AST_EXPR_MEMBER
+      AstNode *base_type = typecheck_expression(base_expr, scope, arena);
+      if (!base_type) {
         tc_error(expr, "Runtime Access Error",
-                 "Symbol '%s' has no type information", base_name);
+                 "Failed to determine type of base expression for method call");
         return NULL;
       }
 
-      AstNode *base_type = base_symbol->type;
+      // Resolve base_type to actual struct type (handle pointers, basic types, etc.)
       if (base_type->type == AST_TYPE_POINTER) {
         AstNode *pointee = base_type->type_data.pointer.pointee_type;
         if (pointee && pointee->type == AST_TYPE_BASIC) {
@@ -366,7 +381,9 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
           func_symbol->takes_ownership = false;
           func_name = member_name;
 
-          if (!callee->expr.member.object) {
+          // CRITICAL FIX: Use the base expression directly, not just base_name
+          // This handles complex expressions like p.instr.push_back
+          if (!base_expr) {
             tc_error(expr, "Internal Error", "Method call has no object");
             return NULL;
           }
@@ -395,23 +412,24 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
           }
 
           AstNode *self_param_type = method_param_types[0];
-          AstNode *object_node = callee->expr.member.object;
           bool expects_pointer = (self_param_type->type == AST_TYPE_POINTER);
-          Symbol *obj_symbol = scope_lookup(scope, base_name);
-          bool have_pointer = (obj_symbol && obj_symbol->type &&
-                               obj_symbol->type->type == AST_TYPE_POINTER);
+          bool have_pointer = (base_type->type == AST_TYPE_POINTER ||
+                               (base_expr->type == AST_EXPR_IDENTIFIER &&
+                                scope_lookup(scope, base_expr->expr.identifier.name) &&
+                                scope_lookup(scope, base_expr->expr.identifier.name)->type &&
+                                scope_lookup(scope, base_expr->expr.identifier.name)->type->type == AST_TYPE_POINTER));
 
           if (expects_pointer && !have_pointer) {
             AstNode *addr_expr =
                 arena_alloc(arena, sizeof(AstNode), alignof(AstNode));
             addr_expr->type = AST_EXPR_ADDR;
             addr_expr->category = Node_Category_EXPR;
-            addr_expr->line = object_node->line;
-            addr_expr->column = object_node->column;
-            addr_expr->expr.addr.object = object_node;
+            addr_expr->line = base_expr->line;
+            addr_expr->column = base_expr->column;
+            addr_expr->expr.addr.object = base_expr;
             new_arguments[0] = addr_expr;
           } else {
-            new_arguments[0] = object_node;
+            new_arguments[0] = base_expr;
           }
 
           for (size_t i = 0; i < arg_count; i++) {

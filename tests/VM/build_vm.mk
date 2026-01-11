@@ -12,7 +12,8 @@ STD_LIBS = ../../std/io.lx \
            ../../std/memory.lx \
            ../../std/sys.lx \
            ../../std/termfx.lx \
-           ../../std/vector.lx
+           ../../std/vector.lx \
+           ../../std/string.lx
 
 ALL_SRCS = $(MAIN) $(SRCS) $(STD_LIBS)
 
