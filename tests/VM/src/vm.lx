@@ -1,9 +1,9 @@
 @module "vm"
 
-@use "io" as io
-@use "sys" as sys
 @use "common" as common
 @use "debug" as debug
+@use "sys" as sys
+@use "io" as io
 
 const STACK_SIZE: int = 256;
 const PROGRAM_SIZE: int = 1024;
@@ -66,6 +66,21 @@ pub const write_int -> fn (prog: *byte, pc: *int, val: int) void {
   }
 }
 
+const power -> fn (base: int, exponent: int) int {
+  if (exponent == 0) return 1;
+
+  let result: int = 1;
+  let e: int = exponent;
+
+  if (e < 0) {
+    base = 1;
+    e = -e;
+  }
+
+  loop (e > 0) : (--e) { result = result * base; }
+  return result;
+}
+
 const read_int -> fn (v: *VM) int {
   return ((cast<int>(v.program[v.pc + 0]) & 255) << 0)  |
          ((cast<int>(v.program[v.pc + 1]) & 255) << 8)  |
@@ -89,6 +104,8 @@ const preform_binary -> fn (v: *VM, op: byte) void {
     '-' -> result = a - b;
     '*' -> result = a * b;
     '/' -> result = a / b;
+    '%' -> result = a % b;
+    '^' -> result = power(a, b); 
     '<' -> if (a < b)  result = 1; else result = 0;
     '=' -> if (a == b) result = 1; else result = 0;
   }
@@ -139,7 +156,6 @@ pub const vm_execute -> fn (v: *VM) void {
       common::Opcode::OP_PRINT -> {
         check_stack_has_values(v, 1);
         io::print("%d\n", [io::int_arg(v.stack[v.sp])]);
-        pop(v);
       }
 
       // Binary Instructions
@@ -147,8 +163,10 @@ pub const vm_execute -> fn (v: *VM) void {
       common::Opcode::OP_SUB -> preform_binary(v, '-');
       common::Opcode::OP_MUL -> preform_binary(v, '*');
       common::Opcode::OP_DIV -> preform_binary(v, '/');
+      common::Opcode::OP_MOD -> preform_binary(v, '%');
       common::Opcode::OP_LT  -> preform_binary(v, '<');
       common::Opcode::OP_EQ  -> preform_binary(v, '=');
+      common::Opcode::OP_EXP -> preform_binary(v, '^');
 
       // Unary Instructions
       common::Opcode::OP_NEG -> preform_unary(v, '-');

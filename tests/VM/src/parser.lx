@@ -1,6 +1,7 @@
 @module "parser"
 
 @use "string" as string
+@use "debug" as debug
 @use "common" as com
 @use "vector" as vec
 @use "io" as io
@@ -95,8 +96,10 @@ const get_infix_bp -> fn (token_type: int) int {
   switch (token_type) {
     com::TokenKind::Plus, com::TokenKind::Minus 
       -> return 10;    
-    com::TokenKind::Star, com::TokenKind::Slash 
+    com::TokenKind::Star, com::TokenKind::Slash, com::TokenKind::Mod 
       -> return 20;
+    com::TokenKind::Carrot 
+      -> return 30;
     _ -> return 0;
   }
 }
@@ -120,6 +123,11 @@ const nud -> fn (p: *Parser) void {
         io::print_err("Error: Expected ')'\n", [0]);
       }
       advance(p);
+    }
+    com::TokenKind::At -> {
+      advance(p);
+      parse_expr(p, 100);
+      emit_simple(p, com::Opcode::OP_PRINT);
     }
     com::TokenKind::Minus -> {
       advance(p);
@@ -159,6 +167,16 @@ const led -> fn (p: *Parser, token_kind: int, bp: int) void {
       parse_expr(p, bp + 1);
       emit_simple(p, com::Opcode::OP_DIV);
     }
+    com::TokenKind::Carrot -> {
+      advance(p);
+      parse_expr(p, bp + 1);
+      emit_simple(p, com::Opcode::OP_EXP);
+    }
+    com::TokenKind::Mod -> {
+      advance(p);
+      parse_expr(p, bp + 1);
+      emit_simple(p, com::Opcode::OP_MOD);
+    }
     _ -> {
       io::print_err("Error: Unexpected infix operator\n", [0]);
     }
@@ -177,7 +195,21 @@ const parse_expr -> fn (p: *Parser, bp: int) void {
 
 pub const parse -> fn (p: *Parser) void {
   g_instr = vec::create_vector(sizeof<Instruction>);
-  parse_expr(p, 0);
+  
+  loop (at_end(p) == 0) {
+    parse_expr(p, 0);
+    
+    emit_simple(p, com::Opcode::OP_POP);
+
+    let tok: Token = peek(p);
+    if (tok.kind == com::TokenKind::Semi) {
+      advance(p);
+    } elif (tok.kind != com::TokenKind::EOF) {
+      io::print_err("Error: Expected ';' or EOF\n", [0]);
+      break;
+    } 
+  }
+
   emit_simple(p, com::Opcode::OP_HALT);
 }
 
@@ -198,21 +230,6 @@ pub const assemble -> fn (p: *Parser, v: *VM) void {
   vec::free_vector(&g_instr);
 }
 
-const opcode_to_string -> fn (op: int) *byte {
-  switch (op) {
-    com::Opcode::OP_PUSH  -> return "PUSH";
-    com::Opcode::OP_POP   -> return "POP";
-    com::Opcode::OP_ADD   -> return "ADD";
-    com::Opcode::OP_SUB   -> return "SUB";
-    com::Opcode::OP_MUL   -> return "MUL";
-    com::Opcode::OP_DIV   -> return "DIV";
-    com::Opcode::OP_NEG   -> return "NEG";
-    com::Opcode::OP_HALT  -> return "HALT";
-    com::Opcode::OP_PRINT -> return "PRINT";
-    _                     -> return "UNKNOWN";
-  }
-}
-
 pub const print_instructions -> fn (p: *Parser) void {
   io::print("=== Instructions ===\n", [io::NULL_FORMAT_ARG]);
   
@@ -220,7 +237,7 @@ pub const print_instructions -> fn (p: *Parser) void {
     let instr: *Instruction = cast<*Instruction>(g_instr.get(i));
     
     io::print("%d: %s", [io::int_arg(i), 
-                         io::str_arg(opcode_to_string(instr.opcode))]);
+                         io::str_arg(debug::opcode_name(instr.opcode))]);
     
     if (instr.has_operand == 1) {
       io::print(" %d", [io::int_arg(instr.operand)]);

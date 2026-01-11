@@ -28,7 +28,6 @@ pub const main -> fn () int {
     defer { parser::free_parser(&psr); }
     
     parser::parse(&psr);
-    parser::print_instructions(&psr);
     
     // Create VM and assemble the bytecode
     let virtual_machine: VM = vm::create_vm();

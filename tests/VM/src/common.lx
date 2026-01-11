@@ -1,31 +1,39 @@
 @module "common"
 
 pub const Opcode -> enum {
-  OP_PUSH,    // Push constant onto stack
-  OP_POP,     // Pop value from stack
-  OP_DUP,     // Duplicate top of stack
-  OP_ADD,     // Add top two values
-  OP_SUB,     // Subtract top from second
-  OP_MUL,     // Multiply top two values
-  OP_DIV,     // Divide second by top
-  OP_PRINT,   // Print top of stack
-  OP_JMP,     // Unconditional jump
-  OP_JZ,      // Jump if top of stack is zero
-  OP_JNZ,     // Jump if top of stack is NOT zero
-  OP_LT,      // Less than comparison
-  OP_EQ,      // Equality comparison
-  OP_NEG,     // Negate a value
-  OP_HALT     // Stop execution
+  OP_PUSH,  
+  OP_POP,   
+  OP_DUP,   
+  OP_ADD,   
+  OP_SUB,   
+  OP_MUL,   
+  OP_DIV,   
+  OP_EXP,   
+  OP_MOD,
+  OP_PRINT, 
+  OP_JMP,   
+  OP_JZ,    
+  OP_JNZ,   
+  OP_LT,    
+  OP_EQ,    
+  OP_NEG,   
+  OP_HALT   
 };
 
 pub const TokenKind -> enum {
   Number,
   LParen,
   RParen,
+  At,
+  Semi,
+
   Plus,
   Minus,
   Star,
   Slash,
+  Carrot,
+  Mod,
+
   EOF,
 };
 
