@@ -19,11 +19,11 @@
 //! // All freed when arena is freed
 //! ```
 
-@module "arena"
+@module "std_arena"
 
-@use "string" as string
-@use "memory" as mem
-@use "io" as io
+@use "std_string" as string
+@use "std_memory" as mem
+@use "std_io" as io
 
 /// Default arena size (1MB)
 const ARENA_DEFAULT_SIZE: int = 1024 * 1024;

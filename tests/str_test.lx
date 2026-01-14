@@ -3,8 +3,8 @@
 // Compile this with the following command
 // ./luma tests/str_test.lx -name string_test -l std/string.lx std/memory.lx && valgrind --leak-check=full ./string_test
 
-@use "string" as string
-@use "memory" as mem
+@use "std_string" as string
+@use "std_memory" as mem
 
 const test_strlen -> fn () void {
     let empty_str: *byte = cast<*byte>(mem::calloc(1, sizeof<byte>));

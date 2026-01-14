@@ -1,11 +1,11 @@
 @module "main"
 
-@use "math" as math
-@use "memory" as mem
-@use "string" as string
-@use "termfx" as fx
-@use "time" as time
-@use "io" as io
+@use "std_math" as math
+@use "std_memory" as mem
+@use "std_string" as string
+@use "std_termfx" as fx
+@use "std_time" as time
+@use "std_io" as io
 
 let zBuffer: *double;
 let _colorBuffer: **byte;

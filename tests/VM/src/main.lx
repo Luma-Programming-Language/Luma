@@ -2,14 +2,14 @@
 
 @use "parser" as parser
 @use "lexer" as lexer
-@use "vector" as vec
+@use "std_vector" as vec
 @use "common" as com
 @use "vm" as vm
-@use "io" as io
+@use "std_io" as io
 
 pub const main -> fn () int {
     let token_vector: Vector = vec::create_vector(sizeof<Token>);
-    let path: *byte = "/home/connor/projects/Luma/tests/VM/text.txt";
+    let path: *byte = "/home/thedevconnor/Projects/Luma/tests/VM/text.txt";
     let file: *byte = io::read_file(path);
     defer { 
         vec::free_vector(&token_vector);

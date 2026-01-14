@@ -3,7 +3,7 @@
 // Compile this with the following command
 // ./luma tests/mem_test.lx -name mem_test -l std/memory.lx && valgrind --leak-check=full ./mem_test  
 
-@use "memory" as mem
+@use "std_memory" as mem
 
 const test_memset -> fn () void {
    let buf: *void = alloc(10);

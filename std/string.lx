@@ -11,7 +11,7 @@
 //! Functions that create new strings (prefixed with `from_` or returning `#returns_ownership`)
 //! allocate memory that the caller must free. Use `defer { free(str); }` to ensure cleanup.
 
-@module "string"
+@module "std_string"
 
 // ============= Local System Call for putbyte =============
 
@@ -307,6 +307,15 @@ pub const strcmp -> fn (s1: *byte, s2: *byte) int {
 
   loop[i: int = 0](i < ls1) : (++i) {
     if (s1[i] != s2[i]) { return 1; }
+  }
+
+  return 0;
+}
+
+pub const strncmp -> fn (s1: *byte, s2: *byte, n: int) int {
+  loop [i: int = 0](i < n) : (++i) {
+    if (s1[i] != s2[i]) { return 1; }
+    if (s1[i] == cast<byte>(0) || s2[i] == cast<byte>(0)) { break; }
   }
 
   return 0;

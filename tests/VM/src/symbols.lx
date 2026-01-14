@@ -1,6 +1,6 @@
 @module "symbols"
 
-@use "string" as string
+@use "std_string" as string
 @use "common" as com
 
 pub const number_to_kind -> fn (val: int) *byte {

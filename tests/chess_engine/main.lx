@@ -1,9 +1,9 @@
 @module "main"
 
-@use "terminal" as term
-@use "string" as string
-@use "termfx" as termfx
-@use "memory" as mem
+@use "std_terminal" as term
+@use "std_string" as string
+@use "std_termfx" as termfx
+@use "std_memory" as mem
 @use "board" as board
 
 // TODO: add in castle, en passant logic

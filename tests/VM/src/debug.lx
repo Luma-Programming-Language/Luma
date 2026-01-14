@@ -1,10 +1,10 @@
 @module "debug"
 
-@use "io" as io
+@use "std_io" as io
 @use "common" as common
-@use "termfx" as fx
+@use "std_termfx" as fx
 
-pub let ENABLED: int = 1;
+pub let ENABLED: int = 0;
 
 pub const opcode_name -> fn (op: int) *byte {
   switch (op) {

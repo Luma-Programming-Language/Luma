@@ -12,7 +12,7 @@
 //! The sine function uses a 128-entry lookup table with linear interpolation
 //! for efficiency. Other trig functions are derived from sine.
 
-@module "math"
+@module "std_math"
 
 /// Pi constant (π ≈ 3.14159...)
 pub const PI: double = 3.14159265358979323846;

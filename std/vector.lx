@@ -13,7 +13,7 @@
 //! v.push_back(cast<*void>(&x));
 //! ```
 
-@module "vector"
+@module "std_vector"
 
 /// Default initial capacity for vectors (1024 elements)
 const DEFAULT_VECTOR_CAPACITY: int = 1024;

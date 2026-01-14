@@ -10,7 +10,7 @@
 //! - Pointers are valid and properly aligned
 //! - Size parameters don't exceed allocated memory bounds
 
-@module "memory"
+@module "std_memory"
 
 /// Copies n bytes from src to dest
 ///

@@ -11,7 +11,7 @@
 //! outputln("Took ", elapsed, " milliseconds");
 //! ```
 
-@module "time"
+@module "std_time"
 
 /// Nanosleep system call number
 const NANOSLEEP: int = 35; 

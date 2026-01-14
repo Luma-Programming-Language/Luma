@@ -1,8 +1,8 @@
 @module "main"
 
-@use "string" as string
-@use "terminal" as term
-@use "termfx" as fx
+@use "std_string" as string
+@use "std_terminal" as term
+@use "std_termfx" as fx
 
 const menu_demo -> fn () void {
   output(fx::CLEAR_SCREEN, fx::CURSOR_HOME);

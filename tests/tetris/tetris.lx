@@ -1,9 +1,9 @@
 @module "main"
 
-@use "terminal" as term
-@use "time" as time
-@use "termfx" as tx
-@use "math" as math
+@use "std_terminal" as term
+@use "std_time" as time
+@use "std_termfx" as tx
+@use "std_math" as math
 
 const FIELD_W: int = 14;
 const FIELD_H: int = 24;

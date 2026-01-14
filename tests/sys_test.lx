@@ -1,6 +1,6 @@
 @module "main"
 
-@use "sys" as sys
+@use "std_sys" as sys
 
 // Helper function to combine flags (bitwise OR)
 const combine_flags -> fn (flag1: int, flag2: int) int {

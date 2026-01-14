@@ -1,10 +1,10 @@
 @module "parser"
 
-@use "string" as string
+@use "std_string" as string
 @use "debug" as debug
 @use "common" as com
-@use "vector" as vec
-@use "io" as io
+@use "std_vector" as vec
+@use "std_io" as io
 @use "vm" as vm
 
 pub const Instruction -> struct {
@@ -199,10 +199,9 @@ pub const parse -> fn (p: *Parser) void {
   loop (at_end(p) == 0) {
     parse_expr(p, 0);
     
-    emit_simple(p, com::Opcode::OP_POP);
-
     let tok: Token = peek(p);
     if (tok.kind == com::TokenKind::Semi) {
+      emit_simple(p, com::Opcode::OP_POP);
       advance(p);
     } elif (tok.kind != com::TokenKind::EOF) {
       io::print_err("Error: Expected ';' or EOF\n", [0]);

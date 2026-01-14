@@ -1,6 +1,6 @@
 @module "main"
 
-@use "io" as IO
+@use "std_io" as IO
 
 const is_digit -> fn (c: byte) bool {
   return c >= '0' && c <= '9';
@@ -56,7 +56,7 @@ const calculate -> fn (s: *byte) int {
     pos = pos + 1;
   }
   
-  // Don't forget the last number
+  // Dont forget the last number
   result = result + sign * num;
   
   return result;

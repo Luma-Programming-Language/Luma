@@ -2,8 +2,8 @@
 
 @use "common" as common
 @use "debug" as debug
-@use "sys" as sys
-@use "io" as io
+@use "std_sys" as sys
+@use "std_io" as io
 
 const STACK_SIZE: int = 256;
 const PROGRAM_SIZE: int = 1024;

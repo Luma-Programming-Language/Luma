@@ -4,7 +4,7 @@
 //! It is completely self-contained with no external module dependencies.
 //! All required syscalls and memory operations are implemented locally.
 
-@module "io"
+@module "std_io"
 
 /// Syscall numbers (Linux x86_64)
 const SYS_READ: int = 0;
@@ -48,7 +48,7 @@ const local_write -> fn (fd: int, buf: *void, count: int) int {
 }
 
 const local_read -> fn (fd: int, buf: *void, count: int) int {
-    return __syscall__(SYS_READ, fd, cast<int>(buf), count);
+    return __syscall__(SYS_READ, fd, cast<int>(buf), count); 
 }
 
 const local_open -> fn (path: *byte, flags: int, mode: int) int {

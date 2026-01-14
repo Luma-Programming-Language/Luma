@@ -16,7 +16,7 @@
  * KNOWN ISSUES:
  *   - pipe() syscall may have issues with file descriptor handling
  */
-@module "sys"
+@module "std_sys"
 
 // TODO: Allow enums to have a custom assigned value
 // Syscall numbers (Linux x86_64)

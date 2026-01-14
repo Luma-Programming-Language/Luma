@@ -24,10 +24,10 @@
 //! string::putbyte(key);
 //! ```
 
-@module "terminal"
+@module "std_terminal"
 
-@use "string" as string
-@use "termfx" as fx
+@use "std_string" as string
+@use "std_termfx" as fx
 
 /// Global flag to track raw mode state
 let raw_mode_enabled: int = 0;

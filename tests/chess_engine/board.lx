@@ -1,6 +1,6 @@
 @module "board"
 
-@use "string" as string
+@use "std_string" as string
 @use "piece" as piece
 
 pub const Move -> struct {
