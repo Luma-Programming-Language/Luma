@@ -148,6 +148,8 @@ sudo dnf install llvm20-devel llvm20-libs
 sudo apt update
 sudo apt install llvm-20-dev
 ```
+If that does not work take a look at this as well
+``https://blog.wellosoft.net/update-llvm-from-18-to-21-in-ubuntu-24``
 
 **macOS (Homebrew):**
 
