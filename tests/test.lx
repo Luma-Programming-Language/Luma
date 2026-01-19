@@ -1,79 +1,10 @@
 @module "main"
 
-@use "std_io" as IO
+@use "std_io" as io
 
-const is_digit -> fn (c: byte) bool {
-  return c >= '0' && c <= '9';
-}
-
-const calculate -> fn (s: *byte) int {
-  let stack: [int; 256];
-  let top: int = -1;
-  let num: int = 0;
-  let sign: int = 1;  
-  let result: int = 0;
-  let pos: int = 0;
-  
-  loop (s[pos] != '\0') {
-    let c: byte = s[pos];
-    
-    if (is_digit(c)) num = num * 10 + cast<int>(c) - 48;
-    switch(c) {
-      '+' -> {
-        result = result + sign * num;
-        num = 0;
-        sign = 1;
-      }
-      '-' -> {
-        result = result + sign * num;
-        num = 0;
-        sign = -1;
-      }
-      '(' -> {
-        top = top + 1;
-        stack[top] = result;
-        top = top + 1;
-        stack[top] = sign;
-      
-        // Reset for sub-expression
-        result = 0;
-        sign = 1;
-      }
-      ')' -> {
-        result = result + sign * num;
-        num = 0;
-      
-        let prev_sign: int = stack[top];
-        top = top - 1;
-      
-        let prev_result: int = stack[top];
-        top = top - 1;
-      
-        // Combine
-        result = prev_result + prev_sign * result;
-      }
-    }
-    pos = pos + 1;
+pub const main -> fn (argc: int, argv: **byte) int {
+  loop [i: int = 0](i < argc) : (++i) {
+    io::print("%s\n", [io::str_arg(argv[i])]);
   }
-  
-  // Dont forget the last number
-  result = result + sign * num;
-  
-  return result;
-}
-
-pub const main -> fn () int {
-  let eq1: *byte = "1 + 1";
-  IO::print("%d\n", [IO::int_arg(calculate(eq1))]);  // 2
-  
-  let eq2: *byte = " 2-1 + 2 ";
-  IO::print("%d\n", [IO::int_arg(calculate(eq2))]);  // 3
-  
-  let eq3: *byte = "(1+(4+5+2)-3)+(6+8)";
-  IO::print("%d\n", [IO::int_arg(calculate(eq3))]);  // 23
-  
-  let eq4: *byte = "2-(5-6)";
-  IO::print("%d\n", [IO::int_arg(calculate(eq4))]);  // 3
-  
   return 0;
 }

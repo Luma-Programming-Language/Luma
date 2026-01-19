@@ -3,6 +3,7 @@
 #include <llvm-c/Types.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 
 // Legacy program handler (now redirects to multi-module handler)
 LLVMValueRef codegen_stmt_program(CodeGenContext *ctx, AstNode *node) {
@@ -52,12 +53,14 @@ LLVMTypeRef extract_element_type_from_ast(CodeGenContext *ctx,
   return NULL; // Not a pointer type
 }
 
-static void set_struct_return_convention(LLVMValueRef function, LLVMTypeRef return_type) {
+static void set_struct_return_convention(LLVMValueRef function,
+                                         LLVMTypeRef return_type) {
   if (LLVMGetTypeKind(return_type) != LLVMStructTypeKind) {
     return; // Not a struct, nothing to do
   }
-  
-  // Use C calling convention which handles struct returns properly on all platforms
+
+  // Use C calling convention which handles struct returns properly on all
+  // platforms
   LLVMSetFunctionCallConv(function, LLVMCCallConv);
 }
 
@@ -196,7 +199,8 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
       return NULL;
     }
 
-    if (LLVMCountParamTypes(existing_type) != node->stmt.func_decl.param_count) {
+    if (LLVMCountParamTypes(existing_type) !=
+        node->stmt.func_decl.param_count) {
       fprintf(
           stderr,
           "Error: Function '%s' redeclared with different parameter count\n",
@@ -212,7 +216,8 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
     for (size_t i = 0; i < node->stmt.func_decl.param_count; i++) {
       if (existing_param_types[i] != param_types[i]) {
         fprintf(stderr,
-                "Error: Function '%s' redeclared with different parameter %zu type\n",
+                "Error: Function '%s' redeclared with different parameter %zu "
+                "type\n",
                 func_name, i);
         return NULL;
       }
@@ -229,10 +234,10 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
     }
 
     LLVMValueRef function = existing_function;
-    
+
     // CRITICAL: Ensure calling convention is set for struct returns
     set_struct_return_convention(function, return_type);
-    
+
     goto generate_body;
 
   } else {
@@ -248,7 +253,7 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
 
     // Set linkage
     LLVMSetLinkage(function, get_function_linkage(node));
-    
+
     // CRITICAL: Set calling convention for struct returns
     set_struct_return_convention(function, return_type);
 

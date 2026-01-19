@@ -140,7 +140,7 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     func_scope = func_scope->parent;
   }
   if (func_scope && func_scope->associated_node) {
-    in_returns_ownership_func = 
+    in_returns_ownership_func =
         func_scope->associated_node->stmt.func_decl.returns_ownership;
   }
 
@@ -301,6 +301,80 @@ bool typecheck_func_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
                     "Function '%s' must return 'int' but got '%s'", name,
                     type_to_string(return_type, arena));
       return false;
+    }
+
+    // UPDATED: Allow main to have either 0 or 2 parameters
+    if (param_count != 0 && param_count != 2) {
+      tc_error_help(node, "Main Parameters",
+                    "The main function must have either no parameters or "
+                    "(argc: int, argv: **byte)",
+                    "Function 'main' has %zu parameters, expected 0 or 2",
+                    param_count);
+      return false;
+    }
+
+    // If main has 2 parameters, validate their types
+    if (param_count == 2) {
+      // First parameter should be 'argc: int'
+      AstNode *argc_type = param_types[0];
+      if (argc_type->type != AST_TYPE_BASIC ||
+          strcmp(argc_type->type_data.basic.name, "int") != 0) {
+        tc_error_help(node, "Main Parameter Error",
+                      "First parameter 'argc' must be of type 'int'",
+                      "Parameter '%s' has type '%s', expected 'int'",
+                      param_names[0], type_to_string(argc_type, arena));
+        return false;
+      }
+
+      // Second parameter should be 'argv: **byte' (pointer to pointer to byte)
+      AstNode *argv_type = param_types[1];
+
+      // Check if it's **byte (pointer to pointer)
+      if (argv_type->type != AST_TYPE_POINTER) {
+        tc_error_help(node, "Main Parameter Error",
+                      "Second parameter 'argv' must be of type '**byte'",
+                      "Parameter '%s' has type '%s', expected '**byte'",
+                      param_names[1], type_to_string(argv_type, arena));
+        return false;
+      }
+
+      AstNode *inner_pointer = argv_type->type_data.pointer.pointee_type;
+      if (!inner_pointer || inner_pointer->type != AST_TYPE_POINTER) {
+        tc_error_help(node, "Main Parameter Error",
+                      "Second parameter 'argv' must be of type '**byte'",
+                      "Parameter '%s' has type '%s', expected '**byte'",
+                      param_names[1], type_to_string(argv_type, arena));
+        return false;
+      }
+
+      AstNode *byte_type = inner_pointer->type_data.pointer.pointee_type;
+      if (!byte_type || byte_type->type != AST_TYPE_BASIC ||
+          strcmp(byte_type->type_data.basic.name, "char") != 0) {
+        tc_error_help(node, "Main Parameter Error",
+                      "Second parameter 'argv' must be of type '**byte'",
+                      "Parameter '%s' has type '%s', expected '**byte'",
+                      param_names[1], type_to_string(argv_type, arena));
+        return false;
+      }
+
+      // Optionally validate parameter names
+      if (strcmp(param_names[0], "argc") != 0) {
+        tc_error_help(
+            node, "Main Parameter Warning",
+            "First parameter should conventionally be named 'argc'",
+            "First parameter is named '%s', consider renaming to 'argc'",
+            param_names[0]);
+        // Don't return false - this is just a warning
+      }
+
+      if (strcmp(param_names[1], "argv") != 0) {
+        tc_error_help(
+            node, "Main Parameter Warning",
+            "Second parameter should conventionally be named 'argv'",
+            "Second parameter is named '%s', consider renaming to 'argv'",
+            param_names[1]);
+        // Don't return false - this is just a warning
+      }
     }
 
     // Ensure main is public
@@ -956,26 +1030,29 @@ bool typecheck_return_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
         if (callee->type == AST_EXPR_IDENTIFIER) {
           called_func = scope_lookup(scope, callee->expr.identifier.name);
         } else if (callee->type == AST_EXPR_MEMBER) {
-          const char *base_name = callee->expr.member.object->expr.identifier.name;
+          const char *base_name =
+              callee->expr.member.object->expr.identifier.name;
           const char *member_name = callee->expr.member.member;
           if (callee->expr.member.is_compiletime) {
-            called_func = lookup_qualified_symbol(scope, base_name, member_name);
+            called_func =
+                lookup_qualified_symbol(scope, base_name, member_name);
           }
         }
 
         // Check if the called function has #returns_ownership
         if (called_func && called_func->returns_ownership) {
-          const char *current_func_name = 
+          const char *current_func_name =
               func_scope->associated_node->stmt.func_decl.name;
           const char *called_func_name = called_func->name;
-          
-          tc_error_help(
-              node, "Ownership Transfer Warning",
-              "Add #returns_ownership annotation to this function",
-              "Function '%s' returns a value from '%s' which has #returns_ownership. "
-              "Consider adding #returns_ownership to '%s' to make ownership transfer explicit.",
-              current_func_name, called_func_name, current_func_name);
-          
+
+          tc_error_help(node, "Ownership Transfer Warning",
+                        "Add #returns_ownership annotation to this function",
+                        "Function '%s' returns a value from '%s' which has "
+                        "#returns_ownership. "
+                        "Consider adding #returns_ownership to '%s' to make "
+                        "ownership transfer explicit.",
+                        current_func_name, called_func_name, current_func_name);
+
           // For now, treat as warning (return true to continue compilation)
           // Change to 'return false' to make it an error
         }
