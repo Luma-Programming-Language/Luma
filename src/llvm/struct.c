@@ -435,7 +435,7 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
     LLVMTypeRef symbol_type = sym->type;
     LLVMTypeKind symbol_kind = LLVMGetTypeKind(symbol_type);
 
-    // Check if this is a pointer to struct (like *Token)
+    // Check if this is a pointer to struct (like *Token or *Args)
     if (symbol_kind == LLVMPointerTypeKind && sym->element_type) {
       for (StructInfo *info = ctx->struct_types; info; info = info->next) {
         if (info->llvm_type == sym->element_type) {
@@ -446,6 +446,13 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
 
       if (!struct_info) {
         struct_info = find_struct_by_field_cached(ctx, field_name);
+      }
+
+      if (struct_info) {
+        LLVMTypeRef ptr_to_struct_type =
+            LLVMPointerType(struct_info->llvm_type, 0);
+        struct_ptr = LLVMBuildLoad2(ctx->builder, ptr_to_struct_type,
+                                    sym->value, "load_struct_ptr");
       }
     } else if (symbol_kind == LLVMStructTypeKind) {
       // Direct struct type (stored by value)
@@ -730,7 +737,6 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
 
   return result;
 }
-
 // Handle struct member assignment (obj.field = value)
 LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
                                             AstNode *node) {
