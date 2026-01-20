@@ -5,36 +5,12 @@
 // OPTIMIZATION LAYER - HASH TABLE CACHING
 // =============================================================================
 
-#define SYMBOL_HASH_SIZE 256
-
-// Hash table for fast symbol lookup
-typedef struct SymbolHashEntry {
-  const char *key;  // "module_name:symbol_name"
-  LLVM_Symbol *symbol;
-  struct SymbolHashEntry *next;
-} SymbolHashEntry;
-
-typedef struct SymbolHashTable {
-  SymbolHashEntry *buckets[SYMBOL_HASH_SIZE];
-} SymbolHashTable;
-
-// Hash table for struct types
-typedef struct StructHashEntry {
-  const char *name;
-  StructInfo *info;
-  struct StructHashEntry *next;
-} StructHashEntry;
-
-typedef struct StructHashTable {
-  StructHashEntry *buckets[SYMBOL_HASH_SIZE];
-} StructHashTable;
-
-// Global caches
+static FieldToStructEntry *field_to_struct_buckets[SYMBOL_HASH_SIZE] = {0};
 static SymbolHashTable *global_symbol_cache = NULL;
 static StructHashTable *global_struct_cache = NULL;
 
 // Simple hash function
-static unsigned int hash_string(const char *str) {
+unsigned int hash_string(const char *str) {
   unsigned int hash = 5381;
   int c;
   while ((c = *str++))
@@ -43,96 +19,154 @@ static unsigned int hash_string(const char *str) {
 }
 
 // Symbol cache operations
-static void init_symbol_cache(void) {
+void init_symbol_cache(void) {
   if (!global_symbol_cache) {
     global_symbol_cache = (SymbolHashTable *)calloc(1, sizeof(SymbolHashTable));
   }
 }
 
-static void cache_symbol(const char *module_name, const char *symbol_name, 
-                         LLVM_Symbol *symbol) {
+void cache_symbol(const char *module_name, const char *symbol_name,
+                  LLVM_Symbol *symbol) {
   init_symbol_cache();
-  
+
   char key[512];
   snprintf(key, sizeof(key), "%s:%s", module_name, symbol_name);
-  
+
   unsigned int bucket = hash_string(key);
-  
+
   // Check if already cached
-  for (SymbolHashEntry *entry = global_symbol_cache->buckets[bucket]; 
-       entry; entry = entry->next) {
+  for (SymbolHashEntry *entry = global_symbol_cache->buckets[bucket]; entry;
+       entry = entry->next) {
     if (strcmp(entry->key, key) == 0) {
       entry->symbol = symbol;
       return;
     }
   }
-  
+
   // Add new entry
-  SymbolHashEntry *new_entry = (SymbolHashEntry *)malloc(sizeof(SymbolHashEntry));
+  SymbolHashEntry *new_entry =
+      (SymbolHashEntry *)malloc(sizeof(SymbolHashEntry));
   new_entry->key = strdup(key);
   new_entry->symbol = symbol;
   new_entry->next = global_symbol_cache->buckets[bucket];
   global_symbol_cache->buckets[bucket] = new_entry;
 }
 
-static LLVM_Symbol *lookup_cached_symbol(const char *module_name, 
-                                         const char *symbol_name) {
-  if (!global_symbol_cache) return NULL;
-  
+LLVM_Symbol *lookup_cached_symbol(const char *module_name,
+                                  const char *symbol_name) {
+  if (!global_symbol_cache)
+    return NULL;
+
   char key[512];
   snprintf(key, sizeof(key), "%s:%s", module_name, symbol_name);
-  
+
   unsigned int bucket = hash_string(key);
-  
-  for (SymbolHashEntry *entry = global_symbol_cache->buckets[bucket]; 
-       entry; entry = entry->next) {
+
+  for (SymbolHashEntry *entry = global_symbol_cache->buckets[bucket]; entry;
+       entry = entry->next) {
     if (strcmp(entry->key, key) == 0) {
       return entry->symbol;
     }
   }
-  
+
   return NULL;
 }
 
 // Struct cache operations
-static void init_struct_cache(void) {
+void init_struct_cache(void) {
   if (!global_struct_cache) {
     global_struct_cache = (StructHashTable *)calloc(1, sizeof(StructHashTable));
   }
 }
 
-static void cache_struct(const char *name, StructInfo *info) {
+void cache_struct(const char *name, StructInfo *info) {
   init_struct_cache();
-  
+
   unsigned int bucket = hash_string(name);
-  
-  for (StructHashEntry *entry = global_struct_cache->buckets[bucket]; 
-       entry; entry = entry->next) {
+
+  for (StructHashEntry *entry = global_struct_cache->buckets[bucket]; entry;
+       entry = entry->next) {
     if (strcmp(entry->name, name) == 0) {
       entry->info = info;
       return;
     }
   }
-  
-  StructHashEntry *new_entry = (StructHashEntry *)malloc(sizeof(StructHashEntry));
+
+  StructHashEntry *new_entry =
+      (StructHashEntry *)malloc(sizeof(StructHashEntry));
   new_entry->name = strdup(name);
   new_entry->info = info;
   new_entry->next = global_struct_cache->buckets[bucket];
   global_struct_cache->buckets[bucket] = new_entry;
 }
 
-static StructInfo *lookup_cached_struct(const char *name) {
-  if (!global_struct_cache) return NULL;
-  
+StructInfo *lookup_cached_struct(const char *name) {
+  if (!global_struct_cache)
+    return NULL;
+
   unsigned int bucket = hash_string(name);
-  
-  for (StructHashEntry *entry = global_struct_cache->buckets[bucket]; 
-       entry; entry = entry->next) {
+
+  for (StructHashEntry *entry = global_struct_cache->buckets[bucket]; entry;
+       entry = entry->next) {
     if (strcmp(entry->name, name) == 0) {
       return entry->info;
     }
   }
-  
+
+  return NULL;
+}
+
+StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name) {
+  (void)ctx; // Not needed with cache
+
+  // Direct cache lookup - O(1) average
+  StructInfo *cached = lookup_cached_struct(name);
+  if (cached) {
+    return cached;
+  }
+
+  return NULL;
+}
+
+void cache_struct_field(const char *field_name, StructInfo *info) {
+  unsigned int bucket = hash_string(field_name);
+
+  // Check if already cached
+  for (FieldToStructEntry *entry = field_to_struct_buckets[bucket]; entry;
+       entry = entry->next) {
+    if (strcmp(entry->field_name, field_name) == 0) {
+      return; // Already cached
+    }
+  }
+
+  FieldToStructEntry *new_entry = malloc(sizeof(FieldToStructEntry));
+  new_entry->field_name = strdup(field_name);
+  new_entry->struct_info = info;
+  new_entry->next = field_to_struct_buckets[bucket];
+  field_to_struct_buckets[bucket] = new_entry;
+}
+
+StructInfo *find_struct_by_field_cached(CodeGenContext *ctx,
+                                        const char *field_name) {
+  unsigned int bucket = hash_string(field_name);
+
+  // Try cache first
+  for (FieldToStructEntry *entry = field_to_struct_buckets[bucket]; entry;
+       entry = entry->next) {
+    if (strcmp(entry->field_name, field_name) == 0) {
+      return entry->struct_info;
+    }
+  }
+
+  // Fallback: linear search and cache result
+  for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+    int field_idx = get_field_index(info, field_name);
+    if (field_idx >= 0) {
+      cache_struct_field(field_name, info);
+      return info;
+    }
+  }
+
   return NULL;
 }
 
@@ -147,10 +181,14 @@ void preprocess_all_modules(CodeGenContext *ctx) {
       cache_symbol(unit->module_name, sym->name, sym);
     }
   }
-  
+
   // Pre-cache all struct types
   for (StructInfo *info = ctx->struct_types; info; info = info->next) {
     cache_struct(info->name, info);
+
+    for (size_t i = 0; i < info->field_count; i++) {
+      cache_struct_field(info->field_names[i], info);
+    }
   }
 }
 
@@ -161,7 +199,7 @@ void cleanup_module_caches(void) {
       SymbolHashEntry *entry = global_symbol_cache->buckets[i];
       while (entry) {
         SymbolHashEntry *next = entry->next;
-        free((void*)entry->key);
+        free((void *)entry->key);
         free(entry);
         entry = next;
       }
@@ -169,20 +207,31 @@ void cleanup_module_caches(void) {
     free(global_symbol_cache);
     global_symbol_cache = NULL;
   }
-  
+
   // Clean struct cache
   if (global_struct_cache) {
     for (int i = 0; i < SYMBOL_HASH_SIZE; i++) {
       StructHashEntry *entry = global_struct_cache->buckets[i];
       while (entry) {
         StructHashEntry *next = entry->next;
-        free((void*)entry->name);
+        free((void *)entry->name);
         free(entry);
         entry = next;
       }
     }
     free(global_struct_cache);
     global_struct_cache = NULL;
+  }
+
+  for (int i = 0; i < SYMBOL_HASH_SIZE; i++) {
+    FieldToStructEntry *entry = field_to_struct_buckets[i];
+    while (entry) {
+      FieldToStructEntry *next = entry->next;
+      free((void *)entry->field_name);
+      free(entry);
+      entry = next;
+    }
+    field_to_struct_buckets[i] = NULL;
   }
 }
 
@@ -348,6 +397,8 @@ LLVMValueRef codegen_stmt_program_multi_module(CodeGenContext *ctx,
     }
   }
 
+  preprocess_all_modules(ctx);
+
   // PASS 3: Generate code in dependency order
   ModuleDependencyInfo *dep_info = build_codegen_dependency_info(
       node->stmt.program.modules, node->stmt.program.module_count, ctx->arena);
@@ -447,7 +498,7 @@ void import_function_symbol(CodeGenContext *ctx, LLVM_Symbol *source_symbol,
                             ModuleCompilationUnit *source_module,
                             const char *alias) {
   (void)source_module;
-  
+
   char imported_name[256];
   if (alias) {
     snprintf(imported_name, sizeof(imported_name), "%s.%s", alias,
@@ -464,17 +515,17 @@ void import_function_symbol(CodeGenContext *ctx, LLVM_Symbol *source_symbol,
   LLVMValueRef external_func = LLVMAddFunction(ctx->current_module->module,
                                                source_symbol->name, func_type);
   LLVMSetLinkage(external_func, LLVMExternalLinkage);
-  
+
   LLVMTypeRef return_type = LLVMGetReturnType(func_type);
   if (LLVMGetTypeKind(return_type) == LLVMStructTypeKind) {
     LLVMCallConv source_cc = LLVMGetFunctionCallConv(source_symbol->value);
     LLVMSetFunctionCallConv(external_func, source_cc);
-    
+
     unsigned param_count = LLVMCountParams(source_symbol->value);
     for (unsigned i = 0; i < param_count; i++) {
       LLVMValueRef src_param = LLVMGetParam(source_symbol->value, i);
       LLVMValueRef dst_param = LLVMGetParam(external_func, i);
-      
+
       if (LLVMGetAlignment(src_param) > 0) {
         LLVMSetAlignment(dst_param, LLVMGetAlignment(src_param));
       }
@@ -489,7 +540,7 @@ void import_variable_symbol(CodeGenContext *ctx, LLVM_Symbol *source_symbol,
                             ModuleCompilationUnit *source_module,
                             const char *alias) {
   (void)source_module;
-  
+
   char imported_name[256];
   if (alias) {
     snprintf(imported_name, sizeof(imported_name), "%s.%s", alias,
@@ -524,7 +575,7 @@ LLVMValueRef codegen_expr_member_access_enhanced(CodeGenContext *ctx,
   const char *member = node->expr.member.member;
   bool is_compiletime = node->expr.member.is_compiletime;
 
-  if (object->type != AST_EXPR_IDENTIFIER && 
+  if (object->type != AST_EXPR_IDENTIFIER &&
       !(object->type == AST_EXPR_MEMBER && is_compiletime)) {
     return codegen_expr_struct_access(ctx, node);
   }
@@ -532,40 +583,46 @@ LLVMValueRef codegen_expr_member_access_enhanced(CodeGenContext *ctx,
   if (is_compiletime) {
     if (object->type == AST_EXPR_MEMBER && object->expr.member.is_compiletime) {
       if (object->expr.member.object->type != AST_EXPR_IDENTIFIER) {
-        fprintf(stderr, "Error: Expected identifier in chained compile-time access\n");
+        fprintf(stderr,
+                "Error: Expected identifier in chained compile-time access\n");
         return NULL;
       }
-      
-      const char *module_name = object->expr.member.object->expr.identifier.name;
+
+      const char *module_name =
+          object->expr.member.object->expr.identifier.name;
       const char *type_name = object->expr.member.member;
-      
+
       char type_qualified_name[256];
-      snprintf(type_qualified_name, sizeof(type_qualified_name), "%s.%s", type_name, member);
-      
+      snprintf(type_qualified_name, sizeof(type_qualified_name), "%s.%s",
+               type_name, member);
+
       ModuleCompilationUnit *source_module = find_module(ctx, module_name);
       if (source_module) {
-        LLVM_Symbol *enum_member = find_symbol_in_module(source_module, type_qualified_name);
+        LLVM_Symbol *enum_member =
+            find_symbol_in_module(source_module, type_qualified_name);
         if (enum_member && is_enum_constant(enum_member)) {
           return LLVMGetInitializer(enum_member->value);
         }
       }
-      
-      LLVM_Symbol *enum_member = find_symbol_in_module(ctx->current_module, type_qualified_name);
+
+      LLVM_Symbol *enum_member =
+          find_symbol_in_module(ctx->current_module, type_qualified_name);
       if (enum_member && is_enum_constant(enum_member)) {
         return LLVMGetInitializer(enum_member->value);
       }
-      
-      for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
+
+      for (ModuleCompilationUnit *unit = ctx->modules; unit;
+           unit = unit->next) {
         if (unit == ctx->current_module)
           continue;
-          
+
         LLVM_Symbol *sym = find_symbol_in_module(unit, type_qualified_name);
         if (sym && is_enum_constant(sym)) {
           return LLVMGetInitializer(sym->value);
         }
       }
-      
-      fprintf(stderr, "Error: Enum member '%s::%s::%s' not found\n", 
+
+      fprintf(stderr, "Error: Enum member '%s::%s::%s' not found\n",
               module_name, type_name, member);
       return NULL;
     }
@@ -579,97 +636,112 @@ LLVMValueRef codegen_expr_member_access_enhanced(CodeGenContext *ctx,
     }
 
     char qualified_name[256];
-    snprintf(qualified_name, sizeof(qualified_name), "%s.%s", object_name, member);
+    snprintf(qualified_name, sizeof(qualified_name), "%s.%s", object_name,
+             member);
 
-    LLVM_Symbol *qualified_sym = find_symbol_in_module(ctx->current_module, qualified_name);
+    LLVM_Symbol *qualified_sym =
+        find_symbol_in_module(ctx->current_module, qualified_name);
     if (qualified_sym) {
       if (qualified_sym->is_function) {
         return qualified_sym->value;
       } else if (is_enum_constant(qualified_sym)) {
         return LLVMGetInitializer(qualified_sym->value);
       } else {
-        return LLVMBuildLoad2(ctx->builder, qualified_sym->type, qualified_sym->value, "load");
+        return LLVMBuildLoad2(ctx->builder, qualified_sym->type,
+                              qualified_sym->value, "load");
       }
     }
 
-    LLVM_Symbol *imported_sym = find_symbol_in_module(ctx->current_module, qualified_name);
+    LLVM_Symbol *imported_sym =
+        find_symbol_in_module(ctx->current_module, qualified_name);
     if (imported_sym) {
       if (imported_sym->is_function) {
         return imported_sym->value;
       } else if (is_enum_constant(imported_sym)) {
         return LLVMGetInitializer(imported_sym->value);
       } else {
-        return LLVMBuildLoad2(ctx->builder, imported_sym->type, imported_sym->value, "load");
+        return LLVMBuildLoad2(ctx->builder, imported_sym->type,
+                              imported_sym->value, "load");
       }
     }
 
-    LLVMModuleRef current_llvm_module = 
+    LLVMModuleRef current_llvm_module =
         ctx->current_module ? ctx->current_module->module : ctx->module;
 
     for (ModuleCompilationUnit *search_module = ctx->modules; search_module;
          search_module = search_module->next) {
-      
+
       if (search_module == ctx->current_module) {
         continue;
       }
 
-      LLVMValueRef source_func = LLVMGetNamedFunction(search_module->module, member);
-      
+      LLVMValueRef source_func =
+          LLVMGetNamedFunction(search_module->module, member);
+
       if (source_func) {
-        LLVMValueRef existing = LLVMGetNamedFunction(current_llvm_module, member);
-        
+        LLVMValueRef existing =
+            LLVMGetNamedFunction(current_llvm_module, member);
+
         if (!existing) {
           LLVMTypeRef func_type = LLVMGlobalGetValueType(source_func);
           existing = LLVMAddFunction(current_llvm_module, member, func_type);
           LLVMSetLinkage(existing, LLVMExternalLinkage);
-          
+
           LLVMCallConv cc = LLVMGetFunctionCallConv(source_func);
           LLVMSetFunctionCallConv(existing, cc);
-          
-          add_symbol_to_module(ctx->current_module, member, existing, func_type, true);
-          add_symbol_to_module(ctx->current_module, qualified_name, existing, func_type, true);
+
+          add_symbol_to_module(ctx->current_module, member, existing, func_type,
+                               true);
+          add_symbol_to_module(ctx->current_module, qualified_name, existing,
+                               func_type, true);
         }
-        
+
         return existing;
       }
-      
+
       LLVM_Symbol *source_sym = find_symbol_in_module(search_module, member);
       if (source_sym) {
         if (source_sym->is_function) {
-          LLVMValueRef existing = LLVMGetNamedFunction(current_llvm_module, member);
-          
+          LLVMValueRef existing =
+              LLVMGetNamedFunction(current_llvm_module, member);
+
           if (!existing) {
             LLVMTypeRef func_type = LLVMGlobalGetValueType(source_sym->value);
             existing = LLVMAddFunction(current_llvm_module, member, func_type);
             LLVMSetLinkage(existing, LLVMExternalLinkage);
-            
+
             LLVMCallConv cc = LLVMGetFunctionCallConv(source_sym->value);
             LLVMSetFunctionCallConv(existing, cc);
-            
-            add_symbol_to_module(ctx->current_module, member, existing, func_type, true);
-            add_symbol_to_module(ctx->current_module, qualified_name, existing, func_type, true);
+
+            add_symbol_to_module(ctx->current_module, member, existing,
+                                 func_type, true);
+            add_symbol_to_module(ctx->current_module, qualified_name, existing,
+                                 func_type, true);
           }
-          
+
           return existing;
         } else if (is_enum_constant(source_sym)) {
           return LLVMGetInitializer(source_sym->value);
         } else {
           import_variable_symbol(ctx, source_sym, search_module, object_name);
-          
-          qualified_sym = find_symbol_in_module(ctx->current_module, qualified_name);
+
+          qualified_sym =
+              find_symbol_in_module(ctx->current_module, qualified_name);
           if (qualified_sym) {
-            return LLVMBuildLoad2(ctx->builder, qualified_sym->type, qualified_sym->value, "load");
+            return LLVMBuildLoad2(ctx->builder, qualified_sym->type,
+                                  qualified_sym->value, "load");
           }
         }
       }
     }
 
-    fprintf(stderr, "Error: No compile-time symbol '%s::%s' found\n", object_name, member);
+    fprintf(stderr, "Error: No compile-time symbol '%s::%s' found\n",
+            object_name, member);
     return NULL;
   }
 
   const char *object_name = object->expr.identifier.name;
-  
+
   LLVM_Symbol *local_sym = find_symbol(ctx, object_name);
   if (local_sym && !local_sym->is_function) {
     LLVMTypeRef sym_type = local_sym->type;
@@ -715,7 +787,8 @@ LLVMValueRef codegen_expr_member_access_enhanced(CodeGenContext *ctx,
   }
 
   if (obj_sym->is_function) {
-    fprintf(stderr, "Error: Cannot use member access on function '%s'\n", object_name);
+    fprintf(stderr, "Error: Cannot use member access on function '%s'\n",
+            object_name);
     return NULL;
   }
 

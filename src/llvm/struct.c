@@ -2,8 +2,13 @@
 
 // Find a struct type by name
 StructInfo *find_struct_type(CodeGenContext *ctx, const char *name) {
+  StructInfo *cached = lookup_cached_struct(name);
+  if (cached)
+    return cached;
+
   for (StructInfo *info = ctx->struct_types; info; info = info->next) {
     if (strcmp(info->name, name) == 0) {
+      cache_struct(name, info);
       return info;
     }
   }
@@ -92,8 +97,6 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
   struct_info->field_is_public = (bool *)arena_alloc(
       ctx->arena, sizeof(bool) * data_field_count, alignof(bool));
 
-  // CRITICAL FIX: Create an OPAQUE struct type FIRST (forward declaration)
-  // This allows self-referential structs like: struct Node { next: *Node; }
   struct_info->llvm_type = LLVMStructCreateNamed(ctx->context, struct_name);
 
   // Add to context IMMEDIATELY so it can be found during field type resolution
@@ -224,6 +227,19 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
+  // ===== CACHING MOVED TO HERE - AFTER EVERYTHING IS COMPLETE =====
+  // Cache the struct ONLY after:
+  // 1. Struct body is set with all fields
+  // 2. All methods have been generated successfully
+  // This ensures the cached struct is 100% complete and usable
+  cache_struct(struct_info->name, struct_info);
+
+  // Cache all field associations for fast field-to-struct lookups
+  for (size_t i = 0; i < struct_info->field_count; i++) {
+    cache_struct_field(struct_info->field_names[i], struct_info);
+  }
+  // ==============================
+
   return NULL;
 }
 
@@ -333,8 +349,17 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
 
     // Extract element type for pointer parameters (needed for self which is
     // *Person)
-    LLVMTypeRef element_type =
-        extract_element_type_from_ast(ctx, param_type_nodes[i]);
+    LLVMTypeRef element_type = NULL;
+
+    // Special handling for 'self' parameter
+    if (i == 0) {
+      // 'self' is a pointer to the struct, so its element_type is the struct
+      // itself
+      element_type = struct_info->llvm_type;
+    } else {
+      // For other parameters, extract from AST
+      element_type = extract_element_type_from_ast(ctx, param_type_nodes[i]);
+    }
 
     // Add to symbol table with element type information
     add_symbol_with_element_type(ctx, param_name, alloca, llvm_param_types[i],
@@ -369,6 +394,7 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
 
   return func;
 }
+
 // Handle individual field declarations (mainly for completeness)
 LLVMValueRef codegen_stmt_field(CodeGenContext *ctx, AstNode *node) {
   // Field declarations are handled by the parent struct
@@ -410,50 +436,17 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
     LLVMTypeKind symbol_kind = LLVMGetTypeKind(symbol_type);
 
     // Check if this is a pointer to struct (like *Token)
-    if (symbol_kind == LLVMPointerTypeKind) {
-      // Use the element_type from symbol if available
-      if (sym->element_type) {
-        // Find struct info by LLVM type
-        for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-          if (info->llvm_type == sym->element_type) {
-            struct_info = info;
-            break;
-          }
-        }
-
-        if (!struct_info) {
-          // Try to find by field name as fallback
-          for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-            int field_idx = get_field_index(info, field_name);
-            if (field_idx >= 0) {
-              struct_info = info;
-              break;
-            }
-          }
-        }
-
-        if (struct_info) {
-          // Load the pointer value (the actual struct instance address)
-          struct_ptr = LLVMBuildLoad2(ctx->builder, symbol_type, sym->value,
-                                      "load_struct_ptr");
-        }
-      } else {
-        // Fallback: Try to find struct by field name
-        for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-          int field_idx = get_field_index(info, field_name);
-          if (field_idx >= 0) {
-            struct_info = info;
-            break;
-          }
-        }
-
-        if (struct_info) {
-          // Load the pointer
-          struct_ptr = LLVMBuildLoad2(ctx->builder, symbol_type, sym->value,
-                                      "load_struct_ptr");
+    if (symbol_kind == LLVMPointerTypeKind && sym->element_type) {
+      for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+        if (info->llvm_type == sym->element_type) {
+          struct_info = info;
+          break;
         }
       }
 
+      if (!struct_info) {
+        struct_info = find_struct_by_field_cached(ctx, field_name);
+      }
     } else if (symbol_kind == LLVMStructTypeKind) {
       // Direct struct type (stored by value)
       for (StructInfo *info = ctx->struct_types; info; info = info->next) {
@@ -619,7 +612,8 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
     }
 
   } else if (object->type == AST_EXPR_CALL) {
-    // Function call returning a struct or pointer: get_token().field or peek(p).field
+    // Function call returning a struct or pointer: get_token().field or
+    // peek(p).field
     LLVMValueRef call_result = codegen_expr(ctx, object);
     if (!call_result) {
       return NULL;
@@ -657,8 +651,9 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
       }
     } else if (result_kind == LLVMPointerTypeKind) {
       // Pointer return (like peek(p) returning *Token)
-      // The function returned a pointer to a struct - we need to dereference it
-      
+      // The function returned a pointer to a struct - we need to dereference
+      // it
+
       // Try to find the struct type this pointer points to
       for (StructInfo *info = ctx->struct_types; info; info = info->next) {
         int field_idx = get_field_index(info, field_name);
@@ -667,12 +662,13 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
           break;
         }
       }
-      
+
       if (struct_info) {
         // The call_result is already a pointer to the struct
         struct_ptr = call_result;
       } else {
-        fprintf(stderr, "Error: Could not determine struct type for pointer returned from function call\n");
+        fprintf(stderr, "Error: Could not determine struct type for pointer "
+                        "returned from function call\n");
         return NULL;
       }
     }
@@ -715,7 +711,6 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
       LLVMBuildStructGEP2(ctx->builder, struct_info->llvm_type, struct_ptr,
                           field_index, "field_ptr");
 
-  // **CRITICAL FIX: Check if this field is an array**
   LLVMTypeRef field_type = struct_info->field_types[field_index];
   if (LLVMGetTypeKind(field_type) == LLVMArrayTypeKind) {
     // For array fields, return a pointer to the first element

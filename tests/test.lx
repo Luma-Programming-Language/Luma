@@ -2,9 +2,79 @@
 
 @use "std_io" as io
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  loop [i: int = 0](i < argc) : (++i) {
-    io::print("%s\n", [io::str_arg(argv[i])]);
+const strlen -> fn (s: *byte) int {
+  let length: int = 0;
+  loop (s[length] != cast<byte>(0)) : (++length) {}
+  return length;
+}
+
+const strcmp -> fn (s1: *byte, s2: *byte) int {
+  let ls1: int = strlen(s1);
+  let ls2: int = strlen(s2);
+
+  if (ls1 != ls2) { return -1; }
+
+  loop[i: int = 0](i < ls1) : (++i) {
+    if (s1[i] != s2[i]) { return 1; }
   }
+
+  return 0;
+}
+
+/*
+Error: Could not determine struct type for member access 'self.count'
+Error: Function verification failed for method 'len'
+define i64 @len(ptr %self) {
+entry:
+  %self1 = alloca ptr, align 8
+  store ptr %self, ptr %self1, align 8
+}
+Error: Failed to generate method 'len' for struct 'Args'
+Basic Block in function 'len' does not have terminator!
+label %entry
+LLVM ERROR: Broken module found, compilation aborted!
+[1]    286787 IOT instruction (core dumped)  ./luma tests/test.lx -name test -l s
+td/io.lx
+*/
+
+const Args -> struct {
+  data: **byte, 
+  count: int,
+  
+ len      -> fn () int { return self.count;      },
+ is_empty -> fn () int { return -cast<int>(self.count == 0); },
+ get      -> fn (index: int) *byte {
+   if (index < 0 || index >= self.count) 
+     return "";
+   let data: **byte = self.data; 
+   return data[index];
+ },
+
+ contains -> fn (val: *byte) int {
+   let data: **byte = self.data;
+   loop [i: int = 0](i < self.count) : (++i) {
+     if (strcmp(data[i], val) == 0) return 1;
+   }
+   return 0;
+ },
+
+
+ tail -> fn () Args {
+   if (self.count <= 1) return Args { data: self.data, count: 0 };
+  
+   return Args {
+     data: cast<**byte>(cast<int>(self.data) + sizeof<*byte>),
+     count: self.count - 1
+   };
+ }
+};
+
+const args_from_main -> fn (argc: int, argv: **byte) Args {
+  return Args { data: argv, count: argc };
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let args: Args = args_from_main(argc, argv);
+  io::print("Hello, World!\n", [io::NULL_FORMAT_ARG]);
   return 0;
 }

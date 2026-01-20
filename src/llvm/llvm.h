@@ -20,6 +20,8 @@
 #include "../ast/ast.h"
 #include "../c_libs/memory/memory.h"
 
+#define SYMBOL_HASH_SIZE 256
+
 typedef struct LLVM_Symbol LLVM_Symbol;
 typedef struct CodeGenContext CodeGenContext;
 typedef struct ModuleCompilationUnit ModuleCompilationUnit;
@@ -96,6 +98,33 @@ struct CodeGenContext {
   ArenaAllocator *arena;
 };
 
+typedef struct SymbolHashEntry {
+  const char *key; // "module_name:symbol_name"
+  LLVM_Symbol *symbol;
+  struct SymbolHashEntry *next;
+} SymbolHashEntry;
+
+typedef struct SymbolHashTable {
+  SymbolHashEntry *buckets[SYMBOL_HASH_SIZE];
+} SymbolHashTable;
+
+// Hash table for struct types
+typedef struct StructHashEntry {
+  const char *name;
+  StructInfo *info;
+  struct StructHashEntry *next;
+} StructHashEntry;
+
+typedef struct StructHashTable {
+  StructHashEntry *buckets[SYMBOL_HASH_SIZE];
+} StructHashTable;
+
+typedef struct FieldToStructEntry {
+  const char *field_name;
+  StructInfo *struct_info;
+  struct FieldToStructEntry *next;
+} FieldToStructEntry;
+
 // =============================================================================
 // MODULE MANAGEMENT FUNCTIONS
 // =============================================================================
@@ -119,10 +148,28 @@ void generate_external_declarations(CodeGenContext *ctx,
                                     ModuleCompilationUnit *target_module);
 void preprocess_all_modules(CodeGenContext *ctx);
 StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
-LLVMValueRef codegen_expr_member_access_optimized(CodeGenContext *ctx, AstNode *node);
+LLVMValueRef codegen_expr_member_access_optimized(CodeGenContext *ctx,
+                                                  AstNode *node);
 void cleanup_module_caches(void);
 void register_struct_with_cache(CodeGenContext *ctx, StructInfo *struct_info);
 void debug_object_files(const char *output_dir);
+
+unsigned int hash_string(const char *str);
+
+void init_symbol_cache(void);
+void cache_symbol(const char *module_name, const char *symbol_name,
+                  LLVM_Symbol *symbol);
+LLVM_Symbol *lookup_cached_symbol(const char *module_name,
+                                  const char *symbol_name);
+
+void init_struct_cache(void);
+void cache_struct(const char *name, StructInfo *info);
+StructInfo *lookup_cached_struct(const char *name);
+StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
+
+void cache_struct_field(const char *field_name, StructInfo *info);
+StructInfo *find_struct_by_field_cached(CodeGenContext *ctx,
+                                        const char *field_name);
 
 // =============================================================================
 // SYMBOL IMPORT AND MODULE INTEROP

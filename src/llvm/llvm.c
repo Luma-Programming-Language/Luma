@@ -252,13 +252,15 @@ CodeGenContext *init_codegen_context(ArenaAllocator *arena) {
   ctx->loop_break_block = NULL;
   ctx->struct_types = NULL;
   ctx->arena = arena;
-
-  // ADD THIS LINE:
   ctx->module = NULL; // Initialize legacy module field
+  ctx->struct_types = NULL;
 
   // OR initialize deferred statements if they exist:
   ctx->deferred_statements = NULL;
   ctx->deferred_count = 0;
+
+  init_symbol_cache();
+  init_struct_cache();
 
   return ctx;
 }
