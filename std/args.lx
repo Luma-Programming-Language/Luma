@@ -1,0 +1,279 @@
+//! Command-line argument parsing and iteration.
+//! 
+//! Provides utilities for working with command-line arguments (argc/argv).
+//! The Args struct offers array-like access to arguments, while ArgsIter
+//! provides sequential iteration. Arguments are indexed from 0, where
+//! index 0 is typically the program name.
+//!
+//! # Example
+//! ```luma
+//! const main -> fn (argc: int, argv: **byte) int {
+//!     let args: Args = args::init_args(argc, argv);
+//!     
+//!     if (args.contains("--help")) {
+//!         output("Usage: program [options]\n");
+//!         return 0;
+//!     }
+//!     
+//!     let filename: *byte = args.get(1);
+//!     return 0;
+//! }
+//! ```
+
+@module "std_args"
+
+const local_strlen -> fn (s: *byte) int {
+  let length: int = 0;
+  loop (s[length] != cast<byte>(0)) : (++length) {}
+  return length;
+}
+
+const local_strcmp -> fn (s1: *byte, s2: *byte) int {
+  let ls1: int = local_strlen(s1);
+  let ls2: int = local_strlen(s2);
+
+  if (ls1 != ls2) { return -1; }
+
+  loop[i: int = 0](i < ls1) : (++i) {
+    if (s1[i] != s2[i]) { return 1; }
+  }
+
+  return 0;
+}
+
+/// Iterator for traversing command-line arguments.
+///
+/// Provides methods to peek at, consume, and skip arguments sequentially.
+/// Maintains an internal position that advances with each next() call.
+///
+/// # Fields
+/// - `data`: Pointer to current position in argument array
+/// - `remaining`: Number of arguments left to iterate
+pub const ArgsIter -> struct {
+  data: **byte,      /// Current position in argument array
+  remaining: int,    /// Arguments remaining to iterate
+
+  /// Returns the next argument without consuming it.
+  ///
+  /// Useful for lookahead when parsing arguments that may have
+  /// associated values.
+  ///
+  /// @return Pointer to next argument, or null if no more arguments
+  ///
+  /// # Example
+  /// ```luma
+  /// let next: *byte = iter.peek();
+  /// if (next != cast<*byte>(0) && next[0] != '-') {
+  ///     // Next arg is a value, not a flag
+  ///     process_value(iter.next());
+  /// }
+  /// ```
+  peek -> fn () *byte {
+    if (self.remaining == 0)
+      return cast<*byte>(0);
+    return self.data[0];
+  },
+
+  /// Advances to and returns the next argument.
+  ///
+  /// Consumes the argument and moves the iterator forward.
+  ///
+  /// @return Pointer to next argument, or null if no more arguments
+  ///
+  /// # Example
+  /// ```luma
+  /// loop {
+  ///     let arg: *byte = iter.next();
+  ///     if (arg == cast<*byte>(0)) break;
+  ///     output(arg);
+  ///     output("\n");
+  /// }
+  /// ```
+  next -> fn () *byte {
+    if (self.remaining == 0)
+      return cast<*byte>(0);
+
+    let value: *byte = self.data[0];
+    self.data = cast<**byte>(cast<int>(self.data) + sizeof<*byte>);
+    self.remaining = self.remaining - 1;
+    return value;
+  },
+
+  /// Skips n arguments without returning them.
+  ///
+  /// Advances the iterator by n positions or until exhausted,
+  /// whichever comes first.
+  ///
+  /// @param n Number of arguments to skip
+  ///
+  /// # Example
+  /// ```luma
+  /// iter.skip(1);  // Skip program name
+  /// // Now iter points to first user argument
+  /// ```
+  skip -> fn (n: int) void {
+    let i: int = 0;
+    loop (i < n && self.remaining > 0) : (++i) {
+      self.next();
+    }
+  },
+};
+
+/// Command-line arguments container.
+///
+/// Wraps argc/argv from main() and provides convenient methods for
+/// accessing and querying arguments. Index 0 is the program name,
+/// subsequent indices are user-provided arguments.
+///
+/// # Fields
+/// - `data`: Pointer to array of argument strings
+/// - `count`: Total number of arguments (including program name)
+pub const Args -> struct {
+  data: **byte,  /// Array of argument strings
+  count: int,    /// Total number of arguments
+  
+  /// Returns the total number of arguments.
+  ///
+  /// @return Argument count including program name at index 0
+  ///
+  /// # Example
+  /// ```luma
+  /// if (args.len() < 2) {
+  ///     output("Usage: program <filename>\n");
+  ///     return 1;
+  /// }
+  /// ```
+  len      -> fn () int { return self.count;      },
+
+  /// Checks if there are no arguments.
+  ///
+  /// @return -1 (true) if count is 0, 0 (false) otherwise
+  ///
+  /// # Example
+  /// ```luma
+  /// if (args.is_empty()) {
+  ///     output("No arguments\n");
+  /// }
+  /// ```
+  is_empty -> fn () int { return -cast<int>(self.count == 0); },
+
+  /// Retrieves the argument at a specific index.
+  ///
+  /// Returns empty string if index is out of bounds. Does not
+  /// modify the Args struct.
+  ///
+  /// @param index Zero-based position of argument
+  /// @return Pointer to argument string, or "" if out of bounds
+  ///
+  /// # Example
+  /// ```luma
+  /// let filename: *byte = args.get(1);
+  /// if (strcmp(filename, "") != 0) {
+  ///     process_file(filename);
+  /// }
+  /// ```
+  get      -> fn (index: int) *byte {
+    if (index < 0 || index >= self.count) 
+      return "";
+    let data: **byte = self.data; 
+    return data[index];
+  },
+
+  /// Checks if a specific argument exists.
+  ///
+  /// Performs exact string matching against all arguments.
+  ///
+  /// @param val Argument string to search for
+  /// @return 1 if found, 0 otherwise
+  ///
+  /// # Example
+  /// ```luma
+  /// if (args.contains("--verbose")) {
+  ///     enable_verbose_mode();
+  /// }
+  /// 
+  /// if (args.contains("--help") || args.contains("-h")) {
+  ///     show_help();
+  /// }
+  /// ```
+  contains -> fn (val: *byte) int {
+    let data: **byte = self.data;
+    loop [i: int = 0](i < self.count) : (++i) {
+      if (local_strcmp(data[i], val) == 0) return 1;
+    }
+    return 0;
+  },
+
+  /// Returns a new Args excluding the first argument.
+  ///
+  /// Creates a new Args struct containing all arguments except
+  /// the first (typically the program name). Useful for processing
+  /// only user-provided arguments.
+  ///
+  /// @return New Args with count-1 arguments, or empty Args if count <= 1
+  ///
+  /// # Example
+  /// ```luma
+  /// let user_args: Args = args.tail();
+  /// loop [i: int = 0](i < user_args.len()) : (++i) {
+  ///     process_arg(user_args.get(i));
+  /// }
+  /// ```
+  tail -> fn () Args {
+    if (self.count <= 1) return Args { data: self.data, count: 0 };
+   
+    return Args {
+      data: cast<**byte>(cast<int>(self.data) + sizeof<*byte>),
+      count: self.count - 1
+    };
+  },
+
+  /// Creates an iterator for the arguments.
+  ///
+  /// Returns an iterator positioned at the first argument.
+  ///
+  /// @return ArgsIter initialized to traverse all arguments
+  ///
+  /// # Example
+  /// ```luma
+  /// let iter: ArgsIter = args.iter();
+  /// iter.skip(1);  // Skip program name
+  /// loop {
+  ///     let arg: *byte = iter.next();
+  ///     if (arg == cast<*byte>(0)) break;
+  ///     process_arg(arg);
+  /// }
+  /// ```
+  iter -> fn () ArgsIter {
+    return ArgsIter {
+      data: self.data,
+      remaining: self.count
+    };
+  }
+};
+
+/// Initializes Args struct from main() parameters.
+///
+/// Wraps the standard main() argc/argv parameters into an Args struct.
+/// This should be the first call in main() when argument processing is needed.
+///
+/// @param argc Argument count from main()
+/// @param argv Argument vector from main()
+/// @return Initialized Args struct
+///
+/// # Example
+/// ```luma
+/// const main -> fn (argc: int, argv: **byte) int {
+///     let args: Args = args::init_args(argc, argv);
+///     
+///     if (args.contains("--version")) {
+///         output("Version 1.0.0\n");
+///         return 0;
+///     }
+///     
+///     return 0;
+/// }
+/// ```
+pub const init_args -> fn (argc: int, argv: **byte) Args {
+  return Args { data: argv, count: argc };
+}
