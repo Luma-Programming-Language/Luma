@@ -155,6 +155,7 @@ LLVMValueRef codegen_expr_literal(CodeGenContext *ctx, AstNode *node) {
 
 // Expression identifier handler
 LLVMValueRef codegen_expr_identifier(CodeGenContext *ctx, AstNode *node) {
+
   LLVM_Symbol *sym = find_symbol(ctx, node->expr.identifier.name);
   if (sym) {
     if (sym->is_function) {
@@ -1870,11 +1871,127 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  // Build inline assembly string based on number of arguments
-  // Linux x86_64 syscall convention:
-  // rax = syscall number
-  // rdi, rsi, rdx, r10, r8, r9 = arguments 1-6
-
+  #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+  long sysnum = -1;
+  if (LLVMIsAConstantInt(llvm_args[0])) {
+    sysnum = (long)LLVMConstIntGetSExtValue(llvm_args[0]);
+  }
+  if ((sysnum == 4 || sysnum == 0x2000004) && arg_count >= 4) {
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx->context);
+    LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx->context), 0);
+    LLVMTypeRef fn_ty = LLVMFunctionType(i64, (LLVMTypeRef[]){i32, i8p, i64}, 3, false);
+    LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "write");
+    if (!fn) {
+      fn = LLVMAddFunction(current_llvm_module, "write", fn_ty);
+      LLVMSetLinkage(fn, LLVMExternalLinkage);
+    }
+    LLVMValueRef fd = codegen_expr(ctx, args[1]);
+    LLVMValueRef buf = codegen_expr(ctx, args[2]);
+    LLVMValueRef cnt = codegen_expr(ctx, args[3]);
+    if (LLVMGetTypeKind(LLVMTypeOf(fd)) != LLVMIntegerTypeKind) {
+      fd = LLVMBuildPtrToInt(ctx->builder, fd, i64, "fd_to_i64");
+    }
+    unsigned fbits = LLVMGetIntTypeWidth(LLVMTypeOf(fd));
+    if (fbits > 32) fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
+    if (LLVMGetTypeKind(LLVMTypeOf(buf)) == LLVMIntegerTypeKind) {
+      buf = LLVMBuildIntToPtr(ctx->builder, buf, i8p, "buf_to_ptr");
+    }
+    if (LLVMGetTypeKind(LLVMTypeOf(cnt)) != LLVMIntegerTypeKind) {
+      cnt = LLVMBuildPtrToInt(ctx->builder, cnt, i64, "cnt_ptr_to_i64");
+    } else {
+      unsigned cbits = LLVMGetIntTypeWidth(LLVMTypeOf(cnt));
+      if (cbits < 64) cnt = LLVMBuildZExt(ctx->builder, cnt, i64, "cnt_zext");
+    }
+    LLVMValueRef call_args[3] = {fd, buf, cnt};
+    return LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3, "write_result");
+  } else if ((sysnum == 3 || sysnum == 0x2000003) && arg_count >= 4) {
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
+    LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx->context);
+    LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx->context), 0);
+    LLVMTypeRef fn_ty = LLVMFunctionType(i64, (LLVMTypeRef[]){i32, i8p, i64}, 3, false);
+    LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "read");
+    if (!fn) {
+      fn = LLVMAddFunction(current_llvm_module, "read", fn_ty);
+      LLVMSetLinkage(fn, LLVMExternalLinkage);
+    }
+    LLVMValueRef fd = codegen_expr(ctx, args[1]);
+    LLVMValueRef buf = codegen_expr(ctx, args[2]);
+    LLVMValueRef cnt = codegen_expr(ctx, args[3]);
+    if (LLVMGetTypeKind(LLVMTypeOf(fd)) != LLVMIntegerTypeKind) {
+      fd = LLVMBuildPtrToInt(ctx->builder, fd, i64, "fd_to_i64");
+    }
+    unsigned fbits = LLVMGetIntTypeWidth(LLVMTypeOf(fd));
+    if (fbits > 32) fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
+    if (LLVMGetTypeKind(LLVMTypeOf(buf)) == LLVMIntegerTypeKind) {
+      buf = LLVMBuildIntToPtr(ctx->builder, buf, i8p, "buf_to_ptr");
+    }
+    if (LLVMGetTypeKind(LLVMTypeOf(cnt)) != LLVMIntegerTypeKind) {
+      cnt = LLVMBuildPtrToInt(ctx->builder, cnt, i64, "cnt_ptr_to_i64");
+    } else {
+      unsigned cbits = LLVMGetIntTypeWidth(LLVMTypeOf(cnt));
+      if (cbits < 64) cnt = LLVMBuildZExt(ctx->builder, cnt, i64, "cnt_zext");
+    }
+    LLVMValueRef call_args[3] = {fd, buf, cnt};
+    return LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3, "read_result");
+  } else if ((sysnum == 5 || sysnum == 0x2000005) && arg_count >= 4) {
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
+    LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx->context), 0);
+    LLVMTypeRef fn_ty = LLVMFunctionType(i32, (LLVMTypeRef[]){i8p, i32, i32}, 3, false);
+    LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "open");
+    if (!fn) {
+      fn = LLVMAddFunction(current_llvm_module, "open", fn_ty);
+      LLVMSetLinkage(fn, LLVMExternalLinkage);
+    }
+    LLVMValueRef path = codegen_expr(ctx, args[1]);
+    LLVMValueRef flags = codegen_expr(ctx, args[2]);
+    LLVMValueRef mode = codegen_expr(ctx, args[3]);
+    if (LLVMGetTypeKind(LLVMTypeOf(path)) == LLVMIntegerTypeKind) {
+      path = LLVMBuildIntToPtr(ctx->builder, path, i8p, "path_to_ptr");
+    }
+    if (LLVMGetTypeKind(LLVMTypeOf(flags)) != LLVMIntegerTypeKind) {
+      flags = LLVMBuildPtrToInt(ctx->builder, flags, i32, "flags_ptr_to_i32");
+    } else {
+      unsigned w = LLVMGetIntTypeWidth(LLVMTypeOf(flags));
+      if (w > 32) flags = LLVMBuildTrunc(ctx->builder, flags, i32, "flags_trunc");
+    }
+    if (LLVMGetTypeKind(LLVMTypeOf(mode)) != LLVMIntegerTypeKind) {
+      mode = LLVMBuildPtrToInt(ctx->builder, mode, i32, "mode_ptr_to_i32");
+    } else {
+      unsigned w = LLVMGetIntTypeWidth(LLVMTypeOf(mode));
+      if (w > 32) mode = LLVMBuildTrunc(ctx->builder, mode, i32, "mode_trunc");
+    }
+    LLVMValueRef call_args[3] = {path, flags, mode};
+    LLVMValueRef r = LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3, "open_result");
+    return LLVMBuildZExt(ctx->builder, r, LLVMInt64TypeInContext(ctx->context), "open_result_i64");
+  } else if ((sysnum == 6 || sysnum == 0x2000006) && arg_count >= 2) {
+    LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
+    LLVMTypeRef fn_ty = LLVMFunctionType(i32, (LLVMTypeRef[]){i32}, 1, false);
+    LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "close");
+    if (!fn) {
+      fn = LLVMAddFunction(current_llvm_module, "close", fn_ty);
+      LLVMSetLinkage(fn, LLVMExternalLinkage);
+    }
+    LLVMValueRef fd = codegen_expr(ctx, args[1]);
+    if (LLVMGetTypeKind(LLVMTypeOf(fd)) != LLVMIntegerTypeKind) {
+      fd = LLVMBuildPtrToInt(ctx->builder, fd, LLVMInt64TypeInContext(ctx->context), "fd_to_i64");
+    }
+    unsigned w = LLVMGetIntTypeWidth(LLVMTypeOf(fd));
+    if (w > 32) fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
+    LLVMValueRef r = LLVMBuildCall2(ctx->builder, fn_ty, fn, (LLVMValueRef[]){fd}, 1, "close_result");
+    return LLVMBuildZExt(ctx->builder, r, LLVMInt64TypeInContext(ctx->context), "close_result_i64");
+  } else {
+    LLVMTypeRef ret_ty = LLVMInt64TypeInContext(ctx->context);
+    LLVMTypeRef num_ty = LLVMInt64TypeInContext(ctx->context);
+    LLVMTypeRef fn_ty = LLVMFunctionType(ret_ty, (LLVMTypeRef[]){num_ty}, 1, true);
+    LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "syscall");
+    if (!fn) {
+      fn = LLVMAddFunction(current_llvm_module, "syscall", fn_ty);
+      LLVMSetLinkage(fn, LLVMExternalLinkage);
+    }
+    return LLVMBuildCall2(ctx->builder, fn_ty, fn, llvm_args, arg_count, "syscall_result");
+  }
+  #else
   const char *asm_template;
   const char *constraints;
 
@@ -1948,6 +2065,7 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
   LLVMSetVolatile(result, true);
 
   return result;
+  #endif
 }
 
 // sizeof<type || expr>

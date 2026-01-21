@@ -1,0 +1,48 @@
+@module "sys"
+
+pub const SYS_READ: int = 0x2000003;
+pub const SYS_WRITE: int = 0x2000004;
+pub const SYS_OPEN: int = 0x2000005;
+pub const SYS_CLOSE: int = 0x2000006;
+pub const SYS_GETPID: int = 0x2000014;
+pub const SYS_EXIT: int = 0x2000001;
+
+pub const O_RDONLY: int = 0;
+pub const O_WRONLY: int = 1;
+pub const O_RDWR: int = 2;
+pub const O_CREAT: int = 0x0200;
+pub const O_EXCL: int = 0x0800;
+pub const O_TRUNC: int = 0x0400;
+pub const O_APPEND: int = 8;
+
+pub const SEEK_SET: int = 0;
+pub const SEEK_CUR: int = 1;
+pub const SEEK_END: int = 2;
+
+pub const STDIN: int = 0;
+pub const STDOUT: int = 1;
+pub const STDERR: int = 2;
+
+pub const read -> fn  (fd: int, buf: *void, count: int) int {
+    return __syscall__(SYS_READ, fd, cast<int>(buf), count);
+}
+
+pub const write -> fn  (fd: int, buf: *void, count: int) int {
+    return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
+}
+
+pub const open -> fn  (path: *byte, flags: int, mode: int) int {
+    return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
+}
+
+pub const close -> fn  (fd: int) int {
+    return __syscall__(SYS_CLOSE, fd);
+}
+
+pub const getpid -> fn  () int {
+    return __syscall__(SYS_GETPID);
+}
+
+pub const exit -> fn  (code: int) void {
+    __syscall__(SYS_EXIT, code);
+}

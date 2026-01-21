@@ -67,15 +67,28 @@ bool resolve_std_path(const char *import_path, char *buffer,
   // Normalize the import path (remove "std/" prefix)
   const char *normalized = normalize_std_import(import_path);
 
+  char module_name[512];
+#ifdef __APPLE__
+  if (strcmp(normalized, "io") == 0) {
+    snprintf(module_name, sizeof(module_name), "io_darwin");
+  } else if (strcmp(normalized, "sys") == 0) {
+    snprintf(module_name, sizeof(module_name), "sys_darwin");
+  } else {
+    snprintf(module_name, sizeof(module_name), "%s", normalized);
+  }
+#else
+  snprintf(module_name, sizeof(module_name), "%s", normalized);
+#endif
+
   // Check if file already has an extension (.luma or .lx)
   char with_extension[512];
-  const char *ext = strrchr(normalized, '.');
+  const char *ext = strrchr(module_name, '.');
   if (ext && (strcmp(ext, ".luma") == 0 || strcmp(ext, ".lx") == 0)) {
     // Already has a valid extension, use as-is
-    snprintf(with_extension, sizeof(with_extension), "%s", normalized);
+    snprintf(with_extension, sizeof(with_extension), "%s", module_name);
   } else {
     // No extension, try .lx first (your current extension), then .luma
-    snprintf(with_extension, sizeof(with_extension), "%s.lx", normalized);
+    snprintf(with_extension, sizeof(with_extension), "%s.lx", module_name);
   }
 
   char test_path[1024];
@@ -85,20 +98,18 @@ bool resolve_std_path(const char *import_path, char *buffer,
   char alt_extension[512];
   // If we used .lx, also try .luma as fallback
   if (ext == NULL || (strcmp(ext, ".lx") != 0 && strcmp(ext, ".luma") != 0)) {
-    snprintf(alt_extension, sizeof(alt_extension), "%s.luma", normalized);
+    snprintf(alt_extension, sizeof(alt_extension), "%s.luma", module_name);
     extensions[1] = alt_extension;
   }
 
   for (int ext_idx = 0; ext_idx < 2 && extensions[ext_idx]; ext_idx++) {
     const char *try_ext = extensions[ext_idx];
 
-    // 1. Check system-wide installation
-    if (get_system_std_path(test_path, sizeof(test_path))) {
-      snprintf(buffer, buffer_size, "%s%c%s", test_path, PATH_SEPARATOR,
-               try_ext);
-      if (file_exists(buffer)) {
-        return true;
-      }
+    // 1. Check current directory (development-first on macOS projects)
+    snprintf(buffer, buffer_size, ".%cstd%c%s", PATH_SEPARATOR, PATH_SEPARATOR,
+             try_ext);
+    if (file_exists(buffer)) {
+      return true;
     }
 
     // 2. Check user-local installation
@@ -110,11 +121,13 @@ bool resolve_std_path(const char *import_path, char *buffer,
       }
     }
 
-    // 3. Check current directory (development fallback)
-    snprintf(buffer, buffer_size, ".%cstd%c%s", PATH_SEPARATOR, PATH_SEPARATOR,
-             try_ext);
-    if (file_exists(buffer)) {
-      return true;
+    // 3. Check system-wide installation
+    if (get_system_std_path(test_path, sizeof(test_path))) {
+      snprintf(buffer, buffer_size, "%s%c%s", test_path, PATH_SEPARATOR,
+               try_ext);
+      if (file_exists(buffer)) {
+        return true;
+      }
     }
   }
 

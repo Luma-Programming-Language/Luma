@@ -479,6 +479,14 @@ Token next_token(Lexer *lx) {
 
   // Numbers
   if (isdigit(c)) {
+    if (c == '0' && (peek(lx, 0) == 'x' || peek(lx, 0) == 'X')) {
+      advance(lx);
+      while (isxdigit(peek(lx, 0))) {
+        advance(lx);
+      }
+      int len = (int)(lx->current - start);
+      return MAKE_TOKEN(TOK_NUMBER, start, lx, len, wh_count);
+    }
     // Read the integer part
     while (isdigit(peek(lx, 0))) {
       advance(lx);
