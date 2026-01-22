@@ -1,4 +1,4 @@
-#include "llvm.h"
+#include "../llvm.h"
 
 // Helper function to infer struct type from context
 static StructInfo *infer_struct_type_from_context(CodeGenContext *ctx,

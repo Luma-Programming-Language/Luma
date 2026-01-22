@@ -1,4 +1,4 @@
-#include "llvm.h"
+#include "../llvm.h"
 #include <llvm-c/Core.h>
 #include <llvm-c/Types.h>
 #include <stdio.h>

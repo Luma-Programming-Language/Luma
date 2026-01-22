@@ -69,6 +69,22 @@ typedef struct StructInfo {
   struct StructInfo *next;
 } StructInfo;
 
+typedef struct CommonTypes {
+  // Integer types
+  LLVMTypeRef i1, i8, i16, i32, i64;
+
+  // Float types
+  LLVMTypeRef f32, f64;
+
+  // Special types
+  LLVMTypeRef void_type;
+  LLVMTypeRef i8_ptr;
+
+  // Common constants (cached for performance)
+  LLVMValueRef const_i32_0, const_i32_1;
+  LLVMValueRef const_i64_0, const_i64_1;
+} CommonTypes;
+
 // Code generation context
 struct CodeGenContext {
   // LLVM Core Components
@@ -92,6 +108,7 @@ struct CodeGenContext {
   LLVMBasicBlockRef loop_continue_block;
   LLVMBasicBlockRef loop_break_block;
 
+  CommonTypes common_types;
   StructInfo *struct_types;
 
   // Memory Management
@@ -148,10 +165,7 @@ void generate_external_declarations(CodeGenContext *ctx,
                                     ModuleCompilationUnit *target_module);
 void preprocess_all_modules(CodeGenContext *ctx);
 StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
-LLVMValueRef codegen_expr_member_access_optimized(CodeGenContext *ctx,
-                                                  AstNode *node);
 void cleanup_module_caches(void);
-void register_struct_with_cache(CodeGenContext *ctx, StructInfo *struct_info);
 void debug_object_files(const char *output_dir);
 
 unsigned int hash_string(const char *str);
@@ -243,6 +257,36 @@ bool generate_assembly_file(CodeGenContext *ctx, const char *asm_filename);
 char *process_escape_sequences(const char *input);
 LLVMLinkage get_function_linkage(AstNode *node);
 
+void init_type_cache(CodeGenContext *ctx);
+LLVMTypeRef get_int_type(CodeGenContext *ctx, unsigned bits);
+LLVMTypeRef get_float_type(CodeGenContext *ctx, bool is_double);
+LLVMValueRef get_const_int(CodeGenContext *ctx, unsigned bits, uint64_t value);
+bool is_int_type(LLVMTypeRef type);
+bool is_float_type(LLVMTypeRef type);
+bool pointer_type(LLVMTypeRef type);
+bool types_are_equal(LLVMTypeRef a, LLVMTypeRef b);
+bool needs_conversion(LLVMTypeRef from, LLVMTypeRef to);
+
+LLVMValueRef alloca_and_store(CodeGenContext *ctx, LLVMTypeRef type,
+                              LLVMValueRef value, const char *name);
+LLVMValueRef struct_gep_load(CodeGenContext *ctx, LLVMTypeRef struct_type,
+                             LLVMValueRef ptr, unsigned index,
+                             LLVMTypeRef element_type, const char *name);
+void struct_gep_store(CodeGenContext *ctx, LLVMTypeRef struct_type,
+                      LLVMValueRef ptr, unsigned index, LLVMValueRef value);
+LLVMValueRef array_gep(CodeGenContext *ctx, LLVMTypeRef array_type,
+                       LLVMValueRef array_ptr, LLVMValueRef index,
+                       const char *name);
+bool block_has_terminator(LLVMBuilderRef builder);
+void branch_if_no_terminator(CodeGenContext *ctx, LLVMBasicBlockRef target);
+LLVMValueRef build_global_string(CodeGenContext *ctx, const char *str,
+                                 const char *name);
+
+LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node);
+bool is_module_identifier(CodeGenContext *ctx, const char *name);
+bool validate_module_access(CodeGenContext *ctx, const char *prefix, const char *symbol_name);
+const char *get_module_name_from_access(AstNode *node);
+
 // =============================================================================
 // ENHANCED STRUCT SUPPORT FUNCTIONS
 // =============================================================================
@@ -256,9 +300,6 @@ bool is_field_access_allowed(CodeGenContext *ctx, StructInfo *struct_info,
 LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
                                    StructInfo *struct_info,
                                    const char *method_name, bool is_public);
-// Enhanced member access (handles both struct.field and module.symbol)
-LLVMValueRef codegen_expr_member_access_enhanced(CodeGenContext *ctx,
-                                                 AstNode *node);
 
 // Struct literal/initializer support
 LLVMValueRef codegen_struct_literal(CodeGenContext *ctx,
@@ -305,7 +346,6 @@ LLVMValueRef codegen_stmt_program_multi_module(CodeGenContext *ctx,
                                                AstNode *node);
 LLVMValueRef codegen_stmt_module(CodeGenContext *ctx, AstNode *node);
 LLVMValueRef codegen_stmt_use(CodeGenContext *ctx, AstNode *node);
-LLVMValueRef codegen_expr_member_access(CodeGenContext *ctx, AstNode *node);
 
 // =============================================================================
 // AST NODE HANDLERS - EXPRESSION TYPES

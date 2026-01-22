@@ -1,4 +1,4 @@
-#include "llvm.h"
+#include "../llvm.h"
 
 void init_defer_stack(CodeGenContext *ctx) {
   ctx->deferred_statements = NULL;

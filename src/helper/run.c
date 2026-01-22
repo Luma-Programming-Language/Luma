@@ -80,7 +80,6 @@ const char *resolve_import_path(const char *path, ArenaAllocator *allocator) {
   if (strncmp(path, "std/", 4) == 0 || strncmp(path, "std\\", 4) == 0) {
     char resolved_path[1024];
     if (resolve_std_path(path, resolved_path, sizeof(resolved_path))) {
-      fprintf(stderr, "[import] %s -> %s\n", path, resolved_path);
       return arena_strdup(allocator, resolved_path);
     } else {
       fprintf(stderr, "Error: Could not find standard library file: %s\n",
@@ -91,26 +90,7 @@ const char *resolve_import_path(const char *path, ArenaAllocator *allocator) {
     }
   }
 
-  // Fallback: if path is a bare module name (no directory separators),
-  // attempt to resolve from the standard library
-#ifndef _WIN32
-  bool has_sep = strchr(path, '/') != NULL;
-#else
-  bool has_sep = strchr(path, '/') != NULL || strchr(path, '\\') != NULL;
-#endif
-
-  if (!has_sep) {
-    char std_prefixed[512];
-    snprintf(std_prefixed, sizeof(std_prefixed), "std/%s", path);
-
-    char resolved_path[1024];
-    if (resolve_std_path(std_prefixed, resolved_path, sizeof(resolved_path))) {
-      fprintf(stderr, "[import] %s -> %s\n", path, resolved_path);
-      return arena_strdup(allocator, resolved_path);
-    }
-  }
-
-  // Not a std import or fallback failed; return as-is
+  // Not a std/ import, return as-is
   return path;
 }
 
@@ -154,7 +134,7 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
   char exe_file[256];
   snprintf(exe_file, sizeof(exe_file), "%s", base_name);
 
-  if (!link_object_files(ctx, output_dir, exe_file, config.opt_level)) {
+  if (!link_object_files(output_dir, exe_file, config.opt_level)) {
     cleanup_codegen_context(ctx);
     return false;
   }
@@ -167,56 +147,39 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
   return true;
 }
 
-bool link_object_files(CodeGenContext *ctx, const char *output_dir, const char *executable_name,
+// Helper function to link all object files in a directory
+bool link_object_files(const char *output_dir, const char *executable_name,
                        int opt_level) {
-  char command[4096];
-#ifdef __APPLE__
+  char command[2048];
+
+  // Build the linking command with PIE-compatible flags
   if (opt_level > 0) {
-    snprintf(command, sizeof(command), "cc -O%d -Wl,-dead_strip -o %s", opt_level, executable_name);
+    snprintf(command, sizeof(command), "cc -O%d -pie %s/*.o -o %s", opt_level,
+             output_dir, executable_name);
   } else {
-    snprintf(command, sizeof(command), "cc -Wl,-dead_strip -o %s", executable_name);
+    snprintf(command, sizeof(command), "cc -pie %s/*.o -o %s", output_dir,
+             executable_name);
   }
-#else
-  if (opt_level > 0) {
-    snprintf(command, sizeof(command), "cc -O%d -pie -o %s", opt_level, executable_name);
-  } else {
-    snprintf(command, sizeof(command), "cc -pie -o %s", executable_name);
-  }
-#endif
-  for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
-    char obj_path[512];
-    snprintf(obj_path, sizeof(obj_path), " %s/%s.o", output_dir, unit->module_name);
-    strncat(command, obj_path, sizeof(command) - strlen(command) - 1);
-  }
+
   int result = system(command);
   if (result != 0) {
-    char alt_command[4096];
-#ifdef __APPLE__
-    size_t alt_len = snprintf(alt_command, sizeof(alt_command), "gcc -O%d -Wl,-dead_strip -o %s",
-                              opt_level, executable_name);
-    (void)alt_len;
-#else
-    size_t alt_len = snprintf(alt_command, sizeof(alt_command), "gcc -O%d -no-pie -o %s",
-                              opt_level, executable_name);
-    (void)alt_len;
-#endif
-    for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
-      char obj_path[512];
-      snprintf(obj_path, sizeof(obj_path), " %s/%s.o", output_dir, unit->module_name);
-      strncat(alt_command, obj_path, sizeof(alt_command) - strlen(alt_command) - 1);
-    }
-    result = system(alt_command);
+    fprintf(stderr, "Linking failed with exit code %d\n", result);
+
+    // Try alternative linking approach
+    printf("Trying alternative linking approach...\n");
+    snprintf(command, sizeof(command), "gcc -O%d -no-pie %s/*.o -o %s",
+             opt_level, output_dir, executable_name);
+
+    printf("Alternative linking command: %s\n", command);
+    result = system(command);
+
     if (result != 0) {
+      fprintf(stderr, "Alternative linking also failed with exit code %d\n",
+              result);
       return false;
     }
   }
-#ifdef __APPLE__
-  {
-    char strip_cmd[1024];
-    snprintf(strip_cmd, sizeof(strip_cmd), "strip -x %s", executable_name);
-    (void)system(strip_cmd);
-  }
-#endif
+
   return true;
 }
 
@@ -406,51 +369,6 @@ bool run_build(BuildConfig config, ArenaAllocator *allocator) {
   if (!main_slot)
     goto cleanup;
   *main_slot = (AstNode *)main_module;
-
-  // Automatically parse and add imported modules (@use) from the main module
-  if (main_module && main_module->type == AST_PREPROCESSOR_MODULE) {
-    AstNode **body = main_module->preprocessor.module.body;
-    int body_count = main_module->preprocessor.module.body_count;
-
-    for (int j = 0; j < body_count; j++) {
-      AstNode *stmt = body[j];
-      if (!stmt)
-        continue;
-
-      if (stmt->type == AST_PREPROCESSOR_USE) {
-        const char *import_name = stmt->preprocessor.use.module_name;
-        if (!import_name || !*import_name)
-          continue;
-
-        bool already_added = false;
-        for (size_t k = 0; k < modules.count; k++) {
-          AstNode *existing =
-              ((AstNode **)modules.data)[k];
-          if (existing && existing->type == AST_PREPROCESSOR_MODULE) {
-            const char *existing_name =
-                existing->preprocessor.module.name;
-            if (existing_name && strcmp(existing_name, import_name) == 0) {
-              already_added = true;
-              break;
-            }
-          }
-        }
-
-        if (!already_added) {
-          Stmt *import_module =
-              parse_file_to_module(import_name, modules.count, allocator,
-                                   &config);
-          if (!import_module || error_report())
-            goto cleanup;
-
-          AstNode **slot = (AstNode **)growable_array_push(&modules);
-          if (!slot)
-            goto cleanup;
-          *slot = (AstNode *)import_module;
-        }
-      }
-    }
-  }
 
   // Stage 3: Combining modules
   print_progress_with_time(++step, total_stages, "Module Combination", &timer);

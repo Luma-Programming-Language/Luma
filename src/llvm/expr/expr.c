@@ -1,7 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#include "llvm.h"
+#include "../llvm.h"
 
 // Add these utility functions to help with consistent range creation and type
 // management You can put these in expr.c or create a new ranges.c file
@@ -69,82 +69,56 @@ LLVMValueRef range_length(CodeGenContext *ctx, LLVMValueRef range_struct) {
 }
 
 LLVMValueRef codegen_expr_literal(CodeGenContext *ctx, AstNode *node) {
-  if (!ctx) {
-    fprintf(stderr, "FATAL: ctx is NULL in codegen_expr_literal!\n");
-    abort();
-  }
-  if (!ctx->context) {
-    fprintf(stderr, "FATAL: ctx->context is NULL in codegen_expr_literal!\n");
-    fprintf(stderr, "LLVM context was not initialized properly!\n");
-    abort();
-  }
-  if (!ctx->builder) {
-    fprintf(stderr, "FATAL: ctx->builder is NULL in codegen_expr_literal!\n");
-    fprintf(stderr, "LLVM builder was not initialized properly!\n");
-    abort();
-  }
-
   switch (node->expr.literal.lit_type) {
   case LITERAL_INT:
-    return LLVMConstInt(LLVMInt64TypeInContext(ctx->context),
-                        node->expr.literal.value.int_val, false);
+    return LLVMConstInt(ctx->common_types.i64, node->expr.literal.value.int_val,
+                        false);
 
   case LITERAL_FLOAT:
-    return LLVMConstReal(LLVMDoubleTypeInContext(ctx->context),
+    return LLVMConstReal(ctx->common_types.f64,
                          node->expr.literal.value.float_val);
 
   case LITERAL_BOOL:
-    return LLVMConstInt(LLVMInt1TypeInContext(ctx->context),
-                        node->expr.literal.value.bool_val ? 1 : 0, false);
+    return node->expr.literal.value.bool_val
+               ? LLVMConstInt(ctx->common_types.i1, 1, false)
+               : LLVMConstInt(ctx->common_types.i1, 0, false);
 
   case LITERAL_CHAR:
-    return LLVMConstInt(LLVMInt8TypeInContext(ctx->context),
+    return LLVMConstInt(ctx->common_types.i8,
                         (unsigned char)node->expr.literal.value.char_val,
                         false);
 
   case LITERAL_STRING: {
     char *processed_str =
         process_escape_sequences(node->expr.literal.value.string_val);
-
-    // String literals must be created in the current module
     LLVMModuleRef current_llvm_module =
         ctx->current_module ? ctx->current_module->module : ctx->module;
 
-    // Create the global string in the current module
-    LLVMValueRef global_str =
-        LLVMAddGlobal(current_llvm_module,
-                      LLVMArrayType(LLVMInt8TypeInContext(ctx->context),
-                                    strlen(processed_str) + 1),
-                      "str");
+    // CHANGED: Use cached i8 type
+    LLVMValueRef global_str = LLVMAddGlobal(
+        current_llvm_module,
+        LLVMArrayType(ctx->common_types.i8, strlen(processed_str) + 1), "str");
 
-    // Set the initializer with processed string
     LLVMSetInitializer(global_str,
                        LLVMConstStringInContext(ctx->context, processed_str,
                                                 strlen(processed_str), 0));
-
-    // Set linkage and other properties
     LLVMSetLinkage(global_str, LLVMPrivateLinkage);
     LLVMSetGlobalConstant(global_str, 1);
     LLVMSetUnnamedAddr(global_str, 1);
 
-    // Return a pointer to the first element
-    LLVMValueRef indices[2] = {
-        LLVMConstInt(LLVMInt32TypeInContext(ctx->context), 0, 0),
-        LLVMConstInt(LLVMInt32TypeInContext(ctx->context), 0, 0)};
+    LLVMValueRef indices[2] = {ctx->common_types.const_i32_0,
+                               ctx->common_types.const_i32_0};
 
-    LLVMValueRef result =
-        LLVMConstGEP2(LLVMArrayType(LLVMInt8TypeInContext(ctx->context),
-                                    strlen(processed_str) + 1),
-                      global_str, indices, 2);
+    LLVMValueRef result = LLVMConstGEP2(
+        LLVMArrayType(ctx->common_types.i8, strlen(processed_str) + 1),
+        global_str, indices, 2);
 
-    // Free the processed string
     free(processed_str);
-
     return result;
   }
+
   case LITERAL_NULL:
-    return LLVMConstNull(
-        LLVMPointerType(LLVMInt8TypeInContext(ctx->context), 0));
+    return LLVMConstNull(ctx->common_types.i8_ptr);
 
   default:
     fprintf(stderr, "ERROR: Unknown literal type: %d\n",
@@ -153,10 +127,10 @@ LLVMValueRef codegen_expr_literal(CodeGenContext *ctx, AstNode *node) {
   }
 }
 
-// Expression identifier handler
 LLVMValueRef codegen_expr_identifier(CodeGenContext *ctx, AstNode *node) {
+  const char *name = node->expr.identifier.name;
 
-  LLVM_Symbol *sym = find_symbol(ctx, node->expr.identifier.name);
+  LLVM_Symbol *sym = find_symbol(ctx, name);
   if (sym) {
     if (sym->is_function) {
       return sym->value;
@@ -169,238 +143,8 @@ LLVMValueRef codegen_expr_identifier(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  fprintf(stderr, "Error: Undefined symbol '%s'\n", node->expr.identifier.name);
+  fprintf(stderr, "Error: Undefined symbol '%s'\n", name);
   return NULL;
-}
-
-// Enhanced codegen_expr_binary function with float arithmetic support
-LLVMValueRef codegen_expr_binary(CodeGenContext *ctx, AstNode *node) {
-  LLVMValueRef left = codegen_expr(ctx, node->expr.binary.left);
-  LLVMValueRef right = codegen_expr(ctx, node->expr.binary.right);
-
-  if (!left || !right)
-    return NULL;
-
-  // Get the types of both operands
-  LLVMTypeRef left_type = LLVMTypeOf(left);
-  LLVMTypeRef right_type = LLVMTypeOf(right);
-  LLVMTypeKind left_kind = LLVMGetTypeKind(left_type);
-  LLVMTypeKind right_kind = LLVMGetTypeKind(right_type);
-
-  // Determine if we're dealing with floating point operations
-  bool is_float_op =
-      (left_kind == LLVMFloatTypeKind || left_kind == LLVMDoubleTypeKind ||
-       right_kind == LLVMFloatTypeKind || right_kind == LLVMDoubleTypeKind);
-
-  // Handle type promotion if needed
-  if (is_float_op) {
-    // Promote integers to floats if mixing int and float
-    if (left_kind == LLVMIntegerTypeKind &&
-        (right_kind == LLVMFloatTypeKind || right_kind == LLVMDoubleTypeKind)) {
-      left = LLVMBuildSIToFP(ctx->builder, left, right_type, "int_to_float");
-      left_type = right_type;
-    } else if (right_kind == LLVMIntegerTypeKind &&
-               (left_kind == LLVMFloatTypeKind ||
-                left_kind == LLVMDoubleTypeKind)) {
-      right = LLVMBuildSIToFP(ctx->builder, right, left_type, "int_to_float");
-      right_type = left_type;
-    }
-
-    // Promote float to double if mixing float and double
-    if (left_kind == LLVMFloatTypeKind && right_kind == LLVMDoubleTypeKind) {
-      left = LLVMBuildFPExt(ctx->builder, left, right_type, "float_to_double");
-    } else if (right_kind == LLVMFloatTypeKind &&
-               left_kind == LLVMDoubleTypeKind) {
-      right = LLVMBuildFPExt(ctx->builder, right, left_type, "float_to_double");
-    }
-  }
-
-  switch (node->expr.binary.op) {
-  case BINOP_ADD:
-    if (is_float_op) {
-      return LLVMBuildFAdd(ctx->builder, left, right, "fadd");
-    } else {
-      return LLVMBuildAdd(ctx->builder, left, right, "add");
-    }
-
-  case BINOP_SUB:
-    if (is_float_op) {
-      return LLVMBuildFSub(ctx->builder, left, right, "fsub");
-    } else {
-      return LLVMBuildSub(ctx->builder, left, right, "sub");
-    }
-
-  case BINOP_MUL:
-    if (is_float_op) {
-      return LLVMBuildFMul(ctx->builder, left, right, "fmul");
-    } else {
-      return LLVMBuildMul(ctx->builder, left, right, "mul");
-    }
-
-  case BINOP_DIV:
-    if (is_float_op) {
-      return LLVMBuildFDiv(ctx->builder, left, right, "fdiv");
-    } else {
-      return LLVMBuildSDiv(ctx->builder, left, right, "div");
-    }
-
-  case BINOP_MOD:
-    if (is_float_op) {
-      // Option 2: Implement modulo as a - (b * floor(a/b)) using LLVM
-      // intrinsics
-      LLVMModuleRef current_module =
-          ctx->current_module ? ctx->current_module->module : ctx->module;
-
-      // Declare floor intrinsic if needed
-      LLVMTypeRef floor_type;
-      LLVMValueRef floor_func;
-
-      if (LLVMGetTypeKind(left_type) == LLVMDoubleTypeKind) {
-        floor_type = LLVMFunctionType(LLVMDoubleTypeInContext(ctx->context),
-                                      &left_type, 1, false);
-        floor_func = LLVMGetNamedFunction(current_module, "llvm.floor.f64");
-        if (!floor_func) {
-          floor_func =
-              LLVMAddFunction(current_module, "llvm.floor.f64", floor_type);
-        }
-      } else {
-        floor_type = LLVMFunctionType(LLVMFloatTypeInContext(ctx->context),
-                                      &left_type, 1, false);
-        floor_func = LLVMGetNamedFunction(current_module, "llvm.floor.f32");
-        if (!floor_func) {
-          floor_func =
-              LLVMAddFunction(current_module, "llvm.floor.f32", floor_type);
-        }
-      }
-
-      // Calculate a / b
-      LLVMValueRef division =
-          LLVMBuildFDiv(ctx->builder, left, right, "fdiv_for_mod");
-
-      // Calculate floor(a / b)
-      LLVMValueRef floor_result = LLVMBuildCall2(
-          ctx->builder, floor_type, floor_func, &division, 1, "floor_result");
-
-      // Calculate b * floor(a / b)
-      LLVMValueRef multiply =
-          LLVMBuildFMul(ctx->builder, right, floor_result, "fmul_for_mod");
-
-      // Calculate a - (b * floor(a / b))
-      return LLVMBuildFSub(ctx->builder, left, multiply, "fmod_result");
-    } else {
-      return LLVMBuildSRem(ctx->builder, left, right, "mod");
-    }
-    break;
-
-  // Comparison operations
-  case BINOP_EQ:
-    if (is_float_op) {
-      return LLVMBuildFCmp(ctx->builder, LLVMRealOEQ, left, right, "feq");
-    } else {
-      return LLVMBuildICmp(ctx->builder, LLVMIntEQ, left, right, "eq");
-    }
-
-  case BINOP_NE:
-    if (is_float_op) {
-      return LLVMBuildFCmp(ctx->builder, LLVMRealONE, left, right, "fne");
-    } else {
-      return LLVMBuildICmp(ctx->builder, LLVMIntNE, left, right, "ne");
-    }
-
-  case BINOP_LT:
-    if (is_float_op) {
-      return LLVMBuildFCmp(ctx->builder, LLVMRealOLT, left, right, "flt");
-    } else {
-      return LLVMBuildICmp(ctx->builder, LLVMIntSLT, left, right, "lt");
-    }
-
-  case BINOP_LE:
-    if (is_float_op) {
-      return LLVMBuildFCmp(ctx->builder, LLVMRealOLE, left, right, "fle");
-    } else {
-      return LLVMBuildICmp(ctx->builder, LLVMIntSLE, left, right, "le");
-    }
-
-  case BINOP_GT:
-    if (is_float_op) {
-      return LLVMBuildFCmp(ctx->builder, LLVMRealOGT, left, right, "fgt");
-    } else {
-      return LLVMBuildICmp(ctx->builder, LLVMIntSGT, left, right, "gt");
-    }
-
-  case BINOP_GE:
-    if (is_float_op) {
-      return LLVMBuildFCmp(ctx->builder, LLVMRealOGE, left, right, "fge");
-    } else {
-      return LLVMBuildICmp(ctx->builder, LLVMIntSGE, left, right, "ge");
-    }
-
-  // Logical operations (only for integers and booleans)
-  case BINOP_AND:
-    if (is_float_op) {
-      fprintf(stderr,
-              "Error: Logical AND not supported for floating point values\n");
-      return NULL;
-    }
-    return LLVMBuildAnd(ctx->builder, left, right, "and");
-
-  case BINOP_OR:
-    if (is_float_op) {
-      fprintf(stderr,
-              "Error: Logical OR not supported for floating point values\n");
-      return NULL;
-    }
-    return LLVMBuildOr(ctx->builder, left, right, "or");
-
-  case BINOP_RANGE:
-    // Range operations work with both integers and floats
-    return create_range_struct(ctx, left, right);
-
-  // Bitwise operations (only for integers)
-  case BINOP_BIT_AND:
-    if (is_float_op) {
-      fprintf(stderr,
-              "Error: Bitwise AND not supported for floating point values\n");
-      return NULL;
-    }
-    return LLVMBuildAnd(ctx->builder, left, right, "bitand");
-
-  case BINOP_BIT_OR:
-    if (is_float_op) {
-      fprintf(stderr,
-              "Error: Bitwise OR not supported for floating point values\n");
-      return NULL;
-    }
-    return LLVMBuildOr(ctx->builder, left, right, "bitor");
-
-  case BINOP_BIT_XOR:
-    if (is_float_op) {
-      fprintf(stderr,
-              "Error: Bitwise XOR not supported for floating point values\n");
-      return NULL;
-    }
-    return LLVMBuildXor(ctx->builder, left, right, "bitxor");
-
-  case BINOP_SHL:
-    if (is_float_op) {
-      fprintf(stderr,
-              "Error: Left shift not supported for floating point values\n");
-      return NULL;
-    }
-    return LLVMBuildShl(ctx->builder, left, right, "shl");
-
-  case BINOP_SHR:
-    if (is_float_op) {
-      fprintf(stderr,
-              "Error: Right shift not supported for floating point values\n");
-      return NULL;
-    }
-    // Use arithmetic right shift (sign-extending for signed integers)
-    return LLVMBuildAShr(ctx->builder, left, right, "ashr");
-
-  default:
-    return NULL;
-  }
 }
 
 LLVMValueRef codegen_expr_unary(CodeGenContext *ctx, AstNode *node) {
@@ -515,7 +259,7 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
   if (callee->type == AST_EXPR_MEMBER && !callee->expr.member.is_compiletime) {
     // Method call: obj.method(arg1, arg2)
     const char *member_name = callee->expr.member.member;
-    
+
     LLVMValueRef method_func = NULL;
 
     // First try current module
@@ -530,11 +274,13 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
         if (unit == ctx->current_module)
           continue;
 
-        LLVMValueRef found_func = LLVMGetNamedFunction(unit->module, member_name);
+        LLVMValueRef found_func =
+            LLVMGetNamedFunction(unit->module, member_name);
         if (found_func) {
           // CRITICAL FIX: Create external declaration in current module
           LLVMTypeRef func_type = LLVMGlobalGetValueType(found_func);
-          method_func = LLVMAddFunction(current_llvm_module, member_name, func_type);
+          method_func =
+              LLVMAddFunction(current_llvm_module, member_name, func_type);
           LLVMSetLinkage(method_func, LLVMExternalLinkage);
           break;
         }
@@ -562,7 +308,7 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
                 member_name);
         return NULL;
       }
-    } 
+    }
   } else {
     // Regular function call or compile-time member access (module::func)
     callee_value = codegen_expr(ctx, callee);
@@ -619,43 +365,46 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
   if (return_kind == LLVMStructTypeKind) {
     // Check if this is a cross-module call
     LLVMModuleRef callee_module = LLVMGetGlobalParent(callee_value);
-    LLVMModuleRef current_llvm_module = 
+    LLVMModuleRef current_llvm_module =
         ctx->current_module ? ctx->current_module->module : ctx->module;
-    
+
     bool is_cross_module = (callee_module != current_llvm_module);
-    
+
     if (is_cross_module) {
-      // For cross-module struct returns, ensure we have a proper external declaration
+      // For cross-module struct returns, ensure we have a proper external
+      // declaration
       const char *func_name = LLVMGetValueName(callee_value);
-      
+
       // Check if we already have a declaration in current module
-      LLVMValueRef local_func = LLVMGetNamedFunction(current_llvm_module, func_name);
-      
+      LLVMValueRef local_func =
+          LLVMGetNamedFunction(current_llvm_module, func_name);
+
       if (!local_func) {
         // Create external declaration
         local_func = LLVMAddFunction(current_llvm_module, func_name, func_type);
         LLVMSetLinkage(local_func, LLVMExternalLinkage);
       }
-      
+
       // CRITICAL: Ensure both functions have the same calling convention
       LLVMCallConv source_cc = LLVMGetFunctionCallConv(callee_value);
       LLVMSetFunctionCallConv(local_func, source_cc);
-      
+
       // Use local declaration for the call
       callee_value = local_func;
     }
-    
+
     // For struct returns, allocate space and load the result
     // This ensures proper struct return handling regardless of ABI
-    LLVMValueRef call_result = LLVMBuildCall2(ctx->builder, func_type, 
-                                              callee_value, args, arg_count, "struct_call");
-    
+    LLVMValueRef call_result = LLVMBuildCall2(
+        ctx->builder, func_type, callee_value, args, arg_count, "struct_call");
+
     // The struct is returned by value - just return it
     return call_result;
   }
 
   // Regular (non-struct, non-void) return
-  return LLVMBuildCall2(ctx->builder, func_type, callee_value, args, arg_count, "call");
+  return LLVMBuildCall2(ctx->builder, func_type, callee_value, args, arg_count,
+                        "call");
 }
 
 // Unified assignment handler that supports all assignment types
@@ -1871,7 +1620,7 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  #if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
+#if defined(__APPLE__) && (defined(__aarch64__) || defined(__arm64__))
   long sysnum = -1;
   if (LLVMIsAConstantInt(llvm_args[0])) {
     sysnum = (long)LLVMConstIntGetSExtValue(llvm_args[0]);
@@ -1880,7 +1629,8 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
     LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
     LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx->context);
     LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx->context), 0);
-    LLVMTypeRef fn_ty = LLVMFunctionType(i64, (LLVMTypeRef[]){i32, i8p, i64}, 3, false);
+    LLVMTypeRef fn_ty =
+        LLVMFunctionType(i64, (LLVMTypeRef[]){i32, i8p, i64}, 3, false);
     LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "write");
     if (!fn) {
       fn = LLVMAddFunction(current_llvm_module, "write", fn_ty);
@@ -1893,7 +1643,8 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
       fd = LLVMBuildPtrToInt(ctx->builder, fd, i64, "fd_to_i64");
     }
     unsigned fbits = LLVMGetIntTypeWidth(LLVMTypeOf(fd));
-    if (fbits > 32) fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
+    if (fbits > 32)
+      fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
     if (LLVMGetTypeKind(LLVMTypeOf(buf)) == LLVMIntegerTypeKind) {
       buf = LLVMBuildIntToPtr(ctx->builder, buf, i8p, "buf_to_ptr");
     }
@@ -1901,15 +1652,18 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
       cnt = LLVMBuildPtrToInt(ctx->builder, cnt, i64, "cnt_ptr_to_i64");
     } else {
       unsigned cbits = LLVMGetIntTypeWidth(LLVMTypeOf(cnt));
-      if (cbits < 64) cnt = LLVMBuildZExt(ctx->builder, cnt, i64, "cnt_zext");
+      if (cbits < 64)
+        cnt = LLVMBuildZExt(ctx->builder, cnt, i64, "cnt_zext");
     }
     LLVMValueRef call_args[3] = {fd, buf, cnt};
-    return LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3, "write_result");
+    return LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3,
+                          "write_result");
   } else if ((sysnum == 3 || sysnum == 0x2000003) && arg_count >= 4) {
     LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
     LLVMTypeRef i64 = LLVMInt64TypeInContext(ctx->context);
     LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx->context), 0);
-    LLVMTypeRef fn_ty = LLVMFunctionType(i64, (LLVMTypeRef[]){i32, i8p, i64}, 3, false);
+    LLVMTypeRef fn_ty =
+        LLVMFunctionType(i64, (LLVMTypeRef[]){i32, i8p, i64}, 3, false);
     LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "read");
     if (!fn) {
       fn = LLVMAddFunction(current_llvm_module, "read", fn_ty);
@@ -1922,7 +1676,8 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
       fd = LLVMBuildPtrToInt(ctx->builder, fd, i64, "fd_to_i64");
     }
     unsigned fbits = LLVMGetIntTypeWidth(LLVMTypeOf(fd));
-    if (fbits > 32) fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
+    if (fbits > 32)
+      fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
     if (LLVMGetTypeKind(LLVMTypeOf(buf)) == LLVMIntegerTypeKind) {
       buf = LLVMBuildIntToPtr(ctx->builder, buf, i8p, "buf_to_ptr");
     }
@@ -1930,14 +1685,16 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
       cnt = LLVMBuildPtrToInt(ctx->builder, cnt, i64, "cnt_ptr_to_i64");
     } else {
       unsigned cbits = LLVMGetIntTypeWidth(LLVMTypeOf(cnt));
-      if (cbits < 64) cnt = LLVMBuildZExt(ctx->builder, cnt, i64, "cnt_zext");
+      if (cbits < 64)
+        cnt = LLVMBuildZExt(ctx->builder, cnt, i64, "cnt_zext");
     }
     LLVMValueRef call_args[3] = {fd, buf, cnt};
     return LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3, "read_result");
   } else if ((sysnum == 5 || sysnum == 0x2000005) && arg_count >= 4) {
     LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
     LLVMTypeRef i8p = LLVMPointerType(LLVMInt8TypeInContext(ctx->context), 0);
-    LLVMTypeRef fn_ty = LLVMFunctionType(i32, (LLVMTypeRef[]){i8p, i32, i32}, 3, false);
+    LLVMTypeRef fn_ty =
+        LLVMFunctionType(i32, (LLVMTypeRef[]){i8p, i32, i32}, 3, false);
     LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "open");
     if (!fn) {
       fn = LLVMAddFunction(current_llvm_module, "open", fn_ty);
@@ -1953,17 +1710,21 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
       flags = LLVMBuildPtrToInt(ctx->builder, flags, i32, "flags_ptr_to_i32");
     } else {
       unsigned w = LLVMGetIntTypeWidth(LLVMTypeOf(flags));
-      if (w > 32) flags = LLVMBuildTrunc(ctx->builder, flags, i32, "flags_trunc");
+      if (w > 32)
+        flags = LLVMBuildTrunc(ctx->builder, flags, i32, "flags_trunc");
     }
     if (LLVMGetTypeKind(LLVMTypeOf(mode)) != LLVMIntegerTypeKind) {
       mode = LLVMBuildPtrToInt(ctx->builder, mode, i32, "mode_ptr_to_i32");
     } else {
       unsigned w = LLVMGetIntTypeWidth(LLVMTypeOf(mode));
-      if (w > 32) mode = LLVMBuildTrunc(ctx->builder, mode, i32, "mode_trunc");
+      if (w > 32)
+        mode = LLVMBuildTrunc(ctx->builder, mode, i32, "mode_trunc");
     }
     LLVMValueRef call_args[3] = {path, flags, mode};
-    LLVMValueRef r = LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3, "open_result");
-    return LLVMBuildZExt(ctx->builder, r, LLVMInt64TypeInContext(ctx->context), "open_result_i64");
+    LLVMValueRef r =
+        LLVMBuildCall2(ctx->builder, fn_ty, fn, call_args, 3, "open_result");
+    return LLVMBuildZExt(ctx->builder, r, LLVMInt64TypeInContext(ctx->context),
+                         "open_result_i64");
   } else if ((sysnum == 6 || sysnum == 0x2000006) && arg_count >= 2) {
     LLVMTypeRef i32 = LLVMInt32TypeInContext(ctx->context);
     LLVMTypeRef fn_ty = LLVMFunctionType(i32, (LLVMTypeRef[]){i32}, 1, false);
@@ -1974,24 +1735,30 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
     }
     LLVMValueRef fd = codegen_expr(ctx, args[1]);
     if (LLVMGetTypeKind(LLVMTypeOf(fd)) != LLVMIntegerTypeKind) {
-      fd = LLVMBuildPtrToInt(ctx->builder, fd, LLVMInt64TypeInContext(ctx->context), "fd_to_i64");
+      fd = LLVMBuildPtrToInt(ctx->builder, fd,
+                             LLVMInt64TypeInContext(ctx->context), "fd_to_i64");
     }
     unsigned w = LLVMGetIntTypeWidth(LLVMTypeOf(fd));
-    if (w > 32) fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
-    LLVMValueRef r = LLVMBuildCall2(ctx->builder, fn_ty, fn, (LLVMValueRef[]){fd}, 1, "close_result");
-    return LLVMBuildZExt(ctx->builder, r, LLVMInt64TypeInContext(ctx->context), "close_result_i64");
+    if (w > 32)
+      fd = LLVMBuildTrunc(ctx->builder, fd, i32, "fd_trunc");
+    LLVMValueRef r = LLVMBuildCall2(ctx->builder, fn_ty, fn,
+                                    (LLVMValueRef[]){fd}, 1, "close_result");
+    return LLVMBuildZExt(ctx->builder, r, LLVMInt64TypeInContext(ctx->context),
+                         "close_result_i64");
   } else {
     LLVMTypeRef ret_ty = LLVMInt64TypeInContext(ctx->context);
     LLVMTypeRef num_ty = LLVMInt64TypeInContext(ctx->context);
-    LLVMTypeRef fn_ty = LLVMFunctionType(ret_ty, (LLVMTypeRef[]){num_ty}, 1, true);
+    LLVMTypeRef fn_ty =
+        LLVMFunctionType(ret_ty, (LLVMTypeRef[]){num_ty}, 1, true);
     LLVMValueRef fn = LLVMGetNamedFunction(current_llvm_module, "syscall");
     if (!fn) {
       fn = LLVMAddFunction(current_llvm_module, "syscall", fn_ty);
       LLVMSetLinkage(fn, LLVMExternalLinkage);
     }
-    return LLVMBuildCall2(ctx->builder, fn_ty, fn, llvm_args, arg_count, "syscall_result");
+    return LLVMBuildCall2(ctx->builder, fn_ty, fn, llvm_args, arg_count,
+                          "syscall_result");
   }
-  #else
+#else
   const char *asm_template;
   const char *constraints;
 
@@ -2065,7 +1832,7 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
   LLVMSetVolatile(result, true);
 
   return result;
-  #endif
+#endif
 }
 
 // sizeof<type || expr>
@@ -2375,20 +2142,22 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
     // Handle &(obj.field) - taking address of a member access expression
     // This is needed for method calls like obj.method() where the typechecker
     // injects &obj as the first argument
-    
+
     // Just evaluate the member access and allocate temporary storage for it
     LLVMValueRef member_value = codegen_expr_struct_access(ctx, target);
     if (!member_value) {
-      fprintf(stderr, "Error: Failed to evaluate member access for address-of\n");
+      fprintf(stderr,
+              "Error: Failed to evaluate member access for address-of\n");
       return NULL;
     }
-    
+
     LLVMTypeRef member_type = LLVMTypeOf(member_value);
-    
+
     // Allocate temporary storage and store the value
-    LLVMValueRef temp_storage = LLVMBuildAlloca(ctx->builder, member_type, "member_addr_temp");
+    LLVMValueRef temp_storage =
+        LLVMBuildAlloca(ctx->builder, member_type, "member_addr_temp");
     LLVMBuildStore(ctx->builder, member_value, temp_storage);
-    
+
     // Return pointer to the temporary storage
     return temp_storage;
   }

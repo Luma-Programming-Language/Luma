@@ -1,9 +1,10 @@
-#include "llvm.h"
+#include "../llvm.h"
 
 LLVMValueRef codegen_expr(CodeGenContext *ctx, AstNode *node) {
   if (!node || node->category != Node_Category_EXPR) {
-    fprintf(stderr, "ERROR: codegen_expr - invalid node (node=%p, category=%d)\n", 
-            (void*)node, node ? (signed int)node->category : -1);
+    fprintf(stderr,
+            "ERROR: codegen_expr - invalid node (node=%p, category=%d)\n",
+            (void *)node, node ? (signed int)node->category : -1);
     return NULL;
   }
 
@@ -45,7 +46,10 @@ LLVMValueRef codegen_expr(CodeGenContext *ctx, AstNode *node) {
   case AST_EXPR_ADDR:
     return codegen_expr_addr(ctx, node);
   case AST_EXPR_MEMBER:
-    return codegen_expr_member_access_enhanced(ctx, node);
+    if (node->expr.member.is_compiletime)
+      return codegen_module_access(ctx, node);
+    else
+      return codegen_expr_struct_access(ctx, node);
   case AST_EXPR_STRUCT:
     return codegen_expr_struct_literal(ctx, node);
   default:

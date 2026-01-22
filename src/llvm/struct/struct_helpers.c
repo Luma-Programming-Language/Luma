@@ -1,5 +1,4 @@
-// struct_helpers.c - Additional utility functions for struct support
-#include "llvm.h"
+#include "../llvm.h"
 
 // =============================================================================
 // STRUCT TYPE SYSTEM INTEGRATION

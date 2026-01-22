@@ -1,5 +1,5 @@
 // Enhanced llvm.c - Module system implementation
-#include "llvm.h"
+#include "../llvm.h"
 #include <llvm-c/TargetMachine.h>
 #include <stdlib.h>
 #include <sys/stat.h>
@@ -231,7 +231,6 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
 // ENHANCED CORE API FUNCTIONS
 // =============================================================================
 
-// Enhanced context initialization
 CodeGenContext *init_codegen_context(ArenaAllocator *arena) {
   CodeGenContext *ctx = (CodeGenContext *)arena_alloc(
       arena, sizeof(CodeGenContext), alignof(CodeGenContext));
@@ -245,6 +244,10 @@ CodeGenContext *init_codegen_context(ArenaAllocator *arena) {
 
   ctx->context = LLVMContextCreate();
   ctx->builder = LLVMCreateBuilderInContext(ctx->context);
+
+  // NEW: Initialize type cache BEFORE anything else
+  init_type_cache(ctx);
+
   ctx->modules = NULL;
   ctx->current_module = NULL;
   ctx->current_function = NULL;
@@ -252,10 +255,7 @@ CodeGenContext *init_codegen_context(ArenaAllocator *arena) {
   ctx->loop_break_block = NULL;
   ctx->struct_types = NULL;
   ctx->arena = arena;
-  ctx->module = NULL; // Initialize legacy module field
-  ctx->struct_types = NULL;
-
-  // OR initialize deferred statements if they exist:
+  ctx->module = NULL;
   ctx->deferred_statements = NULL;
   ctx->deferred_count = 0;
 
@@ -265,7 +265,6 @@ CodeGenContext *init_codegen_context(ArenaAllocator *arena) {
   return ctx;
 }
 
-// Enhanced Symbol Table Operations
 void add_symbol_to_module(ModuleCompilationUnit *module, const char *name,
                           LLVMValueRef value, LLVMTypeRef type,
                           bool is_function) {
@@ -315,7 +314,6 @@ LLVM_Symbol *find_symbol_global(CodeGenContext *ctx, const char *name,
   return NULL;
 }
 
-// Main program generation with module support
 bool generate_program_modules(CodeGenContext *ctx, AstNode *ast_root,
                               const char *output_dir) {
   if (!ast_root || ast_root->type != AST_PROGRAM) {
