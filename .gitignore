@@ -33,3 +33,6 @@ node_modules
 package-lock.json
 tsconfig.tsbuildinfo
 src/lsp/language-support/client/out
+
+# ignore macOS hidden files
+.DS_Store

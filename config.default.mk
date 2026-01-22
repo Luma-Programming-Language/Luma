@@ -5,14 +5,32 @@ CFLAGS   ?= -Wall -Wextra -std=c17 -Wno-unused-variable -O2
 LDFLAGS  ?= 
 INCLUDES ?= -Isrc
 
+# Detect llvm-config (allow override via environment or command-line)
+LLVM_CONFIG ?= llvm-config
+LLVM_CONFIG_AVAILABLE := $(shell $(LLVM_CONFIG) --version >/dev/null 2>&1 && echo yes || echo no)
+ifeq ($(LLVM_CONFIG_AVAILABLE),no)
+BREW_LLVM_CONFIG := $(shell brew --prefix llvm 2>/dev/null)/bin/llvm-config
+BREW_LLVM_AVAILABLE := $(shell $(BREW_LLVM_CONFIG) --version >/dev/null 2>&1 && echo yes || echo no)
+ifeq ($(BREW_LLVM_AVAILABLE),yes)
+LLVM_CONFIG := $(BREW_LLVM_CONFIG)
+else
+$(error llvm-config not found at '$(LLVM_CONFIG)'. Set LLVM_CONFIG=/path/to/llvm-config (e.g., `/opt/homebrew/opt/llvm/bin/llvm-config`))
+endif
+endif
+
 # LLVM configuration - request all necessary components
-LLVM_CFLAGS := $(shell llvm-config --cflags)
-LLVM_LDFLAGS := $(shell llvm-config --ldflags)
-LLVM_LIBS := $(shell llvm-config --libs --system-libs all)
+LLVM_CFLAGS := $(shell $(LLVM_CONFIG) --cflags)
+LLVM_LDFLAGS := $(shell $(LLVM_CONFIG) --ldflags)
+LLVM_LIBS := $(shell $(LLVM_CONFIG) --libs --system-libs all)
 
 # Add LLVM flags to existing flags  
 override CFLAGS += $(LLVM_CFLAGS)
 override LDFLAGS += $(LLVM_LDFLAGS) $(LLVM_LIBS) -lstdc++
+
+UNAME_S := $(shell uname -s 2>/dev/null)
+ifeq ($(UNAME_S),Darwin)
+override LDFLAGS := $(filter-out -lstdc++,$(LDFLAGS)) -lc++
+endif
 
 SRC_DIR  = src
 OBJ_DIR  = build
