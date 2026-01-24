@@ -133,7 +133,6 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
   bool is_mutable = node->stmt.var_decl.is_mutable;
 
   // Check if we're inside a function with #returns_ownership
-  // If so, skip ALL allocation tracking within this function
   bool in_returns_ownership_func = false;
   Scope *func_scope = scope;
   while (func_scope && !func_scope->is_function_scope) {
@@ -147,7 +146,6 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
   // Track memory allocation
   if (initializer && contains_alloc_expression(initializer)) {
     // CRITICAL: Skip tracking if we're in a #returns_ownership function
-    // The caller will be responsible for tracking the returned resource
     if (!in_returns_ownership_func) {
       StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
       if (analyzer) {
@@ -161,8 +159,7 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
                                   g_file_path);
       }
     }
-  }
-  // Track pointer aliasing in variable initialization
+  } // Track pointer aliasing in variable initialization
   else if (initializer && declared_type && is_pointer_type(declared_type)) {
     const char *source_var = extract_variable_name(initializer);
     if (source_var) {
@@ -524,6 +521,7 @@ bool typecheck_func_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
 
   // Process deferred frees - these represent cleanup at function exit
   StaticMemoryAnalyzer *analyzer = get_static_analyzer(func_scope);
+
   if (analyzer && func_scope->deferred_frees.count > 0) {
     for (size_t i = 0; i < func_scope->deferred_frees.count; i++) {
       const char **var_ptr =

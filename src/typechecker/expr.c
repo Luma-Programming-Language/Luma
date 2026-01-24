@@ -195,27 +195,30 @@ AstNode *typecheck_assignment_expr(AstNode *expr, Scope *scope,
       func_scope = func_scope->parent;
     }
     if (func_scope && func_scope->associated_node) {
-      in_returns_ownership_func = 
+      in_returns_ownership_func =
           func_scope->associated_node->stmt.func_decl.returns_ownership;
     }
 
     // Only track if NOT in a #returns_ownership function
-    if (!in_returns_ownership_func) {
+    // AND NOT an indexed assignment (like array[i] = alloc(...))
+    if (!in_returns_ownership_func &&
+        expr->expr.assignment.target->type !=
+            AST_EXPR_INDEX) { // <-- ADD THIS CHECK
       StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
       if (analyzer) {
         // Extract the variable name from the assignment target
-        // For "a.buf = alloc(10)", we want to track "a.buf" or just "a"
-        const char *var_name = extract_variable_name(expr->expr.assignment.target);
-        
+        const char *var_name =
+            extract_variable_name(expr->expr.assignment.target);
+
         if (var_name) {
           const char *func_name = NULL;
           if (func_scope && func_scope->associated_node) {
             func_name = func_scope->associated_node->stmt.func_decl.name;
           }
-          
-          static_memory_track_alloc(analyzer, expr->line, expr->column, var_name,
-                                    func_name, g_tokens, g_token_count,
-                                    g_file_path);
+
+          static_memory_track_alloc(analyzer, expr->line, expr->column,
+                                    var_name, func_name, g_tokens,
+                                    g_token_count, g_file_path);
         }
       }
     }
@@ -276,7 +279,7 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
     // First, typecheck the base expression to get its type
     AstNode *base_expr = callee->expr.member.object;
     const char *base_name = NULL;
-    
+
     // Extract base_name for simple cases (still needed for module checking)
     if (base_expr->type == AST_EXPR_IDENTIFIER) {
       base_name = base_expr->expr.identifier.name;
@@ -289,7 +292,7 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
                  "Compile-time access requires simple identifier base");
         return NULL;
       }
-      
+
       func_symbol = lookup_qualified_symbol(scope, base_name, member_name);
       func_name = member_name;
       if (!func_symbol) {
@@ -299,7 +302,8 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
         return NULL;
       }
     } else {
-      // Runtime access - check if it's a module access (only for simple identifiers)
+      // Runtime access - check if it's a module access (only for simple
+      // identifiers)
       bool is_module_access = false;
       if (base_name) {
         Scope *current = scope;
@@ -319,11 +323,12 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
         }
 
         if (is_module_access) {
-          tc_error_help(expr, "Access Method Error",
-                        "Use '::' for compile-time access to module functions",
-                        "Cannot use runtime access '.' for module function - did "
-                        "you mean '%s::%s()'?",
-                        base_name, member_name);
+          tc_error_help(
+              expr, "Access Method Error",
+              "Use '::' for compile-time access to module functions",
+              "Cannot use runtime access '.' for module function - did "
+              "you mean '%s::%s()'?",
+              base_name, member_name);
           return NULL;
         }
       }
@@ -337,7 +342,8 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
         return NULL;
       }
 
-      // Resolve base_type to actual struct type (handle pointers, basic types, etc.)
+      // Resolve base_type to actual struct type (handle pointers, basic types,
+      // etc.)
       if (base_type->type == AST_TYPE_POINTER) {
         AstNode *pointee = base_type->type_data.pointer.pointee_type;
         if (pointee && pointee->type == AST_TYPE_BASIC) {
@@ -413,11 +419,13 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
 
           AstNode *self_param_type = method_param_types[0];
           bool expects_pointer = (self_param_type->type == AST_TYPE_POINTER);
-          bool have_pointer = (base_type->type == AST_TYPE_POINTER ||
-                               (base_expr->type == AST_EXPR_IDENTIFIER &&
-                                scope_lookup(scope, base_expr->expr.identifier.name) &&
-                                scope_lookup(scope, base_expr->expr.identifier.name)->type &&
-                                scope_lookup(scope, base_expr->expr.identifier.name)->type->type == AST_TYPE_POINTER));
+          bool have_pointer =
+              (base_type->type == AST_TYPE_POINTER ||
+               (base_expr->type == AST_EXPR_IDENTIFIER &&
+                scope_lookup(scope, base_expr->expr.identifier.name) &&
+                scope_lookup(scope, base_expr->expr.identifier.name)->type &&
+                scope_lookup(scope, base_expr->expr.identifier.name)
+                        ->type->type == AST_TYPE_POINTER));
 
           if (expects_pointer && !have_pointer) {
             AstNode *addr_expr =
@@ -508,29 +516,27 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
     }
 
     TypeMatchResult match = types_match(param_types[i], arg_type);
-    
+
     // NEW: Special handling for array argument padding
-    if (match == TYPE_MATCH_NONE && 
-        param_types[i]->type == AST_TYPE_ARRAY && 
+    if (match == TYPE_MATCH_NONE && param_types[i]->type == AST_TYPE_ARRAY &&
         arg_type->type == AST_TYPE_ARRAY) {
-      
-      TypeMatchResult element_match = 
+
+      TypeMatchResult element_match =
           types_match(param_types[i]->type_data.array.element_type,
                       arg_type->type_data.array.element_type);
-      
+
       if (element_match != TYPE_MATCH_NONE) {
         AstNode *param_size = param_types[i]->type_data.array.size;
         AstNode *arg_size = arg_type->type_data.array.size;
-        
-        if (param_size && arg_size &&
-            param_size->type == AST_EXPR_LITERAL && 
+
+        if (param_size && arg_size && param_size->type == AST_EXPR_LITERAL &&
             arg_size->type == AST_EXPR_LITERAL &&
             param_size->expr.literal.lit_type == LITERAL_INT &&
             arg_size->expr.literal.lit_type == LITERAL_INT) {
-          
+
           long long param_size_val = param_size->expr.literal.value.int_val;
           long long arg_size_val = arg_size->expr.literal.value.int_val;
-          
+
           if (arg_size_val <= param_size_val) {
             if (arguments[i]->type == AST_EXPR_ARRAY) {
               arguments[i]->expr.array.target_size = (size_t)param_size_val;
@@ -540,14 +546,15 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
             tc_error_help(
                 expr, "Array Size Mismatch",
                 "Cannot pass larger array to function expecting smaller array",
-                "Argument %zu: parameter expects array of size %lld, got size %lld",
+                "Argument %zu: parameter expects array of size %lld, got size "
+                "%lld",
                 i + 1, param_size_val, arg_size_val);
             return NULL;
           }
         }
       }
     }
-    
+
     if (match == TYPE_MATCH_NONE) {
       const char *param_str = type_to_string(param_types[i], arena);
       const char *arg_str = type_to_string(arg_type, arena);
@@ -562,12 +569,12 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
   // CRITICAL FIX: Properly handle defer blocks for #takes_ownership
   if (func_symbol->takes_ownership) {
     StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-    
+
     for (size_t i = 0; i < arg_count; i++) {
       if (param_types[i] && is_pointer_type(param_types[i])) {
         const char *arg_var = extract_variable_name(arguments[i]);
         if (arg_var && analyzer) {
-          
+
           // Check if we're in a defer block
           if (analyzer->skip_memory_tracking) {
             // We're in a defer block - add to deferred_frees list
@@ -590,8 +597,8 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
               }
 
               if (!already_deferred) {
-                const char **slot =
-                    (const char **)growable_array_push(&func_scope->deferred_frees);
+                const char **slot = (const char **)growable_array_push(
+                    &func_scope->deferred_frees);
                 if (slot) {
                   *slot = arg_var;
                 }
@@ -906,7 +913,8 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
         // Try lookup through normal scope chain first
         Symbol *struct_symbol = scope_lookup(scope, type_name);
 
-        // If not found through normal lookup, explicitly search imported modules
+        // If not found through normal lookup, explicitly search imported
+        // modules
         if (!struct_symbol) {
           Scope *current = scope;
           while (current && !struct_symbol) {
@@ -916,8 +924,8 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
                                    i * sizeof(ModuleImport));
 
               // CRITICAL FIX: Use full scope_lookup with visibility
-              struct_symbol = scope_lookup_with_visibility(
-                  import->module_scope, type_name, scope);
+              struct_symbol = scope_lookup_with_visibility(import->module_scope,
+                                                           type_name, scope);
 
               if (struct_symbol && struct_symbol->type &&
                   struct_symbol->type->type == AST_TYPE_STRUCT) {
@@ -955,8 +963,8 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
                                  i * sizeof(ModuleImport));
 
             // CRITICAL FIX: Use full scope_lookup with visibility
-            struct_symbol = scope_lookup_with_visibility(
-                import->module_scope, type_name, scope);
+            struct_symbol = scope_lookup_with_visibility(import->module_scope,
+                                                         type_name, scope);
 
             if (struct_symbol && struct_symbol->type &&
                 struct_symbol->type->type == AST_TYPE_STRUCT) {
@@ -1085,8 +1093,15 @@ AstNode *typecheck_free_expr(AstNode *expr, Scope *scope,
 
   // Get the variable name early
   const char *var_name = NULL;
+  bool is_indexed_free = false;
+
   if (expr->expr.free.ptr->type == AST_EXPR_IDENTIFIER) {
     var_name = expr->expr.free.ptr->expr.identifier.name;
+    is_indexed_free = false;
+  } else if (expr->expr.free.ptr->type == AST_EXPR_INDEX) {
+    // For indexed expressions like moves[j], extract the base name
+    var_name = extract_variable_name(expr->expr.free.ptr);
+    is_indexed_free = true;
   }
 
   if (analyzer && analyzer->skip_memory_tracking && var_name) {
@@ -1097,34 +1112,41 @@ AstNode *typecheck_free_expr(AstNode *expr, Scope *scope,
     }
 
     if (func_scope) {
-      // Check if already in deferred list (avoid duplicates)
-      bool already_deferred = false;
-      for (size_t i = 0; i < func_scope->deferred_frees.count; i++) {
-        const char **existing =
-            (const char **)((char *)func_scope->deferred_frees.data +
-                            i * sizeof(const char *));
-        if (*existing && strcmp(*existing, var_name) == 0) {
-          already_deferred = true;
-          break;
+      // IMPORTANT: Only track non-indexed frees in defer blocks
+      // Indexed frees like free(moves[j]) in loops are for freeing array
+      // elements, not the array itself. We only care about tracking free(moves)
+      // for leak detection.
+      if (!is_indexed_free) {
+        // Check if already in deferred list (avoid duplicates)
+        bool already_deferred = false;
+        for (size_t i = 0; i < func_scope->deferred_frees.count; i++) {
+          const char **existing =
+              (const char **)((char *)func_scope->deferred_frees.data +
+                              i * sizeof(const char *));
+          if (*existing && strcmp(*existing, var_name) == 0) {
+            already_deferred = true;
+            break;
+          }
         }
-      }
 
-      if (!already_deferred) {
-        const char **slot =
-            (const char **)growable_array_push(&func_scope->deferred_frees);
-        if (slot) {
-          *slot = var_name;
+        if (!already_deferred) {
+          const char **slot =
+              (const char **)growable_array_push(&func_scope->deferred_frees);
+          if (slot) {
+            *slot = var_name;
+          }
         }
       }
     }
   } else if (analyzer && var_name) {
-    // Normal free - always track it
+    // Normal free - always track it (both indexed and non-indexed)
     const char *func_name = get_current_function_name(scope);
     static_memory_track_free(analyzer, var_name, func_name);
   }
 
   return create_basic_type(arena, "void", expr->line, expr->column);
 }
+
 AstNode *typecheck_memcpy_expr(AstNode *expr, Scope *scope,
                                ArenaAllocator *arena) {
   (void)expr;
@@ -1423,7 +1445,7 @@ AstNode *typecheck_array_expr(AstNode *expr, Scope *scope,
   // NEW: Check if this array is being used in a context with an expected size
   // This happens during function call argument checking
   // We'll set a flag on the array expression to indicate it should be padded
-  
+
   // For now, just create the array type with the actual element count
   // The padding will be handled during code generation or in a separate pass
   long long size_val = (long long)element_count;
