@@ -30,7 +30,8 @@ static LLVMValueRef handle_symbol_value(CodeGenContext *ctx, LLVM_Symbol *sym);
 LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
   AstNode *object = node->expr.member.object;
   const char *member = node->expr.member.member;
-  
+
+  // Handle chained compile-time access (Module::Type::member)
   if (object->type == AST_EXPR_MEMBER && object->expr.member.is_compiletime) {
     if (object->expr.member.object->type != AST_EXPR_IDENTIFIER) {
       fprintf(stderr,
@@ -61,7 +62,7 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
     }
 
     for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
-      if (unit == ctx->current_module)
+      if (unit == ctx->current_module || unit == source_module)
         continue;
 
       LLVM_Symbol *sym = find_symbol_in_module(unit, type_qualified_name);
@@ -100,19 +101,7 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  LLVM_Symbol *imported_sym =
-      find_symbol_in_module(ctx->current_module, qualified_name);
-  if (imported_sym) {
-    if (imported_sym->is_function) {
-      return imported_sym->value;
-    } else if (is_enum_constant(imported_sym)) {
-      return LLVMGetInitializer(imported_sym->value);
-    } else {
-      return LLVMBuildLoad2(ctx->builder, imported_sym->type,
-                            imported_sym->value, "load");
-    }
-  }
-
+  // Not found in current module, search other modules
   LLVMModuleRef current_llvm_module =
       ctx->current_module ? ctx->current_module->module : ctx->module;
 
@@ -123,6 +112,7 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
       continue;
     }
 
+    // Try LLVM module first (faster for functions)
     LLVMValueRef source_func =
         LLVMGetNamedFunction(search_module->module, member);
 
@@ -146,6 +136,7 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
       return existing;
     }
 
+    // Check symbol table
     LLVM_Symbol *source_sym = find_symbol_in_module(search_module, member);
     if (source_sym) {
       if (source_sym->is_function) {
@@ -206,10 +197,6 @@ bool is_module_identifier(CodeGenContext *ctx, const char *name) {
   return find_module(ctx, name) != NULL;
 }
 
-// ============================================================================
-// HELPER FUNCTIONS
-// ============================================================================
-
 /**
  * @brief Handle different symbol types appropriately
  */
@@ -238,10 +225,6 @@ static LLVMValueRef handle_symbol_value(CodeGenContext *ctx, LLVM_Symbol *sym) {
   // Regular variable - load it
   return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "load");
 }
-
-// ============================================================================
-// UTILITY FUNCTIONS
-// ============================================================================
 
 /**
  * @brief Get module name/alias from a compile-time member access node

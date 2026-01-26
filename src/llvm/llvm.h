@@ -20,7 +20,7 @@
 #include "../ast/ast.h"
 #include "../c_libs/memory/memory.h"
 
-#define SYMBOL_HASH_SIZE 256
+#define SYMBOL_HASH_SIZE 1024
 
 typedef struct LLVM_Symbol LLVM_Symbol;
 typedef struct CodeGenContext CodeGenContext;
@@ -284,7 +284,8 @@ LLVMValueRef build_global_string(CodeGenContext *ctx, const char *str,
 
 LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node);
 bool is_module_identifier(CodeGenContext *ctx, const char *name);
-bool validate_module_access(CodeGenContext *ctx, const char *prefix, const char *symbol_name);
+bool validate_module_access(CodeGenContext *ctx, const char *prefix,
+                            const char *symbol_name);
 const char *get_module_name_from_access(AstNode *node);
 
 // =============================================================================

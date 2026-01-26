@@ -1,20 +1,17 @@
 #include "../llvm.h"
 #include <stdlib.h>
 
-// =============================================================================
-// OPTIMIZATION LAYER - HASH TABLE CACHING
-// =============================================================================
-
 static FieldToStructEntry *field_to_struct_buckets[SYMBOL_HASH_SIZE] = {0};
 static SymbolHashTable *global_symbol_cache = NULL;
 static StructHashTable *global_struct_cache = NULL;
 
-// Simple hash function
 unsigned int hash_string(const char *str) {
-  unsigned int hash = 5381;
-  int c;
-  while ((c = *str++))
-    hash = ((hash << 5) + hash) + c;
+  // FNV-1a hash algorithm - faster and better distribution
+  unsigned int hash = 2166136261u;
+  while (*str) {
+    hash ^= (unsigned char)(*str++);
+    hash *= 16777619u;
+  }
   return hash % SYMBOL_HASH_SIZE;
 }
 
@@ -170,10 +167,6 @@ StructInfo *find_struct_by_field_cached(CodeGenContext *ctx,
   return NULL;
 }
 
-// =============================================================================
-// PUBLIC API - BATCH PREPROCESSING
-// =============================================================================
-
 void preprocess_all_modules(CodeGenContext *ctx) {
   // Pre-cache all symbols from all modules
   for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
@@ -234,10 +227,6 @@ void cleanup_module_caches(void) {
     field_to_struct_buckets[i] = NULL;
   }
 }
-
-// =============================================================================
-// ORIGINAL CODE - DEPENDENCY MANAGEMENT
-// =============================================================================
 
 ModuleDependencyInfo *build_codegen_dependency_info(AstNode **modules,
                                                     size_t module_count,
@@ -339,10 +328,6 @@ static bool process_module_codegen_recursive(CodeGenContext *ctx,
   current_dep->processed = true;
   return true;
 }
-
-// =============================================================================
-// MULTI-MODULE PROGRAM HANDLER
-// =============================================================================
 
 LLVMValueRef codegen_stmt_program_multi_module(CodeGenContext *ctx,
                                                AstNode *node) {
@@ -473,19 +458,31 @@ void import_module_symbols(CodeGenContext *ctx,
     return;
   }
 
+  // **OPTIMIZATION: Track what we've already imported to avoid duplicates**
   for (LLVM_Symbol *sym = source_module->symbols; sym; sym = sym->next) {
-    if (sym->is_function) {
-      LLVMValueRef func_value =
-          LLVMGetNamedFunction(source_module->module, sym->name);
-      if (func_value && LLVMGetLinkage(func_value) == LLVMExternalLinkage) {
-        import_function_symbol(ctx, sym, source_module, alias);
-      }
+    // Skip non-public symbols (internal linkage)
+    if (LLVMGetLinkage(sym->value) != LLVMExternalLinkage) {
+      continue;
+    }
+
+    // Build the imported name
+    char imported_name[256];
+    if (alias) {
+      snprintf(imported_name, sizeof(imported_name), "%s.%s", alias, sym->name);
     } else {
-      LLVMValueRef global_value =
-          LLVMGetNamedGlobal(source_module->module, sym->name);
-      if (global_value && LLVMGetLinkage(global_value) == LLVMExternalLinkage) {
-        import_variable_symbol(ctx, sym, source_module, alias);
-      }
+      snprintf(imported_name, sizeof(imported_name), "%s", sym->name);
+    }
+
+    // **OPTIMIZATION: Check if already imported to avoid duplicate work**
+    if (find_symbol_in_module(ctx->current_module, imported_name)) {
+      continue; // Already imported, skip
+    }
+
+    // Import based on what LLVM thinks it is
+    if (LLVMIsAFunction(sym->value)) {
+      import_function_symbol(ctx, sym, source_module, alias);
+    } else {
+      import_variable_symbol(ctx, sym, source_module, alias);
     }
   }
 }
@@ -503,7 +500,20 @@ void import_function_symbol(CodeGenContext *ctx, LLVM_Symbol *source_symbol,
     snprintf(imported_name, sizeof(imported_name), "%s", source_symbol->name);
   }
 
-  if (LLVMGetNamedFunction(ctx->current_module->module, imported_name)) {
+  // **OPTIMIZATION: Early exit if already imported**
+  if (find_symbol_in_module(ctx->current_module, imported_name)) {
+    return;
+  }
+
+  // **OPTIMIZATION: Also check LLVM module to avoid duplicate function
+  // declarations**
+  if (LLVMGetNamedFunction(ctx->current_module->module, source_symbol->name)) {
+    // Function already declared in LLVM module, just add to symbol table
+    LLVMValueRef existing =
+        LLVMGetNamedFunction(ctx->current_module->module, source_symbol->name);
+    LLVMTypeRef func_type = LLVMGlobalGetValueType(existing);
+    add_symbol_to_module(ctx->current_module, imported_name, existing,
+                         func_type, true);
     return;
   }
 

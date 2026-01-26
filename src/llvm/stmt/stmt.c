@@ -143,9 +143,16 @@ LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  // Add symbol with element type information
+  // **FIX: Check if this is actually a function**
+  // A variable declaration like "const str_arg -> fn (...)" creates a function,
+  // not a variable, so we need to check the actual LLVM value
+  bool is_actually_function =
+      (LLVMGetTypeKind(var_type) == LLVMFunctionTypeKind) ||
+      LLVMIsAFunction(var_ref);
+
+  // Add symbol with element type information and correct is_function flag
   add_symbol_with_element_type(ctx, node->stmt.var_decl.name, var_ref, var_type,
-                               element_type, false);
+                               element_type, is_actually_function);
   return var_ref;
 }
 
