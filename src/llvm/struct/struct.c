@@ -292,6 +292,13 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
     param_type_nodes[i + 1] = original_param_type_nodes[i];
   }
 
+  // CREATE QUALIFIED METHOD NAME: StructName.methodName
+  size_t qualified_name_len =
+      strlen(struct_info->name) + 1 + strlen(method_name) + 1;
+  char *qualified_method_name = arena_alloc(ctx->arena, qualified_name_len, 1);
+  snprintf(qualified_method_name, qualified_name_len, "%s.%s",
+           struct_info->name, method_name);
+
   // Create function type
   LLVMTypeRef llvm_return_type = codegen_type(ctx, return_type_node);
   if (!llvm_return_type) {
@@ -307,16 +314,15 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
   LLVMModuleRef current_llvm_module =
       ctx->current_module ? ctx->current_module->module : ctx->module;
 
-  // Create the function in the current module
+  // CHANGED: Use qualified_method_name instead of method_name
   LLVMValueRef func =
-      LLVMAddFunction(current_llvm_module, method_name, func_type);
+      LLVMAddFunction(current_llvm_module, qualified_method_name, func_type);
 
   if (!func) {
     fprintf(stderr, "Error: Failed to create LLVM function for method '%s'\n",
-            method_name);
+            qualified_method_name);
     return NULL;
   }
-
   // Set linkage
   if (is_public) {
     LLVMSetLinkage(func, LLVMExternalLinkage);

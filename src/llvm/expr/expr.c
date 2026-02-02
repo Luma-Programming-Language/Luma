@@ -259,13 +259,67 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
   if (callee->type == AST_EXPR_MEMBER && !callee->expr.member.is_compiletime) {
     // Method call: obj.method(arg1, arg2)
     const char *member_name = callee->expr.member.member;
+    AstNode *object = callee->expr.member.object;
 
     LLVMValueRef method_func = NULL;
+    char qualified_method_name[512];
+
+    // We need to determine the struct type from the object expression
+    // to construct the qualified method name (e.g., "String.equals")
+
+    // First, evaluate the object to get its type
+    LLVMValueRef object_value = codegen_expr(ctx, object);
+    if (!object_value) {
+      fprintf(stderr, "Error: Failed to evaluate object for method call\n");
+      return NULL;
+    }
+
+    LLVMTypeRef object_type = LLVMTypeOf(object_value);
+    LLVMTypeKind object_kind = LLVMGetTypeKind(object_type);
+
+    // Determine the actual struct type
+    StructInfo *struct_info = NULL;
+
+    if (object_kind == LLVMPointerTypeKind) {
+      // Object is a pointer - need to find what it points to
+      // Check if we have element type info from the symbol table
+      if (object->type == AST_EXPR_IDENTIFIER) {
+        LLVM_Symbol *sym = find_symbol(ctx, object->expr.identifier.name);
+        if (sym && sym->element_type) {
+          // Find the struct info from the element type
+          for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+            if (info->llvm_type == sym->element_type) {
+              struct_info = info;
+              break;
+            }
+          }
+        }
+      }
+    } else if (object_kind == LLVMStructTypeKind) {
+      // Object is a struct value directly
+      for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+        if (info->llvm_type == object_type) {
+          struct_info = info;
+          break;
+        }
+      }
+    }
+
+    if (!struct_info) {
+      fprintf(stderr, "Error: Cannot determine struct type for method '%s'\n",
+              member_name);
+      return NULL;
+    }
+
+    // Construct the qualified method name
+    snprintf(qualified_method_name, sizeof(qualified_method_name), "%s.%s",
+             struct_info->name, member_name);
 
     // First try current module
     LLVMModuleRef current_llvm_module =
         ctx->current_module ? ctx->current_module->module : ctx->module;
-    method_func = LLVMGetNamedFunction(current_llvm_module, member_name);
+    method_func =
+        LLVMGetNamedFunction(current_llvm_module, qualified_method_name);
 
     // If not found in current module, search all other modules
     if (!method_func) {
@@ -275,12 +329,12 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
           continue;
 
         LLVMValueRef found_func =
-            LLVMGetNamedFunction(unit->module, member_name);
+            LLVMGetNamedFunction(unit->module, qualified_method_name);
         if (found_func) {
           // CRITICAL FIX: Create external declaration in current module
           LLVMTypeRef func_type = LLVMGlobalGetValueType(found_func);
-          method_func =
-              LLVMAddFunction(current_llvm_module, member_name, func_type);
+          method_func = LLVMAddFunction(current_llvm_module,
+                                        qualified_method_name, func_type);
           LLVMSetLinkage(method_func, LLVMExternalLinkage);
           break;
         }
@@ -288,8 +342,9 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     }
 
     if (!method_func) {
-      fprintf(stderr, "Error: Method '%s' not found in any module\n",
-              member_name);
+      fprintf(stderr,
+              "Error: Method '%s' (qualified: %s) not found in any module\n",
+              member_name, qualified_method_name);
       return NULL;
     }
 

@@ -1,18 +1,401 @@
 @module "main"
 
 @use "std_args" as args
-@use "std_io" as io 
+@use "std_io" as io
+
+const local_strlen -> fn (s: *byte) int {
+  if (s == cast<*byte>(0)) return 0;
+  let length: int = 0;
+  loop (s[length] != '\0') : (++length) {}
+  return length;
+}
+
+const local_copy -> fn (dest: *byte, src: *byte) void {
+  if (dest == cast<*byte>(0) || src == cast<*byte>(0)) return;
+  let i: int = 0;
+  loop (src[i] != '\0') : (++i) {
+    dest[i] = src[i];
+  }
+  dest[i] = '\0';
+}
+
+const local_memcpy -> fn (dest: *byte, src: *byte, n: int) void {
+  loop [i: int = 0](i < n) : (++i) {
+    dest[i] = src[i];
+  }
+}
+
+const local_strcmp -> fn (s1: *byte, s2: *byte) int {
+  let i: int = 0;
+  loop (s1[i] != '\0' && s2[i] != '\0') : (++i) {
+    if (s1[i] != s2[i]) {
+      return cast<int>(s1[i]) - cast<int>(s2[i]);
+    }
+  }
+  return cast<int>(s1[i]) - cast<int>(s2[i]);
+}
+
+const String -> struct {
+  data: *byte,   // null-terminated buffer
+  len: int,      // length excluding '\0'
+  cap: int,      // capacity including '\0'
+
+  // Query methods
+  empty -> fn () bool { return (self.len == 0); },
+  c_str -> fn () *byte { return self.data; },
+  length -> fn () int { return self.len; },
+  capacity -> fn () int { return self.cap; },
+  
+  // Access methods
+  at -> fn (index: int) byte {
+    if (index < 0 || index >= self.len) return '\0';
+    return self.data[index];
+  },
+
+  // Comparison
+  equals -> fn (other: *byte) bool {
+    if (self.data == cast<*byte>(0) || other == cast<*byte>(0)) return cast<bool>(0);
+    return local_strcmp(self.data, other) == 0;
+  },
+
+  equals_str -> fn (other: *String) bool {
+    if (other == cast<*String>(0)) return cast<bool>(0);
+    return self.equals(other.data);
+  },
+
+  // Modification methods
+  clear -> fn () void {
+    if (self.data != cast<*byte>(0)) {
+      self.data[0] = '\0';
+      self.len = 0;
+    }
+  },
+
+  #returns_ownership
+  reserve -> fn (new_cap: int) void {
+    if (new_cap <= self.cap) return;
+    
+    let new_data: *byte = cast<*byte>(alloc(new_cap));
+    if (self.data != cast<*byte>(0)) {
+      local_memcpy(new_data, self.data, self.len);
+      new_data[self.len] = '\0';
+      free(self.data);
+    } else {
+      new_data[0] = '\0';
+    }
+    
+    self.data = new_data;
+    self.cap = new_cap;
+  },
+
+  #returns_ownership
+  append -> fn (s: *byte) void {
+    if (s == cast<*byte>(0)) return;
+    
+    let add_len: int = local_strlen(s);
+    if (add_len == 0) return;
+    
+    let required: int = self.len + add_len + 1;
+    if (required > self.cap) {
+      let new_cap: int = self.cap * 2;
+      if (new_cap < required) new_cap = required;
+      self.reserve(new_cap);
+    }
+    
+    // Append new data
+    loop [i: int = 0](i < add_len) : (++i) {
+      self.data[self.len + i] = s[i];
+    }
+    self.len = self.len + add_len;
+    self.data[self.len] = '\0';
+  },
+
+  #returns_ownership
+  append_str -> fn (other: *String) void {
+    if (other == cast<*String>(0)) return;
+    self.append(other.data);
+  },
+
+  #returns_ownership
+  append_char -> fn (c: byte) void {
+    let required: int = self.len + 2;
+    if (required > self.cap) {
+      self.reserve(self.cap * 2);
+    }
+    
+    self.data[self.len] = c;
+    self.len = self.len + 1;
+    self.data[self.len] = '\0';
+  },
+
+  #returns_ownership
+  prepend -> fn (s: *byte) void {
+    if (s == cast<*byte>(0)) return;
+    
+    let add_len: int = local_strlen(s);
+    if (add_len == 0) return;
+    
+    let required: int = self.len + add_len + 1;
+    if (required > self.cap) {
+      let new_cap: int = self.cap * 2;
+      if (new_cap < required) new_cap = required;
+      
+      let new_data: *byte = cast<*byte>(alloc(new_cap));
+      local_memcpy(new_data, s, add_len);
+      if (self.data != cast<*byte>(0)) {
+        local_memcpy(cast<*byte>(cast<int>(new_data) + add_len), 
+                     self.data, self.len);
+        free(self.data);
+      }
+      new_data[add_len + self.len] = '\0';
+      
+      self.data = new_data;
+      self.cap = new_cap;
+      self.len = self.len + add_len;
+    } else {
+      // Shift existing data right
+      loop [i: int = self.len](i >= 0) : (--i) {
+        self.data[i + add_len] = self.data[i];
+      }
+      // Copy new data at start
+      loop [i: int = 0](i < add_len) : (++i) {
+        self.data[i] = s[i];
+      }
+      self.len = self.len + add_len;
+    }
+  },
+
+  // Slicing (returns a new string - caller must free)
+  #returns_ownership
+  substring -> fn (start: int, end: int) String {
+    if (start < 0) start = 0;
+    if (end > self.len) end = self.len;
+    if (start >= end) return String { data: cast<*byte>(0), len: 0, cap: 0 };
+    
+    let substr_len: int = end - start;
+    let buf: *byte = cast<*byte>(alloc(substr_len + 1));
+    
+    loop [i: int = 0](i < substr_len) : (++i) {
+      buf[i] = self.data[start + i];
+    }
+    buf[substr_len] = '\0';
+    
+    return String { data: buf, len: substr_len, cap: substr_len + 1 };
+  },
+
+  // Find operations
+  find_char -> fn (c: byte) int {
+    loop [i: int = 0](i < self.len) : (++i) {
+      if (self.data[i] == c) return i;
+    }
+    return -1;
+  },
+
+  contains_char -> fn (c: byte) bool {
+    return self.find_char(c) != -1;
+  },
+
+  #returns_ownership
+  trim_start -> fn () void {
+    if (self.len == 0) return;
+    
+    let start: int = 0;
+    loop (start < self.len && (self.data[start] == ' ' || 
+                               self.data[start] == '\t' || 
+                               self.data[start] == '\n' || 
+                               self.data[start] == '\r')) : (++start) {}
+    
+    if (start == 0) return;
+    
+    let new_len: int = self.len - start;
+    loop [i: int = 0](i < new_len) : (++i) {
+      self.data[i] = self.data[start + i];
+    }
+    self.data[new_len] = '\0';
+    self.len = new_len;
+  },
+
+  #returns_ownership
+  trim_end -> fn () void {
+    loop (self.len > 0 && (self.data[self.len - 1] == ' ' || 
+                           self.data[self.len - 1] == '\t' || 
+                           self.data[self.len - 1] == '\n' || 
+                           self.data[self.len - 1] == '\r')) : (self.len = self.len - 1) {
+      self.data[self.len - 1] = '\0';
+    }
+  },
+
+  #returns_ownership
+  trim -> fn () void {
+    self.trim_start();
+    self.trim_end();
+  },
+
+  #returns_ownership
+  to_upper -> fn () void {
+    loop [i: int = 0](i < self.len) : (++i) {
+      if (self.data[i] >= 'a' && self.data[i] <= 'z') {
+        self.data[i] = cast<byte>(cast<int>(self.data[i]) - 32);
+      }
+    }
+  },
+
+  #returns_ownership
+  to_lower -> fn () void {
+    loop [i: int = 0](i < self.len) : (++i) {
+      if (self.data[i] >= 'A' && self.data[i] <= 'Z') {
+        self.data[i] = cast<byte>(cast<int>(self.data[i]) + 32);
+      }
+    }
+  },
+
+
+  starts_with -> fn (prefix: *byte) bool {
+    if (prefix == cast<*byte>(0)) return cast<bool>(0);
+    let prefix_len: int = local_strlen(prefix);
+    if (prefix_len > self.len) return cast<bool>(0);
+    
+    loop [i: int = 0](i < prefix_len) : (++i) {
+      if (self.data[i] != prefix[i]) return cast<bool>(0);
+    }
+    return cast<bool>(1);
+  },
+
+  ends_with -> fn (suffix: *byte) bool {
+    if (suffix == cast<*byte>(0)) return cast<bool>(0);
+    let suffix_len: int = local_strlen(suffix);
+    if (suffix_len > self.len) return cast<bool>(0);
+    
+    let start: int = self.len - suffix_len;
+    loop [i: int = 0](i < suffix_len) : (++i) {
+      if (self.data[start + i] != suffix[i]) return cast<bool>(0);
+    }
+    return cast<bool>(1);
+  },
+
+  find -> fn (substr: *byte) int {
+    if (substr == cast<*byte>(0)) return -1;
+    let substr_len: int = local_strlen(substr);
+    if (substr_len == 0) return 0;
+    if (substr_len > self.len) return -1;
+    
+    let end: int = self.len - substr_len;
+    loop [i: int = 0](i <= end) : (++i) {
+      let match: bool = cast<bool>(1);
+      loop [j: int = 0](j < substr_len) : (++j) {
+        if (self.data[i + j] != substr[j]) {
+          match = cast<bool>(0);
+          break;
+        }
+      }
+      if (match) return i;
+    }
+    return -1;
+  },
+
+  contains -> fn (substr: *byte) bool {
+    return self.find(substr) != -1;
+  },
+};
+
+#returns_ownership
+const string_new -> fn () String {
+  let buf: *byte = cast<*byte>(alloc(16));
+  buf[0] = '\0';
+  return String { data: buf, len: 0, cap: 16 };
+}
+
+#returns_ownership
+const string_from -> fn (s: *byte) String {
+  if (s == cast<*byte>(0)) return string_new();
+  
+  let len: int = local_strlen(s);
+  let buf: *byte = cast<*byte>(alloc(len + 1));
+  
+  loop [i: int = 0](i < len) : (++i) {
+    buf[i] = s[i];
+  }
+  buf[len] = '\0';
+
+  return String { data: buf, len: len, cap: len + 1 };
+}
+
+#returns_ownership
+const string_with_capacity -> fn (cap: int) String {
+  if (cap < 1) cap = 16;
+  let buf: *byte = cast<*byte>(alloc(cap));
+  buf[0] = '\0';
+  return String { data: buf, len: 0, cap: cap };
+}
+
+#returns_ownership
+const string_clone -> fn (s: *String) String {
+  if (s == cast<*String>(0)) return string_new();
+  return string_from(s.data);
+}
+
+// ============================================================================
+// Destructor
+// ============================================================================
+
+#takes_ownership
+const string_free -> fn (s: *String) void {
+  if (s == cast<*String>(0)) return;
+  if (s.data != cast<*byte>(0)) {
+    free(s.data);
+    s.data = cast<*byte>(0);
+  }
+  s.len = 0;
+  s.cap = 0;
+}
+
+// ============================================================================
+// Example Usage
+// ============================================================================
 
 pub const main -> fn (argc: int, argv: **byte) int {
   let a: Args = args::init_args(argc, argv);
-  a = a.tail();
 
-  let it: ArgsIter = a.iter();
-  loop {
-    let arg: *byte = it.next();
-    if (arg == cast<*byte>(0)) break;
-    io::print("%s\n", [io::str_arg(arg)]);
+  // Create a new string
+  let string: String = string_from("Hello");
+  defer { string_free(&string); }
+  
+  // Append operations
+  string.append(", ");
+  string.append("World");
+  string.append_char('!');
+  
+  io::print("Result: %s (len=%d, cap=%d)\n", 
+            [io::str_arg(string.c_str()), 
+             io::int_arg(string.length()), 
+             io::int_arg(string.capacity())]);
+
+  // Comparison
+  if (string.equals("Hello, World!")) {
+    io::print("Strings match!\n", [io::NULL_FORMAT_ARG]);
   }
+
+  // Find operations
+  let comma_pos: int = string.find_char(',');
+  if (comma_pos != -1) {
+    io::print("Found comma at position %d\n", [io::int_arg(comma_pos)]);
+  }
+
+  // Substring
+  let sub: String = string.substring(0, 5);
+  defer { string_free(&sub); }
+  io::print("Substring: %s\n", [io::str_arg(sub.c_str())]);
+
+  // Clear and reuse
+  string.clear();
+  if (string.empty()) {
+    io::print("String is now empty\n", [io::NULL_FORMAT_ARG]);
+  }
+
+  // Prepend
+  string.append("World");
+  string.prepend("Hello, ");
+  io::print("After prepend: %s\n", [io::str_arg(string.c_str())]);
 
   return 0;
 }
