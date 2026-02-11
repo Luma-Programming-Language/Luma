@@ -208,7 +208,6 @@ ninja -C build -j8
 ### Notes
 
 - Build time: 30 minutes to several hours depending on hardware
-- Disk space required: ~15-20 GB for full build
 - RAM usage: Can use 8+ GB during compilation
 - If you encounter memory issues, reduce parallelism: `ninja -C build -j4` or `ninja -C build -j1`
 
