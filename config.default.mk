@@ -7,14 +7,21 @@ INCLUDES ?= -Isrc
 
 # Detect llvm-config (allow override via environment or command-line)
 LLVM_CONFIG ?= llvm-config
+
+ifeq ($(OS),Windows_NT)
+LLVM_CONFIG ?= llvm-config.exe
+else
+# Non-Windows (macOS / Linux)
 LLVM_CONFIG_AVAILABLE := $(shell $(LLVM_CONFIG) --version >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(LLVM_CONFIG_AVAILABLE),no)
+# macOS Homebrew fallback
 BREW_LLVM_CONFIG := $(shell brew --prefix llvm 2>/dev/null)/bin/llvm-config
 BREW_LLVM_AVAILABLE := $(shell $(BREW_LLVM_CONFIG) --version >/dev/null 2>&1 && echo yes || echo no)
 ifeq ($(BREW_LLVM_AVAILABLE),yes)
 LLVM_CONFIG := $(BREW_LLVM_CONFIG)
 else
-$(error llvm-config not found at '$(LLVM_CONFIG)'. Set LLVM_CONFIG=/path/to/llvm-config (e.g., `/opt/homebrew/opt/llvm/bin/llvm-config`))
+$(error llvm-config not found. Install LLVM or set LLVM_CONFIG=/path/to/llvm-config)
+endif
 endif
 endif
 
