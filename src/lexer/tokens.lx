@@ -1,0 +1,266 @@
+@module "lexer_tokens"
+
+@use "std_string" as STRING
+
+pub const LumaTokenType -> enum {
+  TOK_EOF,          /**< End of file/input */
+  TOK_ERROR,        /**< Error token */
+  TOK_IDENTIFIER,   /**< Identifier (variable/function names) */
+  TOK_KEYWORD,      /**< Reserved keyword */
+  TOK_NUMBER,       /**< Numeric literal */
+  TOK_NUM_FLOAT,    /**< Floating point numeric literal */
+  TOK_STRING,       /**< String literal */
+  TOK_CHAR_LITERAL, /**< Character literal */
+
+  // Primitive Types
+  TOK_INT,     /**< int */
+  TOK_DOUBLE,  /**< double */
+  TOK_UINT,    /**< unsigned int */
+  TOK_FLOAT,   /**< float */
+  TOK_BOOL,    /**< bool */
+  TOK_VOID,    /**< void */
+  TOK_CHAR,    /**< char */
+
+  // Keywords
+  TOK_IF,       /**< if keyword */
+  TOK_ELIF,     /**< elif keyword */
+  TOK_ELSE,     /**< else keyword */
+  TOK_LOOP,     /**< loop keyword */
+  TOK_RETURN,   /**< return keyword */
+  TOK_BREAK,    /**< break keyword */
+  TOK_CONTINUE, /**< continue keyword */
+  TOK_STRUCT,   /**< struct keyword */
+  TOK_ENUM,     /**< enum keyword */
+  TOK_MOD,      /**< mod keyword */
+  TOK_IMPORT,   /**< import keyword */
+  TOK_TRUE,     /**< true keyword */
+  TOK_FALSE,    /**< false keyword */
+  TOK_PUBLIC,   /**< pub keyword */
+  TOK_PRIVATE,  /**< private keyword */
+  TOK_VAR,      /**< let keyword */
+  TOK_CONST,    /**< const keyword */
+  TOK_FN,       /**< fn keyword */
+  TOK_INPUT,    /**< input keyword */
+  TOK_ALLOC,    /**< alloc(size_t size) */
+  TOK_FREE,     /**< free(void *ptr, size_t size) */
+  TOK_CAST,     /**< cast<Type>(value you want to cast too) */
+  TOK_SIZE_OF,  /**< size_of<TYPE> */
+  TOK_AS,       /**< as keyword (for use in modules) */
+  TOK_DEFER,    /**< defer keyword */
+  TOK_IN,       /**< in keyword */
+  TOK_SWITCH,   /**< switch keyword */
+  TOK_SYSTEM,   /**< system keyword */
+  TOK_IMPL,     /**< implement keyword */
+  TOK_SYSCALL,
+
+  // prepocessor directives
+  TOK_MODULE, /**< @module */
+  TOK_USE,    /**< @use */
+
+  // function attibutes
+  TOK_RETURNES_OWNERSHIP, /** #returns_ownership */
+  TOK_TAKES_OWNERSHIP,    /** #takes_ownership */
+
+  // Symbols
+  TOK_SYMBOL,      /**< Fallback symbol */
+  TOK_LPAREN,      /**< ( */
+  TOK_RPAREN,      /**< ) */
+  TOK_LBRACE,      /**< { */
+  TOK_RBRACE,      /**< } */
+  TOK_LBRACKET,    /**< [ */
+  TOK_RBRACKET,    /**< ] */
+  TOK_SEMI,        /**< ; */
+  TOK_COMMA,       /**< , */
+  TOK_DOT,         /**< . */
+  TOK_AT,          /**< @ */
+  TOK_EQUAL,       /**< = */
+  TOK_PLUS,        /**< + */
+  TOK_MINUS,       /**< - */
+  TOK_STAR,        /**< * */
+  TOK_SLASH,       /**< / */
+  TOK_LT,          /**< < */
+  TOK_GT,          /**< > */
+  TOK_LE,          /**< <= */
+  TOK_GE,          /**< >= */
+  TOK_EQEQ,        /**< == */
+  TOK_NEQ,         /**< != */
+  TOK_AMP,         /**< & */
+  TOK_PIPE,        /**< | */
+  TOK_CARET,       /**< ^ */
+  TOK_TILDE,       /**< ~ */
+  TOK_AND,         /**< && */
+  TOK_OR,          /**< || */
+  TOK_RESOLVE,     /**< :: */
+  TOK_COLON,       /**< : */
+  TOK_BANG,        /**< ! */
+  TOK_QUESTION,    /**< ? */
+  TOK_PLUSPLUS,    /**< ++ */
+  TOK_MINUSMINUS,  /**< -- */
+  TOK_SHIFT_LEFT,  /**< << */
+  TOK_SHIFT_RIGHT, /**< >> */
+  TOK_RANGE,       /**< .. */
+  TOK_RIGHT_ARROW, /**< -> */
+  TOK_LEFT_ARROW,  /**< <- */
+  TOK_MODL,        /**< % */
+  TOK_WHITESPACE,  /**< whitespace */
+  TOK_COMMENT,     /**< comment */
+  TOK_DOC_COMMENT, 
+  TOK_MODULE_DOC,  
+  TOK_DOCUMENT     
+};
+
+pub const Lexer -> struct {
+  line: int, col: int,
+  current: *byte,
+  src: *byte,
+};
+
+pub const Token -> struct {
+  val: *byte,
+  kind: int,
+  len: int,
+};
+
+pub const create_lexer -> fn (src: *byte) Lexer {
+  return Lexer { line: 1, col: 0, current: src, src: src };
+}
+
+const SINGLE_SYMBOL_COUNT: int = 22;
+const SingleSymbol -> struct { val: byte, kind: int }; 
+const single_symbol_map: [SingleSymbol; 22] = [
+  SingleSymbol { val: '(', kind: LumaTokenType::TOK_LPAREN  },
+  SingleSymbol { val: ')', kind: LumaTokenType::TOK_RPAREN  },
+  SingleSymbol { val: ';', kind: LumaTokenType::TOK_SEMI    },
+  SingleSymbol { val: '@', kind: LumaTokenType::TOK_AT      },
+  SingleSymbol { val: '+', kind: LumaTokenType::TOK_PLUS    }, 
+  SingleSymbol { val: '-', kind: LumaTokenType::TOK_MINUS   },
+  SingleSymbol { val: '*', kind: LumaTokenType::TOK_STAR    }, 
+  SingleSymbol { val: '/', kind: LumaTokenType::TOK_SLASH   },
+  SingleSymbol { val: '^', kind: LumaTokenType::TOK_CARET   },
+  SingleSymbol { val: '%', kind: LumaTokenType::TOK_MOD     },
+  SingleSymbol { val: '<', kind: LumaTokenType::TOK_LT      },
+  SingleSymbol { val: '>', kind: LumaTokenType::TOK_GT      },
+  SingleSymbol { val: '{', kind: LumaTokenType::TOK_LBRACE  },
+  SingleSymbol { val: '}', kind: LumaTokenType::TOK_RBRACE  },
+  SingleSymbol { val: '[', kind: LumaTokenType::TOK_LBRACKET},
+  SingleSymbol { val: ']', kind: LumaTokenType::TOK_RBRACKET},
+  SingleSymbol { val: ',', kind: LumaTokenType::TOK_COMMA   },
+  SingleSymbol { val: '.', kind: LumaTokenType::TOK_DOT     },
+  SingleSymbol { val: '=', kind: LumaTokenType::TOK_EQUAL   },
+  SingleSymbol { val: '&', kind: LumaTokenType::TOK_AMP     },
+  SingleSymbol { val: '|', kind: LumaTokenType::TOK_PIPE    },
+  SingleSymbol { val: '~', kind: LumaTokenType::TOK_TILDE   },
+];
+
+pub const lookup_single -> fn (val: byte) int {
+  loop [i: int = 0](i < SINGLE_SYMBOL_COUNT) : (++i) {
+    if (single_symbol_map[i].val == val) 
+      return single_symbol_map[i].kind;
+  }
+  return -1;
+}
+
+const DOUBLE_SYMBOL_COUNT: int = 14;
+const DoubleSymbol -> struct { val: *byte, kind: int };
+const double_symbol_map: [DoubleSymbol; 14] = [
+  DoubleSymbol { val: "==", kind: LumaTokenType::TOK_EQEQ        },
+  DoubleSymbol { val: "!=", kind: LumaTokenType::TOK_NEQ         },
+  DoubleSymbol { val: "<=", kind: LumaTokenType::TOK_LE          },
+  DoubleSymbol { val: ">=", kind: LumaTokenType::TOK_GE          },
+  DoubleSymbol { val: "&&", kind: LumaTokenType::TOK_AND         },
+  DoubleSymbol { val: "||", kind: LumaTokenType::TOK_OR          },
+  DoubleSymbol { val: "::", kind: LumaTokenType::TOK_RESOLVE     },
+  DoubleSymbol { val: "++", kind: LumaTokenType::TOK_PLUSPLUS    },
+  DoubleSymbol { val: "--", kind: LumaTokenType::TOK_MINUSMINUS  },
+  DoubleSymbol { val: "<<", kind: LumaTokenType::TOK_SHIFT_LEFT  },
+  DoubleSymbol { val: ">>", kind: LumaTokenType::TOK_SHIFT_RIGHT },
+  DoubleSymbol { val: "..", kind: LumaTokenType::TOK_RANGE       },
+  DoubleSymbol { val: "->", kind: LumaTokenType::TOK_RIGHT_ARROW },
+  DoubleSymbol { val: "<-", kind: LumaTokenType::TOK_LEFT_ARROW  },
+];
+
+pub const lookup_double -> fn (c: byte, c2: byte) int {
+  loop [i: int = 0](i < DOUBLE_SYMBOL_COUNT) : (++i) {
+    let sym: *byte = double_symbol_map[i].val;
+    if (sym[0] == c && sym[1] == c2)
+      return double_symbol_map[i].kind;
+  }
+  return -1;
+}
+
+const KEYWORD_COUNT: int = 41;
+const Keyword -> struct { val: *byte, kind: int };
+pub const keyword_map: [Keyword; 41] = [
+  // Primitive Types
+  Keyword { val: "int",    kind: LumaTokenType::TOK_INT },
+  Keyword { val: "double", kind: LumaTokenType::TOK_DOUBLE },
+  Keyword { val: "uint",   kind: LumaTokenType::TOK_UINT },
+  Keyword { val: "float",  kind: LumaTokenType::TOK_FLOAT },
+  Keyword { val: "bool",   kind: LumaTokenType::TOK_BOOL },
+  Keyword { val: "void",   kind: LumaTokenType::TOK_VOID },
+  Keyword { val: "byte",   kind: LumaTokenType::TOK_CHAR },
+
+  // Preprocessor Directives
+  Keyword { val: "@module", kind: LumaTokenType::TOK_MODULE },
+  Keyword { val: "@use",    kind: LumaTokenType::TOK_USE },
+
+  // Function Attributes
+  Keyword { val: "#returns_ownership", kind: LumaTokenType::TOK_RETURNES_OWNERSHIP },
+  Keyword { val: "#takes_ownership",   kind: LumaTokenType::TOK_TAKES_OWNERSHIP },
+
+  // Built-in Functions
+  Keyword { val: "__syscall__", kind: LumaTokenType::TOK_SYSCALL },
+  Keyword { val: "alloc",       kind: LumaTokenType::TOK_ALLOC },
+  Keyword { val: "free",        kind: LumaTokenType::TOK_FREE },
+  Keyword { val: "input",       kind: LumaTokenType::TOK_INPUT },
+  Keyword { val: "cast",        kind: LumaTokenType::TOK_CAST },
+  Keyword { val: "size_of",     kind: LumaTokenType::TOK_SIZE_OF },
+  Keyword { val: "system",      kind: LumaTokenType::TOK_SYSTEM },
+
+  // Control Flow
+  Keyword { val: "if",       kind: LumaTokenType::TOK_IF },
+  Keyword { val: "elif",     kind: LumaTokenType::TOK_ELIF },
+  Keyword { val: "else",     kind: LumaTokenType::TOK_ELSE },
+  Keyword { val: "loop",     kind: LumaTokenType::TOK_LOOP },
+  Keyword { val: "return",   kind: LumaTokenType::TOK_RETURN },
+  Keyword { val: "break",    kind: LumaTokenType::TOK_BREAK },
+  Keyword { val: "continue", kind: LumaTokenType::TOK_CONTINUE },
+  Keyword { val: "switch",   kind: LumaTokenType::TOK_SWITCH },
+  Keyword { val: "in",       kind: LumaTokenType::TOK_IN },
+  Keyword { val: "defer",    kind: LumaTokenType::TOK_DEFER },
+
+  // Declarations / Visibility
+  Keyword { val: "struct", kind: LumaTokenType::TOK_STRUCT },
+  Keyword { val: "enum",   kind: LumaTokenType::TOK_ENUM },
+  Keyword { val: "impl",   kind: LumaTokenType::TOK_IMPL },
+  Keyword { val: "fn",     kind: LumaTokenType::TOK_FN },
+  Keyword { val: "let",    kind: LumaTokenType::TOK_VAR },
+  Keyword { val: "const",  kind: LumaTokenType::TOK_CONST },
+  Keyword { val: "pub",    kind: LumaTokenType::TOK_PUBLIC },
+  Keyword { val: "priv",   kind: LumaTokenType::TOK_PRIVATE },
+  Keyword { val: "import", kind: LumaTokenType::TOK_IMPORT },
+  Keyword { val: "mod",    kind: LumaTokenType::TOK_MOD },
+
+  // Literals / Helpers
+  Keyword { val: "true",  kind: LumaTokenType::TOK_TRUE },
+  Keyword { val: "false", kind: LumaTokenType::TOK_FALSE },
+  Keyword { val: "as",    kind: LumaTokenType::TOK_AS },
+];
+
+#returns_ownership
+pub const create_word -> fn (start: *byte, len: int) *byte {
+  let word: *byte = cast<*byte>(alloc((len + 1) * sizeof<byte>));
+
+  loop [i: int = 0](i < len) : (++i) { word[i] = start[i]; }
+  word[len] = '\0';
+
+  return word;
+}
+
+pub const lookup_keyword -> fn (val: *byte) int {
+  loop [i: int = 0](i < KEYWORD_COUNT) : (++i) {
+    if (STRING::strcmp(keyword_map[i].val, val) == 0)
+      return keyword_map[i].kind;
+  }
+  return -1;
+}

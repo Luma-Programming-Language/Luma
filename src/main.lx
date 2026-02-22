@@ -1,0 +1,53 @@
+@module "main"
+
+@use "std_string" as STRING
+@use "std_vector" as VEC
+@use "std_args" as ARGS
+@use "std_io" as IO
+
+@use "lexer_tokens" as TOK
+@use "constants" as CONST
+@use "commands" as COMD
+@use "lexer" as LEXER
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let args: Args = ARGS::init_args(argc, argv);
+  args = args.tail();
+  
+  if (args.is_empty() == 1 || COMD::match_command(args.get(0), ["-h", "--help"], 2) == 1) {
+    COMD::print_commands();
+    return 0;
+  } elif (COMD::match_command(args.get(0), ["-v", "--version"], 2) == 1) {
+    output("Luma Compiler ", CONST::Luma_Compiler_version, "\n");
+    return 0;
+  } elif (COMD::match_command(args.get(0), ["-l", "--license"], 2) == 1) {
+    COMD::print_license();
+    return 0;
+  }
+  
+  let link_files: Vector = VEC::create_vector(sizeof<*byte>);
+  defer { VEC::free_vector(&link_files); }
+
+  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0), &link_files);
+  if (COMD::parse_args(&args, &build_config, &link_files) != 0) { return 1; }
+
+  let tokens: Vector = VEC::create_vector(sizeof<Token>);
+  let src: *byte = IO::read_file(build_config.filepath);
+  let lexer: Lexer = TOK::create_lexer(src);
+  defer { VEC::free_vector(&tokens); free(src); }
+  
+  loop (LEXER::is_end(&lexer) == 0) {
+    let tok: Token = LEXER::next_token(&lexer);
+    tokens.push_back(cast<*void>(&tok));
+  }
+  tokens.remove_at(tokens.size - 1); // Remove the EOF token
+  
+  let tks: *Token = cast<*Token>(tokens.data);
+  loop [i: int = 0](i < tokens.size) : (++i) {
+    let s: *byte = LEXER::token_value_string(&tks[i]);
+    output("Token: ", s, " (kind: ", tks[i].kind, ")\n");
+    free(s);
+  }
+  
+  return 0;
+}

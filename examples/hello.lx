@@ -1,6 +1,0 @@
-@module "hello"
-
-pub const main -> fn () int {
-    output("Hello, World!\n");
-    return 0;
-}

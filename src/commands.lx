@@ -1,0 +1,121 @@
+@module "commands"
+
+@use "std_string" as STRING
+@use "std_vector" as VEC
+@use "std_args" as ARGS
+
+@use "constants" as CONST
+
+// Map of available commands and their descriptions for the CLI
+// Usage: compiler [options] <source_file>
+// 
+// Options:
+//   -h, --help              Show this help message
+//   -v, --version           Show version information
+//   -lc, --license          Show license information
+//   -lsp, --lsp             Run as Language Server Protocol server
+//   -name <name>            Set output binary name
+//   -save                   Save intermediate files
+//   -clean                  Clean build artifacts
+//   -debug                  Enable debug mode
+//   --no-sanitize           Disable memory sanitization
+//   -l, -link <files...>    Link additional files
+//   -doc                    Generates Documantation based on comments
+// 
+// Optimization:
+//   -O0                     No optimization (fastest compilation)
+//   -O1                     Basic optimization
+//   -O2                     Moderate optimization (default)
+//   -O3                     Aggressive optimization (best performance)
+// 
+// Formatting:
+//   fmt, format             Format source code
+//   -fc, --format-check     Check formatting without modifying
+//   -fi, --format-in-place  Format file in-place
+// 
+// LSP Mode:
+//   When running with -lsp, the compiler acts as a language server.
+//   This mode is used by editors/IDEs for:
+//     - Code completion
+//     - Hover information
+//     - Real-time diagnostics
+//     - Document symbols
+
+pub const print_commands -> fn () void {
+  output("╭─────────────────────────────────────────────────╮\n");
+  output("│           Luma Compiler  ", CONST::Luma_Compiler_version, "                 │\n");
+  output("├─────────────────────────────────────────────────┤\n");
+  output("│  Usage: luma <file> [options]                   │\n");
+  output("╰─────────────────────────────────────────────────╯\n");
+  output("\n");
+
+  output("  Info\n");
+  output("  ────────────────────────────────────────────────\n");
+  output("  -h,  --help          Show this help message\n");
+  output("  -v,  --version       Show version information\n");
+  output("  -lc, --license       Show license information\n");
+  output("\n");
+
+  output("  Build\n");
+  output("  ────────────────────────────────────────────────\n");
+  output("  -name <name>         Set output binary name\n");
+  output("  -l, -link <files>    Link additional source files\n");
+  output("  -save                Save intermediate IR files\n");
+  output("  -clean               Clean build artifacts\n");
+  output("\n");
+
+  output("  Optimization\n");
+  output("  ────────────────────────────────────────────────\n");
+  output("  -O0                  No optimization\n");
+  output("  -O1                  Basic optimization\n");
+  output("  -O2                  Moderate optimization (default)\n");
+  output("  -O3                  Aggressive optimization\n");
+  output("\n");
+
+  output("  Debug / Dev\n");
+  output("  ────────────────────────────────────────────────\n");
+  output("  -debug               Enable debug mode\n");
+  output("  --no-sanitize        Disable memory sanitization\n");
+  output("  -lsp, --lsp          Run as language server\n");
+  output("\n");
+}
+
+pub const print_license -> fn () void {
+  output("Luma Compiler - ", Luma_Compiler_version, "\n");
+  output("Copyright (c) 2026 Luma Team\n");
+  output("Licensed under the MIT License\n");
+}
+
+pub const match_command -> fn (cmd: *byte, usr_cmd: [*byte; 10], count: int) int {
+  loop [i: int = 0](i < count) : (++i) {
+    if (STRING::strcmp(usr_cmd[i], cmd) == 0) return 1;
+  }
+  return 0;
+}
+
+pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig, link_files: *Vector) int {
+  loop [i: int = 1](i < args.len()) : (++i) {
+    if (match_command(args.get(i), ["-l", "--link"], 2) == 1) {
+      let start: int = i + 1;
+      loop (start < args.len() && match_command(args.get(start), ["-name", "-O0", "-O1", "-O2", "-O3"], 5) == 0) {
+        let path: *byte = args.get(start);
+        link_files.push_back(cast<*void>(&path));
+        build_config.file_count = build_config.file_count + 1;
+        start = start + 1;
+      }
+    } elif (match_command(args.get(i), ["-name"], 1) == 1) {
+      if (i + 1 < args.len()) {
+        build_config.name = args.get(i + 1);
+        i = i + 1;
+      } else {
+        output("Error: Missing output name after -name\n");
+        return 1;
+      }
+    } elif (match_command(args.get(i), ["-O0"], 1) == 1) { build_config.opt_level = 0;
+    } elif (match_command(args.get(i), ["-O1"], 1) == 1) { build_config.opt_level = 1;
+    } elif (match_command(args.get(i), ["-O2"], 1) == 1) { build_config.opt_level = 2;
+    } elif (match_command(args.get(i), ["-O3"], 1) == 1) { build_config.opt_level = 3;
+    }
+  }
+  return 0;
+}

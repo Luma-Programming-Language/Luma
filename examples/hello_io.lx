@@ -1,8 +1,0 @@
-@module "main"
-
-@use "io" as io
-
-pub const main -> fn () int {
-    io::print("%s\n", [io::str_arg("Hello, macOS!")]);
-    return 0;
-}

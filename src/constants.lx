@@ -1,0 +1,50 @@
+@module "constants"
+
+@use "std_string" as STRING
+@use "std_vector" as VEC
+@use "std_io" as IO
+
+pub const Luma_Compiler_version: *byte = "v0.1.0";
+
+pub const LumaErrorCode -> enum {
+  Argc_Error,
+  File_Error,
+  Memory_Error,
+  Lexer_Error,
+  Parser_Error,
+  Runtime_Error,
+  Unknown_Error,
+};
+
+pub const LumaErrorMessage -> struct {
+  code: int, //! Error: Need to fix so that we can have enum types in structs. this is a tc issue 
+  message: *byte,
+};
+
+pub const LumaBuildConfig -> struct {
+  filepath: *byte,
+  name: *byte,
+
+  save: int,
+  clean: int,
+  check_mem: int,
+  lsp_mode: int,
+  file_count: int,
+  opt_level: int,
+
+  link_files: *Vector,  // pointer instead of value
+};
+
+pub const init_build_config -> fn (filepath: *byte, link_files: *Vector) LumaBuildConfig {
+  return LumaBuildConfig {
+    filepath: filepath,
+    name: "a.out",
+    save: 0,
+    clean: 0,
+    check_mem: 1,
+    lsp_mode: 0,
+    file_count: 0,
+    opt_level: 2,
+    link_files: link_files,
+  };
+}
