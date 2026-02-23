@@ -1,0 +1,53 @@
+@module "ast_type"
+
+@use "std_memory" as MEM
+@use "ast" as AST
+
+#returns_ownership
+pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::TYPE_BASIC, AST::NodeCategory::Node_Category_TYPE, line, col);
+  let data: *BasicTypeData = cast<*BasicTypeData>(MEM::calloc(1, sizeof<BasicTypeData>));
+  data.name = name;
+  node.data = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_pointer_type -> fn (pointee_type: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::TYPE_POINTER, AST::NodeCategory::Node_Category_TYPE, line, col);
+  let data: *PointerTypeData = cast<*PointerTypeData>(MEM::calloc(1, sizeof<PointerTypeData>));
+  data.pointee_type = pointee_type;
+  node.data         = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_array_type -> fn (element_type: *AstNode, size: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::TYPE_ARRAY, AST::NodeCategory::Node_Category_TYPE, line, col);
+  let data: *ArrayTypeData = cast<*ArrayTypeData>(MEM::calloc(1, sizeof<ArrayTypeData>));
+  data.element_type = element_type;
+  data.size         = size;
+  node.data         = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_func_type -> fn (param_types: **AstNode, param_count: int, return_type: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::TYPE_FUNCTION, AST::NodeCategory::Node_Category_TYPE, line, col);
+  let data: *FuncTypeData = cast<*FuncTypeData>(MEM::calloc(1, sizeof<FuncTypeData>));
+  data.param_types = param_types;
+  data.param_count = param_count;
+  data.return_type = return_type;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_resolution_type -> fn (parts: **byte, part_count: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::TYPE_RESOLUTION, AST::NodeCategory::Node_Category_TYPE, line, col);
+  let data: *ResolutionData = cast<*ResolutionData>(MEM::calloc(1, sizeof<ResolutionData>));
+  data.parts      = parts;
+  data.part_count = part_count;
+  node.data       = cast<*void>(data);
+  return node;
+}

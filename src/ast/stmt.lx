@@ -1,14 +1,245 @@
 @module "ast_stmt"
 
+@use "std_memory" as MEM
 @use "ast" as AST
 
 #returns_ownership
-pub const make_program -> fn (module_count: int) *AstNode {
-  let data: *ProgramData = cast<*ProgramData>(alloc(sizeof<ProgramData>));
-  data.modules      = cast<**AstNode>(alloc(module_count * sizeof<*AstNode>));
+pub const make_program -> fn (modules: **AstNode, module_count: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::PROGRAM, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *ProgramData = cast<*ProgramData>(MEM::calloc(1, sizeof<ProgramData>));
+  data.modules      = modules;
   data.module_count = module_count;
+  node.data         = cast<*void>(data);
+  return node;
+}
 
-  let node: *AstNode = AST::make_node(AST::NodeType::PROGRAM, AST::NodeCategory::Node_Category_STMT, 0, 0);
+#returns_ownership
+pub const make_expr_stmt -> fn (expression: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_EXPRESSION, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *ExprStmtData = cast<*ExprStmtData>(MEM::calloc(1, sizeof<ExprStmtData>));
+  data.expression = expression;
+  node.data       = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AstNode, 
+                              initializer: *AstNode, is_mutable: int, is_public: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_VAR_DECL, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *VarDeclData = cast<*VarDeclData>(MEM::calloc(1, sizeof<VarDeclData>));
+  data.name        = name;
+  data.doc_comment = doc_comment;
+  data.var_type    = var_type;
+  data.initializer = initializer;
+  data.is_mutable  = is_mutable;
+  data.is_public   = is_public;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_const_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AstNode, 
+                                 initializer: *AstNode, is_public: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_CONST_DECL, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *VarDeclData = cast<*VarDeclData>(MEM::calloc(1, sizeof<VarDeclData>));
+  data.name        = name;
+  data.doc_comment = doc_comment;
+  data.var_type    = var_type;
+  data.initializer = initializer;
+  data.is_mutable  = 0;
+  data.is_public   = is_public;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **byte, param_types: **AstNode, 
+                                param_count: int, return_type: *AstNode, is_public: int, body: *AstNode, 
+                                returns_ownership: int, takes_ownership: int, 
+                                forward_declared: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_FUNCTION, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *FuncDeclData = cast<*FuncDeclData>(MEM::calloc(1, sizeof<FuncDeclData>));
+  data.name              = name;
+  data.doc_comment       = doc_comment;
+  data.param_names       = param_names;
+  data.param_types       = param_types;
+  data.param_count       = param_count;
+  data.return_type       = return_type;
+  data.is_public         = is_public;
+  data.body              = body;
+  data.returns_ownership = returns_ownership;
+  data.takes_ownership   = takes_ownership;
+  data.forward_declared  = forward_declared;
+  node.data              = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_members: **AstNode, 
+                                  public_count: int, private_members: **AstNode, private_count: int, 
+                                  is_public: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_STRUCT, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *StructDeclData = cast<*StructDeclData>(MEM::calloc(1, sizeof<StructDeclData>));
+  data.name            = name;
+  data.doc_comment     = doc_comment;
+  data.public_members  = public_members;
+  data.public_count    = public_count;
+  data.private_members = private_members;
+  data.private_count   = private_count;
+  data.is_public       = is_public;
+  node.data            = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AstNode, 
+                                 function: *AstNode, is_public: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_FIELD_DECL, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *FieldDeclData = cast<*FieldDeclData>(MEM::calloc(1, sizeof<FieldDeclData>));
+  data.name        = name;
+  data.doc_comment = doc_comment;
+  data.type_node   = type_node;
+  data.function    = function;
+  data.is_public   = is_public;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte, 
+                                member_count: int, is_public: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_ENUM, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *EnumDeclData = cast<*EnumDeclData>(MEM::calloc(1, sizeof<EnumDeclData>));
+  data.name         = name;
+  data.doc_comment  = doc_comment;
+  data.members      = members;
+  data.member_count = member_count;
+  data.is_public    = is_public;
+  node.data         = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_if_stmt -> fn (condition: *AstNode, then_stmt: *AstNode, elif_stmts: **AstNode, 
+                              elif_count: int, else_stmt: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_IF, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *IfStmtData = cast<*IfStmtData>(MEM::calloc(1, sizeof<IfStmtData>));
+  data.condition  = condition;
+  data.then_stmt  = then_stmt;
+  data.elif_stmts = elif_stmts;
+  data.elif_count = elif_count;
+  data.else_stmt  = else_stmt;
+  node.data       = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_loop_stmt -> fn (condition: *AstNode, optional: *AstNode, body: *AstNode, initializer: **AstNode, 
+                                init_count: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_LOOP, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *LoopStmtData = cast<*LoopStmtData>(MEM::calloc(1, sizeof<LoopStmtData>));
+  data.condition   = condition;
+  data.optional    = optional;
+  data.body        = body;
+  data.initializer = initializer;
+  data.init_count  = init_count;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_return_stmt -> fn (value: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_RETURN, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *ReturnStmtData = cast<*ReturnStmtData>(MEM::calloc(1, sizeof<ReturnStmtData>));
+  data.value = value;
+  node.data  = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_block -> fn (statements: **AstNode, stmt_count: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_BLOCK, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *BlockData = cast<*BlockData>(MEM::calloc(1, sizeof<BlockData>));
+  data.statements = statements;
+  data.stmt_count = stmt_count;
+  node.data       = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_print_stmt -> fn (expressions: **AstNode, expr_count: int, ln: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_PRINT, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *PrintStmtData = cast<*PrintStmtData>(MEM::calloc(1, sizeof<PrintStmtData>));
+  data.expressions = expressions;
+  data.expr_count  = expr_count;
+  data.ln          = ln;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_break_continue -> fn (is_continue: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_BREAK_CONTINUE, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *BreakContinueData = cast<*BreakContinueData>(MEM::calloc(1, sizeof<BreakContinueData>));
+  data.is_continue = is_continue;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_defer_stmt -> fn (statement: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_DEFER, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *DeferData = cast<*DeferData>(MEM::calloc(1, sizeof<DeferData>));
+  data.statement = statement;
+  node.data      = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_switch_stmt -> fn (condition: *AstNode, cases: **AstNode, case_count: int, 
+                                  default_case: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_SWITCH, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *SwitchData = cast<*SwitchData>(MEM::calloc(1, sizeof<SwitchData>));
+  data.condition    = condition;
+  data.cases        = cases;
+  data.case_count   = case_count;
+  data.default_case = default_case;
+  node.data         = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: **AstNode, struct_name_list: **byte, 
+                                function_name_count: int, struct_name_count: int, body: *AstNode, 
+                                line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_IMPL, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *ImplData = cast<*ImplData>(MEM::calloc(1, sizeof<ImplData>));
+  data.function_name_list  = function_name_list;
+  data.function_type_list  = function_type_list;
+  data.struct_name_list    = struct_name_list;
+  data.function_name_count = function_name_count;
+  data.struct_name_count   = struct_name_count;
+  data.body                = body;
+  node.data                = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_case_stmt -> fn (values: **AstNode, value_count: int, body: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_CASE, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *CaseData = cast<*CaseData>(MEM::calloc(1, sizeof<CaseData>));
+  data.values      = values;
+  data.value_count = value_count;
+  data.body        = body;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_default_stmt -> fn (body: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::STMT_DEFAULT, AST::NodeCategory::Node_Category_STMT, line, col);
+  let data: *DefaultData = cast<*DefaultData>(MEM::calloc(1, sizeof<DefaultData>));
+  data.body = body;
   node.data = cast<*void>(data);
   return node;
 }

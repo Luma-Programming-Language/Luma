@@ -1,0 +1,27 @@
+@module "ast_module"
+
+@use "std_memory" as MEM
+@use "ast" as AST
+
+#returns_ownership
+pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte, body: **AstNode, body_count: int, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::PREPROCESSOR_MODULE, AST::NodeCategory::Node_Category_PREPROCESSOR, line, col);
+  let data: *ModuleData = cast<*ModuleData>(MEM::calloc(1, sizeof<ModuleData>));
+  data.name        = name;
+  data.doc_comment = doc_comment;
+  data.file_path   = file_path;
+  data.body        = body;
+  data.body_count  = body_count;
+  node.data        = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::PREPROCESSOR_USE, AST::NodeCategory::Node_Category_PREPROCESSOR, line, col);
+  let data: *UseData = cast<*UseData>(MEM::calloc(1, sizeof<UseData>));
+  data.module_name = module_name;
+  data.alias       = alias;
+  node.data        = cast<*void>(data);
+  return node;
+}
