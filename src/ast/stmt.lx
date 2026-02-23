@@ -1,0 +1,14 @@
+@module "ast_stmt"
+
+@use "ast" as AST
+
+#returns_ownership
+pub const make_program -> fn (module_count: int) *AstNode {
+  let data: *ProgramData = cast<*ProgramData>(alloc(sizeof<ProgramData>));
+  data.modules      = cast<**AstNode>(alloc(module_count * sizeof<*AstNode>));
+  data.module_count = module_count;
+
+  let node: *AstNode = AST::make_node(AST::NodeType::PROGRAM, AST::NodeCategory::Node_Category_STMT, 0, 0);
+  node.data = cast<*void>(data);
+  return node;
+}

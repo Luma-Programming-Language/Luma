@@ -10,6 +10,9 @@
 @use "commands" as COMD
 @use "lexer" as LEXER
 
+@use "ast_stmt" as STMT
+@use "ast" as AST
+
 pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
   args = args.tail();
@@ -48,6 +51,9 @@ pub const main -> fn (argc: int, argv: **byte) int {
     output("Token: ", s, " (kind: ", tks[i].kind, ")\n");
     free(s);
   }
+
+  let node: *AstNode = STMT::make_program(build_config.link_files.size); 
+  AST::free_node(node);
   
   return 0;
 }

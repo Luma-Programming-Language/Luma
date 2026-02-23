@@ -1,0 +1,688 @@
+@module "ast"
+
+pub const NodeType -> enum {
+  PREPROCESSOR_MODULE, // Module declaration
+  PREPROCESSOR_USE,    // Use/import statement
+
+  // Expression nodes
+  EXPR_LITERAL,    // Literal values (numbers, strings, booleans)
+  EXPR_IDENTIFIER, // Variable/function names
+  EXPR_BINARY,     // Binary operations (+, -, *, /, etc.)
+  EXPR_UNARY,      // Unary operations (!, -, ++, --)
+  EXPR_CALL,       // Function calls
+  EXPR_ASSIGNMENT, // Assignment expressions
+  EXPR_TERNARY,    // Conditional expressions (? :)
+  EXPR_MEMBER,     // Member access (obj.field)
+  EXPR_INDEX,      // Array/object indexing (obj[index])
+  EXPR_GROUPING,   // Parenthesized expressions
+  EXPR_RANGE,      // range expressions '..'
+  EXPR_ARRAY,      // [ ... ] array expressions
+  EXPR_DEREF,      // *object
+  EXPR_ADDR,       // &object
+  EXPR_ALLOC,
+  EXPR_MEMCPY,
+  EXPR_FREE,
+  EXPR_CAST,
+  EXPR_INPUT,
+  EXPR_SIZEOF,
+  EXPR_SYSTEM, // System Statement
+  EXPR_SYSCALL,
+  EXPR_STRUCT,
+
+  // Statement nodes
+  PROGRAM,             // Program root node
+  STMT_EXPRESSION,     // Expression statements
+  STMT_VAR_DECL,       // Variable declarations
+  STMT_CONST_DECL,     // Constant declarations
+  STMT_FUNCTION,       // Function definitions
+  STMT_IF,             // If statements
+  STMT_LOOP,           // Loop statements (while, for)
+  STMT_BREAK_CONTINUE, // Break and continue statements
+  STMT_RETURN,         // Return statements
+  STMT_BLOCK,          // Block statements
+  STMT_PRINT,          // Print statements
+  STMT_MODULE,         // Module declarations
+  STMT_ENUM,           // Enum declarations
+  STMT_STRUCT,         // Struct declarations
+  STMT_FIELD_DECL,     // Field declarations (for structs)
+  STMT_DEFER,          // Defer statements
+  STMT_SWITCH,         // Switch statement
+  STMT_IMPL,           // impl statement
+  STMT_CASE,
+  STMT_DEFAULT,
+
+  // Type nodes
+  TYPE_RESOLUTION, // Namespace::Type resolution
+  TYPE_BASIC,      // Basic types (int, float, string, etc.)
+  TYPE_POINTER,    // Pointer types
+  TYPE_ARRAY,      // Array types
+  TYPE_FUNCTION,   // Function types
+  TYPE_STRUCT,     // Struct types
+  TYPE_ENUM,       // Enum types
+};
+
+pub const LiteralType -> enum {
+  LITERAL_IDENT,
+  LITERAL_INT,
+  LITERAL_FLOAT,
+  LITERAL_DOUBLE,
+  LITERAL_STRING,
+  LITERAL_CHAR,
+  LITERAL_BOOL,
+  LITERAL_NULL
+};
+
+pub const BinaryOp -> enum {
+  BINOP_ADD,     // +
+  BINOP_SUB,     // -
+  BINOP_MUL,     // *
+  BINOP_DIV,     // /
+  BINOP_MOD,     // %
+  BINOP_POW,     // **
+  BINOP_EQ,      // ==
+  BINOP_NE,      // !=
+  BINOP_LT,      // <
+  BINOP_LE,      // <=
+  BINOP_GT,      // >
+  BINOP_GE,      // >=
+  BINOP_AND,     // &&
+  BINOP_OR,      // ||
+  BINOP_BIT_AND, // &
+  BINOP_BIT_OR,  // |
+  BINOP_BIT_XOR, // ^
+  BINOP_SHL,     // <<
+  BINOP_SHR,     // >>
+  BINOP_RANGE,   // ..
+};
+
+pub const UnaryType -> enum {
+  UNOP_NOT,      // !
+  UNOP_NEG,      // -
+  UNOP_POS,      // +
+  UNOP_BIT_NOT,  // ~
+  UNOP_PRE_INC,  // ++x
+  UNOP_PRE_DEC,  // --x
+  UNOP_POST_INC, // x++
+  UNOP_POST_DEC, // x--
+  UNOP_DEREF,    // *x
+  UNOP_ADDR,     // &x
+};
+
+pub const NodeCategory -> enum {
+  Node_Category_EXPR,
+  Node_Category_STMT,
+  Node_Category_TYPE,
+  Node_Category_PREPROCESSOR
+};
+
+// ─── Base Node ───────────────────────────────────────────────────────────────
+
+pub const AstNode -> struct {
+  kind:     int,      // NodeType enum value
+  category: int,      // NodeCategory enum value
+  line:     int,      // source location
+  col:      int,
+  data:     *void,    // points to ExprNode, StmtNode, or TypeNode
+};
+
+#returns_ownership
+pub const make_node -> fn (kind: int, category: int, line: int, col: int) *AstNode {
+  let node: *AstNode = cast<*AstNode>(alloc(sizeof<AstNode> * 1024));
+
+  node.kind     = kind;
+  node.category = category;
+  node.line     = line;
+  node.col      = col;
+  node.data     = cast<*void>(0);
+
+  return node;
+}
+
+// ─── Preprocessor Payloads ───────────────────────────────────────────────────
+
+pub const ModuleData -> struct {
+  name:        *byte,
+  doc_comment: *byte,
+  file_path:   *byte,
+  body:        **AstNode,
+  body_count:  int,
+};
+
+pub const UseData -> struct {
+  module_name: *byte,
+  alias:       *byte,
+};
+
+// ─── Expression Payloads ─────────────────────────────────────────────────────
+
+pub const LiteralData -> struct {
+  lit_type:   int,   // LiteralType
+  int_val:    int,
+  float_val:  int,   // reinterpret as double at use site
+  string_val: *byte,
+  char_val:   byte,
+  bool_val:   int,
+};
+
+pub const IdentifierData -> struct {
+  name: *byte,
+};
+
+pub const BinaryData -> struct {
+  op:    int,      // BinaryOp
+  left:  *AstNode,
+  right: *AstNode,
+};
+
+pub const UnaryData -> struct {
+  op:      int,    // UnaryType
+  operand: *AstNode,
+};
+
+pub const CallData -> struct {
+  callee:    *AstNode,
+  args:      **AstNode,
+  arg_count: int,
+};
+
+pub const AssignData -> struct {
+  target: *AstNode,
+  value:  *AstNode,
+};
+
+pub const TernaryData -> struct {
+  condition: *AstNode,
+  then_expr: *AstNode,
+  else_expr: *AstNode,
+};
+
+pub const MemberData -> struct {
+  is_compiletime: int,
+  object:         *AstNode,
+  member:         *byte,
+};
+
+pub const IndexData -> struct {
+  object: *AstNode,
+  index:  *AstNode,
+};
+
+pub const ArrayData -> struct {
+  elements:      **AstNode,
+  element_count: int,
+  target_size:   int,
+};
+
+pub const CastData -> struct {
+  type_node: *AstNode,
+  castee:    *AstNode,
+};
+
+pub const AllocData -> struct {
+  size: *AstNode,
+};
+
+pub const FreeData -> struct {
+  ptr: *AstNode,
+};
+
+pub const MemcpyData -> struct {
+  to:   *AstNode,
+  from: *AstNode,
+  size: *AstNode,
+};
+
+pub const SizeofData -> struct {
+  object:  *AstNode,
+  is_type: int,
+};
+
+pub const SyscallData -> struct {
+  args:  **AstNode,
+  count: int,
+};
+
+pub const StructExprData -> struct {
+  name:        *byte,
+  field_names: **byte,
+  field_vals:  **AstNode,
+  field_count: int,
+};
+
+// ─── Statement Payloads ──────────────────────────────────────────────────────
+
+pub const ProgramData -> struct {
+  modules:      **AstNode,
+  module_count: int,
+};
+
+pub const ExprStmtData -> struct {
+  expression: *AstNode,
+};
+
+pub const VarDeclData -> struct {
+  name:        *byte,
+  doc_comment: *byte,
+  var_type:    *AstNode,
+  initializer: *AstNode,
+  is_mutable:  int,
+  is_public:   int,
+};
+
+pub const FuncDeclData -> struct {
+  name:              *byte,
+  doc_comment:       *byte,
+  param_names:       **byte,
+  param_types:       **AstNode,
+  param_count:       int,
+  return_type:       *AstNode,
+  is_public:         int,
+  body:              *AstNode,
+  returns_ownership: int,
+  takes_ownership:   int,
+  forward_declared:  int,
+};
+
+pub const StructDeclData -> struct {
+  name:            *byte,
+  doc_comment:     *byte,
+  public_members:  **AstNode,
+  public_count:    int,
+  private_members: **AstNode,
+  private_count:   int,
+  is_public:       int,
+};
+
+pub const FieldDeclData -> struct {
+  name:        *byte,
+  doc_comment: *byte,
+  type_node:   *AstNode,
+  function:    *AstNode,
+  is_public:   int,
+};
+
+pub const EnumDeclData -> struct {
+  name:         *byte,
+  doc_comment:  *byte,
+  members:      **byte,
+  member_count: int,
+  is_public:    int,
+};
+
+pub const IfStmtData -> struct {
+  condition:  *AstNode,
+  then_stmt:  *AstNode,
+  elif_stmts: **AstNode,
+  elif_count: int,
+  else_stmt:  *AstNode,
+};
+
+pub const LoopStmtData -> struct {
+  condition:   *AstNode,
+  optional:    *AstNode,
+  body:        *AstNode,
+  initializer: **AstNode,
+  init_count:  int,
+};
+
+pub const ReturnStmtData -> struct {
+  value: *AstNode,
+};
+
+pub const BlockData -> struct {
+  statements: **AstNode,
+  stmt_count: int,
+};
+
+pub const PrintStmtData -> struct {
+  expressions: **AstNode,
+  expr_count:  int,
+  ln:          int,
+};
+
+pub const BreakContinueData -> struct {
+  is_continue: int,
+};
+
+pub const DeferData -> struct {
+  statement: *AstNode,
+};
+
+pub const SwitchData -> struct {
+  condition:    *AstNode,
+  cases:        **AstNode,
+  case_count:   int,
+  default_case: *AstNode,
+};
+
+pub const ImplData -> struct {
+  function_name_list:  **byte,
+  function_type_list:  **AstNode,
+  struct_name_list:    **byte,
+  function_name_count: int,
+  struct_name_count:   int,
+  body:                *AstNode,
+};
+
+pub const CaseData -> struct {
+  values:      **AstNode,
+  value_count: int,
+  body:        *AstNode,
+};
+
+pub const DefaultData -> struct {
+  body: *AstNode,
+};
+
+// ─── Type Payloads ───────────────────────────────────────────────────────────
+
+pub const BasicTypeData -> struct {
+  name: *byte,
+};
+
+pub const PointerTypeData -> struct {
+  pointee_type: *AstNode,
+};
+
+pub const ArrayTypeData -> struct {
+  element_type: *AstNode,
+  size:         *AstNode,
+};
+
+pub const FuncTypeData -> struct {
+  param_types: **AstNode,
+  param_count: int,
+  return_type: *AstNode,
+};
+
+pub const ResolutionData -> struct {
+  parts:      **byte,
+  part_count: int,
+};
+
+#takes_ownership
+pub const free_node -> fn (node: *AstNode) void {
+  if (node == cast<*AstNode>(0)) return;
+
+  if (node.category == NodeCategory::Node_Category_EXPR) {
+    switch (node.kind) {
+      NodeType::EXPR_BINARY -> {
+        let d: *BinaryData = cast<*BinaryData>(node.data);
+        free_node(d.left);
+        free_node(d.right);
+        free(d);
+      }
+      NodeType::EXPR_UNARY -> {
+        let d: *UnaryData = cast<*UnaryData>(node.data);
+        free_node(d.operand);
+        free(d);
+      }
+      NodeType::EXPR_CALL -> {
+        let d: *CallData = cast<*CallData>(node.data);
+        free_node(d.callee);
+        loop [i: int = 0](i < d.arg_count) : (++i) { free_node(d.args[i]); }
+        free(d.args);
+        free(d);
+      }
+      NodeType::EXPR_ASSIGNMENT -> {
+        let d: *AssignData = cast<*AssignData>(node.data);
+        free_node(d.target);
+        free_node(d.value);
+        free(d);
+      }
+      NodeType::EXPR_TERNARY -> {
+        let d: *TernaryData = cast<*TernaryData>(node.data);
+        free_node(d.condition);
+        free_node(d.then_expr);
+        free_node(d.else_expr);
+        free(d);
+      }
+      NodeType::EXPR_MEMBER -> {
+        let d: *MemberData = cast<*MemberData>(node.data);
+        free_node(d.object);
+        free(d);
+      }
+      NodeType::EXPR_INDEX -> {
+        let d: *IndexData = cast<*IndexData>(node.data);
+        free_node(d.object);
+        free_node(d.index);
+        free(d);
+      }
+      NodeType::EXPR_ARRAY -> {
+        let d: *ArrayData = cast<*ArrayData>(node.data);
+        loop [i: int = 0](i < d.element_count) : (++i) { free_node(d.elements[i]); }
+        free(d.elements);
+        free(d);
+      }
+      NodeType::EXPR_CAST -> {
+        let d: *CastData = cast<*CastData>(node.data);
+        free_node(d.type_node);
+        free_node(d.castee);
+        free(d);
+      }
+      NodeType::EXPR_ALLOC -> {
+        let d: *AllocData = cast<*AllocData>(node.data);
+        free_node(d.size);
+        free(d);
+      }
+      NodeType::EXPR_FREE -> {
+        let d: *FreeData = cast<*FreeData>(node.data);
+        free_node(d.ptr);
+        free(d);
+      }
+      NodeType::EXPR_MEMCPY -> {
+        let d: *MemcpyData = cast<*MemcpyData>(node.data);
+        free_node(d.to);
+        free_node(d.from);
+        free_node(d.size);
+        free(d);
+      }
+      NodeType::EXPR_SIZEOF -> {
+        let d: *SizeofData = cast<*SizeofData>(node.data);
+        free_node(d.object);
+        free(d);
+      }
+      NodeType::EXPR_SYSCALL -> {
+        let d: *SyscallData = cast<*SyscallData>(node.data);
+        loop [i: int = 0](i < d.count) : (++i) { free_node(d.args[i]); }
+        free(d.args);
+        free(d);
+      }
+      NodeType::EXPR_STRUCT -> {
+        let d: *StructExprData = cast<*StructExprData>(node.data);
+        loop [i: int = 0](i < d.field_count) : (++i) { free_node(d.field_vals[i]); }
+        free(d.field_names);
+        free(d.field_vals);
+        free(d);
+      }
+      NodeType::EXPR_LITERAL -> {
+        let d: *LiteralData = cast<*LiteralData>(node.data);
+        if (d.string_val != cast<*byte>(0)) free(d.string_val);
+        free(d);
+      }
+      NodeType::EXPR_IDENTIFIER -> {
+        let d: *IdentifierData = cast<*IdentifierData>(node.data);
+        free(d);
+      }
+      NodeType::EXPR_DEREF -> {
+        let d: *UnaryData = cast<*UnaryData>(node.data);
+        free_node(d.operand);
+        free(d);
+      }
+      NodeType::EXPR_ADDR -> {
+        let d: *UnaryData = cast<*UnaryData>(node.data);
+        free_node(d.operand);
+        free(d);
+      }
+    }
+  } elif (node.category == NodeCategory::Node_Category_STMT) {
+    switch (node.kind) {
+      NodeType::PROGRAM -> {
+        let d: *ProgramData = cast<*ProgramData>(node.data);
+        loop [i: int = 0](i < d.module_count) : (++i) { free_node(d.modules[i]); }
+        free(d.modules);
+        free(d);
+      }
+      NodeType::STMT_EXPRESSION -> {
+        let d: *ExprStmtData = cast<*ExprStmtData>(node.data);
+        free_node(d.expression);
+        free(d);
+      }
+      NodeType::STMT_VAR_DECL -> {
+        let d: *VarDeclData = cast<*VarDeclData>(node.data);
+        free_node(d.var_type);
+        free_node(d.initializer);
+        free(d);
+      }
+      NodeType::STMT_CONST_DECL -> {
+        let d: *VarDeclData = cast<*VarDeclData>(node.data);
+        free_node(d.var_type);
+        free_node(d.initializer);
+        free(d);
+      }
+      NodeType::STMT_FUNCTION -> {
+        let d: *FuncDeclData = cast<*FuncDeclData>(node.data);
+        loop [i: int = 0](i < d.param_count) : (++i) { free_node(d.param_types[i]); }
+        free(d.param_names);
+        free(d.param_types);
+        free_node(d.return_type);
+        free_node(d.body);
+        free(d);
+      }
+      NodeType::STMT_STRUCT -> {
+        let d: *StructDeclData = cast<*StructDeclData>(node.data);
+        loop [i: int = 0](i < d.public_count)  : (++i) { free_node(d.public_members[i]); }
+        loop [i: int = 0](i < d.private_count) : (++i) { free_node(d.private_members[i]); }
+        free(d.public_members);
+        free(d.private_members);
+        free(d);
+      }
+      NodeType::STMT_FIELD_DECL -> {
+        let d: *FieldDeclData = cast<*FieldDeclData>(node.data);
+        free_node(d.type_node);
+        free_node(d.function);
+        free(d);
+      }
+      NodeType::STMT_ENUM -> {
+        let d: *EnumDeclData = cast<*EnumDeclData>(node.data);
+        free(d.members);
+        free(d);
+      }
+      NodeType::STMT_IF -> {
+        let d: *IfStmtData = cast<*IfStmtData>(node.data);
+        free_node(d.condition);
+        free_node(d.then_stmt);
+        loop [i: int = 0](i < d.elif_count) : (++i) { free_node(d.elif_stmts[i]); }
+        free(d.elif_stmts);
+        free_node(d.else_stmt);
+        free(d);
+      }
+      NodeType::STMT_LOOP -> {
+        let d: *LoopStmtData = cast<*LoopStmtData>(node.data);
+        free_node(d.condition);
+        free_node(d.optional);
+        free_node(d.body);
+        loop [i: int = 0](i < d.init_count) : (++i) { free_node(d.initializer[i]); }
+        free(d.initializer);
+        free(d);
+      }
+      NodeType::STMT_RETURN -> {
+        let d: *ReturnStmtData = cast<*ReturnStmtData>(node.data);
+        free_node(d.value);
+        free(d);
+      }
+      NodeType::STMT_BLOCK -> {
+        let d: *BlockData = cast<*BlockData>(node.data);
+        loop [i: int = 0](i < d.stmt_count) : (++i) { free_node(d.statements[i]); }
+        free(d.statements);
+        free(d);
+      }
+      NodeType::STMT_PRINT -> {
+        let d: *PrintStmtData = cast<*PrintStmtData>(node.data);
+        loop [i: int = 0](i < d.expr_count) : (++i) { free_node(d.expressions[i]); }
+        free(d.expressions);
+        free(d);
+      }
+      NodeType::STMT_DEFER -> {
+        let d: *DeferData = cast<*DeferData>(node.data);
+        free_node(d.statement);
+        free(d);
+      }
+      NodeType::STMT_SWITCH -> {
+        let d: *SwitchData = cast<*SwitchData>(node.data);
+        free_node(d.condition);
+        loop [i: int = 0](i < d.case_count) : (++i) { free_node(d.cases[i]); }
+        free(d.cases);
+        free_node(d.default_case);
+        free(d);
+      }
+      NodeType::STMT_IMPL -> {
+        let d: *ImplData = cast<*ImplData>(node.data);
+        loop [i: int = 0](i < d.function_name_count) : (++i) { free_node(d.function_type_list[i]); }
+        free(d.function_name_list);
+        free(d.function_type_list);
+        free(d.struct_name_list);
+        free_node(d.body);
+        free(d);
+      }
+      NodeType::STMT_CASE -> {
+        let d: *CaseData = cast<*CaseData>(node.data);
+        loop [i: int = 0](i < d.value_count) : (++i) { free_node(d.values[i]); }
+        free(d.values);
+        free_node(d.body);
+        free(d);
+      }
+      NodeType::STMT_DEFAULT -> {
+        let d: *DefaultData = cast<*DefaultData>(node.data);
+        free_node(d.body);
+        free(d);
+      }
+      NodeType::STMT_BREAK_CONTINUE -> {
+        free(node.data);
+      }
+    }
+  } elif (node.category == NodeCategory::Node_Category_TYPE) {
+    switch (node.kind) {
+      NodeType::TYPE_BASIC -> {
+        free(node.data);
+      }
+      NodeType::TYPE_POINTER -> {
+        let d: *PointerTypeData = cast<*PointerTypeData>(node.data);
+        free_node(d.pointee_type);
+        free(d);
+      }
+      NodeType::TYPE_ARRAY -> {
+        let d: *ArrayTypeData = cast<*ArrayTypeData>(node.data);
+        free_node(d.element_type);
+        free_node(d.size);
+        free(d);
+      }
+      NodeType::TYPE_FUNCTION -> {
+        let d: *FuncTypeData = cast<*FuncTypeData>(node.data);
+        loop [i: int = 0](i < d.param_count) : (++i) { free_node(d.param_types[i]); }
+        free(d.param_types);
+        free_node(d.return_type);
+        free(d);
+      }
+      NodeType::TYPE_RESOLUTION -> {
+        let d: *ResolutionData = cast<*ResolutionData>(node.data);
+        free(d.parts);
+        free(d);
+      }
+    }
+  } elif (node.category == NodeCategory::Node_Category_PREPROCESSOR) {
+    switch (node.kind) {
+      NodeType::PREPROCESSOR_MODULE -> {
+        let d: *ModuleData = cast<*ModuleData>(node.data);
+        loop [i: int = 0](i < d.body_count) : (++i) { free_node(d.body[i]); }
+        free(d.body);
+        free(d);
+      }
+      NodeType::PREPROCESSOR_USE -> {
+        free(node.data);
+      }
+    }
+  }
+
+  free(node);
+}
