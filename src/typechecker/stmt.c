@@ -153,7 +153,6 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
         if (func_scope) {
           func_name = func_scope->associated_node->stmt.func_decl.name;
         }
-
         static_memory_track_alloc(analyzer, node->line, node->column, name,
                                   func_name, g_tokens, g_token_count,
                                   g_file_path);
@@ -170,17 +169,11 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     }
   }
 
-  // Track ownership transfer from function return values
-  // Functions with #returns_ownership return resources that need cleanup
-  // This applies to:
-  // 1. Pointer types (direct heap allocations)
-  // 2. Struct types containing pointers (like Arena with buf: *byte)
-  // 3. Any other type where cleanup is semantically required
+  // Track ownership transfer from #returns_ownership function calls
   if (initializer && initializer->type == AST_EXPR_CALL) {
     AstNode *callee = initializer->expr.call.callee;
     Symbol *func_symbol = NULL;
 
-    // Look up the function symbol
     if (callee->type == AST_EXPR_IDENTIFIER) {
       func_symbol = scope_lookup(scope, callee->expr.identifier.name);
     } else if (callee->type == AST_EXPR_MEMBER) {
@@ -191,10 +184,9 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
       }
     }
 
-    // If function returns ownership, track as allocation
-    // The #returns_ownership annotation means the caller is responsible
-    // for cleanup, regardless of whether it's a pointer or struct
-    if (func_symbol && func_symbol->returns_ownership) {
+    // THE FIX: same skip check as the alloc() block above
+    if (func_symbol && func_symbol->returns_ownership &&
+        !in_returns_ownership_func) {
       StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
       if (analyzer) {
         const char *func_name = get_current_function_name(scope);
@@ -208,11 +200,8 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
   if (initializer) {
     AstNode *init_type = NULL;
 
-    // SPECIAL HANDLING: If initializer is an anonymous struct expression
-    // and we have a declared type, pass it for validation
     if (initializer->type == AST_EXPR_STRUCT &&
         !initializer->expr.struct_expr.name && declared_type) {
-      // Call the internal version with expected type for anonymous structs
       init_type = typecheck_struct_expr_internal(initializer, scope, arena,
                                                  declared_type);
     } else {
@@ -228,18 +217,15 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     if (declared_type) {
       TypeMatchResult match = types_match(declared_type, init_type);
       if (match == TYPE_MATCH_NONE) {
-        // Provide specific error messages based on type categories
         if (declared_type && declared_type->type == AST_TYPE_ARRAY) {
           if (!validate_array_type(declared_type, scope, arena)) {
             return false;
           }
-
           if (initializer && !validate_array_initializer(
                                  declared_type, initializer, scope, arena)) {
             return false;
           }
         } else {
-          // General type mismatch
           tc_error_help(
               node, "Type Mismatch",
               "Check that the initializer type matches the declared type",
