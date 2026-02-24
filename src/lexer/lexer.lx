@@ -46,44 +46,37 @@ const is_whitespace -> fn (c: byte) bool {
   return (c == ' ' || c == '\t' || c == '\n' || c == '\r');
 }
 
-const skip_whitespace -> fn (lx: *Lexer) void {
+// Returns number of whitespace chars skipped
+const skip_whitespace -> fn (lx: *Lexer) int {
+  let count: int = 0;
   loop (is_end(lx) == 0 && is_whitespace(peek(lx, 0))) {
     advance(lx);
+    count = count + 1;
   }
+  return count;
 }
 
-const make_token -> fn (val: *byte, kind: int, len: int) Token {
-  return Token { val: val, kind: kind, len: len };
+const make_token -> fn (val: *byte, kind: int, len: int, line: int, whitespace_len: int) Token {
+  return Token { val: val, kind: kind, len: len, line: line, whitespace_len: whitespace_len };
 }
 
 pub const next_token -> fn (lx: *Lexer) Token {
-  skip_whitespace(lx);
+  let ws: int = skip_whitespace(lx);
 
   if (is_end(lx) == 1)
-    return make_token(lx.current, sym::LumaTokenType::TOK_EOF, 0);
+    return make_token(lx.current, sym::LumaTokenType::TOK_EOF, 0, lx.line, ws);
   
   let start: *byte = lx.current;
   let c: byte = peek(lx, 0);
+  let line: int = lx.line;
   
-  if (c == '"') {
-    advance(lx); // skip opening quote
-    let len: int = 0;
-    let str_start: *byte = lx.current;
-    loop (is_end(lx) == 0 && peek(lx, 0) != '"') {
-      advance(lx);
-      len = len + 1;
-    }
-    advance(lx); // skip closing quote
-    return make_token(str_start, sym::LumaTokenType::TOK_STRING, len);
-  }
-
   if (is_digit(c)) {
     let len: int = 0;
     loop (is_end(lx) == 0 && is_digit(peek(lx, 0))) {
       advance(lx);
       len = len + 1;
     }
-    return make_token(start, sym::LumaTokenType::TOK_NUMBER, len);
+    return make_token(start, sym::LumaTokenType::TOK_NUMBER, len, line, ws);
   }
 
   if (is_alpha(c)) {
@@ -97,22 +90,22 @@ pub const next_token -> fn (lx: *Lexer) Token {
     defer { free(word); }
     
     let kind: int = sym::lookup_keyword(word);
-    if (kind != -1) return make_token(start, kind, len);
+    if (kind != -1) return make_token(start, kind, len, line, ws);
     
-    return make_token(start, sym::LumaTokenType::TOK_IDENTIFIER, len);
+    return make_token(start, sym::LumaTokenType::TOK_IDENTIFIER, len, line, ws);
   }
   
   let kind: int = sym::lookup_double(c, peek(lx, 1));
   if (kind != -1) {
     advance(lx);
     advance(lx);
-    return make_token(start, kind, 2);
+    return make_token(start, kind, 2, line, ws);
   }
 
   kind = sym::lookup_single(c);
   if (kind != -1) {
     advance(lx);
-    return make_token(start, kind, 1);
+    return make_token(start, kind, 1, line, ws);
   }
   
   advance(lx);

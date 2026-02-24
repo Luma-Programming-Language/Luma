@@ -1,0 +1,199 @@
+@module "error"
+
+@use "std_io" as IO
+@use "lexer_tokens" as TOK
+
+pub const ErrorInformation -> struct {
+  error_type:   *byte,
+  file_path:    *byte,
+  message:      *byte,
+
+  line:         int,
+  col:          int,
+
+  line_text:    *byte,
+  token_length: int,
+
+  label:        *byte,
+  note:         *byte,
+  help:         *byte,
+};
+
+const MAX_ERRORS: int = 256;
+let error_list: [ErrorInformation; 256];
+const error_count: int = 0;
+
+// ─── Public API ──────────────────────────────────────────────────────────────
+
+pub const error_add -> fn (err: ErrorInformation) void {
+  if (error_count < MAX_ERRORS) {
+    error_list[error_count] = err;
+    error_count = error_count + 1;
+  }
+}
+
+pub const error_clear -> fn () void {
+  error_count = 0;
+}
+
+pub const error_get_count -> fn () int {
+  return error_count;
+}
+
+pub const error_has_errors -> fn () int {
+  if (error_count > 0) return 1;
+  return 0;
+}
+
+pub const error_get_at_index -> fn (index: int) *ErrorInformation {
+  if (index < 0 || index >= error_count) return cast<*ErrorInformation>(0);
+  return &error_list[index];
+}
+
+// ─── Line Generation ─────────────────────────────────────────────────────────
+
+#returns_ownership
+pub const generate_line -> fn (tokens: *Token, token_count: int, target_line: int) *byte {
+  if (target_line < 0 || tokens == cast<*Token>(0)) return "";
+
+  let total_len: int = 1;
+  loop [i: int = 0](i < token_count) : (++i) {
+    if (tokens[i].line == target_line) {
+      total_len = total_len + tokens[i].whitespace_len + tokens[i].len;
+    }
+  }
+
+  let result: *byte = cast<*byte>(alloc((total_len + 1) * sizeof<byte>));
+  let pos: int = 0;
+
+  loop [i: int = 0](i < token_count) : (++i) {
+    if (tokens[i].line != target_line) continue;
+
+    loop [j: int = 0](j < tokens[i].whitespace_len) : (++j) {
+      result[pos] = ' ';
+      pos = pos + 1;
+    }
+
+    loop [j: int = 0](j < tokens[i].len) : (++j) {
+      let tmp: *byte = tokens[i].val;
+      result[pos] = tmp[j];
+      pos = pos + 1;
+    }
+  }
+
+  result[pos] = '\0';
+  return result;
+}
+
+// ─── Formatting Helpers ──────────────────────────────────────────────────────
+
+const get_line_width -> fn (line: int) int {
+  let width: int = 1;
+  let temp: int = line;
+  loop (temp >= 10) {
+    width = width + 1;
+    temp = temp / 10;
+  }
+  return width;
+}
+
+const get_max_line_width -> fn () int {
+  let max_width: int = 1;
+  loop [i: int = 0](i < error_count) : (++i) {
+    let width: int = get_line_width(error_list[i].line);
+    if (width > max_width) { max_width = width; }
+  }
+  return max_width;
+}
+
+const print_line_padding -> fn (current_line: int, max_width: int) void {
+  let current_width: int = get_line_width(current_line);
+  let padding: int = max_width - current_width;
+  loop [i: int = 0](i < padding) : (++i) { output(" "); }
+}
+
+const print_gutter -> fn (max_width: int) void {
+  output(" ");
+  loop [i: int = 0](i < max_width) : (++i) { output(" "); }
+  output("\x1b[34m |\x1b[0m ");
+}
+
+const print_source_line -> fn (line: int, text: *byte, max_width: int) void {
+  output(" ");
+  print_line_padding(line, max_width);
+  output("\x1b[1;34m", line, " |\x1b[0m");
+  if (text != cast<*byte>(0)) {
+    output("\x1b[1;37m ", text, "\x1b[0m");
+  }
+  output("\n");
+}
+
+const print_indicator -> fn (col: int, length: int, max_width: int) void {
+  print_gutter(max_width);
+  let actual_col: int = col - 1;
+  if (actual_col < 0) { actual_col = 0; }
+  loop [i: int = 0](i < actual_col) : (++i) { output(" "); }
+  output("\x1b[1;33m");
+  let indicator_length: int = length;
+  if (indicator_length <= 0) { indicator_length = 1; }
+  loop [i: int = 0](i < indicator_length) : (++i) { output("^"); }
+  output("\x1b[0m\n");
+}
+
+// ─── Report ──────────────────────────────────────────────────────────────────
+
+pub const error_report -> fn () int {
+  if (error_count == 0) return 0;
+
+  let max_width: int = get_max_line_width();
+
+  output("\n");
+  if (error_count == 1) {
+    output("\x1b[1;31merror\x1b[0m: could not compile due to previous error\n");
+  } else {
+    output("\x1b[1;31merror\x1b[0m: could not compile due to ", error_count, " previous errors\n");
+  }
+  output("\n");
+
+  loop [i: int = 0](i < error_count) : (++i) {
+    let e: *ErrorInformation = &error_list[i];
+
+    // Error header
+    output("\x1b[1;31merror\x1b[0m");
+    output("\x1b[1;37m[", e.error_type, "]\x1b[0m");
+    output(": ", e.message, "\n");
+
+    // File location
+    output("  \x1b[1;34m-->\x1b[0m");
+    output("\x1b[90m ", e.file_path, ":", e.line, ":", e.col, "\x1b[0m\n");
+
+    // Gutter
+    print_gutter(max_width);
+    output("\n");
+
+    // Source line and indicator
+    if (e.line_text != cast<*byte>(0)) {
+      print_source_line(e.line, e.line_text, max_width);
+      print_indicator(e.col, e.token_length, max_width);
+    }
+
+    // Note
+    if (e.note != cast<*byte>(0)) {
+      print_gutter(max_width);
+      output("\x1b[1;36mnote\x1b[0m: ", e.note, "\n");
+    }
+
+    // Help
+    if (e.help != cast<*byte>(0)) {
+      print_gutter(max_width);
+      output("\x1b[1;32mhelp\x1b[0m: ", e.help, "\n");
+    }
+
+    print_gutter(max_width);
+    output("\n");
+
+    if (i < error_count - 1) { output("\n"); }
+  }
+
+  return 1;
+}

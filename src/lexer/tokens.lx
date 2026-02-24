@@ -116,9 +116,11 @@ pub const Lexer -> struct {
 };
 
 pub const Token -> struct {
-  val: *byte,
-  kind: int,
-  len: int,
+  val:            *byte,
+  kind:           int,
+  len:            int,
+  line:           int,
+  whitespace_len: int,
 };
 
 pub const create_lexer -> fn (src: *byte) Lexer {
