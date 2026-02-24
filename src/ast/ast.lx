@@ -127,7 +127,7 @@ pub const AstNode -> struct {
 
 #returns_ownership
 pub const make_node -> fn (kind: int, category: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<AstNode> * 1024));
+  let node: *AstNode = cast<*AstNode>(alloc(sizeof<AstNode>));
 
   node.kind     = kind;
   node.category = category;

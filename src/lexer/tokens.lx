@@ -139,7 +139,7 @@ const single_symbol_map: [SingleSymbol; 22] = [
   SingleSymbol { val: '*', kind: LumaTokenType::TOK_STAR    }, 
   SingleSymbol { val: '/', kind: LumaTokenType::TOK_SLASH   },
   SingleSymbol { val: '^', kind: LumaTokenType::TOK_CARET   },
-  SingleSymbol { val: '%', kind: LumaTokenType::TOK_MOD     },
+  SingleSymbol { val: '%', kind: LumaTokenType::TOK_MODL    },
   SingleSymbol { val: '<', kind: LumaTokenType::TOK_LT      },
   SingleSymbol { val: '>', kind: LumaTokenType::TOK_GT      },
   SingleSymbol { val: '{', kind: LumaTokenType::TOK_LBRACE  },

@@ -1,0 +1,91 @@
+@module "parser"
+
+@use "std_vector" as VEC
+
+@use "lexer_tokens" as TOK
+@use "ast" as AST
+
+pub const BindingPower -> enum {
+  BP_NONE,        /**< No binding power */
+  BP_LOWEST,      /**< Lowest binding power */
+  BP_ASSIGN,      /**< Assignment operators (=, +=, etc.) */
+  BP_TERNARY,     /**< Ternary conditional operator (? :) */
+  BP_LOGICAL_OR,  /**< Logical OR operator (||) */
+  BP_LOGICAL_AND, /**< Logical AND operator (&&) */
+  BP_BITWISE_OR,  /**< Bitwise OR operator (|) */
+  BP_BITWISE_XOR, /**< Bitwise XOR operator (^) */
+  BP_BITWISE_AND, /**< Bitwise AND operator (&) */
+  BP_EQUALITY,    /**< Equality operators (==, !=) */
+  BP_RELATIONAL,  /**< Relational operators (<, >, <=, >=) */
+  BP_RANGE,       /**< Range operations (..) */
+  BP_SHIFT,       /**< Shift operators (<<, >>) */
+  BP_SUM,         /**< Addition and subtraction (+, -) */
+  BP_PRODUCT,     /**< Multiplication, division, modulo (*, /, %) */
+  BP_EXPONENT,    /**< Exponentiation operator (**) */
+  BP_UNARY,       /**< Unary operators (!, ~, +, -, prefix ++/--) */
+  BP_POSTFIX,     /**< Postfix operators (++/-- postfix) */
+  BP_CALL,        /**< Function call or indexing */
+  BP_PRIMARY      /**< Primary expressions (literals, variables) */
+};
+
+const PRIMARY_LITERAL_TYPE_MAP: int =  7; 
+const TOKEN_TO_BINOP_MAP:       int = 19;
+const TOKEN_TO_UNOP_MAP:        int =  6;    
+
+const PRIMARY_LITERAL -> struct { tok: int, literal: int };
+const TOKEN_TO_BINOP  -> struct { tok: int, binop: int   };
+const TOKEN_TO_UNOP   -> struct { tok: int, unop: int    };
+
+pub const PRIMARY_TILERAL_MAP: [PRIMARY_LITERAL; 7] = [
+  PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_NUMBER,       literal: AST::LiteralType::LITERAL_INT    },      
+  PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_NUM_FLOAT,    literal: AST::LiteralType::LITERAL_FLOAT  },
+  PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_STRING,       literal: AST::LiteralType::LITERAL_STRING },   
+  PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_CHAR_LITERAL, literal: AST::LiteralType::LITERAL_CHAR   },
+  PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_TRUE,         literal: AST::LiteralType::LITERAL_BOOL   },     
+  PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_FALSE,        literal: AST::LiteralType::LITERAL_BOOL   },
+  PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_IDENTIFIER,   literal: AST::LiteralType::LITERAL_IDENT  },
+];
+
+pub const BINOP_MAP: [TOKEN_TO_BINOP; 19] = [
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_PLUS,        binop: AST::BinaryOp::BINOP_ADD     },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_MINUS,       binop: AST::BinaryOp::BINOP_SUB     },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_STAR,        binop: AST::BinaryOp::BINOP_MUL     },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_SLASH,       binop: AST::BinaryOp::BINOP_DIV     },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_EQEQ,        binop: AST::BinaryOp::BINOP_EQ      },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_NEQ,         binop: AST::BinaryOp::BINOP_NE      },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_LT,          binop: AST::BinaryOp::BINOP_LT      },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_LE,          binop: AST::BinaryOp::BINOP_LE      },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_GT,          binop: AST::BinaryOp::BINOP_GT      },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_GE,          binop: AST::BinaryOp::BINOP_GE      },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_AND,         binop: AST::BinaryOp::BINOP_AND     },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_OR,          binop: AST::BinaryOp::BINOP_OR      },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_AMP,         binop: AST::BinaryOp::BINOP_BIT_AND },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_PIPE,        binop: AST::BinaryOp::BINOP_BIT_OR  },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_CARET,       binop: AST::BinaryOp::BINOP_BIT_XOR },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_RANGE,       binop: AST::BinaryOp::BINOP_RANGE   },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_MODL,        binop: AST::BinaryOp::BINOP_MOD     },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_SHIFT_LEFT,  binop: AST::BinaryOp::BINOP_SHL     },
+  TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_SHIFT_RIGHT, binop: AST::BinaryOp::BINOP_SHR     },
+];
+
+pub const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_BANG,       unop: AST::UnaryType::UNOP_NOT      },
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_TILDE,      unop: AST::UnaryType::UNOP_BIT_NOT  },
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_PLUS,       unop: AST::UnaryType::UNOP_POS      },
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUS,      unop: AST::UnaryType::UNOP_NEG      },
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_PLUSPLUS,   unop: AST::UnaryType::UNOP_POST_INC },
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUSMINUS, unop: AST::UnaryType::UNOP_POST_DEC },
+];
+
+pub const Parser -> struct {
+  file_path: *byte,
+  tks:       Vector,
+  pos:       int,
+/* TODO: Implement these 
+  has_tokens -> fn () bool {},
+  peek       -> fn () Token {},
+  current    -> fn () Token {},
+  advance    -> fn () Token {},
+  consume    -> fn (type: int, err_msg: *byte) Token {}
+*/
+};
