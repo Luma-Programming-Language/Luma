@@ -10,6 +10,8 @@
 @use "constants" as CONST
 @use "commands" as COMD
 @use "lexer" as LEXER
+@use "parser" as PARS
+@use "error" as ERR
 
 @use "ast_stmt" as STMT
 @use "ast" as AST
@@ -25,7 +27,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
     output("Luma Compiler ", CONST::Luma_Compiler_version, "\n");
     return 0;
   } elif (COMD::match_command(args.get(0), ["-l", "--license"], 2) == 1) {
-    COMD::print_license();
+    COMD::print_license(); 
     return 0;
   }
   
@@ -35,6 +37,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
   let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0), &link_files);
   if (COMD::parse_args(&args, &build_config, &link_files) != 0) { return 1; }
 
+  // Lexer Stage ----------------------------------------------------------
   let tokens: Vector = VEC::create_vector(sizeof<Token>);
   let src: *byte = IO::read_file(build_config.filepath);
   let lexer: Lexer = TOK::create_lexer(src);
@@ -46,33 +49,21 @@ pub const main -> fn (argc: int, argv: **byte) int {
   }
   tokens.remove_at(tokens.size - 1); // Remove the EOF token
   
-  // Print out the tokens
-  // let tks: *Token = cast<*Token>(tokens.data);
-  // loop [i: int = 0](i < tokens.size) : (++i) {
-  //   let s: *byte = LEXER::token_value_string(&tks[i]);
-  //   output("Token: ", s, " (kind: ", tks[i].kind, ")\n");
-  //   free(s);
-  // }
-   
-  output("Testing ast tree and the module count is: ", build_config.link_files.size + 1, "\n");
-  output("sizeof<AstNode> = ", sizeof<AstNode>, "\n");
-  output("sizeof<ProgramData> = ", sizeof<ProgramData>, "\n");
-  let module_count: int = build_config.link_files.size + 1; // linked files + main file 
-  let modules: **AstNode = cast<**AstNode>(MEM::calloc(module_count, sizeof<*AstNode>));
-  let program: *AstNode = STMT::make_program(modules, module_count, 0, 0);
-  output("node ptr: ", cast<int>(program), "\n");
-  output("node.data ptr: ", cast<int>(program.data), "\n");
-  output("node.kind: ", program.kind, "\n");
-  output("node.category: ", program.category, "\n");
-  output("node creates\n");
+  // Parser Stage ----------------------------------------------------------
+  let tks: *Token = cast<*Token>(tokens.data);
+  let p: *Parser = PARS::create_parser(tks, tokens.size, build_config.filepath);
+  defer { PARS::free_parser(p); }
   
-  let d: *ProgramData = cast<*ProgramData>(program.data);
-  output("d ptr: ", cast<int>(d), "\n");
-  output("d.module_count: ", d.module_count, "\n");
-  output("d.modules ptr: ", cast<int>(d.modules), "\n");
-  
-  AST::free_node(program);
-  output("free_node done\n");
-  
+  // Try consuming an @module token — first token should be this
+  p.consume(TOK::LumaTokenType::TOK_MODULE, "Expected @module at start of file");
+
+  if (ERR::error_has_errors() == 1) {
+    ERR::error_report();
+    ERR::error_clear();
+    return 1;
+  }
+
+  output("consume worked, pos is now: ", p.pos, "\n");
+
   return 0;
 }

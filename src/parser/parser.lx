@@ -3,6 +3,7 @@
 @use "std_vector" as VEC
 
 @use "lexer_tokens" as TOK
+@use "error" as ERR
 @use "ast" as AST
 
 pub const BindingPower -> enum {
@@ -77,15 +78,118 @@ pub const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUSMINUS, unop: AST::UnaryType::UNOP_POST_DEC },
 ];
 
+const EOF_TOK: Token = { val: "", kind: TOK::LumaTokenType::TOK_EOF, len: 0, line: 0, whitespace_len: 0 }; 
+
+const get_bp -> fn (kind: int) int {
+  switch (kind) {
+    TOK::LumaTokenType::TOK_EQUAL    -> return BindingPower::BP_ASSIGN;
+    TOK::LumaTokenType::TOK_QUESTION -> return BindingPower::BP_TERNARY;
+
+    TOK::LumaTokenType::TOK_OR       -> return BindingPower::BP_LOGICAL_OR;
+    TOK::LumaTokenType::TOK_AND      -> return BindingPower::BP_LOGICAL_AND;
+
+    TOK::LumaTokenType::TOK_PIPE     -> return BindingPower::BP_BITWISE_OR;
+    TOK::LumaTokenType::TOK_CARET    -> return BindingPower::BP_BITWISE_XOR;
+    TOK::LumaTokenType::TOK_AMP      -> return BindingPower::BP_BITWISE_AND;
+
+    TOK::LumaTokenType::TOK_RANGE -> BindingPower::BP_RANGE;
+
+    TOK::LumaTokenType::TOK_EQEQ, TOK::LumaTokenType::TOK_NEQ 
+      -> return BindingPower::BP_EQUALITY;
+
+    TOK::LumaTokenType::TOK_LT, TOK::LumaTokenType::TOK_LE,
+    TOK::LumaTokenType::TOK_GT, TOK::LumaTokenType::TOK_GE 
+      -> return BindingPower::BP_RELATIONAL;
+
+    TOK::LumaTokenType::TOK_SHIFT_LEFT, TOK::LumaTokenType::TOK_SHIFT_RIGHT 
+      -> return BindingPower::BP_SHIFT;
+
+    TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_MINUS 
+      -> return BindingPower::BP_SUM;
+
+    TOK::LumaTokenType::TOK_STAR, TOK::LumaTokenType::TOK_SLASH,
+    TOK::LumaTokenType::TOK_MODL 
+      -> return BindingPower::BP_PRODUCT;
+
+    TOK::LumaTokenType::TOK_PLUSPLUS, TOK::LumaTokenType::TOK_MINUSMINUS
+      -> return BindingPower::BP_POSTFIX;
+
+    TOK::LumaTokenType::TOK_LPAREN, TOK::LumaTokenType::TOK_LBRACKET,
+    TOK::LumaTokenType::TOK_LBRACE, TOK::LumaTokenType::TOK_DOT, 
+    TOK::LumaTokenType::TOK_RESOLVE 
+      -> return BindingPower::BP_CALL;
+
+    _ -> return BindingPower::BP_NONE;
+  }
+}
+
 pub const Parser -> struct {
-  file_path: *byte,
-  tks:       Vector,
-  pos:       int,
-/* TODO: Implement these 
-  has_tokens -> fn () bool {},
-  peek       -> fn () Token {},
-  current    -> fn () Token {},
-  advance    -> fn () Token {},
-  consume    -> fn (type: int, err_msg: *byte) Token {}
-*/
+  file_path:   *byte,
+  tks:         *Token,
+  tok_count:   int,
+  pos:         int,
+  had_error:   int,
+
+  has_tokens -> fn () bool { return (self.pos < self.tok_count); },
+  peek       -> fn (offset: int) Token {
+    let idx: int = self.pos + offset;
+    if (idx < self.tok_count)  
+      return self.tks[idx]; 
+    return EOF_TOK; 
+  },
+  current    -> fn () Token {
+    if (self.pos < self.tok_count)  
+      return self.tks[self.pos]; 
+    return EOF_TOK; 
+  },
+  advance    -> fn () Token {
+    if (self.has_tokens()) { 
+      self.pos = self.pos + 1;
+      return self.tks[self.pos];
+    }
+    return EOF_TOK;
+  },
+  consume    -> fn (kind: int, err_msg: *byte) Token {
+    let line: int = self.current().line;
+    let col:  int = self.current().whitespace_len;
+
+    if (self.current().kind == kind) 
+      return self.advance();
+
+    // Create a Parser Error
+    let info: ErrorInformation = ErrorInformation {
+      error_type:   "Parser Error",
+      file_path:    self.file_path,
+      message:      err_msg,
+      line:         line,
+      col:          col,
+      line_text:    ERR::generate_line(self.tks, self.tok_count, line),
+      token_length: 1,
+      label:        cast<*byte>(0),
+      note:         cast<*byte>(0),
+      help:         cast<*byte>(0),
+    };
+    ERR::error_add(info);
+    self.had_error = 1;
+
+    return EOF_TOK;
+  }
 };
+
+#returns_ownership
+pub const create_parser -> fn (tks: *Token, tok_count: int, file_path: *byte) *Parser {
+  let p: *Parser = cast<*Parser>(alloc(sizeof<Parser>));
+
+  p.file_path = file_path;
+  p.tok_count = tok_count;
+  p.had_error = 0;
+  p.tks = tks;
+  p.pos = 0;
+
+  return p;
+}
+
+#takes_ownership
+pub const free_parser -> fn (p: *Parser) void {
+  free(p);
+}

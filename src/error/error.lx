@@ -54,7 +54,11 @@ pub const error_get_at_index -> fn (index: int) *ErrorInformation {
 
 #returns_ownership
 pub const generate_line -> fn (tokens: *Token, token_count: int, target_line: int) *byte {
-  if (target_line < 0 || tokens == cast<*Token>(0)) return "";
+  if (target_line < 0 || tokens == cast<*Token>(0)) {
+    let empty: *byte = cast<*byte>(alloc(1));
+    empty[0] = '\0';
+    return empty;
+  }
 
   let total_len: int = 1;
   loop [i: int = 0](i < token_count) : (++i) {
@@ -74,9 +78,9 @@ pub const generate_line -> fn (tokens: *Token, token_count: int, target_line: in
       pos = pos + 1;
     }
 
+    let src: *byte = tokens[i].val;
     loop [j: int = 0](j < tokens[i].len) : (++j) {
-      let tmp: *byte = tokens[i].val;
-      result[pos] = tmp[j];
+      result[pos] = src[j];
       pos = pos + 1;
     }
   }
