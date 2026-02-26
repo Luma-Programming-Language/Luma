@@ -43,7 +43,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
   let lexer: Lexer = TOK::create_lexer(src);
   defer { VEC::free_vector(&tokens); free(src); }
   
-  loop (LEXER::is_end(&lexer) == 0) {
+  loop (lexer.is_end() == 0) {
     let tok: Token = LEXER::next_token(&lexer);
     tokens.push_back(cast<*void>(&tok));
   }
@@ -60,7 +60,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
   if (ERR::error_has_errors() == 1) {
     ERR::error_report();
     ERR::error_clear();
-    return 1;
+    return CONST::LumaErrorCode::Parser_Error;
   }
 
   output("consume worked, pos is now: ", p.pos, "\n");

@@ -2,88 +2,49 @@
 
 @use "lexer_tokens" as sym
 
-#returns_ownership
-pub const token_value_string -> fn (tok: *Token) *byte {
-  let s: *byte = cast<*byte>(alloc((tok.len + 1) * sizeof<byte>));
-  loop [i: int = 0](i < tok.len) : (++i) {
-    s[i] = tok.val[i];
-  }  
-  s[tok.len] = '\0';
-  return s;
-}
-
-const peek -> fn (lx: *Lexer, offset: int) byte { 
-  return lx.current[offset]; 
-}
-
-const advance -> fn (lx: *Lexer) byte {
-  let c: byte = peek(lx, 0);
-  lx.current = cast<*byte>(cast<int>(lx.current) + 1);
-
-  if (c == '\n') {
-    lx.line = lx.line + 1;
-    lx.col = 0;
-  } elif (c != '\0') {
-    lx.col = lx.col + 1;
-  }
-  
-  return c;
-}
-
-pub const is_end -> fn (lx: *Lexer) int { 
-  if (peek(lx, 0) == '\0') return 1;
-  return 0;
-}
-
 const is_alpha -> fn (c: byte) bool {
-  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || 
-         (c == '_') || (c == '@') || (c == '#');
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_');
 }
 const is_digit -> fn (c: byte) bool { return (c >= '0' && c <= '9'); }
 const is_alnum -> fn (c: byte) bool { return is_alpha(c) || is_digit(c); }
 
-const is_whitespace -> fn (c: byte) bool {
-  return (c == ' ' || c == '\t' || c == '\n' || c == '\r');
-}
-
 const skip_line_comment -> fn (lx: *Lexer) void {
-  loop (is_end(lx) == 0 && peek(lx, 0) != '\n') {
-    advance(lx);
+  loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
+    lx.advance();
   }
 }
 
 const skip_block_comment -> fn (lx: *Lexer) void {
-  advance(lx); // skip /
-  advance(lx); // skip *
-  loop (is_end(lx) == 0) {
-    if (peek(lx, 0) == '*' && peek(lx, 1) == '/') {
-      advance(lx); // skip *
-      advance(lx); // skip /
+  lx.advance(); // skip /
+  lx.advance(); // skip *
+  loop (lx.is_end() == 0) {
+    if (lx.peek(0) == '*' && lx.peek(1) == '/') {
+      lx.advance(); // skip *
+      lx.advance(); // skip /
       return;
     }
-    advance(lx);
+    lx.advance();
   }
 }
 
 const skip_whitespace -> fn (lx: *Lexer) int {
   let count: int = 0;
-  loop (is_end(lx) == 0) {
-    let c: byte = peek(lx, 0);
+  loop (lx.is_end() == 0) {
+    let c: byte = lx.peek(0);
 
     if (c == ' ' || c == '\t') {
-      advance(lx);
+      lx.advance();
       count = count + 1;
     } elif (c == '\n' || c == '\r') {
-      advance(lx);
-      count = 0; // reset — only track horizontal whitespace on current line
-    } elif (c == '/' && peek(lx, 1) == '/') {
-      // doc comments are tokens, stop here
-      if (peek(lx, 2) == '/' || peek(lx, 2) == '!') {
+      lx.advance();
+      count = 0;
+    } elif (c == '/' && lx.peek(1) == '/') {
+      if (lx.peek(2) == '/' || lx.peek(2) == '!') {
         return count;
       }
       skip_line_comment(lx);
-      count = 0; // comment ended the line
-    } elif (c == '/' && peek(lx, 1) == '*') {
+      count = 0;
+    } elif (c == '/' && lx.peek(1) == '*') {
       skip_block_comment(lx);
       count = 0;
     } else {
@@ -101,96 +62,93 @@ pub const next_token -> fn (lx: *Lexer) Token {
   loop (1) {
     let ws: int = skip_whitespace(lx);
 
-    if (is_end(lx) == 1)
+    if (lx.is_end() == 1)
       return make_token(lx.current, sym::LumaTokenType::TOK_EOF, 0, lx.line, ws);
 
     let start: *byte = lx.current;
-    let c: byte = peek(lx, 0);
+    let c: byte = lx.peek(0);
     let line: int = lx.line;
 
     // Preprocessor directives @module @use
     if (c == '@') {
-      advance(lx);
+      lx.advance();
       let len: int = 1;
-      loop (is_end(lx) == 0 && is_alnum(peek(lx, 0))) {
-        advance(lx);
+      loop (lx.is_end() == 0 && is_alnum(lx.peek(0))) {
+        lx.advance();
         len = len + 1;
       }
       let word: *byte = sym::create_word(start, len);
       let kind: int = sym::lookup_keyword(word);
-      if (kind != -1) return make_token(start, kind, len, line, ws);
       free(word);
+      if (kind != -1) { return make_token(start, kind, len, line, ws); }
       return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, ws);
     }
 
     // Function attributes #returns_ownership #takes_ownership
     if (c == '#') {
-      advance(lx);
+      lx.advance();
       let len: int = 1;
-      loop (is_end(lx) == 0 && (is_alnum(peek(lx, 0)) || peek(lx, 0) == '_')) {
-        advance(lx);
+      loop (lx.is_end() == 0 && (is_alnum(lx.peek(0)) || lx.peek(0) == '_')) {
+        lx.advance();
         len = len + 1;
       }
       let word: *byte = sym::create_word(start, len);
       let kind: int = sym::lookup_keyword(word);
-      if (kind != -1) return make_token(start, kind, len, line, ws);
       free(word);
+      if (kind != -1) { return make_token(start, kind, len, line, ws); }
       return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, ws);
     }
 
     // String literal
     if (c == '"') {
-      advance(lx);
+      lx.advance();
       let len: int = 0;
-      loop (is_end(lx) == 0 && peek(lx, 0) != '"') {
-        if (peek(lx, 0) == '\n') {
+      loop (lx.is_end() == 0 && lx.peek(0) != '"') {
+        if (lx.peek(0) == '\n') {
           return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, ws);
         }
-        advance(lx);
+        lx.advance();
         len = len + 1;
       }
-      if (is_end(lx) == 1) {
+      if (lx.is_end() == 1) {
         return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, ws);
       }
-      advance(lx); // closing "
-      // val points past opening quote, len excludes quotes — matches C lexer
+      lx.advance(); // closing "
       let inner_start: *byte = cast<*byte>(cast<int>(start) + 1);
       return make_token(inner_start, sym::LumaTokenType::TOK_STRING, len, line, ws);
     }
 
     // Char literal
     if (c == '\'') {
-      advance(lx);
-      if (is_end(lx) == 1 || peek(lx, 0) == '\'') {
+      lx.advance();
+      if (lx.is_end() == 1 || lx.peek(0) == '\'') {
         return make_token(start, sym::LumaTokenType::TOK_ERROR, 1, line, ws);
       }
-      // Handle escape sequences
-      if (peek(lx, 0) == '\\') {
-        advance(lx); // backslash
-        advance(lx); // escaped char
+      if (lx.peek(0) == '\\') {
+        lx.advance();
+        lx.advance();
       } else {
-        advance(lx); // regular char
+        lx.advance();
       }
-      if (peek(lx, 0) != '\'') {
+      if (lx.peek(0) != '\'') {
         return make_token(start, sym::LumaTokenType::TOK_ERROR, 2, line, ws);
       }
-      advance(lx); // closing '
+      lx.advance(); // closing '
       return make_token(start, sym::LumaTokenType::TOK_CHAR_LITERAL, 3, line, ws);
     }
 
     // Number
     if (is_digit(c)) {
       let len: int = 0;
-      loop (is_end(lx) == 0 && is_digit(peek(lx, 0))) {
-        advance(lx);
+      loop (lx.is_end() == 0 && is_digit(lx.peek(0))) {
+        lx.advance();
         len = len + 1;
       }
-      // Float
-      if (is_end(lx) == 0 && peek(lx, 0) == '.' && is_digit(peek(lx, 1))) {
-        advance(lx);
+      if (lx.is_end() == 0 && lx.peek(0) == '.' && is_digit(lx.peek(1))) {
+        lx.advance();
         len = len + 1;
-        loop (is_end(lx) == 0 && is_digit(peek(lx, 0))) {
-          advance(lx);
+        loop (lx.is_end() == 0 && is_digit(lx.peek(0))) {
+          lx.advance();
           len = len + 1;
         }
         return make_token(start, sym::LumaTokenType::TOK_NUM_FLOAT, len, line, ws);
@@ -201,8 +159,8 @@ pub const next_token -> fn (lx: *Lexer) Token {
     // Identifier or keyword
     if (is_alpha(c)) {
       let len: int = 0;
-      loop (is_end(lx) == 0 && is_alnum(peek(lx, 0))) {
-        advance(lx);
+      loop (lx.is_end() == 0 && is_alnum(lx.peek(0))) {
+        lx.advance();
         len = len + 1;
       }
       let word: *byte = sym::create_word(start, len);
@@ -213,22 +171,22 @@ pub const next_token -> fn (lx: *Lexer) Token {
     }
 
     // Double symbol
-    let kind: int = sym::lookup_double(c, peek(lx, 1));
+    let kind: int = sym::lookup_double(c, lx.peek(1));
     if (kind != -1) {
-      advance(lx);
-      advance(lx);
+      lx.advance();
+      lx.advance();
       return make_token(start, kind, 2, line, ws);
     }
 
     // Single symbol
     kind = sym::lookup_single(c);
     if (kind != -1) {
-      advance(lx);
+      lx.advance();
       return make_token(start, kind, 1, line, ws);
     }
 
     // Unrecognized
-    advance(lx);
+    lx.advance();
   }
 
   return make_token(lx.current, sym::LumaTokenType::TOK_EOF, 0, lx.line, 0);
