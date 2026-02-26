@@ -1,0 +1,12 @@
+[project]
+name      = "luma"
+directory = "src"
+entry     = "src/main.lx"
+optimize  = 3
+
+[build]
+flags = ""
+
+[output]
+binary_dir = "bin"
+

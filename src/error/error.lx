@@ -54,39 +54,39 @@ pub const error_get_at_index -> fn (index: int) *ErrorInformation {
 
 #returns_ownership
 pub const generate_line -> fn (tokens: *Token, token_count: int, target_line: int) *byte {
-  if (target_line < 0 || tokens == cast<*Token>(0)) {
-    let empty: *byte = cast<*byte>(alloc(1));
-    empty[0] = '\0';
-    return empty;
-  }
-
-  let total_len: int = 1;
-  loop [i: int = 0](i < token_count) : (++i) {
-    if (tokens[i].line == target_line) {
-      total_len = total_len + tokens[i].whitespace_len + tokens[i].len;
-    }
-  }
-
-  let result: *byte = cast<*byte>(alloc((total_len + 1) * sizeof<byte>));
-  let pos: int = 0;
-
-  loop [i: int = 0](i < token_count) : (++i) {
-    if (tokens[i].line != target_line) continue;
-
-    loop [j: int = 0](j < tokens[i].whitespace_len) : (++j) {
-      result[pos] = ' ';
-      pos = pos + 1;
+    if (target_line < 0 || tokens == cast<*Token>(0)) {
+        let empty: *byte = cast<*byte>(alloc(1));
+        empty[0] = '\0';
+        return empty;
     }
 
-    let src: *byte = tokens[i].val;
-    loop [j: int = 0](j < tokens[i].len) : (++j) {
-      result[pos] = src[j];
-      pos = pos + 1;
+    let total_len: int = 1;
+    loop [i: int = 0](i < token_count) : (++i) {
+        if (tokens[i].line == target_line) {
+            total_len = total_len + tokens[i].whitespace_len + tokens[i].len;
+        }
     }
-  }
 
-  result[pos] = '\0';
-  return result;
+    let result: *byte = cast<*byte>(alloc(total_len * sizeof<byte>));
+    let pos: int = 0;
+
+    loop [i: int = 0](i < token_count) : (++i) {
+        if (tokens[i].line != target_line) continue;
+
+        loop [j: int = 0](j < tokens[i].whitespace_len) : (++j) {
+            result[pos] = ' ';
+            pos = pos + 1;
+        }
+
+        let src: *byte = tokens[i].val;
+        loop [j: int = 0](j < tokens[i].len) : (++j) {
+            result[pos] = src[j];
+            pos = pos + 1;
+        }
+    }
+
+    result[pos] = '\0';
+    return result;
 }
 
 // ─── Formatting Helpers ──────────────────────────────────────────────────────

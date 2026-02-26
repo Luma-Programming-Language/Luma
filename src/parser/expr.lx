@@ -1,1 +1,117 @@
 @module "parser_expr"
+
+@use "lexer_tokens" as TOK
+@use "ast_expr" as EAST
+@use "parser" as PARS
+@use "ast" as AST
+
+#returns_ownership const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
+#returns_ownership const binary   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
+#returns_ownership const call     -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
+#returns_ownership const assign   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
+#returns_ownership const prefix   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
+
+#returns_ownership const primary  -> fn (p: *Parser) *AstNode;
+#returns_ownership const unary    -> fn (p: *Parser) *AstNode;
+#returns_ownership const group    -> fn (p: *Parser) *AstNode;
+#returns_ownership const array    -> fn (p: *Parser) *AstNode;
+#returns_ownership const index    -> fn (p: *Parser) *AstNode;
+#returns_ownership const deref    -> fn (p: *Parser) *AstNode;
+#returns_ownership const addr     -> fn (p: *Parser) *AstNode;
+#returns_ownership const _alloc   -> fn (p: *Parser) *AstNode;
+#returns_ownership const _free    -> fn (p: *Parser) *AstNode;
+#returns_ownership const _cast    -> fn (p: *Parser) *AstNode;
+#returns_ownership const _intput  -> fn (p: *Parser) *AstNode;
+#returns_ownership const _system  -> fn (p: *Parser) *AstNode;
+#returns_ownership const syscall  -> fn (p: *Parser) *AstNode;
+#returns_ownership const _sizeof  -> fn (p: *Parser) *AstNode;
+#returns_ownership const estruct  -> fn (p: *Parser) *AstNode;
+
+#returns_ownership
+const nud -> fn (p: *Parser) *AstNode { 
+  switch (p.current().kind) {
+    TOK::LumaTokenType::TOK_NUMBER, TOK::LumaTokenType::TOK_NUM_FLOAT, TOK::LumaTokenType::TOK_STRING,
+    TOK::LumaTokenType::TOK_CHAR_LITERAL, TOK::LumaTokenType::TOK_IDENTIFIER
+      -> return primary(p);
+    TOK::LumaTokenType::TOK_MINUS, TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_BANG,
+    TOK::LumaTokenType::TOK_TILDE, TOK::LumaTokenType::TOK_PLUSPLUS, TOK::LumaTokenType::TOK_MINUSMINUS
+      -> return unary(p);
+    TOK::LumaTokenType::TOK_LPAREN   -> return group(p);
+    TOK::LumaTokenType::TOK_LBRACKET -> return array(p);
+    TOK::LumaTokenType::TOK_LBRACE   -> return estruct(p);
+    TOK::LumaTokenType::TOK_STAR     -> return deref(p);
+    TOK::LumaTokenType::TOK_AMP      -> return addr(p);
+    TOK::LumaTokenType::TOK_ALLOC    -> return _alloc(p);
+    TOK::LumaTokenType::TOK_FREE     -> return _free(p);
+    TOK::LumaTokenType::TOK_CAST     -> return _cast(p);
+    TOK::LumaTokenType::TOK_INPUT    -> return _intput(p);
+    TOK::LumaTokenType::TOK_SYSTEM   -> return _system(p);
+    TOK::LumaTokenType::TOK_SYSCALL  -> return syscall(p);
+    TOK::LumaTokenType::TOK_SIZE_OF  -> return _sizeof(p);
+
+    _ -> {
+      p.advance();
+      return cast<*AstNode>(0);
+    }
+  }
+}
+
+#returns_ownership
+const led -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
+  switch(p.current().kind) {
+    TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_MINUS, TOK::LumaTokenType::TOK_STAR,
+    TOK::LumaTokenType::TOK_SLASH, TOK::LumaTokenType::TOK_MODL, TOK::LumaTokenType::TOK_EQEQ,
+    TOK::LumaTokenType::TOK_NEQ,  TOK::LumaTokenType::TOK_LT,    TOK::LumaTokenType::TOK_LE,
+    TOK::LumaTokenType::TOK_GT,   TOK::LumaTokenType::TOK_GE,    TOK::LumaTokenType::TOK_AMP,
+    TOK::LumaTokenType::TOK_PIPE, TOK::LumaTokenType::TOK_CARET, TOK::LumaTokenType::TOK_AND,
+    TOK::LumaTokenType::TOK_OR,   TOK::LumaTokenType::TOK_RANGE, 
+    TOK::LumaTokenType::TOK_SHIFT_LEFT, TOK::LumaTokenType::TOK_SHIFT_RIGHT 
+      -> return binary(p, left, bp);
+    TOK::LumaTokenType::TOK_DOT, TOK::LumaTokenType::TOK_RESOLVE, TOK::LumaTokenType::TOK_PLUSPLUS,
+    TOK::LumaTokenType::TOK_MINUSMINUS, TOK::LumaTokenType::TOK_LBRACKET 
+      -> return prefix(p, left, bp);
+    TOK::LumaTokenType::TOK_LBRACE -> return enstruct(p, left, bp);
+    TOK::LumaTokenType::TOK_LPAREN -> return call(p, left, bp);
+    TOK::LumaTokenType::TOK_EQUAL  -> return assign(p, left, bp);
+  
+    _ -> {
+      p.advance();
+      return left;
+    }
+  }
+}
+
+#returns_ownership
+pub const parse_expr -> fn (p: *Parser, bp: int) *AstNode {
+  let left: *AstNode = nud(p);
+
+  loop (p.has_tokens() && (PARS::get_bp(p.current().kind) > bp)) {
+    let c_bp: int = PARS::get_bp(p.current().kind);
+    left = led(p, left, c_bp);
+  }
+
+  return left;
+}
+
+#returns_ownership const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { return cast<*AstNode>(0); } 
+#returns_ownership const binary   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const call     -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const assign   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const prefix   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { return cast<*AstNode>(0); }
+
+#returns_ownership const primary  -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); } 
+#returns_ownership const unary    -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const group    -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const array    -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const index    -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const deref    -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const addr     -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const _alloc   -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const _free    -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const _cast    -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const _intput  -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const _system  -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const syscall  -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const _sizeof  -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const estruct  -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+

@@ -6,6 +6,8 @@
 @use "error" as ERR
 @use "ast" as AST
 
+@use "parser_stmt" as PSTMT
+
 pub const BindingPower -> enum {
   BP_NONE,        /**< No binding power */
   BP_LOWEST,      /**< Lowest binding power */
@@ -80,7 +82,7 @@ pub const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
 
 const EOF_TOK: Token = { val: "", kind: TOK::LumaTokenType::TOK_EOF, len: 0, line: 0, whitespace_len: 0 }; 
 
-const get_bp -> fn (kind: int) int {
+pub const get_bp -> fn (kind: int) int {
   switch (kind) {
     TOK::LumaTokenType::TOK_EQUAL    -> return BindingPower::BP_ASSIGN;
     TOK::LumaTokenType::TOK_QUESTION -> return BindingPower::BP_TERNARY;
