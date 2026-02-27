@@ -256,3 +256,21 @@ pub const make_grouping -> fn (expr: *AstNode, line: int, col: int) *AstNode {
   return node;
 }
 
+#returns_ownership
+pub const make_input -> fn (type_node: *AstNode, msg: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_INPUT, AST::NodeCategory::Node_Category_EXPR, line, col);
+  let data: *CastData = cast<*CastData>(MEM::calloc(1, sizeof<CastData>));
+  data.type_node = type_node;
+  data.castee    = msg;
+  node.data      = cast<*void>(data);
+  return node;
+}
+
+#returns_ownership
+pub const make_system -> fn (command: *AstNode, line: int, col: int) *AstNode {
+  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_SYSTEM, AST::NodeCategory::Node_Category_EXPR, line, col);
+  let data: *UnaryData = cast<*UnaryData>(MEM::calloc(1, sizeof<UnaryData>));
+  data.operand = command;
+  node.data    = cast<*void>(data);
+  return node;
+}

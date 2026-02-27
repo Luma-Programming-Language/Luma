@@ -52,6 +52,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
   // Parser Stage ----------------------------------------------------------
   let tks: *Token = cast<*Token>(tokens.data);
   let p: *Parser = PARS::create_parser(tks, tokens.size, build_config.filepath);
+  let node: *AstNode = p.parse(build_config);
   defer { PARS::free_parser(p); }
   
   // Try consuming an @module token — first token should be this

@@ -1,8 +1,10 @@
 @module "parser"
 
 @use "std_vector" as VEC
+@use "std_memory" as MEM
 
 @use "lexer_tokens" as TOK
+@use "constants" as CONST
 @use "error" as ERR
 @use "ast" as AST
 
@@ -39,7 +41,7 @@ const PRIMARY_LITERAL -> struct { tok: int, literal: int };
 const TOKEN_TO_BINOP  -> struct { tok: int, binop: int   };
 const TOKEN_TO_UNOP   -> struct { tok: int, unop: int    };
 
-pub const PRIMARY_TILERAL_MAP: [PRIMARY_LITERAL; 7] = [
+const PRIMARY_LILERAL_MAP: [PRIMARY_LITERAL; 7] = [
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_NUMBER,       literal: AST::LiteralType::LITERAL_INT    },      
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_NUM_FLOAT,    literal: AST::LiteralType::LITERAL_FLOAT  },
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_STRING,       literal: AST::LiteralType::LITERAL_STRING },   
@@ -49,7 +51,7 @@ pub const PRIMARY_TILERAL_MAP: [PRIMARY_LITERAL; 7] = [
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_IDENTIFIER,   literal: AST::LiteralType::LITERAL_IDENT  },
 ];
 
-pub const BINOP_MAP: [TOKEN_TO_BINOP; 19] = [
+const BINOP_MAP: [TOKEN_TO_BINOP; 19] = [
   TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_PLUS,        binop: AST::BinaryOp::BINOP_ADD     },
   TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_MINUS,       binop: AST::BinaryOp::BINOP_SUB     },
   TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_STAR,        binop: AST::BinaryOp::BINOP_MUL     },
@@ -71,7 +73,7 @@ pub const BINOP_MAP: [TOKEN_TO_BINOP; 19] = [
   TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_SHIFT_RIGHT, binop: AST::BinaryOp::BINOP_SHR     },
 ];
 
-pub const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
+const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_BANG,       unop: AST::UnaryType::UNOP_NOT      },
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_TILDE,      unop: AST::UnaryType::UNOP_BIT_NOT  },
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_PLUS,       unop: AST::UnaryType::UNOP_POS      },
@@ -79,6 +81,30 @@ pub const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_PLUSPLUS,   unop: AST::UnaryType::UNOP_POST_INC },
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUSMINUS, unop: AST::UnaryType::UNOP_POST_DEC },
 ];
+
+pub const search_literal_map -> fn (kind: int) int {
+  loop [i: int = 0](i < PRIMARY_LITERAL_TYPE_MAP) : (++i) {
+    if (kind == PRIMARY_LILERAL_MAP[i].tok) 
+      return PRIMARY_LILERAL_MAP[i].literal;
+  }
+  return -1;
+}
+
+pub const search_binop_map -> fn (kind: int) int {
+  loop [i: int = 0](i < TOKEN_TO_BINOP_MAP) : (++i) {
+    if (kind == BINOP_MAP[i].tok) 
+      return BINOP_MAP[i].binop;
+  }
+  return -1;
+}
+
+pub const search_unop_map -> fn (kind: int) int {
+  loop [i: int = 0](i < TOKEN_TO_UNOP_MAP) : (++i) {
+    if (kind == UNOP_MAP[i].tok) 
+      return UNOP_MAP[i].unop;
+  }
+  return -1;
+}
 
 const EOF_TOK: Token = { val: "", kind: TOK::LumaTokenType::TOK_EOF, len: 0, line: 0, whitespace_len: 0 }; 
 
@@ -166,7 +192,7 @@ pub const Parser -> struct {
       line:         line,
       col:          col,
       line_text:    ERR::generate_line(self.tks, self.tok_count, line),
-      token_length: 1,
+      token_length: self.current().len,
       label:        cast<*byte>(0),
       note:         cast<*byte>(0),
       help:         cast<*byte>(0),
@@ -175,6 +201,41 @@ pub const Parser -> struct {
     self.had_error = 1;
 
     return EOF_TOK;
+  },
+
+  error -> fn (err_type: *byte, err_msg: *byte) void {
+    let line: int = self.current().line;
+    let col:  int = self.current().whitespace_len;
+
+    let info: ErrorInformation = ErrorInformation {
+      error_type:   err_type,
+      file_path:    self.file_path,
+      message:      err_msg,
+      line:         line,
+      col:          col,
+      line_text:    ERR::generate_line(self.tks, self.tok_count, line),
+      token_length: self.current().len,
+      label:        "Parser Error",
+      note:         cast<*byte>(0),
+      help:         cast<*byte>(0),
+    };
+    ERR::error_add(info);
+  },
+
+  #returns_ownership
+  get_name -> fn () *byte {
+    let name: *byte = cast<*byte>(alloc(self.current().len + 1));
+    MEM::memcpy(
+      cast<*void>(name), 
+      cast<*void>(self.current().val), 
+      self.current().len
+    );
+    name[self.current().len] = '\0';
+    return name;
+  },
+  
+  parse -> fn (config: LumaBuildConfig) *AstNode { 
+    return cast<*AstNode>(0); 
   }
 };
 
@@ -194,4 +255,9 @@ pub const create_parser -> fn (tks: *Token, tok_count: int, file_path: *byte) *P
 #takes_ownership
 pub const free_parser -> fn (p: *Parser) void {
   free(p);
+}
+
+#returns_ownership
+pub const parse_type -> fn (p: *Parser) *AstNode {
+  return cast<*AstNode>(0);
 }

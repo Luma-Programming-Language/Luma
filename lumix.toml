@@ -2,10 +2,9 @@
 name      = "luma"
 directory = "src"
 entry     = "src/main.lx"
-optimize  = 3
 
 [build]
-flags = ""
+flags = "-O3"
 
 [output]
 binary_dir = "bin"
