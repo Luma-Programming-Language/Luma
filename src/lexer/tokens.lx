@@ -58,7 +58,7 @@ pub const LumaTokenType -> enum {
   TOK_USE,    /**< @use */
 
   // function attibutes
-  TOK_RETURNES_OWNERSHIP, /** #returns_ownership */
+  TOK_RETURNS_OWNERSHIP, /** #returns_ownership */
   TOK_TAKES_OWNERSHIP,    /** #takes_ownership */
 
   // Symbols
@@ -237,7 +237,7 @@ pub const keyword_map: [Keyword; 41] = [
   Keyword { val: "@use",    kind: LumaTokenType::TOK_USE },
 
   // Function Attributes
-  Keyword { val: "#returns_ownership", kind: LumaTokenType::TOK_RETURNES_OWNERSHIP },
+  Keyword { val: "#returns_ownership", kind: LumaTokenType::TOK_RETURNS_OWNERSHIP },
   Keyword { val: "#takes_ownership",   kind: LumaTokenType::TOK_TAKES_OWNERSHIP },
 
   // Built-in Functions

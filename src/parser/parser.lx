@@ -8,8 +8,6 @@
 @use "error" as ERR
 @use "ast" as AST
 
-@use "parser_stmt" as PSTMT
-
 pub const BindingPower -> enum {
   BP_NONE,        /**< No binding power */
   BP_LOWEST,      /**< Lowest binding power */
@@ -257,7 +255,3 @@ pub const free_parser -> fn (p: *Parser) void {
   free(p);
 }
 
-#returns_ownership
-pub const parse_type -> fn (p: *Parser) *AstNode {
-  return cast<*AstNode>(0);
-}

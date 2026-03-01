@@ -1,1 +1,718 @@
 @module "parser_stmt"
+
+@use "std_string" as STRING
+@use "std_vector" as VEC
+
+@use "parser_type" as PTYPE
+@use "parser_expr" as PEXPR
+@use "lexer_tokens" as TOK
+@use "ast_module" as MAST
+@use "ast_stmt" as SAST
+@use "parser" as PARS
+@use "ast" as AST
+
+#returns_ownership const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode; 
+#returns_ownership const _fn    -> fn (p: *Parser, name: *byte, is_public: int, 
+                                           returns_ownership: int, takes_ownership: int) *AstNode;
+#returns_ownership const break_continue_stmt -> fn (p: *Parser, is_continue: int) *AstNode;
+#returns_ownership const _enum   -> fn (p: *Parser, name: *byte, is_public: int) *AstNode;
+#returns_ownership const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode;
+#returns_ownership const var     -> fn (p: *Parser, is_public: int) *AstNode;
+#returns_ownership const infinite_loop_stmt  -> fn (p: *Parser) *AstNode;
+#returns_ownership const for_loop_stmt       -> fn (p: *Parser) *AstNode;
+#returns_ownership const print       -> fn (p: *Parser, ln: int) *AstNode;
+#returns_ownership const expr        -> fn (p: *Parser) *AstNode;
+#returns_ownership const use         -> fn (p: *Parser) *AstNode;
+#returns_ownership const return_stmt -> fn (p: *Parser) *AstNode;
+#returns_ownership const block       -> fn (p: *Parser) *AstNode;
+#returns_ownership const _if         -> fn (p: *Parser) *AstNode;
+#returns_ownership const _defer      -> fn (p: *Parser) *AstNode;
+#returns_ownership const _switch     -> fn (p: *Parser) *AstNode;
+#returns_ownership const _impl       -> fn (p: *Parser) *AstNode;
+#returns_ownership const _loop       -> fn (p: *Parser) *AstNode;
+
+#returns_ownership
+pub const parser_stmt -> fn (p: *Parser) *AstNode {
+  let returns_ownership: int = 0;
+  let takes_ownership: int = 0;
+  let is_public: int = 0;
+
+  loop (p.current().kind == TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP ||
+        p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP) {
+    switch(p.current().kind) {
+      TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP -> {
+        returns_ownership = 1;
+        p.advance();
+      }
+      TOK::LumaTokenType::TOK_TAKES_OWNERSHIP -> {
+        takes_ownership = 1;
+        p.advance();
+      }
+    }
+  }
+
+  switch(p.current().kind) {
+    TOK::LumaTokenType::TOK_PRIVATE -> {
+      is_public = 0;
+      p.advance();
+    }
+    TOK::LumaTokenType::TOK_PUBLIC -> {
+      is_public = 1;
+      p.advance();
+    }
+  }
+
+  switch(p.current().kind) {
+    TOK::LumaTokenType::TOK_CONTINUE, TOK::LumaTokenType::TOK_BREAK 
+      -> return break_continue_stmt(p, cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
+    TOK::LumaTokenType::TOK_CONST  -> return _const(p, is_public, returns_ownership, takes_ownership);
+    TOK::LumaTokenType::TOK_VAR    -> return var(p, is_public);
+    TOK::LumaTokenType::TOK_USE    -> return use(p);
+    TOK::LumaTokenType::TOK_RETURN -> return return_stmt(p);
+    TOK::LumaTokenType::TOK_LBRACE -> return block(p);
+    TOK::LumaTokenType::TOK_IF     -> return _if(p);
+    TOK::LumaTokenType::TOK_LOOP   -> return _loop(p);
+    TOK::LumaTokenType::TOK_DEFER  -> return _defer(p);
+    TOK::LumaTokenType::TOK_SWITCH -> return _switch(p);
+    _ -> return expr(p); 
+  }
+}
+
+#returns_ownership 
+const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode { 
+  let doc_comment: *byte = ""; // TODO: Implement docs comments
+  
+  let line: int = p.current().line;
+
+  p.consume(TOK::LumaTokenType::TOK_CONST, "Expected 'const' keyword.");
+  let name: *byte = p.get_name();
+  p.advance();
+
+  if (p.current().kind == TOK::LumaTokenType::TOK_COLON) {
+    p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after const name for a var declaration.");
+
+    let type: *AstNode = PTYPE::parse_type(p);
+    if (type == cast<*AstNode>(0)) {
+      p.error("TypeError", "Expected a type to be followed by a ':'.");
+      return cast<*AstNode>(0);
+    }
+
+    p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' after the const type.");
+    let value: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (value == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected a value after '='.");
+      return cast<*AstNode>(0);
+    }
+
+    p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' at the end of a const declaration");
+    return SAST::make_var_decl(name, doc_comment, type, value, 0, is_public, line, 0);
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after a const name.");
+
+  switch(p.current().kind) {
+    TOK::LumaTokenType::TOK_FN     -> return _fn(p, name, is_public, returns_ownership, takes_ownership);
+    TOK::LumaTokenType::TOK_STRUCT -> return _struct(p, name, is_public);
+    TOK::LumaTokenType::TOK_ENUM   -> return _enum(p, name, is_public);
+    
+    _ -> {
+      p.error("SyntaxError", "Expected a (function, struct, or enum) after a const declaration.");
+      return cast<*AstNode>(0);
+    }
+  }
+}
+
+#returns_ownership
+const _fn -> fn (p: *Parser, name: *byte, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode {
+  let doc_comment: *byte = "";
+  let line: int = p.current().line;
+
+  let param_names: Vector = VEC::create_vector(sizeof<*byte>);
+  let param_types: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+  p.consume(TOK::LumaTokenType::TOK_FN,     "Expected 'fn' keyword.");
+  p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'fn'.");
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RPAREN) {
+    if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+      p.error("SyntaxError", "Expected identifier for function parameter.");
+      VEC::free_vector(&param_names);
+      VEC::free_vector(&param_types);
+      return cast<*AstNode>(0);
+    }
+
+    let param_name: *byte = p.get_name();
+    p.advance();
+    p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after parameter name.");
+
+    let param_type: *AstNode = PTYPE::parse_type(p);
+    if (param_type == cast<*AstNode>(0)) {
+      p.error("TypeError", "Failed to parse type for parameter.");
+      VEC::free_vector(&param_names);
+      VEC::free_vector(&param_types);
+      return cast<*AstNode>(0);
+    }
+
+    param_names.push_back(cast<*void>(&param_name));
+    param_types.push_back(cast<*void>(&param_type));
+
+    if (p.current().kind == TOK::LumaTokenType::TOK_COMMA)
+      p.advance();
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after function parameters.");
+
+  let return_type: *AstNode = PTYPE::parse_type(p);
+  if (return_type == cast<*AstNode>(0)) {
+    p.error("TypeError", "Expected return type after function parameters.");
+    VEC::free_vector(&param_names);
+    VEC::free_vector(&param_types);
+    return cast<*AstNode>(0);
+  }
+
+  // Forward declaration
+  if (p.current().kind == TOK::LumaTokenType::TOK_SEMI) {
+    p.advance();
+    let node: *AstNode = SAST::make_func_decl(
+      name, doc_comment,
+      cast<**byte>(param_names.data), cast<**AstNode>(param_types.data), param_names.size,
+      return_type, is_public, cast<*AstNode>(0),
+      returns_ownership, takes_ownership, 1, line, 0
+    );
+    VEC::free_vector(&param_names);
+    VEC::free_vector(&param_types);
+    return node;
+  }
+
+  let body: *AstNode = block(p);
+  if (body == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected function body.");
+    VEC::free_vector(&param_names);
+    VEC::free_vector(&param_types);
+    return cast<*AstNode>(0);
+  }
+
+  let node: *AstNode = SAST::make_func_decl(
+    name, doc_comment,
+    cast<**byte>(param_names.data), cast<**AstNode>(param_types.data), param_names.size,
+    return_type, is_public, body,
+    returns_ownership, takes_ownership, 0, line, 0
+  );
+  VEC::free_vector(&param_names);
+  VEC::free_vector(&param_types);
+  return node;
+}
+
+#returns_ownership
+const _enum -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
+  let doc_comment: *byte = "";
+  let line: int = p.current().line;
+
+  let members: Vector = VEC::create_vector(sizeof<*byte>);
+
+  p.consume(TOK::LumaTokenType::TOK_ENUM,   "Expected 'enum' keyword.");
+  p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after enum name.");
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+    if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+      p.error("SyntaxError", "Expected identifier for enum member.");
+      VEC::free_vector(&members);
+      return cast<*AstNode>(0);
+    }
+    let member_name: *byte = p.get_name();
+    p.advance();
+    members.push_back(cast<*void>(&member_name));
+
+    if (p.current().kind == TOK::LumaTokenType::TOK_COMMA)
+      p.advance();
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end enum declaration.");
+  p.consume(TOK::LumaTokenType::TOK_SEMI,   "Expected ';' after enum declaration.");
+
+  let node: *AstNode = SAST::make_enum_decl(
+    name, doc_comment,
+    cast<**byte>(members.data), members.size,
+    is_public, line, 0
+  );
+  VEC::free_vector(&members);
+  return node;
+}
+
+#returns_ownership
+const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
+  let doc_comment: *byte = "";
+  let line: int = p.current().line;
+
+  let public_fields:  Vector = VEC::create_vector(sizeof<*AstNode>);
+  let private_fields: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+  p.consume(TOK::LumaTokenType::TOK_STRUCT, "Expected 'struct' keyword.");
+  p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after struct name.");
+
+  let public_member: int = 1; // default public
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+    // Handle visibility modifiers
+    if (p.current().kind == TOK::LumaTokenType::TOK_PUBLIC) {
+      public_member = 1;
+      p.advance();
+      p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after 'pub'.");
+      continue; // back to loop condition
+    }
+    if (p.current().kind == TOK::LumaTokenType::TOK_PRIVATE) {
+      public_member = 0;
+      p.advance();
+      p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after 'priv'.");
+      continue;
+    }
+
+    let field_line: int = p.current().line;
+
+    // Check ownership modifiers
+    let field_returns_ownership: int = 0;
+    let field_takes_ownership:   int = 0;
+    if (p.current().kind == TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP) {
+      field_returns_ownership = 1;
+      p.advance();
+    } elif (p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP) {
+      field_takes_ownership = 1;
+      p.advance();
+    }
+
+    let field_name: *byte = p.get_name();
+    p.advance();
+
+    let field_function: *AstNode = cast<*AstNode>(0);
+    let field_type:     *AstNode = cast<*AstNode>(0);
+
+    if (p.current().kind == TOK::LumaTokenType::TOK_RIGHT_ARROW) {
+      p.advance();
+      field_function = _fn(p, field_name, public_member, field_returns_ownership, field_takes_ownership);
+    } else {
+      p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after field name.");
+      field_type = PTYPE::parse_type(p);
+    }
+
+    if (p.current().kind == TOK::LumaTokenType::TOK_COMMA) {
+      p.advance();
+    } elif (p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+      p.error("SyntaxError", "Expected ',' or '}' after struct field.");
+      VEC::free_vector(&public_fields);
+      VEC::free_vector(&private_fields);
+      return cast<*AstNode>(0);
+    }
+
+    let field_decl: *AstNode = SAST::make_field_decl(
+      field_name, "", field_type, field_function, public_member, field_line, 0
+    );
+
+    if (public_member == 1) {
+      public_fields.push_back(cast<*void>(&field_decl));
+    } else {
+      private_fields.push_back(cast<*void>(&field_decl));
+    }
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end struct declaration.");
+  p.consume(TOK::LumaTokenType::TOK_SEMI,   "Expected ';' after struct declaration.");
+
+  let node: *AstNode = SAST::make_struct_decl(
+    name, doc_comment,
+    cast<**AstNode>(public_fields.data),  public_fields.size,
+    cast<**AstNode>(private_fields.data), private_fields.size,
+    is_public, line, 0
+  );
+  VEC::free_vector(&public_fields);
+  VEC::free_vector(&private_fields);
+  return node;
+}
+
+#returns_ownership const print   -> fn (p: *Parser, ln: int) *AstNode { return cast<*AstNode>(0); }
+
+#returns_ownership
+const var -> fn (p: *Parser, is_public: int) *AstNode {
+  let doc_comment: *byte = "";
+  let line: int = p.current().line;
+
+  p.consume(TOK::LumaTokenType::TOK_VAR, "Expected 'var' keyword.");
+  let name: *byte = p.get_name();
+  p.advance();
+
+  p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after variable name.");
+  let type: *AstNode = PTYPE::parse_type(p);
+
+  if (p.current().kind != TOK::LumaTokenType::TOK_EQUAL) {
+    p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after variable declaration.");
+    return SAST::make_var_decl(name, doc_comment, type, cast<*AstNode>(0), 1, is_public, line, 0);
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' after variable type.");
+  let value: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after variable declaration.");
+
+  return SAST::make_var_decl(name, doc_comment, type, value, 1, is_public, line, 0);
+}
+
+#returns_ownership const expr -> fn (p: *Parser) *AstNode { 
+  let line: int = p.current().line;
+
+  let e: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected an semicolon after expression statement.");
+
+  return SAST::make_expr_stmt(e, line, 0); 
+}
+
+#returns_ownership const use -> fn (p: *Parser) *AstNode { 
+  let line: int = p.current().line;
+  
+  p.consume(TOK::LumaTokenType::TOK_USE, "Expected '@use' keyword.");
+  let mod_name: *byte = p.get_name();
+  p.advance();
+  
+  p.consume(TOK::LumaTokenType::TOK_AS, "Expected 'as' keyword for module alias.");
+  let mod_alias: *byte = p.get_name();
+  p.advance();
+
+  return MAST::make_use(mod_name, mod_alias, line, 0); 
+}
+
+#returns_ownership
+const return_stmt -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+
+  p.consume(TOK::LumaTokenType::TOK_RETURN, "Expected 'return' keyword.");
+
+  if (p.current().kind == TOK::LumaTokenType::TOK_SEMI) {
+    p.advance();
+    return SAST::make_return_stmt(cast<*AstNode>(0), line, 0);
+  }
+
+  let value: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after return statement.");
+  return SAST::make_return_stmt(value, line, 0);
+}
+
+#returns_ownership
+const block -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+
+  p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' to start block.");
+
+  let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+    let stmt: *AstNode = parser_stmt(p);
+    if (stmt == cast<*AstNode>(0)) continue;
+    stmts.push_back(cast<*void>(&stmt));
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end block.");
+
+  let node: *AstNode = SAST::make_block(cast<**AstNode>(stmts.data), stmts.size, line, 0);
+  VEC::free_vector(&stmts);
+  return node;
+}
+
+#returns_ownership
+const _if -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+
+  p.consume(TOK::LumaTokenType::TOK_IF, "Expected 'if' keyword.");
+  p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'if'.");
+
+  let condition: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  if (condition == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected condition after '('.");
+    return cast<*AstNode>(0);
+  }
+  p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after if condition.");
+
+  let then_stmt: *AstNode = block(p);
+  if (then_stmt == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected block after if condition.");
+    return cast<*AstNode>(0);
+  }
+
+  let elif_stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+  loop (p.has_tokens() && p.current().kind == TOK::LumaTokenType::TOK_ELIF) {
+    let elif_line: int = p.current().line;
+    p.consume(TOK::LumaTokenType::TOK_ELIF,   "Expected 'elif' keyword.");
+    p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'elif'.");
+
+    let elif_condition: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (elif_condition == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected condition after '('.");
+      VEC::free_vector(&elif_stmts);
+      return cast<*AstNode>(0);
+    }
+    p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after elif condition.");
+
+    let elif_body: *AstNode = block(p);
+    if (elif_body == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected block after elif condition.");
+      VEC::free_vector(&elif_stmts);
+      return cast<*AstNode>(0);
+    }
+
+    let elif_node: *AstNode = SAST::make_if_stmt(
+      elif_condition, elif_body,
+      cast<**AstNode>(0), 0, cast<*AstNode>(0),
+      elif_line, 0
+    );
+    elif_stmts.push_back(cast<*void>(&elif_node));
+  }
+
+  let else_stmt: *AstNode = cast<*AstNode>(0);
+  if (p.current().kind == TOK::LumaTokenType::TOK_ELSE) {
+    p.advance();
+    else_stmt = block(p);
+    if (else_stmt == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected block after 'else'.");
+      VEC::free_vector(&elif_stmts);
+      return cast<*AstNode>(0);
+    }
+  }
+
+  let node: *AstNode = SAST::make_if_stmt(
+    condition, then_stmt,
+    cast<**AstNode>(elif_stmts.data), elif_stmts.size,
+    else_stmt, line, 0
+  );
+  VEC::free_vector(&elif_stmts);
+  return node;
+}
+
+#returns_ownership
+const break_continue_stmt -> fn (p: *Parser, is_continue: int) *AstNode {
+  let line: int = p.current().line;
+
+  if (is_continue == 1) {
+    p.consume(TOK::LumaTokenType::TOK_CONTINUE, "Expected 'continue' keyword.");
+  } else {
+    p.consume(TOK::LumaTokenType::TOK_BREAK, "Expected 'break' keyword.");
+  }
+  p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after break/continue.");
+  return SAST::make_break_continue(is_continue, line, 0);
+}
+
+#returns_ownership
+const _defer -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  p.consume(TOK::LumaTokenType::TOK_DEFER, "Expected 'defer' keyword.");
+  let stmt: *AstNode = parser_stmt(p);
+  if (stmt == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected statement after 'defer'.");
+    return cast<*AstNode>(0);
+  }
+  return SAST::make_defer_stmt(stmt, line, 0);
+}
+
+#returns_ownership
+const _switch -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+
+  p.consume(TOK::LumaTokenType::TOK_SWITCH, "Expected 'switch' keyword.");
+  p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'switch'.");
+  let condition: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  if (condition == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected condition after '('.");
+    return cast<*AstNode>(0);
+  }
+  p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after switch condition.");
+  p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' to start switch body.");
+
+  let cases:        Vector = VEC::create_vector(sizeof<*AstNode>);
+  let default_case: *AstNode = cast<*AstNode>(0);
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+    let case_line: int = p.current().line;
+
+    // Default case: _ -> { ... }
+    if (p.current().kind == TOK::LumaTokenType::TOK_IDENTIFIER) {
+      let tok_name: *byte = p.get_name();
+      if (STRING::strcmp(tok_name, "_") == 0) {
+        free(tok_name);
+        p.advance();
+        p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after '_'.");
+        let default_body: *AstNode = block(p);
+        if (default_body == cast<*AstNode>(0)) {
+          p.error("SyntaxError", "Expected block after default case.");
+          VEC::free_vector(&cases);
+          return cast<*AstNode>(0);
+        }
+        default_case = SAST::make_default_stmt(default_body, case_line, 0);
+        continue;
+      }
+      free(tok_name);
+    }
+
+    // Regular case: expr, expr -> { ... }
+    let case_values: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+    let case_expr: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (case_expr == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected case value expression.");
+      VEC::free_vector(&cases);
+      VEC::free_vector(&case_values);
+      return cast<*AstNode>(0);
+    }
+    case_values.push_back(cast<*void>(&case_expr));
+
+    loop (p.current().kind == TOK::LumaTokenType::TOK_COMMA) {
+      p.advance();
+      let additional: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+      if (additional == cast<*AstNode>(0)) {
+        p.error("SyntaxError", "Expected case value after ','.");
+        VEC::free_vector(&cases);
+        VEC::free_vector(&case_values);
+        return cast<*AstNode>(0);
+      }
+      case_values.push_back(cast<*void>(&additional));
+    }
+
+    p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after case value(s).");
+
+    let case_body: *AstNode = block(p);
+    if (case_body == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected block after '->'.");
+      VEC::free_vector(&cases);
+      VEC::free_vector(&case_values);
+      return cast<*AstNode>(0);
+    }
+
+    let case_node: *AstNode = SAST::make_case_stmt(
+      cast<**AstNode>(case_values.data), case_values.size, case_body, case_line, 0
+    );
+    VEC::free_vector(&case_values);
+    cases.push_back(cast<*void>(&case_node));
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end switch.");
+
+  let node: *AstNode = SAST::make_switch_stmt(
+    condition, cast<**AstNode>(cases.data), cases.size, default_case, line, 0
+  );
+  VEC::free_vector(&cases);
+  return node;
+}
+
+#returns_ownership const _impl -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+
+#returns_ownership
+const loop_init -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let name: *byte = p.get_name();
+  p.advance();
+
+  p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after loop initializer name.");
+  let type: *AstNode = PTYPE::parse_type(p);
+  p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' after loop initializer type.");
+  let initializer: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+
+  return SAST::make_var_decl(name, "", type, initializer, 1, 0, line, 0);
+}
+
+#returns_ownership
+const for_loop_stmt -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let initializers: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+  p.consume(TOK::LumaTokenType::TOK_LBRACKET, "Expected '[' after 'loop'.");
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACKET) {
+    let init: *AstNode = loop_init(p);
+    if (init == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Failed to parse loop initializer.");
+      VEC::free_vector(&initializers);
+      return cast<*AstNode>(0);
+    }
+    initializers.push_back(cast<*void>(&init));
+
+    if (p.current().kind == TOK::LumaTokenType::TOK_COMMA)
+      p.advance();
+  }
+  p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' after loop initializers.");
+  p.consume(TOK::LumaTokenType::TOK_LPAREN,   "Expected '(' after loop initializers.");
+
+  let condition: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  if (condition == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected condition in for loop.");
+    VEC::free_vector(&initializers);
+    return cast<*AstNode>(0);
+  }
+  p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after loop condition.");
+
+  let optional: *AstNode = cast<*AstNode>(0);
+  if (p.current().kind == TOK::LumaTokenType::TOK_COLON) {
+    p.advance();
+    p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after ':' in loop.");
+    optional = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after optional condition.");
+  }
+
+  let body: *AstNode = block(p);
+  if (body == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected loop body.");
+    VEC::free_vector(&initializers);
+    return cast<*AstNode>(0);
+  }
+
+  let node: *AstNode = SAST::make_loop_stmt(
+    condition, optional, body,
+    cast<**AstNode>(initializers.data), initializers.size,
+    line, 0
+  );
+  VEC::free_vector(&initializers);
+  return node;
+}
+
+#returns_ownership
+const infinite_loop_stmt -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let body: *AstNode = block(p);
+  if (body == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected block statement for infinite loop.");
+    return cast<*AstNode>(0);
+  }
+  return SAST::make_loop_stmt(cast<*AstNode>(0), cast<*AstNode>(0), body, cast<**AstNode>(0), 0, line, 0);
+}
+
+#returns_ownership
+const _loop -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+
+  p.consume(TOK::LumaTokenType::TOK_LOOP, "Expected 'loop' keyword.");
+
+  if (p.current().kind == TOK::LumaTokenType::TOK_LBRACE)
+    return infinite_loop_stmt(p);
+
+  if (p.current().kind == TOK::LumaTokenType::TOK_LBRACKET)
+    return for_loop_stmt(p);
+
+  p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'loop'.");
+  let condition: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  if (condition == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected condition after '('.");
+    return cast<*AstNode>(0);
+  }
+  p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after loop condition.");
+
+  let optional: *AstNode = cast<*AstNode>(0);
+  if (p.current().kind == TOK::LumaTokenType::TOK_COLON) {
+    p.advance();
+    p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after ':' in loop.");
+    optional = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after optional condition.");
+  }
+
+  let body: *AstNode = block(p);
+  if (body == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected loop body.");
+    return cast<*AstNode>(0);
+  }
+
+  return SAST::make_loop_stmt(condition, optional, body, cast<**AstNode>(0), 0, line, 0);
+}
+

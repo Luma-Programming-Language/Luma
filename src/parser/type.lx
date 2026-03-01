@@ -1,0 +1,136 @@
+@module "parser_type"
+
+@use "std_vector" as VEC
+
+@use "lexer_tokens" as TOK
+@use "ast_type" as TAST
+@use "parser" as PARS
+
+#returns_ownership const pointer_type    -> fn (p: *Parser) *AstNode;
+#returns_ownership const array_type      -> fn (p: *Parser) *AstNode;
+#returns_ownership const resolution_type -> fn (p: *Parser) *AstNode;
+
+#returns_ownership
+const tnud -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let col:  int = p.current().whitespace_len;
+  let kind: int = p.current().kind;
+
+  switch (kind) {
+    TOK::LumaTokenType::TOK_INT    -> { p.advance(); return TAST::make_basic_type("int",    line, col); }
+    TOK::LumaTokenType::TOK_UINT   -> { p.advance(); return TAST::make_basic_type("uint",   line, col); }
+    TOK::LumaTokenType::TOK_DOUBLE -> { p.advance(); return TAST::make_basic_type("double", line, col); }
+    TOK::LumaTokenType::TOK_FLOAT  -> { p.advance(); return TAST::make_basic_type("float",  line, col); }
+    TOK::LumaTokenType::TOK_BOOL   -> { p.advance(); return TAST::make_basic_type("bool",   line, col); }
+    TOK::LumaTokenType::TOK_VOID   -> { p.advance(); return TAST::make_basic_type("void",   line, col); }
+    TOK::LumaTokenType::TOK_CHAR   -> { p.advance(); return TAST::make_basic_type("char",   line, col); }
+    TOK::LumaTokenType::TOK_STAR       -> { p.advance(); return pointer_type(p);    }
+    TOK::LumaTokenType::TOK_LBRACKET   -> { p.advance(); return array_type(p);      }
+    TOK::LumaTokenType::TOK_IDENTIFIER -> { return resolution_type(p);              }
+    _ -> { return cast<*AstNode>(0); }
+  }
+}
+
+#returns_ownership
+pub const parse_type -> fn (p: *Parser) *AstNode {
+  let kind: int = p.current().kind;
+
+  if (kind == TOK::LumaTokenType::TOK_INT    ||
+      kind == TOK::LumaTokenType::TOK_UINT   ||
+      kind == TOK::LumaTokenType::TOK_DOUBLE ||
+      kind == TOK::LumaTokenType::TOK_FLOAT  ||
+      kind == TOK::LumaTokenType::TOK_BOOL   ||
+      kind == TOK::LumaTokenType::TOK_VOID   ||
+      kind == TOK::LumaTokenType::TOK_CHAR   ||
+      kind == TOK::LumaTokenType::TOK_IDENTIFIER ||
+      kind == TOK::LumaTokenType::TOK_STAR   ||
+      kind == TOK::LumaTokenType::TOK_LBRACKET) {
+    return tnud(p);
+  }
+
+  return cast<*AstNode>(0);
+}
+
+#returns_ownership
+const pointer_type -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let col:  int = p.current().whitespace_len;
+
+  let pointee: *AstNode = parse_type(p);
+  if (pointee == cast<*AstNode>(0)) {
+    p.error("TypeError", "Expected type after '*' in pointer type.");
+    return cast<*AstNode>(0);
+  }
+
+  return TAST::make_pointer_type(pointee, line, col);
+}
+
+#returns_ownership
+const array_type -> fn (p: *Parser) *AstNode {
+/*
+  let line: int = p.current().line;
+  let col:  int = p.current().whitespace_len;
+
+  let element_type: *AstNode = parse_type(p);
+  if (element_type == cast<*AstNode>(0)) {
+    p.error("TypeError", "Expected type after '[' in array type.");
+    return cast<*AstNode>(0);
+  }
+
+  if (p.current().kind != TOK::LumaTokenType::TOK_SEMI) {
+    p.error("TypeError", "Array types must declare a size, expected ';' after element type.");
+    return cast<*AstNode>(0);
+  }
+  p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after array element type.");
+
+  // Import parse_expr from parser_expr module
+  let size: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  if (size == cast<*AstNode>(0)) {
+    p.error("SyntaxError", "Expected size expression after ';' in array type.");
+    return cast<*AstNode>(0);
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close array type.");
+
+  return TAST::make_array_type(element_type, size, line, col); 
+*/
+  return cast<*AstNode>(0);
+}
+
+#returns_ownership
+const resolution_type -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let col:  int = p.current().whitespace_len;
+
+  let first_name: *byte = p.get_name();
+  p.advance();
+
+  // Simple identifier type — no resolution operator
+  if (p.current().kind != TOK::LumaTokenType::TOK_RESOLVE) {
+    return TAST::make_basic_type(first_name, line, col);
+  }
+
+  // namespace::Type or namespace::sub::Type
+  let parts: Vector = VEC::create_vector(sizeof<*byte>);
+  parts.push_back(cast<*void>(&first_name));
+
+  loop (p.current().kind == TOK::LumaTokenType::TOK_RESOLVE) {
+    p.advance(); // consume ::
+
+    if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+      p.error("SyntaxError", "Expected identifier after '::'.");
+      VEC::free_vector(&parts);
+      return cast<*AstNode>(0);
+    }
+
+    let part: *byte = p.get_name();
+    p.advance();
+    parts.push_back(cast<*void>(&part));
+  }
+
+  let node: *AstNode = TAST::make_resolution_type(
+    cast<**byte>(parts.data), parts.size, line, col
+  );
+  VEC::free_vector(&parts);
+  return node;
+}

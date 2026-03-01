@@ -3,6 +3,7 @@
 @use "std_string" as STRING
 @use "std_vector" as VEC
 
+@use "parser_type" as PTYPE
 @use "lexer_tokens" as TOK
 @use "ast_expr" as EAST
 @use "parser" as PARS
@@ -13,7 +14,6 @@
 #returns_ownership const call     -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
 #returns_ownership const assign   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
 #returns_ownership const prefix   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
-
 #returns_ownership const primary  -> fn (p: *Parser) *AstNode;
 #returns_ownership const unary    -> fn (p: *Parser) *AstNode;
 #returns_ownership const group    -> fn (p: *Parser) *AstNode;
@@ -425,7 +425,7 @@ const _cast -> fn (p: *Parser) *AstNode {
   p.advance(); // consume cast
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for cast.");
-  let cast_type: *AstNode = PARS::parse_type(p);
+  let cast_type: *AstNode = PTYPE::parse_type(p);
   p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' after type for cast.");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before value for cast.");
   let castee: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -441,7 +441,7 @@ const _input -> fn (p: *Parser) *AstNode {
   p.advance(); // consume input
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for input.");
-  let input_type: *AstNode = PARS::parse_type(p);
+  let input_type: *AstNode = PTYPE::parse_type(p);
   p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' after type for input.");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before message for input.");
   let msg: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -499,7 +499,7 @@ const _sizeof -> fn (p: *Parser) *AstNode {
   p.advance();
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for sizeof.");
-  let type_node: *AstNode = PARS::parse_type(p);
+  let type_node: *AstNode = PTYPE::parse_type(p);
   p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' after type for sizeof.");
 
   return EAST::make_sizeof(type_node, 1, line, col);
