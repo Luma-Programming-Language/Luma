@@ -1,0 +1,129 @@
+@module "ast_print"
+
+@use "std_string" as STRING
+@use "ast" as AST
+
+const print_indent -> fn (indent: int) void {
+  loop [i: int = 0](i < indent) : (++i) {
+    output("  ");
+  }
+}
+
+pub const print_raw -> fn (node: *AstNode) void {
+  let base: int = cast<int>(node.data);
+  
+  let ptr0: **byte = cast<**byte>(cast<*void>(base));
+  let ptr1: **byte = cast<**byte>(cast<*void>(base + 8));
+  let ptr2: **byte = cast<**byte>(cast<*void>(base + 16));
+  let ptr3: **byte = cast<**byte>(cast<*void>(base + 24));
+  let ptr4: **byte = cast<**byte>(cast<*void>(base + 32));
+
+  output("offset  0 value: ", cast<int>(cast<*void>(*ptr0)), "\n");
+  output("offset  8 value: ", cast<int>(cast<*void>(*ptr1)), "\n");
+  output("offset 16 value: ", cast<int>(cast<*void>(*ptr2)), "\n");
+  output("offset 24 value: ", cast<int>(cast<*void>(*ptr3)), "\n");
+  output("offset 32 value: ", cast<int>(cast<*void>(*ptr4)), "\n");
+  output("offset  0 as string: ", *ptr0, "\n");
+}
+
+pub const print_node -> fn (node: *AstNode, indent: int) void {
+  output("sizeof AstNode inside print_node: ", sizeof<AstNode>, "\n");
+  output("node ptr: ", cast<int>(cast<*void>(node)), "\n");
+  output("node.kind: ", node.kind, "\n");
+  output("node.category: ", node.category, "\n");
+  output("node.line: ", node.line, "\n");
+  output("node.col: ", node.col, "\n");
+  output("node.data: ", cast<int>(node.data), "\n");
+
+  if (node == cast<*AstNode>(0)) {
+    print_indent(indent);
+    output("<null>\n");
+    return;
+  }
+  
+  switch(node.kind) {
+    // ── Preprocessor ──────────────────────────────────────────────────
+    AST::NodeType::PREPROCESSOR_MODULE -> {
+      print_raw(node);
+      let d: *ModuleData = cast<*ModuleData>(node.data);
+      print_indent(indent);
+      output("Module: ", d.name, "\n");
+      loop [i: int = 0](i < d.body_count) : (++i) {
+        print_node(d.body[i], indent + 1);
+      }
+    }
+    AST::NodeType::PREPROCESSOR_USE -> {
+      let d: *UseData = cast<*UseData>(node.data);
+      print_indent(indent);
+      output("Use: ", d.module_name, " as ", d.alias, "\n");
+    }
+
+    // ── Program ───────────────────────────────────────────────────────
+    AST::NodeType::PROGRAM -> {
+      let d: *ProgramData = cast<*ProgramData>(node.data);
+      print_indent(indent);
+      output("Program\n");
+      output("PROGRAM d.modules[0] ptr: ", cast<int>(cast<*void>(d.modules[0])), "\n");
+      loop [i: int = 0](i < d.module_count) : (++i) {
+        print_node(d.modules[i], indent + 1);
+      }
+    }
+
+    // ── Statements ────────────────────────────────────────────────────
+    AST::NodeType::STMT_EXPRESSION -> {
+      let d: *ExprStmtData = cast<*ExprStmtData>(node.data);
+      print_indent(indent);
+      output("ExprStmt\n");
+      print_node(d.expression, indent + 1);
+    }
+    AST::NodeType::STMT_VAR_DECL -> {
+      let d: *VarDeclData = cast<*VarDeclData>(node.data);
+      print_indent(indent);
+      if (d.is_mutable == 1) { output("VarDecl: ", d.name, "\n"); }
+      else                   { output("ConstDecl: ", d.name, "\n"); }
+      print_indent(indent + 1); output("type:\n");
+      print_node(d.var_type, indent + 2);
+      if (d.initializer != cast<*AstNode>(0)) {
+        print_indent(indent + 1); output("init:\n");
+        print_node(d.initializer, indent + 2);
+      }
+    }
+    AST::NodeType::STMT_FUNCTION -> {
+      let d: *FuncDeclData = cast<*FuncDeclData>(node.data);
+      print_indent(indent);
+      output("FuncDecl: ", d.name);
+      if (d.is_public == 1)          output(" [pub]");
+      if (d.returns_ownership == 1)  output(" [#returns_ownership]");
+      if (d.takes_ownership == 1)    output(" [#takes_ownership]");
+      if (d.forward_declared == 1)   output(" [forward]");
+      output("\n");
+      loop [i: int = 0](i < d.param_count) : (++i) {
+        print_indent(indent + 1);
+        output("param: ", d.param_names[i], "\n");
+        print_node(d.param_types[i], indent + 2);
+      }
+      print_indent(indent + 1); output("return:\n");
+      print_node(d.return_type, indent + 2);
+      if (d.body != cast<*AstNode>(0)) {
+        print_indent(indent + 1); output("body:\n");
+        print_node(d.body, indent + 2);
+      }
+    }
+    AST::NodeType::STMT_BLOCK -> {
+      let d: *BlockData = cast<*BlockData>(node.data);
+      print_indent(indent);
+      output("Block\n");
+      loop [i: int = 0](i < d.stmt_count) : (++i) {
+        print_node(d.statements[i], indent + 1);
+      }
+    }
+    AST::NodeType::STMT_RETURN -> {
+      let d: *ReturnStmtData = cast<*ReturnStmtData>(node.data);
+      print_indent(indent);
+      output("Return\n");
+      if (d.value != cast<*AstNode>(0))
+        print_node(d.value, indent + 1);
+    }
+
+  }
+}

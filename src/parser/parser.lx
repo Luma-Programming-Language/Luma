@@ -197,6 +197,7 @@ pub const Parser -> struct {
     };
     ERR::error_add(info);
     self.had_error = 1;
+    self.advance(); // advance past the error token
 
     return EOF_TOK;
   },
@@ -218,6 +219,7 @@ pub const Parser -> struct {
       help:         cast<*byte>(0),
     };
     ERR::error_add(info);
+    self.had_error = 1;
   },
 
   #returns_ownership
@@ -231,10 +233,6 @@ pub const Parser -> struct {
     name[self.current().len] = '\0';
     return name;
   },
-  
-  parse -> fn (config: LumaBuildConfig) *AstNode { 
-    return cast<*AstNode>(0); 
-  }
 };
 
 #returns_ownership
@@ -255,3 +253,21 @@ pub const free_parser -> fn (p: *Parser) void {
   free(p);
 }
 
+#returns_ownership
+pub const vec_to_node_array -> fn (v: *Vector) **AstNode {
+  if (v.size == 0) return cast<**AstNode>(0);
+
+  let arr: **AstNode = cast<**AstNode>(alloc(v.size * v.element_size));
+  MEM::memcpy(cast<*void>(arr), v.data, v.size * v.element_size);
+  return arr;
+}
+
+#returns_ownership
+pub const vec_to_byte_array -> fn (v: *Vector) **byte {
+  if (v.size == 0) return cast<**byte>(0);
+  
+  let allocation_size: int = v.size * sizeof<*byte>;
+  let arr: **byte = cast<**byte>(alloc(allocation_size));
+  MEM::memcpy(cast<*void>(arr), v.data, allocation_size);
+  return arr;
+}

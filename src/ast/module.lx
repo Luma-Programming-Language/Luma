@@ -1,13 +1,23 @@
 @module "ast_module"
 
-@use "std_memory" as MEM
 @use "ast" as AST
 
 #returns_ownership
 pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte, body: **AstNode, body_count: int, line: int, col: int) *AstNode {
   let node: *AstNode = AST::make_node(AST::NodeType::PREPROCESSOR_MODULE, AST::NodeCategory::Node_Category_PREPROCESSOR, line, col);
-  let data: *ModuleData = cast<*ModuleData>(MEM::calloc(1, sizeof<ModuleData>));
+  let data: *ModuleData = cast<*ModuleData>(alloc(sizeof<ModuleData>));
   data.name        = name;
+  let raw: *byte = cast<*byte>(cast<*void>(data));
+  let val_at_0: int = cast<int>(cast<*void>(raw));
+  output("data addr: ", cast<int>(cast<*void>(data)), "\n");
+  output("val at offset 0: ", val_at_0, "\n");
+  output("name addr: ", cast<int>(cast<*void>(name)), "\n");
+
+  let name_slot: **byte = cast<**byte>(cast<*void>(data));
+  *name_slot = name;
+  output("after manual write, val at 0: ", cast<int>(cast<*void>(*name_slot)), "\n");
+  output("name addr: ", cast<int>(cast<*void>(name)), "\n");
+
   data.doc_comment = doc_comment;
   data.file_path   = file_path;
   data.body        = body;
@@ -19,7 +29,7 @@ pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte, 
 #returns_ownership
 pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int) *AstNode {
   let node: *AstNode = AST::make_node(AST::NodeType::PREPROCESSOR_USE, AST::NodeCategory::Node_Category_PREPROCESSOR, line, col);
-  let data: *UseData = cast<*UseData>(MEM::calloc(1, sizeof<UseData>));
+  let data: *UseData = cast<*UseData>(alloc(sizeof<UseData>));
   data.module_name = module_name;
   data.alias       = alias;
   node.data        = cast<*void>(data);

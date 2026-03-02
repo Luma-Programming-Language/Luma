@@ -6,6 +6,7 @@
 @use "std_args" as ARGS
 @use "std_io" as IO
 
+@use "parser_stmt" as PSTMT
 @use "lexer_tokens" as TOK
 @use "constants" as CONST
 @use "commands" as COMD
@@ -13,8 +14,60 @@
 @use "parser" as PARS
 @use "error" as ERR
 
+@use "ast_module" as MAST
+@use "ast_print" as PRINT
 @use "ast_stmt" as STMT
 @use "ast" as AST
+
+#returns_ownership
+const parse -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line; 
+  
+  if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
+    p.error("Parser Error", "Expected @module at the start of a file.");
+    return cast<*AstNode>(0);
+  }
+  p.advance();
+  
+  if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER &&
+      p.current().kind != TOK::LumaTokenType::TOK_STRING) {
+    p.error("Parser Error", "Expected module name after @module.");
+    return cast<*AstNode>(0);
+  }
+
+  let module_name: *byte = p.get_name();
+  p.advance();
+
+  let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
+  
+  loop (p.has_tokens()) {
+    let stmt: *AstNode = PSTMT::parser_stmt(p);
+    if (stmt == cast<*AstNode>(0)) continue;
+    stmts.push_back(cast<*void>(&stmt));
+  }
+  
+  output("module_name before make_module: ", module_name, "\n");
+
+  let module_node: *AstNode = MAST::make_module(
+    module_name, "", p.file_path,
+    PARS::vec_to_node_array(&stmts), stmts.size,
+    line, 0
+  );
+  VEC::free_vector(&stmts);
+
+  let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
+  modules.push_back(cast<*void>(&module_node));
+
+  let program: *AstNode = STMT::make_program(
+    PARS::vec_to_node_array(&modules),
+    modules.size,
+    line,
+    0
+  );
+  VEC::free_vector(&modules);
+  
+  return program;
+}
 
 pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
@@ -52,19 +105,25 @@ pub const main -> fn (argc: int, argv: **byte) int {
   // Parser Stage ----------------------------------------------------------
   let tks: *Token = cast<*Token>(tokens.data);
   let p: *Parser = PARS::create_parser(tks, tokens.size, build_config.filepath);
-  let node: *AstNode = p.parse(build_config);
+  let node: *AstNode = parse(p);
+  
+  if (p.had_error == 1) {
+    ERR::error_report();
+    return 1;
+  }
+  
+  let pd: *ProgramData = cast<*ProgramData>(node.data);
+  output("pd ptr: ", cast<int>(pd), "\n");
+  output("pd.module_count: ", pd.module_count, "\n");
+  output("pd.modules ptr: ", cast<int>(cast<*void>(pd.modules)), "\n");
+  output("modules[0] ptr: ", cast<int>(cast<*void>(pd.modules[0])), "\n");
+  output("modules[0].kind: ", pd.modules[0].kind, "\n");
+  output("modules[0].data ptr: ", cast<int>(pd.modules[0].data), "\n");
+
+  PRINT::print_node(node, 0);
+
   defer { PARS::free_parser(p); }
   
-  // Try consuming an @module token — first token should be this
-  p.consume(TOK::LumaTokenType::TOK_MODULE, "Expected @module at start of file");
-
-  if (ERR::error_has_errors() == 1) {
-    ERR::error_report();
-    ERR::error_clear();
-    return CONST::LumaErrorCode::Parser_Error;
-  }
-
-  output("consume worked, pos is now: ", p.pos, "\n");
-
   return 0;
 }
+

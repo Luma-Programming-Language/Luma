@@ -79,7 +79,7 @@ pub const parser_stmt -> fn (p: *Parser) *AstNode {
 }
 
 #returns_ownership 
-const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode { 
+const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode {
   let doc_comment: *byte = ""; // TODO: Implement docs comments
   
   let line: int = p.current().line;
@@ -109,7 +109,7 @@ const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ow
   }
 
   p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after a const name.");
-
+  
   switch(p.current().kind) {
     TOK::LumaTokenType::TOK_FN     -> return _fn(p, name, is_public, returns_ownership, takes_ownership);
     TOK::LumaTokenType::TOK_STRUCT -> return _struct(p, name, is_public);
@@ -159,7 +159,6 @@ const _fn -> fn (p: *Parser, name: *byte, is_public: int, returns_ownership: int
     if (p.current().kind == TOK::LumaTokenType::TOK_COMMA)
       p.advance();
   }
-
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after function parameters.");
 
   let return_type: *AstNode = PTYPE::parse_type(p);
@@ -191,15 +190,19 @@ const _fn -> fn (p: *Parser, name: *byte, is_public: int, returns_ownership: int
     VEC::free_vector(&param_types);
     return cast<*AstNode>(0);
   }
-
+  
   let node: *AstNode = SAST::make_func_decl(
     name, doc_comment,
-    cast<**byte>(param_names.data), cast<**AstNode>(param_types.data), param_names.size,
+    PARS::vec_to_byte_array(&param_names), PARS::vec_to_node_array(&param_types), param_names.size,
     return_type, is_public, body,
     returns_ownership, takes_ownership, 0, line, 0
   );
+
   VEC::free_vector(&param_names);
   VEC::free_vector(&param_types);
+  
+  output("Made node!\n");
+
   return node;
 }
 
@@ -409,7 +412,7 @@ const block -> fn (p: *Parser) *AstNode {
 
   p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end block.");
 
-  let node: *AstNode = SAST::make_block(cast<**AstNode>(stmts.data), stmts.size, line, 0);
+  let node: *AstNode = SAST::make_block(PARS::vec_to_node_array(&stmts), stmts.size, line, 0);
   VEC::free_vector(&stmts);
   return node;
 }
