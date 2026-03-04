@@ -102,10 +102,10 @@ const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
   let struct_name: *byte = cast<*byte>(0);
 
   if (left.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let d: *IdentifierData = cast<*IdentifierData>(left.data);
+    let d: *IdentifierNode = cast<*IdentifierNode>(left);
     struct_name = d.name;
   } elif (left.kind == AST::NodeType::EXPR_MEMBER) {
-    let d: *MemberData = cast<*MemberData>(left.data);
+    let d: *MemberNode = cast<*MemberNode>(left);
     struct_name = d.member;
   } else {
     p.error("Syntax Error", "Expected identifier before '{' for named struct.");
@@ -155,8 +155,8 @@ const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 
   let node: *AstNode = EAST::make_struct_expr(
     struct_name,
-    cast<**byte>(field_names.data),
-    cast<**AstNode>(field_values.data),
+    PARS::vec_to_byte_array(&field_names),
+    PARS::vec_to_node_array(&field_values),
     field_names.size,
     line, col
   );
@@ -204,7 +204,7 @@ const call -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close a function call.");
   
-  let node: *AstNode = EAST::make_call(left, cast<**AstNode>(args.data), args.size, line, col);
+  let node: *AstNode = EAST::make_call(left, PARS::vec_to_node_array(&args), args.size, line, col);
   VEC::free_vector(&args);
   return node;
 }
@@ -288,7 +288,7 @@ const primary -> fn (p: *Parser) *AstNode {
   
   if (lit_type == AST::LiteralType::LITERAL_FLOAT) {
     let val: *byte = p.get_name();
-    let float_val: int = STRING::atio(val); // stored as int, reinterpreted at use site
+    let float_val: int = STRING::atio(val);
     free(val);
     p.advance();
     return EAST::make_literal_float(float_val, line, col);
@@ -302,7 +302,7 @@ const primary -> fn (p: *Parser) *AstNode {
   
   if (lit_type == AST::LiteralType::LITERAL_CHAR) {
     let val: *byte = p.get_name();
-    let char_val: byte = val[1]; // token is 'x', skip opening quote
+    let char_val: byte = val[1];
     free(val);
     p.advance();
     return EAST::make_literal_char(char_val, line, col);
@@ -317,8 +317,15 @@ const primary -> fn (p: *Parser) *AstNode {
     return EAST::make_literal_bool(bool_val, line, col);
   }
 
+  if (lit_type == AST::LiteralType::LITERAL_IDENT) {
+    let val: *byte = p.get_name();
+    p.advance();
+    return EAST::make_identifier(val, line, col);
+  }
+
   return cast<*AstNode>(0);
 }
+
 #returns_ownership 
 const unary -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
@@ -369,7 +376,7 @@ const array -> fn (p: *Parser) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close array expression.");
 
-  let node: *AstNode = EAST::make_array(cast<**AstNode>(elements.data), elements.size, 0, line, col);
+  let node: *AstNode = EAST::make_array(PARS::vec_to_node_array(&elements), elements.size, 0, line, col);
   VEC::free_vector(&elements);
   return node;
 }
@@ -394,7 +401,7 @@ const addr -> fn (p: *Parser) *AstNode {
 
 #returns_ownership 
 const _alloc -> fn (p: *Parser) *AstNode { 
-  p.advance(); // consume alloc
+  p.advance();
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
 
@@ -407,7 +414,7 @@ const _alloc -> fn (p: *Parser) *AstNode {
 
 #returns_ownership 
 const _free -> fn (p: *Parser) *AstNode { 
-  p.advance(); // consume free
+  p.advance();
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
 
@@ -422,7 +429,7 @@ const _free -> fn (p: *Parser) *AstNode {
 const _cast -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
-  p.advance(); // consume cast
+  p.advance();
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for cast.");
   let cast_type: *AstNode = PTYPE::parse_type(p);
@@ -438,7 +445,7 @@ const _cast -> fn (p: *Parser) *AstNode {
 const _input -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
-  p.advance(); // consume input
+  p.advance();
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for input.");
   let input_type: *AstNode = PTYPE::parse_type(p);
@@ -452,7 +459,7 @@ const _input -> fn (p: *Parser) *AstNode {
 
 #returns_ownership 
 const _system -> fn (p: *Parser) *AstNode { 
-  p.advance(); // consume system
+  p.advance();
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
 
@@ -465,7 +472,7 @@ const _system -> fn (p: *Parser) *AstNode {
 
 #returns_ownership 
 const syscall -> fn (p: *Parser) *AstNode { 
-  p.advance(); // consume __syscall__
+  p.advance();
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
 
@@ -487,7 +494,7 @@ const syscall -> fn (p: *Parser) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after syscall arguments.");
 
-  let node: *AstNode = EAST::make_syscall(cast<**AstNode>(args.data), args.size, line, col);
+  let node: *AstNode = EAST::make_syscall(PARS::vec_to_node_array(&args), args.size, line, col);
   VEC::free_vector(&args);
   return node;
 }
@@ -553,8 +560,8 @@ const estruct -> fn (p: *Parser) *AstNode {
 
   let node: *AstNode = EAST::make_struct_expr(
     cast<*byte>(0),
-    cast<**byte>(field_names.data),
-    cast<**AstNode>(field_values.data),
+    PARS::vec_to_byte_array(&field_names),
+    PARS::vec_to_node_array(&field_values),
     field_names.size,
     line, col
   );
@@ -577,3 +584,4 @@ const index -> fn (p: *Parser) *AstNode {
   p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close index expression.");
   return EAST::make_index(cast<*AstNode>(0), idx, line, col);
 }
+

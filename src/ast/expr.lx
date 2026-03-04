@@ -1,276 +1,357 @@
 @module "ast_expr"
 
-@use "std_memory" as MEM
 @use "ast" as AST
 
 #returns_ownership
 pub const make_literal_int -> fn (int_val: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_LITERAL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *LiteralData = cast<*LiteralData>(MEM::calloc(1, sizeof<LiteralData>));
-  data.lit_type = AST::LiteralType::LITERAL_INT;
-  data.int_val  = int_val;
-  node.data     = cast<*void>(data);
-  return node;
+  let node: *LiteralNode = cast<*LiteralNode>(alloc(sizeof<LiteralNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_LITERAL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.lit_type = AST::LiteralType::LITERAL_INT;
+  node.int_val  = int_val;
+  return base;
 }
 
 #returns_ownership
 pub const make_literal_float -> fn (float_val: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_LITERAL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *LiteralData = cast<*LiteralData>(MEM::calloc(1, sizeof<LiteralData>));
-  data.lit_type  = AST::LiteralType::LITERAL_FLOAT;
-  data.float_val = float_val;
-  node.data      = cast<*void>(data);
-  return node;
+  let node: *LiteralNode = cast<*LiteralNode>(alloc(sizeof<LiteralNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_LITERAL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.lit_type  = AST::LiteralType::LITERAL_FLOAT;
+  node.float_val = float_val;
+  return base;
 }
 
 #returns_ownership
 pub const make_literal_string -> fn (string_val: *byte, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_LITERAL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *LiteralData = cast<*LiteralData>(MEM::calloc(1, sizeof<LiteralData>));
-  data.lit_type   = AST::LiteralType::LITERAL_STRING;
-  data.string_val = string_val;
-  node.data       = cast<*void>(data);
-  return node;
+  let node: *LiteralNode = cast<*LiteralNode>(alloc(sizeof<LiteralNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_LITERAL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.lit_type   = AST::LiteralType::LITERAL_STRING;
+  node.string_val = string_val;
+  return base;
 }
 
 #returns_ownership
 pub const make_literal_char -> fn (char_val: byte, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_LITERAL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *LiteralData = cast<*LiteralData>(MEM::calloc(1, sizeof<LiteralData>));
-  data.lit_type  = AST::LiteralType::LITERAL_CHAR;
-  data.char_val  = char_val;
-  node.data      = cast<*void>(data);
-  return node;
+  let node: *LiteralNode = cast<*LiteralNode>(alloc(sizeof<LiteralNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_LITERAL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.lit_type = AST::LiteralType::LITERAL_CHAR;
+  node.char_val = char_val;
+  return base;
 }
 
 #returns_ownership
 pub const make_literal_bool -> fn (bool_val: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_LITERAL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *LiteralData = cast<*LiteralData>(MEM::calloc(1, sizeof<LiteralData>));
-  data.lit_type = AST::LiteralType::LITERAL_BOOL;
-  data.bool_val = bool_val;
-  node.data     = cast<*void>(data);
-  return node;
+  let node: *LiteralNode = cast<*LiteralNode>(alloc(sizeof<LiteralNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_LITERAL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.lit_type = AST::LiteralType::LITERAL_BOOL;
+  node.bool_val = bool_val;
+  return base;
 }
 
 #returns_ownership
 pub const make_literal_null -> fn (line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_LITERAL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *LiteralData = cast<*LiteralData>(MEM::calloc(1, sizeof<LiteralData>));
-  data.lit_type = AST::LiteralType::LITERAL_NULL;
-  node.data     = cast<*void>(data);
-  return node;
+  let node: *LiteralNode = cast<*LiteralNode>(alloc(sizeof<LiteralNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_LITERAL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.lit_type = AST::LiteralType::LITERAL_NULL;
+  return base;
 }
 
 #returns_ownership
 pub const make_identifier -> fn (name: *byte, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_IDENTIFIER, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *IdentifierData = cast<*IdentifierData>(MEM::calloc(1, sizeof<IdentifierData>));
-  data.name = name;
-  node.data = cast<*void>(data);
-  return node;
+  let node: *IdentifierNode = cast<*IdentifierNode>(alloc(sizeof<IdentifierNode>));
+  let base: *AstNode        = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_IDENTIFIER;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.name = name;
+  return base;
 }
 
 #returns_ownership
 pub const make_binary -> fn (op: int, left: *AstNode, right: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_BINARY, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *BinaryData = cast<*BinaryData>(MEM::calloc(1, sizeof<BinaryData>));
-  data.op    = op;
-  data.left  = left;
-  data.right = right;
-  node.data  = cast<*void>(data);
-  return node;
+  let node: *BinaryNode = cast<*BinaryNode>(alloc(sizeof<BinaryNode>));
+  let base: *AstNode    = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_BINARY;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.op    = op;
+  node.left  = left;
+  node.right = right;
+  return base;
 }
 
 #returns_ownership
 pub const make_unary -> fn (op: int, operand: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_UNARY, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *UnaryData = cast<*UnaryData>(MEM::calloc(1, sizeof<UnaryData>));
-  data.op      = op;
-  data.operand = operand;
-  node.data    = cast<*void>(data);
-  return node;
+  let node: *UnaryNode = cast<*UnaryNode>(alloc(sizeof<UnaryNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_UNARY;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.op      = op;
+  node.operand = operand;
+  return base;
 }
 
 #returns_ownership
 pub const make_call -> fn (callee: *AstNode, args: **AstNode, arg_count: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_CALL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *CallData = cast<*CallData>(MEM::calloc(1, sizeof<CallData>));
-  data.callee    = callee;
-  data.args      = args;
-  data.arg_count = arg_count;
-  node.data      = cast<*void>(data);
-  return node;
+  let node: *CallNode = cast<*CallNode>(alloc(sizeof<CallNode>));
+  let base: *AstNode  = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_CALL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.callee    = callee;
+  node.args      = args;
+  node.arg_count = arg_count;
+  return base;
 }
 
 #returns_ownership
 pub const make_assign -> fn (target: *AstNode, value: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_ASSIGNMENT, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *AssignData = cast<*AssignData>(MEM::calloc(1, sizeof<AssignData>));
-  data.target = target;
-  data.value  = value;
-  node.data   = cast<*void>(data);
-  return node;
+  let node: *AssignNode = cast<*AssignNode>(alloc(sizeof<AssignNode>));
+  let base: *AstNode    = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_ASSIGNMENT;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.target = target;
+  node.value  = value;
+  return base;
 }
 
 #returns_ownership
 pub const make_ternary -> fn (condition: *AstNode, then_expr: *AstNode, else_expr: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_TERNARY, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *TernaryData = cast<*TernaryData>(MEM::calloc(1, sizeof<TernaryData>));
-  data.condition = condition;
-  data.then_expr = then_expr;
-  data.else_expr = else_expr;
-  node.data      = cast<*void>(data);
-  return node;
+  let node: *TernaryNode = cast<*TernaryNode>(alloc(sizeof<TernaryNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_TERNARY;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.condition = condition;
+  node.then_expr = then_expr;
+  node.else_expr = else_expr;
+  return base;
 }
 
 #returns_ownership
 pub const make_member -> fn (object: *AstNode, member: *byte, is_compiletime: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_MEMBER, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *MemberData = cast<*MemberData>(MEM::calloc(1, sizeof<MemberData>));
-  data.object         = object;
-  data.member         = member;
-  data.is_compiletime = is_compiletime;
-  node.data           = cast<*void>(data);
-  return node;
+  let node: *MemberNode = cast<*MemberNode>(alloc(sizeof<MemberNode>));
+  let base: *AstNode    = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_MEMBER;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.object         = object;
+  node.member         = member;
+  node.is_compiletime = is_compiletime;
+  return base;
 }
 
 #returns_ownership
 pub const make_index -> fn (object: *AstNode, index: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_INDEX, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *IndexData = cast<*IndexData>(MEM::calloc(1, sizeof<IndexData>));
-  data.object = object;
-  data.index  = index;
-  node.data   = cast<*void>(data);
-  return node;
+  let node: *IndexNode = cast<*IndexNode>(alloc(sizeof<IndexNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_INDEX;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.object = object;
+  node.index  = index;
+  return base;
 }
 
 #returns_ownership
 pub const make_array -> fn (elements: **AstNode, element_count: int, target_size: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_ARRAY, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *ArrayData = cast<*ArrayData>(MEM::calloc(1, sizeof<ArrayData>));
-  data.elements      = elements;
-  data.element_count = element_count;
-  data.target_size   = target_size;
-  node.data          = cast<*void>(data);
-  return node;
+  let node: *ArrayNode = cast<*ArrayNode>(alloc(sizeof<ArrayNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_ARRAY;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.elements      = elements;
+  node.element_count = element_count;
+  node.target_size   = target_size;
+  return base;
 }
 
 #returns_ownership
 pub const make_cast -> fn (type_node: *AstNode, castee: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_CAST, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *CastData = cast<*CastData>(MEM::calloc(1, sizeof<CastData>));
-  data.type_node = type_node;
-  data.castee    = castee;
-  node.data      = cast<*void>(data);
-  return node;
+  let node: *CastNode = cast<*CastNode>(alloc(sizeof<CastNode>));
+  let base: *AstNode  = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_CAST;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.type_node = type_node;
+  node.castee    = castee;
+  return base;
 }
 
 #returns_ownership
 pub const make_alloc -> fn (size: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_ALLOC, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *AllocData = cast<*AllocData>(MEM::calloc(1, sizeof<AllocData>));
-  data.size = size;
-  node.data = cast<*void>(data);
-  return node;
+  let node: *AllocNode = cast<*AllocNode>(alloc(sizeof<AllocNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_ALLOC;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.size = size;
+  return base;
 }
 
 #returns_ownership
 pub const make_free -> fn (ptr: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_FREE, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *FreeData = cast<*FreeData>(MEM::calloc(1, sizeof<FreeData>));
-  data.ptr  = ptr;
-  node.data = cast<*void>(data);
-  return node;
+  let node: *FreeNode = cast<*FreeNode>(alloc(sizeof<FreeNode>));
+  let base: *AstNode  = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_FREE;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.ptr = ptr;
+  return base;
 }
 
 #returns_ownership
 pub const make_memcpy -> fn (to: *AstNode, from: *AstNode, size: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_MEMCPY, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *MemcpyData = cast<*MemcpyData>(MEM::calloc(1, sizeof<MemcpyData>));
-  data.to   = to;
-  data.from = from;
-  data.size = size;
-  node.data = cast<*void>(data);
-  return node;
+  let node: *MemcpyNode = cast<*MemcpyNode>(alloc(sizeof<MemcpyNode>));
+  let base: *AstNode    = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_MEMCPY;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.to   = to;
+  node.from = from;
+  node.size = size;
+  return base;
 }
 
 #returns_ownership
 pub const make_sizeof -> fn (object: *AstNode, is_type: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_SIZEOF, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *SizeofData = cast<*SizeofData>(MEM::calloc(1, sizeof<SizeofData>));
-  data.object  = object;
-  data.is_type = is_type;
-  node.data    = cast<*void>(data);
-  return node;
+  let node: *SizeofNode = cast<*SizeofNode>(alloc(sizeof<SizeofNode>));
+  let base: *AstNode    = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_SIZEOF;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.object  = object;
+  node.is_type = is_type;
+  return base;
 }
 
 #returns_ownership
 pub const make_syscall -> fn (args: **AstNode, count: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_SYSCALL, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *SyscallData = cast<*SyscallData>(MEM::calloc(1, sizeof<SyscallData>));
-  data.args  = args;
-  data.count = count;
-  node.data  = cast<*void>(data);
-  return node;
+  let node: *SyscallNode = cast<*SyscallNode>(alloc(sizeof<SyscallNode>));
+  let base: *AstNode     = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_SYSCALL;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.args  = args;
+  node.count = count;
+  return base;
 }
 
 #returns_ownership
 pub const make_struct_expr -> fn (name: *byte, field_names: **byte, field_vals: **AstNode, field_count: int, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_STRUCT, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *StructExprData = cast<*StructExprData>(MEM::calloc(1, sizeof<StructExprData>));
-  data.name        = name;
-  data.field_names = field_names;
-  data.field_vals  = field_vals;
-  data.field_count = field_count;
-  node.data        = cast<*void>(data);
-  return node;
+  let node: *StructExprNode = cast<*StructExprNode>(alloc(sizeof<StructExprNode>));
+  let base: *AstNode        = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_STRUCT;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.name        = name;
+  node.field_names = field_names;
+  node.field_vals  = field_vals;
+  node.field_count = field_count;
+  return base;
 }
 
 #returns_ownership
 pub const make_deref -> fn (operand: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_DEREF, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *UnaryData = cast<*UnaryData>(MEM::calloc(1, sizeof<UnaryData>));
-  data.op      = AST::UnaryType::UNOP_DEREF;
-  data.operand = operand;
-  node.data    = cast<*void>(data);
-  return node;
+  let node: *UnaryNode = cast<*UnaryNode>(alloc(sizeof<UnaryNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_DEREF;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.op      = AST::UnaryType::UNOP_DEREF;
+  node.operand = operand;
+  return base;
 }
 
 #returns_ownership
 pub const make_addr -> fn (operand: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_ADDR, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *UnaryData = cast<*UnaryData>(MEM::calloc(1, sizeof<UnaryData>));
-  data.op      = AST::UnaryType::UNOP_ADDR;
-  data.operand = operand;
-  node.data    = cast<*void>(data);
-  return node;
+  let node: *UnaryNode = cast<*UnaryNode>(alloc(sizeof<UnaryNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_ADDR;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.op      = AST::UnaryType::UNOP_ADDR;
+  node.operand = operand;
+  return base;
 }
 
 #returns_ownership
 pub const make_grouping -> fn (expr: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_GROUPING, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *UnaryData = cast<*UnaryData>(MEM::calloc(1, sizeof<UnaryData>));
-  data.operand = expr;
-  node.data    = cast<*void>(data);
-  return node;
+  let node: *UnaryNode = cast<*UnaryNode>(alloc(sizeof<UnaryNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_GROUPING;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.operand = expr;
+  return base;
 }
 
 #returns_ownership
 pub const make_input -> fn (type_node: *AstNode, msg: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_INPUT, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *CastData = cast<*CastData>(MEM::calloc(1, sizeof<CastData>));
-  data.type_node = type_node;
-  data.castee    = msg;
-  node.data      = cast<*void>(data);
-  return node;
+  let node: *CastNode = cast<*CastNode>(alloc(sizeof<CastNode>));
+  let base: *AstNode  = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_INPUT;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.type_node = type_node;
+  node.castee    = msg;
+  return base;
 }
 
 #returns_ownership
 pub const make_system -> fn (command: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = AST::make_node(AST::NodeType::EXPR_SYSTEM, AST::NodeCategory::Node_Category_EXPR, line, col);
-  let data: *UnaryData = cast<*UnaryData>(MEM::calloc(1, sizeof<UnaryData>));
-  data.operand = command;
-  node.data    = cast<*void>(data);
-  return node;
+  let node: *UnaryNode = cast<*UnaryNode>(alloc(sizeof<UnaryNode>));
+  let base: *AstNode   = cast<*AstNode>(node);
+  base.kind     = AST::NodeType::EXPR_SYSTEM;
+  base.category = AST::NodeCategory::Node_Category_EXPR;
+  base.line     = line;
+  base.col      = col;
+  node.operand = command;
+  return base;
 }
+

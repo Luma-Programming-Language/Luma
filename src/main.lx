@@ -46,8 +46,6 @@ const parse -> fn (p: *Parser) *AstNode {
     stmts.push_back(cast<*void>(&stmt));
   }
   
-  output("module_name before make_module: ", module_name, "\n");
-
   let module_node: *AstNode = MAST::make_module(
     module_name, "", p.file_path,
     PARS::vec_to_node_array(&stmts), stmts.size,
@@ -61,8 +59,7 @@ const parse -> fn (p: *Parser) *AstNode {
   let program: *AstNode = STMT::make_program(
     PARS::vec_to_node_array(&modules),
     modules.size,
-    line,
-    0
+    line, 0
   );
   VEC::free_vector(&modules);
   
@@ -100,29 +97,25 @@ pub const main -> fn (argc: int, argv: **byte) int {
     let tok: Token = LEXER::next_token(&lexer);
     tokens.push_back(cast<*void>(&tok));
   }
-  tokens.remove_at(tokens.size - 1); // Remove the EOF token
+  tokens.remove_at(tokens.size - 1);
   
   // Parser Stage ----------------------------------------------------------
   let tks: *Token = cast<*Token>(tokens.data);
   let p: *Parser = PARS::create_parser(tks, tokens.size, build_config.filepath);
+  defer { PARS::free_parser(p); }
+
+  output("Before Parser\n");
   let node: *AstNode = parse(p);
-  
+  output("After Parser\n");
+
   if (p.had_error == 1) {
     ERR::error_report();
     return 1;
   }
-  
-  let pd: *ProgramData = cast<*ProgramData>(node.data);
-  output("pd ptr: ", cast<int>(pd), "\n");
-  output("pd.module_count: ", pd.module_count, "\n");
-  output("pd.modules ptr: ", cast<int>(cast<*void>(pd.modules)), "\n");
-  output("modules[0] ptr: ", cast<int>(cast<*void>(pd.modules[0])), "\n");
-  output("modules[0].kind: ", pd.modules[0].kind, "\n");
-  output("modules[0].data ptr: ", cast<int>(pd.modules[0].data), "\n");
 
   PRINT::print_node(node, 0);
 
-  defer { PARS::free_parser(p); }
+  AST::free_node(node);
   
   return 0;
 }
