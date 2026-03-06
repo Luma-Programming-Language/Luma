@@ -97,7 +97,7 @@ pub const parse_expr -> fn (p: *Parser, bp: int) *AstNode {
 #returns_ownership 
 const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   let struct_name: *byte = cast<*byte>(0);
 
@@ -168,7 +168,7 @@ const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 #returns_ownership 
 const binary -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   let op:   int = PARS::search_binop_map(p.current().kind);
   p.advance();
 
@@ -184,7 +184,7 @@ const binary -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 #returns_ownership 
 const call -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   let args: Vector = VEC::create_vector(sizeof<*AstNode>);
 
@@ -212,7 +212,7 @@ const call -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 #returns_ownership 
 const assign -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' for assignment.");
 
@@ -228,7 +228,7 @@ const assign -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 #returns_ownership 
 const prefix -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   let kind: int = p.current().kind;
 
   // Array index: left[expr]
@@ -274,7 +274,7 @@ const prefix -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 #returns_ownership 
 const primary -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   let kind: int = p.current().kind;
   let lit_type: int = PARS::search_literal_map(kind);
   
@@ -329,7 +329,7 @@ const primary -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const unary -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   let op:   int = PARS::search_unop_map(p.current().kind);
   p.advance();
 
@@ -345,7 +345,7 @@ const unary -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const group -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' for grouping.");
   let expr: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
@@ -356,7 +356,7 @@ const group -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const array -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   let elements: Vector = VEC::create_vector(sizeof<*AstNode>);
 
@@ -385,7 +385,7 @@ const array -> fn (p: *Parser) *AstNode {
 const deref -> fn (p: *Parser) *AstNode {
   p.advance();
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   let object: *AstNode = parse_expr(p, PARS::BindingPower::BP_UNARY);
   return EAST::make_deref(object, line, col);
 }
@@ -394,16 +394,16 @@ const deref -> fn (p: *Parser) *AstNode {
 const addr -> fn (p: *Parser) *AstNode { 
   p.advance();
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   let object: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
   return EAST::make_addr(object, line, col);
 }
 
 #returns_ownership 
 const _alloc -> fn (p: *Parser) *AstNode { 
-  p.advance();
+  p.advance(); // consume alloc
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before size for alloc.");
   let size: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -414,9 +414,9 @@ const _alloc -> fn (p: *Parser) *AstNode {
 
 #returns_ownership 
 const _free -> fn (p: *Parser) *AstNode { 
-  p.advance();
+  p.advance(); // consume free
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before pointer for free.");
   let ptr: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -428,8 +428,8 @@ const _free -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const _cast -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
-  p.advance();
+  let col:  int = p.current().col;
+  p.advance(); // consume cast
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for cast.");
   let cast_type: *AstNode = PTYPE::parse_type(p);
@@ -444,8 +444,8 @@ const _cast -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const _input -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
-  p.advance();
+  let col:  int = p.current().col;
+  p.advance(); // consume input
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for input.");
   let input_type: *AstNode = PTYPE::parse_type(p);
@@ -459,9 +459,9 @@ const _input -> fn (p: *Parser) *AstNode {
 
 #returns_ownership 
 const _system -> fn (p: *Parser) *AstNode { 
-  p.advance();
+  p.advance(); // consume system
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before system command.");
   let command: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -472,9 +472,9 @@ const _system -> fn (p: *Parser) *AstNode {
 
 #returns_ownership 
 const syscall -> fn (p: *Parser) *AstNode { 
-  p.advance();
+  p.advance(); // consume __syscall__
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before syscall arguments.");
 
@@ -502,7 +502,7 @@ const syscall -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const _sizeof -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   p.advance();
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for sizeof.");
@@ -515,7 +515,7 @@ const _sizeof -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const estruct -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' for struct expression.");
 
@@ -573,7 +573,7 @@ const estruct -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const index -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACKET, "Expected '[' for index expression.");
   let idx: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
@@ -584,4 +584,3 @@ const index -> fn (p: *Parser) *AstNode {
   p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close index expression.");
   return EAST::make_index(cast<*AstNode>(0), idx, line, col);
 }
-

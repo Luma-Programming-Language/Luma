@@ -140,6 +140,7 @@ pub const Token -> struct {
   kind:           int,
   len:            int,
   line:           int,
+  col:            int,
   whitespace_len: int,
 
   #returns_ownership

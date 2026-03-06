@@ -104,7 +104,14 @@ pub const search_unop_map -> fn (kind: int) int {
   return -1;
 }
 
-const EOF_TOK: Token = { val: "", kind: TOK::LumaTokenType::TOK_EOF, len: 0, line: 0, whitespace_len: 0 }; 
+const EOF_TOK: Token = { 
+  val: "", 
+  kind: TOK::LumaTokenType::TOK_EOF, 
+  len: 0, 
+  line: 0, 
+  col: 0, 
+  whitespace_len: 0 
+}; 
 
 pub const get_bp -> fn (kind: int) int {
   switch (kind) {
@@ -117,8 +124,7 @@ pub const get_bp -> fn (kind: int) int {
     TOK::LumaTokenType::TOK_PIPE     -> return BindingPower::BP_BITWISE_OR;
     TOK::LumaTokenType::TOK_CARET    -> return BindingPower::BP_BITWISE_XOR;
     TOK::LumaTokenType::TOK_AMP      -> return BindingPower::BP_BITWISE_AND;
-
-    TOK::LumaTokenType::TOK_RANGE -> BindingPower::BP_RANGE;
+    TOK::LumaTokenType::TOK_RANGE    -> return BindingPower::BP_RANGE;
 
     TOK::LumaTokenType::TOK_EQEQ, TOK::LumaTokenType::TOK_NEQ 
       -> return BindingPower::BP_EQUALITY;
@@ -181,7 +187,8 @@ pub const Parser -> struct {
   },
   consume    -> fn (kind: int, err_msg: *byte) Token {
     let line: int = self.current().line;
-    let col:  int = self.current().whitespace_len;
+    let col:  int = self.current().col;
+    let len:  int = self.current().len;
 
     if (self.current().kind == kind) 
       return self.advance();
@@ -194,7 +201,7 @@ pub const Parser -> struct {
       line:         line,
       col:          col,
       line_text:    ERR::generate_line(self.tks, self.tok_count, line),
-      token_length: self.current().len,
+      token_length: len,
       label:        cast<*byte>(0),
       note:         cast<*byte>(0),
       help:         cast<*byte>(0),
@@ -208,7 +215,8 @@ pub const Parser -> struct {
 
   error -> fn (err_type: *byte, err_msg: *byte) void {
     let line: int = self.current().line;
-    let col:  int = self.current().whitespace_len;
+    let col:  int = self.current().col;
+    let len:  int = self.current().len;
 
     let info: ErrorInformation = ErrorInformation {
       error_type:   err_type,
@@ -217,7 +225,7 @@ pub const Parser -> struct {
       line:         line,
       col:          col,
       line_text:    ERR::generate_line(self.tks, self.tok_count, line),
-      token_length: self.current().len,
+      token_length: len,
       label:        "Parser Error",
       note:         cast<*byte>(0),
       help:         cast<*byte>(0),

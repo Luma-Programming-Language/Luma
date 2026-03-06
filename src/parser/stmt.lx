@@ -81,8 +81,8 @@ pub const parse_stmt -> fn (p: *Parser) *AstNode {
 #returns_ownership 
 const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode {
   let doc_comment: *byte = "";
-  
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_CONST, "Expected 'const' keyword.");
   let name: *byte = p.get_name();
@@ -105,7 +105,7 @@ const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ow
     }
 
     p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' at the end of a const declaration");
-    return SAST::make_var_decl(name, doc_comment, type, value, 0, is_public, line, 0);
+    return SAST::make_var_decl(name, doc_comment, type, value, 0, is_public, line, col);
   }
 
   p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after a const name.");
@@ -126,6 +126,7 @@ const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ow
 const _fn -> fn (p: *Parser, name: *byte, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode {
   let doc_comment: *byte = "";
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   let param_names: Vector = VEC::create_vector(sizeof<*byte>);
   let param_types: Vector = VEC::create_vector(sizeof<*AstNode>);
@@ -176,7 +177,7 @@ const _fn -> fn (p: *Parser, name: *byte, is_public: int, returns_ownership: int
       name, doc_comment,
       PARS::vec_to_byte_array(&param_names), PARS::vec_to_node_array(&param_types), param_names.size,
       return_type, is_public, cast<*AstNode>(0),
-      returns_ownership, takes_ownership, 1, line, 0
+      returns_ownership, takes_ownership, 1, line, col
     );
     VEC::free_vector(&param_names);
     VEC::free_vector(&param_types);
@@ -195,7 +196,7 @@ const _fn -> fn (p: *Parser, name: *byte, is_public: int, returns_ownership: int
     name, doc_comment,
     PARS::vec_to_byte_array(&param_names), PARS::vec_to_node_array(&param_types), param_names.size,
     return_type, is_public, body,
-    returns_ownership, takes_ownership, 0, line, 0
+    returns_ownership, takes_ownership, 0, line, col
   );
 
   VEC::free_vector(&param_names);
@@ -208,6 +209,7 @@ const _fn -> fn (p: *Parser, name: *byte, is_public: int, returns_ownership: int
 const _enum -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
   let doc_comment: *byte = "";
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   let members: Vector = VEC::create_vector(sizeof<*byte>);
 
@@ -234,7 +236,7 @@ const _enum -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
   let node: *AstNode = SAST::make_enum_decl(
     name, doc_comment,
     PARS::vec_to_byte_array(&members), members.size,
-    is_public, line, 0
+    is_public, line, col
   );
   VEC::free_vector(&members);
   return node;
@@ -244,6 +246,7 @@ const _enum -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
 const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
   let doc_comment: *byte = "";
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   let public_fields:  Vector = VEC::create_vector(sizeof<*AstNode>);
   let private_fields: Vector = VEC::create_vector(sizeof<*AstNode>);
@@ -268,6 +271,7 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
     }
 
     let field_line: int = p.current().line;
+    let field_col:  int = p.current().col;
 
     let field_returns_ownership: int = 0;
     let field_takes_ownership:   int = 0;
@@ -303,7 +307,7 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
     }
 
     let field_decl: *AstNode = SAST::make_field_decl(
-      field_name, "", field_type, field_function, public_member, field_line, 0
+      field_name, "", field_type, field_function, public_member, field_line, field_col
     );
 
     if (public_member == 1) {
@@ -320,7 +324,7 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
     name, doc_comment,
     PARS::vec_to_node_array(&public_fields),  public_fields.size,
     PARS::vec_to_node_array(&private_fields), private_fields.size,
-    is_public, line, 0
+    is_public, line, col
   );
   VEC::free_vector(&public_fields);
   VEC::free_vector(&private_fields);
@@ -333,6 +337,7 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
 const var -> fn (p: *Parser, is_public: int) *AstNode {
   let doc_comment: *byte = "";
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_VAR, "Expected 'var' keyword.");
   let name: *byte = p.get_name();
@@ -342,30 +347,34 @@ const var -> fn (p: *Parser, is_public: int) *AstNode {
   let type: *AstNode = PTYPE::parse_type(p);
 
   if (p.current().kind != TOK::LumaTokenType::TOK_EQUAL) {
+    let prev_errors: int = p.had_error;
     p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after variable declaration.");
-    return SAST::make_var_decl(name, doc_comment, type, cast<*AstNode>(0), 1, is_public, line, 0);
+    if (p.had_error != prev_errors) return cast<*AstNode>(0);
+    return SAST::make_var_decl(name, doc_comment, type, cast<*AstNode>(0), 1, is_public, line, col);
   }
 
   p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' after variable type.");
   let value: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
   p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after variable declaration.");
 
-  return SAST::make_var_decl(name, doc_comment, type, value, 1, is_public, line, 0);
+  return SAST::make_var_decl(name, doc_comment, type, value, 1, is_public, line, col);
 }
 
 #returns_ownership 
 const expr -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   let e: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
   p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected a semicolon after expression statement.");
 
-  return SAST::make_expr_stmt(e, line, 0); 
+  return SAST::make_expr_stmt(e, line, col); 
 }
 
 #returns_ownership 
 const use -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
+  let col:  int = p.current().col;
   
   p.consume(TOK::LumaTokenType::TOK_USE, "Expected '@use' keyword.");
   let mod_name: *byte = p.get_name();
@@ -375,28 +384,30 @@ const use -> fn (p: *Parser) *AstNode {
   let mod_alias: *byte = p.get_name();
   p.advance();
 
-  return MAST::make_use(mod_name, mod_alias, line, 0); 
+  return MAST::make_use(mod_name, mod_alias, line, col); 
 }
 
 #returns_ownership
 const return_stmt -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_RETURN, "Expected 'return' keyword.");
 
   if (p.current().kind == TOK::LumaTokenType::TOK_SEMI) {
     p.advance();
-    return SAST::make_return_stmt(cast<*AstNode>(0), line, 0);
+    return SAST::make_return_stmt(cast<*AstNode>(0), line, col);
   }
 
   let value: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
   p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after return statement.");
-  return SAST::make_return_stmt(value, line, 0);
+  return SAST::make_return_stmt(value, line, col);
 }
 
 #returns_ownership
 const block -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' to start block.");
 
@@ -410,7 +421,7 @@ const block -> fn (p: *Parser) *AstNode {
 
   p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end block.");
 
-  let node: *AstNode = SAST::make_block(PARS::vec_to_node_array(&stmts), stmts.size, line, 0);
+  let node: *AstNode = SAST::make_block(PARS::vec_to_node_array(&stmts), stmts.size, line, col);
   VEC::free_vector(&stmts);
   return node;
 }
@@ -418,6 +429,7 @@ const block -> fn (p: *Parser) *AstNode {
 #returns_ownership
 const _if -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_IF, "Expected 'if' keyword.");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'if'.");
@@ -444,6 +456,7 @@ const _if -> fn (p: *Parser) *AstNode {
 
   loop (p.has_tokens() && p.current().kind == TOK::LumaTokenType::TOK_ELIF) {
     let elif_line: int = p.current().line;
+    let elif_col:  int = p.current().col;
     p.consume(TOK::LumaTokenType::TOK_ELIF,   "Expected 'elif' keyword.");
     p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'elif'.");
 
@@ -470,7 +483,7 @@ const _if -> fn (p: *Parser) *AstNode {
     let elif_node: *AstNode = SAST::make_if_stmt(
       elif_condition, elif_body,
       cast<**AstNode>(0), 0, cast<*AstNode>(0),
-      elif_line, 0
+      elif_line, elif_col
     );
     elif_stmts.push_back(cast<*void>(&elif_node));
   }
@@ -493,7 +506,7 @@ const _if -> fn (p: *Parser) *AstNode {
   let node: *AstNode = SAST::make_if_stmt(
     condition, then_stmt,
     PARS::vec_to_node_array(&elif_stmts), elif_stmts.size,
-    else_stmt, line, 0
+    else_stmt, line, col
   );
   VEC::free_vector(&elif_stmts);
   return node;
@@ -502,6 +515,7 @@ const _if -> fn (p: *Parser) *AstNode {
 #returns_ownership
 const break_continue_stmt -> fn (p: *Parser, is_continue: int) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   if (is_continue == 1) {
     p.consume(TOK::LumaTokenType::TOK_CONTINUE, "Expected 'continue' keyword.");
@@ -509,12 +523,13 @@ const break_continue_stmt -> fn (p: *Parser, is_continue: int) *AstNode {
     p.consume(TOK::LumaTokenType::TOK_BREAK, "Expected 'break' keyword.");
   }
   p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after break/continue.");
-  return SAST::make_break_continue(is_continue, line, 0);
+  return SAST::make_break_continue(is_continue, line, col);
 }
 
 #returns_ownership
 const _defer -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
   p.consume(TOK::LumaTokenType::TOK_DEFER, "Expected 'defer' keyword.");
 
   let stmt: *AstNode = parse_stmt(p);
@@ -522,12 +537,13 @@ const _defer -> fn (p: *Parser) *AstNode {
     p.error("SyntaxError", "Expected statement after 'defer'.");
     return cast<*AstNode>(0);
   }
-  return SAST::make_defer_stmt(stmt, line, 0);
+  return SAST::make_defer_stmt(stmt, line, col);
 }
 
 #returns_ownership
 const _switch -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_SWITCH, "Expected 'switch' keyword.");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'switch'.");
@@ -544,6 +560,7 @@ const _switch -> fn (p: *Parser) *AstNode {
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
     let case_line: int = p.current().line;
+    let case_col:  int = p.current().col;
 
     // Default case: _ -> { ... }
     if (p.current().kind == TOK::LumaTokenType::TOK_IDENTIFIER) {
@@ -558,7 +575,7 @@ const _switch -> fn (p: *Parser) *AstNode {
           VEC::free_vector(&cases);
           return cast<*AstNode>(0);
         }
-        default_case = SAST::make_default_stmt(default_body, case_line, 0);
+        default_case = SAST::make_default_stmt(default_body, case_line, case_col);
         continue;
       }
       free(tok_name);
@@ -599,7 +616,7 @@ const _switch -> fn (p: *Parser) *AstNode {
     }
 
     let case_node: *AstNode = SAST::make_case_stmt(
-      PARS::vec_to_node_array(&case_values), case_values.size, case_body, case_line, 0
+      PARS::vec_to_node_array(&case_values), case_values.size, case_body, case_line, case_col
     );
     VEC::free_vector(&case_values);
     cases.push_back(cast<*void>(&case_node));
@@ -608,7 +625,7 @@ const _switch -> fn (p: *Parser) *AstNode {
   p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end switch.");
 
   let node: *AstNode = SAST::make_switch_stmt(
-    condition, PARS::vec_to_node_array(&cases), cases.size, default_case, line, 0
+    condition, PARS::vec_to_node_array(&cases), cases.size, default_case, line, col
   );
   VEC::free_vector(&cases);
   return node;
@@ -619,6 +636,7 @@ const _switch -> fn (p: *Parser) *AstNode {
 #returns_ownership
 const loop_init -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
   let name: *byte = p.get_name();
   p.advance();
 
@@ -627,12 +645,13 @@ const loop_init -> fn (p: *Parser) *AstNode {
   p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' after loop initializer type.");
   let initializer: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
 
-  return SAST::make_var_decl(name, "", type, initializer, 1, 0, line, 0);
+  return SAST::make_var_decl(name, "", type, initializer, 1, 0, line, col);
 }
 
 #returns_ownership
 const for_loop_stmt -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
   let initializers: Vector = VEC::create_vector(sizeof<*AstNode>);
 
   p.consume(TOK::LumaTokenType::TOK_LBRACKET, "Expected '[' after 'loop'.");
@@ -678,7 +697,7 @@ const for_loop_stmt -> fn (p: *Parser) *AstNode {
   let node: *AstNode = SAST::make_loop_stmt(
     condition, optional, body,
     PARS::vec_to_node_array(&initializers), initializers.size,
-    line, 0
+    line, col
   );
   VEC::free_vector(&initializers);
   return node;
@@ -687,17 +706,19 @@ const for_loop_stmt -> fn (p: *Parser) *AstNode {
 #returns_ownership
 const infinite_loop_stmt -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
   let body: *AstNode = block(p);
   if (body == cast<*AstNode>(0)) {
     p.error("SyntaxError", "Expected block statement for infinite loop.");
     return cast<*AstNode>(0);
   }
-  return SAST::make_loop_stmt(cast<*AstNode>(0), cast<*AstNode>(0), body, cast<**AstNode>(0), 0, line, 0);
+  return SAST::make_loop_stmt(cast<*AstNode>(0), cast<*AstNode>(0), body, cast<**AstNode>(0), 0, line, col);
 }
 
 #returns_ownership
 const _loop -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LOOP, "Expected 'loop' keyword.");
 
@@ -729,6 +750,5 @@ const _loop -> fn (p: *Parser) *AstNode {
     return cast<*AstNode>(0);
   }
 
-  return SAST::make_loop_stmt(condition, optional, body, cast<**AstNode>(0), 0, line, 0);
+  return SAST::make_loop_stmt(condition, optional, body, cast<**AstNode>(0), 0, line, col);
 }
-
