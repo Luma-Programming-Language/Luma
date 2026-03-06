@@ -11,7 +11,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
     }
     
     let filename: *byte = args.get(1);
-    output(filename, "\n");
+    output(sizeof<filename>, "\n");
 
     return 0;
 }

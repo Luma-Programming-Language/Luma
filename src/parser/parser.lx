@@ -156,7 +156,10 @@ pub const Parser -> struct {
   pos:         int,
   had_error:   int,
 
-  has_tokens -> fn () bool { return (self.pos < self.tok_count); },
+  has_tokens -> fn () bool { 
+    return (self.pos < self.tok_count && 
+            self.tks[self.pos].kind != TOK::LumaTokenType::TOK_EOF); 
+  },
   peek       -> fn (offset: int) Token {
     let idx: int = self.pos + offset;
     if (idx < self.tok_count)  

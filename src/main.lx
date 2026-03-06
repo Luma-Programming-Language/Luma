@@ -6,7 +6,7 @@
 @use "std_args" as ARGS
 @use "std_io" as IO
 
-@use "parser_stmt" as PSTMT
+@use "parse_stmt" as PSTMT
 @use "lexer_tokens" as TOK
 @use "constants" as CONST
 @use "commands" as COMD
@@ -41,7 +41,7 @@ const parse -> fn (p: *Parser) *AstNode {
   let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
   
   loop [i: int = 0](p.has_tokens()) : (i++) {
-    let stmt: *AstNode = PSTMT::parser_stmt(p);
+    let stmt: *AstNode = PSTMT::parse_stmt(p);
     if (stmt == cast<*AstNode>(0)) continue;
     stmts.push_back(cast<*void>(&stmt));
   }

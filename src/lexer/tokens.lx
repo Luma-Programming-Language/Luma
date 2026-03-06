@@ -247,7 +247,7 @@ pub const keyword_map: [Keyword; 41] = [
   Keyword { val: "free",        kind: LumaTokenType::TOK_FREE },
   Keyword { val: "input",       kind: LumaTokenType::TOK_INPUT },
   Keyword { val: "cast",        kind: LumaTokenType::TOK_CAST },
-  Keyword { val: "size_of",     kind: LumaTokenType::TOK_SIZE_OF },
+  Keyword { val: "sizeof",     kind: LumaTokenType::TOK_SIZE_OF },
   Keyword { val: "system",      kind: LumaTokenType::TOK_SYSTEM },
 
   // Control Flow

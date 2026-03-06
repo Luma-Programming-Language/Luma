@@ -1,4 +1,4 @@
-@module "parser_stmt"
+@module "parse_stmt"
 
 @use "std_string" as STRING
 @use "std_vector" as VEC
@@ -32,7 +32,7 @@
 #returns_ownership const _loop       -> fn (p: *Parser) *AstNode;
 
 #returns_ownership
-pub const parser_stmt -> fn (p: *Parser) *AstNode {
+pub const parse_stmt -> fn (p: *Parser) *AstNode {
   let returns_ownership: int = 0;
   let takes_ownership: int = 0;
   let is_public: int = 0;
@@ -64,7 +64,7 @@ pub const parser_stmt -> fn (p: *Parser) *AstNode {
 
   switch(p.current().kind) {
     TOK::LumaTokenType::TOK_CONTINUE, TOK::LumaTokenType::TOK_BREAK 
-      -> return break_continue_stmt(p, cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
+      -> return break_continue_stmt(p, -cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
     TOK::LumaTokenType::TOK_CONST  -> return _const(p, is_public, returns_ownership, takes_ownership);
     TOK::LumaTokenType::TOK_VAR    -> return var(p, is_public);
     TOK::LumaTokenType::TOK_USE    -> return use(p);
@@ -353,7 +353,8 @@ const var -> fn (p: *Parser, is_public: int) *AstNode {
   return SAST::make_var_decl(name, doc_comment, type, value, 1, is_public, line, 0);
 }
 
-#returns_ownership const expr -> fn (p: *Parser) *AstNode { 
+#returns_ownership 
+const expr -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
 
   let e: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
@@ -362,7 +363,8 @@ const var -> fn (p: *Parser, is_public: int) *AstNode {
   return SAST::make_expr_stmt(e, line, 0); 
 }
 
-#returns_ownership const use -> fn (p: *Parser) *AstNode { 
+#returns_ownership 
+const use -> fn (p: *Parser) *AstNode { 
   let line: int = p.current().line;
   
   p.consume(TOK::LumaTokenType::TOK_USE, "Expected '@use' keyword.");
@@ -401,8 +403,8 @@ const block -> fn (p: *Parser) *AstNode {
   let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
-    let stmt: *AstNode = parser_stmt(p);
-    if (stmt == cast<*AstNode>(0)) continue;
+    let stmt: *AstNode = parse_stmt(p);
+    if (stmt == cast<*AstNode>(0)) break;
     stmts.push_back(cast<*void>(&stmt));
   }
 
@@ -427,10 +429,15 @@ const _if -> fn (p: *Parser) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after if condition.");
 
-  let then_stmt: *AstNode = block(p);
-  if (then_stmt == cast<*AstNode>(0)) {
-    p.error("SyntaxError", "Expected block after if condition.");
-    return cast<*AstNode>(0);
+  let then_stmt: *AstNode = cast<*AstNode>(0);
+  if (p.current().kind == TOK::LumaTokenType::TOK_LBRACE) {
+    then_stmt = block(p);
+    if (then_stmt == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected block after if condition.");
+      return cast<*AstNode>(0);
+    }
+  } else {
+    then_stmt = parse_stmt(p);
   }
 
   let elif_stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
@@ -448,11 +455,16 @@ const _if -> fn (p: *Parser) *AstNode {
     }
     p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after elif condition.");
 
-    let elif_body: *AstNode = block(p);
-    if (elif_body == cast<*AstNode>(0)) {
-      p.error("SyntaxError", "Expected block after elif condition.");
-      VEC::free_vector(&elif_stmts);
-      return cast<*AstNode>(0);
+    let elif_body: *AstNode = cast<*AstNode>(0);
+    if (p.current().kind == TOK::LumaTokenType::TOK_LBRACE) {
+      elif_body = block(p);
+      if (elif_body == cast<*AstNode>(0)) {
+        p.error("SyntaxError", "Expected block after elif condition.");
+        VEC::free_vector(&elif_stmts);
+        return cast<*AstNode>(0);
+      }
+    } else {
+      elif_body = parse_stmt(p);
     }
 
     let elif_node: *AstNode = SAST::make_if_stmt(
@@ -466,11 +478,15 @@ const _if -> fn (p: *Parser) *AstNode {
   let else_stmt: *AstNode = cast<*AstNode>(0);
   if (p.current().kind == TOK::LumaTokenType::TOK_ELSE) {
     p.advance();
-    else_stmt = block(p);
-    if (else_stmt == cast<*AstNode>(0)) {
-      p.error("SyntaxError", "Expected block after 'else'.");
-      VEC::free_vector(&elif_stmts);
-      return cast<*AstNode>(0);
+    if (p.current().kind == TOK::LumaTokenType::TOK_LBRACE) {
+      else_stmt = block(p);
+      if (else_stmt == cast<*AstNode>(0)) {
+        p.error("SyntaxError", "Expected block after 'else'.");
+        VEC::free_vector(&elif_stmts);
+        return cast<*AstNode>(0);
+      }
+    } else {
+      else_stmt = parse_stmt(p);
     }
   }
 
@@ -501,7 +517,7 @@ const _defer -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
   p.consume(TOK::LumaTokenType::TOK_DEFER, "Expected 'defer' keyword.");
 
-  let stmt: *AstNode = parser_stmt(p);
+  let stmt: *AstNode = parse_stmt(p);
   if (stmt == cast<*AstNode>(0)) {
     p.error("SyntaxError", "Expected statement after 'defer'.");
     return cast<*AstNode>(0);
