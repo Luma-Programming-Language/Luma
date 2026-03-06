@@ -157,12 +157,13 @@ pub const create_lexer -> fn (src: *byte) Lexer {
   return Lexer { line: 1, col: 0, current: src, src: src };
 }
 
-const SINGLE_SYMBOL_COUNT: int = 22;
+const SINGLE_SYMBOL_COUNT: int = 23;
 const SingleSymbol -> struct { val: byte, kind: int }; 
-const single_symbol_map: [SingleSymbol; 22] = [
+const single_symbol_map: [SingleSymbol; 23] = [
   SingleSymbol { val: '(', kind: LumaTokenType::TOK_LPAREN  },
   SingleSymbol { val: ')', kind: LumaTokenType::TOK_RPAREN  },
   SingleSymbol { val: ';', kind: LumaTokenType::TOK_SEMI    },
+  SingleSymbol { val: ':', kind: LumaTokenType::TOK_COLON   },
   SingleSymbol { val: '@', kind: LumaTokenType::TOK_AT      },
   SingleSymbol { val: '+', kind: LumaTokenType::TOK_PLUS    }, 
   SingleSymbol { val: '-', kind: LumaTokenType::TOK_MINUS   },

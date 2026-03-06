@@ -168,10 +168,11 @@ pub const Parser -> struct {
       return self.tks[self.pos]; 
     return EOF_TOK; 
   },
-  advance    -> fn () Token {
-    if (self.has_tokens()) { 
+  advance -> fn () Token {
+    if (self.has_tokens()) {
+      let tok: Token = self.tks[self.pos];  // capture current first
       self.pos = self.pos + 1;
-      return self.tks[self.pos];
+      return tok;                            // return what was consumed
     }
     return EOF_TOK;
   },

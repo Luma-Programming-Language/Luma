@@ -8,6 +8,21 @@ const print_indent -> fn (indent: int) void {
   }
 }
 
+pub const print_node -> fn (node: *AstNode, indent: int) void;
+
+const r -> fn (node: *AstNode, indent: int) void { print_node(node, indent); }
+
+const field -> fn (label: *byte, node: *AstNode, indent: int) void {
+  print_indent(indent);
+  output("└─ ", label, "\n");
+  print_node(node, indent + 1);
+}
+
+const label -> fn (l: *byte, indent: int) void {
+  print_indent(indent);
+  output("└─ ", l, "\n");
+}
+
 pub const print_node -> fn (node: *AstNode, indent: int) void {
   if (node == cast<*AstNode>(0)) {
     print_indent(indent);
@@ -15,242 +30,186 @@ pub const print_node -> fn (node: *AstNode, indent: int) void {
     return;
   }
 
-  switch (node.kind) {
+  let f: *int = cast<*int>(node);
+  let kind:     int = f[0];
+  let category: int = f[1];
+
+  switch (kind) {
 
     // ── Preprocessor ──────────────────────────────────────────────────
     AST::NodeType::PREPROCESSOR_MODULE -> {
-      let d: *ModuleNode = cast<*ModuleNode>(node);
       print_indent(indent);
-      output("Module: ", d.name, "\n");
-      loop [i: int = 0](i < d.body_count) : (++i) {
-        print_node(d.body[i], indent + 1);
-      }
+      output("Module: ", cast<*byte>(f[4]), "\n");
+      let body:       **AstNode = cast<**AstNode>(f[7]);
+      let body_count: int       = f[8];
+      loop [i: int = 0](i < body_count) : (++i) { r(body[i], indent + 1); }
     }
     AST::NodeType::PREPROCESSOR_USE -> {
-      let d: *UseNode = cast<*UseNode>(node);
       print_indent(indent);
-      output("Use: ", d.module_name, " as ", d.alias, "\n");
+      output("Use: ", cast<*byte>(f[4]), " as ", cast<*byte>(f[5]), "\n");
     }
 
     // ── Program ───────────────────────────────────────────────────────
     AST::NodeType::PROGRAM -> {
-      let d: *ProgramNode = cast<*ProgramNode>(node);
       print_indent(indent);
       output("Program\n");
-      loop [i: int = 0](i < d.module_count) : (++i) {
-        print_node(d.modules[i], indent + 1);
-      }
+      let modules:      **AstNode = cast<**AstNode>(f[4]);
+      let module_count: int       = f[5];
+      loop [i: int = 0](i < module_count) : (++i) { r(modules[i], indent + 1); }
     }
 
     // ── Statements ────────────────────────────────────────────────────
     AST::NodeType::STMT_EXPRESSION -> {
-      let d: *ExprStmtNode = cast<*ExprStmtNode>(node);
-      print_indent(indent);
-      output("ExprStmt\n");
-      print_node(d.expression, indent + 1);
+      print_indent(indent); output("ExprStmt\n");
+      r(cast<*AstNode>(f[4]), indent + 1);
     }
     AST::NodeType::STMT_VAR_DECL -> {
-      let d: *VarDeclNode = cast<*VarDeclNode>(node);
-      print_indent(indent);
-      output("VarDecl: ", d.name, "\n");
-      print_indent(indent + 1); output("type:\n");
-      print_node(d.var_type, indent + 2);
-      if (d.initializer != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("init:\n");
-        print_node(d.initializer, indent + 2);
-      }
+      print_indent(indent); output("VarDecl: ", cast<*byte>(f[4]), "\n");
+      field("type", cast<*AstNode>(f[6]), indent);
+      if (f[7] != 0) field("init", cast<*AstNode>(f[7]), indent);
     }
     AST::NodeType::STMT_CONST_DECL -> {
-      let d: *VarDeclNode = cast<*VarDeclNode>(node);
-      print_indent(indent);
-      output("ConstDecl: ", d.name, "\n");
-      print_indent(indent + 1); output("type:\n");
-      print_node(d.var_type, indent + 2);
-      if (d.initializer != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("init:\n");
-        print_node(d.initializer, indent + 2);
-      }
+      print_indent(indent); output("ConstDecl: ", cast<*byte>(f[4]), "\n");
+      field("type", cast<*AstNode>(f[6]), indent);
+      if (f[7] != 0) field("init", cast<*AstNode>(f[7]), indent);
     }
     AST::NodeType::STMT_FUNCTION -> {
-      let d: *FuncDeclNode = cast<*FuncDeclNode>(node);
       print_indent(indent);
-      output("FuncDecl: ", d.name);
-      if (d.is_public == 1)         output(" [pub]");
-      if (d.returns_ownership == 1) output(" [#returns_ownership]");
-      if (d.takes_ownership == 1)   output(" [#takes_ownership]");
-      if (d.forward_declared == 1)  output(" [forward]");
+      output("FuncDecl: ", cast<*byte>(f[4]));
+      if (f[10] == 1) output(" [pub]");
+      if (f[12] == 1) output(" [#ro]");
+      if (f[13] == 1) output(" [#to]");
+      if (f[14] == 1) output(" [fwd]");
       output("\n");
-      loop [i: int = 0](i < d.param_count) : (++i) {
-        print_indent(indent + 1);
-        output("param: ", d.param_names[i], "\n");
-        print_node(d.param_types[i], indent + 2);
+      let param_names: **byte    = cast<**byte>(f[6]);
+      let param_types: **AstNode = cast<**AstNode>(f[7]);
+      let param_count: int       = f[8];
+      loop [i: int = 0](i < param_count) : (++i) {
+        print_indent(indent + 1); output("└─ param: ", param_names[i], "\n");
+        r(param_types[i], indent + 2);
       }
-      print_indent(indent + 1); output("return:\n");
-      print_node(d.return_type, indent + 2);
-      if (d.body != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("body:\n");
-        print_node(d.body, indent + 2);
-      }
+      field("return", cast<*AstNode>(f[9]), indent);
+      if (f[11] != 0) field("body", cast<*AstNode>(f[11]), indent);
     }
     AST::NodeType::STMT_BLOCK -> {
-      let d: *BlockNode = cast<*BlockNode>(node);
-      print_indent(indent);
-      output("Block\n");
-      loop [i: int = 0](i < d.stmt_count) : (++i) {
-        print_node(d.statements[i], indent + 1);
-      }
+      print_indent(indent); output("Block\n");
+      let statements: **AstNode = cast<**AstNode>(f[4]);
+      let stmt_count: int       = f[5];
+      loop [i: int = 0](i < stmt_count) : (++i) { r(statements[i], indent + 1); }
     }
     AST::NodeType::STMT_RETURN -> {
-      let d: *ReturnStmtNode = cast<*ReturnStmtNode>(node);
-      print_indent(indent);
-      output("Return\n");
-      if (d.value != cast<*AstNode>(0))
-        print_node(d.value, indent + 1);
+      print_indent(indent); output("Return\n");
+      if (f[4] != 0) r(cast<*AstNode>(f[4]), indent + 1);
     }
     AST::NodeType::STMT_IF -> {
-      let d: *IfStmtNode = cast<*IfStmtNode>(node);
       print_indent(indent); output("If\n");
-      print_indent(indent + 1); output("condition:\n");
-      print_node(d.condition, indent + 2);
-      print_indent(indent + 1); output("then:\n");
-      print_node(d.then_stmt, indent + 2);
-      loop [i: int = 0](i < d.elif_count) : (++i) {
-        print_indent(indent + 1); output("elif:\n");
-        print_node(d.elif_stmts[i], indent + 2);
-      }
-      if (d.else_stmt != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("else:\n");
-        print_node(d.else_stmt, indent + 2);
-      }
+      field("cond", cast<*AstNode>(f[4]), indent);
+      field("then", cast<*AstNode>(f[5]), indent);
+      let elif_stmts: **AstNode = cast<**AstNode>(f[6]);
+      let elif_count: int       = f[7];
+      loop [i: int = 0](i < elif_count) : (++i) { field("elif", elif_stmts[i], indent); }
+      if (f[8] != 0) field("else", cast<*AstNode>(f[8]), indent);
     }
     AST::NodeType::STMT_LOOP -> {
-      let d: *LoopStmtNode = cast<*LoopStmtNode>(node);
       print_indent(indent); output("Loop\n");
-      loop [i: int = 0](i < d.init_count) : (++i) {
-        print_indent(indent + 1); output("init:\n");
-        print_node(d.initializer[i], indent + 2);
-      }
-      if (d.condition != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("condition:\n");
-        print_node(d.condition, indent + 2);
-      }
-      if (d.optional != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("step:\n");
-        print_node(d.optional, indent + 2);
-      }
-      print_indent(indent + 1); output("body:\n");
-      print_node(d.body, indent + 2);
+      let initializer: **AstNode = cast<**AstNode>(f[7]);
+      let init_count:  int       = f[8];
+      loop [i: int = 0](i < init_count) : (++i) { field("init", initializer[i], indent); }
+      if (f[4] != 0) field("cond", cast<*AstNode>(f[4]), indent);
+      if (f[5] != 0) field("step", cast<*AstNode>(f[5]), indent);
+      field("body", cast<*AstNode>(f[6]), indent);
     }
     AST::NodeType::STMT_BREAK_CONTINUE -> {
-      let d: *BreakContinueNode = cast<*BreakContinueNode>(node);
       print_indent(indent);
-      if (d.is_continue == 1) { output("Continue\n"); }
-      else                    { output("Break\n"); }
+      if (f[4] == 1) { output("Continue\n"); } else { output("Break\n"); }
     }
     AST::NodeType::STMT_DEFER -> {
-      let d: *DeferNode = cast<*DeferNode>(node);
       print_indent(indent); output("Defer\n");
-      print_node(d.statement, indent + 1);
+      r(cast<*AstNode>(f[4]), indent + 1);
     }
     AST::NodeType::STMT_SWITCH -> {
-      let d: *SwitchNode = cast<*SwitchNode>(node);
       print_indent(indent); output("Switch\n");
-      print_indent(indent + 1); output("condition:\n");
-      print_node(d.condition, indent + 2);
-      loop [i: int = 0](i < d.case_count) : (++i) {
-        print_node(d.cases[i], indent + 1);
-      }
-      if (d.default_case != cast<*AstNode>(0))
-        print_node(d.default_case, indent + 1);
+      field("cond", cast<*AstNode>(f[4]), indent);
+      let cases:      **AstNode = cast<**AstNode>(f[5]);
+      let case_count: int       = f[6];
+      loop [i: int = 0](i < case_count) : (++i) { r(cases[i], indent + 1); }
+      if (f[7] != 0) r(cast<*AstNode>(f[7]), indent + 1);
     }
     AST::NodeType::STMT_CASE -> {
-      let d: *CaseNode = cast<*CaseNode>(node);
       print_indent(indent); output("Case\n");
-      loop [i: int = 0](i < d.value_count) : (++i) {
-        print_indent(indent + 1); output("value:\n");
-        print_node(d.values[i], indent + 2);
-      }
-      print_indent(indent + 1); output("body:\n");
-      print_node(d.body, indent + 2);
+      let values:      **AstNode = cast<**AstNode>(f[4]);
+      let value_count: int       = f[5];
+      loop [i: int = 0](i < value_count) : (++i) { field("val", values[i], indent); }
+      field("body", cast<*AstNode>(f[6]), indent);
     }
     AST::NodeType::STMT_DEFAULT -> {
-      let d: *DefaultNode = cast<*DefaultNode>(node);
       print_indent(indent); output("Default\n");
-      print_node(d.body, indent + 1);
+      r(cast<*AstNode>(f[4]), indent + 1);
     }
     AST::NodeType::STMT_ENUM -> {
-      let d: *EnumDeclNode = cast<*EnumDeclNode>(node);
-      print_indent(indent); output("EnumDecl: ", d.name, "\n");
-      loop [i: int = 0](i < d.member_count) : (++i) {
-        print_indent(indent + 1); output("member: ", d.members[i], "\n");
+      print_indent(indent); output("EnumDecl: ", cast<*byte>(f[4]), "\n");
+      let members:      **byte = cast<**byte>(f[6]);
+      let member_count: int    = f[7];
+      loop [i: int = 0](i < member_count) : (++i) {
+        print_indent(indent + 1); output("└─ ", members[i], "\n");
       }
     }
     AST::NodeType::STMT_STRUCT -> {
-      let d: *StructDeclNode = cast<*StructDeclNode>(node);
-      print_indent(indent); output("StructDecl: ", d.name, "\n");
-      loop [i: int = 0](i < d.public_count) : (++i) {
-        print_indent(indent + 1); output("pub:\n");
-        print_node(d.public_members[i], indent + 2);
-      }
-      loop [i: int = 0](i < d.private_count) : (++i) {
-        print_indent(indent + 1); output("priv:\n");
-        print_node(d.private_members[i], indent + 2);
-      }
+      print_indent(indent); output("StructDecl: ", cast<*byte>(f[4]), "\n");
+      let pub_members:  **AstNode = cast<**AstNode>(f[6]);
+      let pub_count:    int       = f[7];
+      let priv_members: **AstNode = cast<**AstNode>(f[8]);
+      let priv_count:   int       = f[9];
+      loop [i: int = 0](i < pub_count)  : (++i) { field("pub",  pub_members[i],  indent); }
+      loop [i: int = 0](i < priv_count) : (++i) { field("priv", priv_members[i], indent); }
     }
     AST::NodeType::STMT_FIELD_DECL -> {
-      let d: *FieldDeclNode = cast<*FieldDeclNode>(node);
-      print_indent(indent); output("Field: ", d.name, "\n");
-      if (d.type_node != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("type:\n");
-        print_node(d.type_node, indent + 2);
-      }
-      if (d.function != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("method:\n");
-        print_node(d.function, indent + 2);
-      }
+      print_indent(indent); output("Field: ", cast<*byte>(f[4]), "\n");
+      if (f[6] != 0) field("type",   cast<*AstNode>(f[6]), indent);
+      if (f[7] != 0) field("method", cast<*AstNode>(f[7]), indent);
     }
     AST::NodeType::STMT_IMPL -> {
-      let d: *ImplNode = cast<*ImplNode>(node);
       print_indent(indent); output("Impl\n");
-      loop [i: int = 0](i < d.function_name_count) : (++i) {
-        print_indent(indent + 1);
-        output("fn: ", d.function_name_list[i], "\n");
-        print_node(d.function_type_list[i], indent + 2);
+      let fn_names:  **byte    = cast<**byte>(f[4]);
+      let fn_types:  **AstNode = cast<**AstNode>(f[5]);
+      let st_names:  **byte    = cast<**byte>(f[6]);
+      let fn_count:  int       = f[7];
+      let st_count:  int       = f[8];
+      loop [i: int = 0](i < fn_count) : (++i) {
+        print_indent(indent + 1); output("└─ fn: ", fn_names[i], "\n");
+        r(fn_types[i], indent + 2);
       }
-      loop [i: int = 0](i < d.struct_name_count) : (++i) {
-        print_indent(indent + 1);
-        output("for: ", d.struct_name_list[i], "\n");
+      loop [i: int = 0](i < st_count) : (++i) {
+        print_indent(indent + 1); output("└─ for: ", st_names[i], "\n");
       }
-      print_node(d.body, indent + 1);
+      r(cast<*AstNode>(f[9]), indent + 1);
     }
 
     // ── Expressions ───────────────────────────────────────────────────
     AST::NodeType::EXPR_LITERAL -> {
-      let d: *LiteralNode = cast<*LiteralNode>(node);
       print_indent(indent);
-      switch (d.lit_type) {
-        AST::LiteralType::LITERAL_INT    -> { output("Literal(int): ",    d.int_val,    "\n"); }
-        AST::LiteralType::LITERAL_FLOAT  -> { output("Literal(float): ",  d.float_val,  "\n"); }
-        AST::LiteralType::LITERAL_STRING -> { output("Literal(string): ", d.string_val, "\n"); }
+      let lit_type: int = f[4];
+      switch (lit_type) {
+        AST::LiteralType::LITERAL_INT    -> { output("Literal(int): ",    f[5],                    "\n"); }
+        AST::LiteralType::LITERAL_FLOAT  -> { output("Literal(float): ",  f[6],                    "\n"); }
+        AST::LiteralType::LITERAL_STRING -> { output("Literal(str): \'",  cast<*byte>(f[7]), "\'\n"); }
+        AST::LiteralType::LITERAL_CHAR   -> { output("Literal(char)\n"); }
         AST::LiteralType::LITERAL_BOOL   -> {
-          if (d.bool_val == 1) { output("Literal(bool): true\n");  }
-          else                 { output("Literal(bool): false\n"); }
+          if (f[9] == 1) { output("Literal(bool): true\n"); }
+          else           { output("Literal(bool): false\n"); }
         }
         AST::LiteralType::LITERAL_NULL  -> { output("Literal: null\n"); }
-        AST::LiteralType::LITERAL_CHAR  -> { output("Literal(char)\n"); }
-        AST::LiteralType::LITERAL_IDENT -> { output("Literal(ident): ", d.string_val, "\n"); }
+        AST::LiteralType::LITERAL_IDENT -> { output("Literal(ident): ", cast<*byte>(f[7]), "\n"); }
         _ -> { output("Literal(?)\n"); }
       }
     }
     AST::NodeType::EXPR_IDENTIFIER -> {
-      let d: *IdentifierNode = cast<*IdentifierNode>(node);
-      print_indent(indent);
-      output("Identifier: ", d.name, "\n");
+      print_indent(indent); output("Ident: ", cast<*byte>(f[4]), "\n");
     }
     AST::NodeType::EXPR_BINARY -> {
-      let d: *BinaryNode = cast<*BinaryNode>(node);
       print_indent(indent);
-      switch (d.op) {
+      let op: int = f[4];
+      switch (op) {
         AST::BinaryOp::BINOP_ADD     -> { output("Binary: +\n");  }
         AST::BinaryOp::BINOP_SUB     -> { output("Binary: -\n");  }
         AST::BinaryOp::BINOP_MUL     -> { output("Binary: *\n");  }
@@ -272,13 +231,13 @@ pub const print_node -> fn (node: *AstNode, indent: int) void {
         AST::BinaryOp::BINOP_RANGE   -> { output("Binary: ..\n"); }
         _ -> { output("Binary: ?\n"); }
       }
-      print_node(d.left,  indent + 1);
-      print_node(d.right, indent + 1);
+      r(cast<*AstNode>(f[5]), indent + 1);
+      r(cast<*AstNode>(f[6]), indent + 1);
     }
     AST::NodeType::EXPR_UNARY -> {
-      let d: *UnaryNode = cast<*UnaryNode>(node);
       print_indent(indent);
-      switch (d.op) {
+      let op: int = f[4];
+      switch (op) {
         AST::UnaryType::UNOP_NOT      -> { output("Unary: !\n");   }
         AST::UnaryType::UNOP_NEG      -> { output("Unary: -\n");   }
         AST::UnaryType::UNOP_POS      -> { output("Unary: +\n");   }
@@ -287,181 +246,146 @@ pub const print_node -> fn (node: *AstNode, indent: int) void {
         AST::UnaryType::UNOP_PRE_DEC  -> { output("Unary: --x\n"); }
         AST::UnaryType::UNOP_POST_INC -> { output("Unary: x++\n"); }
         AST::UnaryType::UNOP_POST_DEC -> { output("Unary: x--\n"); }
-        AST::UnaryType::UNOP_DEREF    -> { output("Unary: *\n");   }
-        AST::UnaryType::UNOP_ADDR     -> { output("Unary: &\n");   }
+        AST::UnaryType::UNOP_DEREF    -> { output("Deref\n");      }
+        AST::UnaryType::UNOP_ADDR     -> { output("Addr\n");       }
         _ -> { output("Unary: ?\n"); }
       }
-      print_node(d.operand, indent + 1);
-    }
-    AST::NodeType::EXPR_CALL -> {
-      let d: *CallNode = cast<*CallNode>(node);
-      print_indent(indent); output("Call\n");
-      print_indent(indent + 1); output("callee:\n");
-      print_node(d.callee, indent + 2);
-      loop [i: int = 0](i < d.arg_count) : (++i) {
-        print_indent(indent + 1); output("arg:\n");
-        print_node(d.args[i], indent + 2);
-      }
-    }
-    AST::NodeType::EXPR_ASSIGNMENT -> {
-      let d: *AssignNode = cast<*AssignNode>(node);
-      print_indent(indent); output("Assign\n");
-      print_indent(indent + 1); output("target:\n");
-      print_node(d.target, indent + 2);
-      print_indent(indent + 1); output("value:\n");
-      print_node(d.value, indent + 2);
-    }
-    AST::NodeType::EXPR_MEMBER -> {
-      let d: *MemberNode = cast<*MemberNode>(node);
-      print_indent(indent);
-      if (d.is_compiletime == 1) { output("Member(::): ", d.member, "\n"); }
-      else                       { output("Member(.): ",  d.member, "\n"); }
-      print_node(d.object, indent + 1);
-    }
-    AST::NodeType::EXPR_INDEX -> {
-      let d: *IndexNode = cast<*IndexNode>(node);
-      print_indent(indent); output("Index\n");
-      print_node(d.object, indent + 1);
-      print_node(d.index,  indent + 1);
-    }
-    AST::NodeType::EXPR_GROUPING -> {
-      let d: *UnaryNode = cast<*UnaryNode>(node);
-      print_indent(indent); output("Grouping\n");
-      print_node(d.operand, indent + 1);
-    }
-    AST::NodeType::EXPR_ARRAY -> {
-      let d: *ArrayNode = cast<*ArrayNode>(node);
-      print_indent(indent); output("Array\n");
-      loop [i: int = 0](i < d.element_count) : (++i) {
-        print_node(d.elements[i], indent + 1);
-      }
+      r(cast<*AstNode>(f[5]), indent + 1);
     }
     AST::NodeType::EXPR_DEREF -> {
-      let d: *UnaryNode = cast<*UnaryNode>(node);
       print_indent(indent); output("Deref\n");
-      print_node(d.operand, indent + 1);
+      r(cast<*AstNode>(f[5]), indent + 1);
     }
     AST::NodeType::EXPR_ADDR -> {
-      let d: *UnaryNode = cast<*UnaryNode>(node);
       print_indent(indent); output("Addr\n");
-      print_node(d.operand, indent + 1);
+      r(cast<*AstNode>(f[5]), indent + 1);
     }
-    AST::NodeType::EXPR_CAST -> {
-      let d: *CastNode = cast<*CastNode>(node);
-      print_indent(indent); output("Cast\n");
-      print_indent(indent + 1); output("type:\n");
-      print_node(d.type_node, indent + 2);
-      print_indent(indent + 1); output("expr:\n");
-      print_node(d.castee, indent + 2);
-    }
-    AST::NodeType::EXPR_INPUT -> {
-      let d: *CastNode = cast<*CastNode>(node);
-      print_indent(indent); output("Input\n");
-      print_indent(indent + 1); output("type:\n");
-      print_node(d.type_node, indent + 2);
-      if (d.castee != cast<*AstNode>(0)) {
-        print_indent(indent + 1); output("msg:\n");
-        print_node(d.castee, indent + 2);
-      }
-    }
-    AST::NodeType::EXPR_ALLOC -> {
-      let d: *AllocNode = cast<*AllocNode>(node);
-      print_indent(indent); output("Alloc\n");
-      print_node(d.size, indent + 1);
-    }
-    AST::NodeType::EXPR_FREE -> {
-      let d: *FreeNode = cast<*FreeNode>(node);
-      print_indent(indent); output("Free\n");
-      print_node(d.ptr, indent + 1);
-    }
-    AST::NodeType::EXPR_MEMCPY -> {
-      let d: *MemcpyNode = cast<*MemcpyNode>(node);
-      print_indent(indent); output("Memcpy\n");
-      print_node(d.to,   indent + 1);
-      print_node(d.from, indent + 1);
-      print_node(d.size, indent + 1);
-    }
-    AST::NodeType::EXPR_SIZEOF -> {
-      let d: *SizeofNode = cast<*SizeofNode>(node);
-      print_indent(indent);
-      if (d.is_type == 1) { output("Sizeof(type)\n"); }
-      else                { output("Sizeof(expr)\n"); }
-      print_node(d.object, indent + 1);
-    }
-    AST::NodeType::EXPR_SYSCALL -> {
-      let d: *SyscallNode = cast<*SyscallNode>(node);
-      print_indent(indent); output("Syscall\n");
-      loop [i: int = 0](i < d.count) : (++i) {
-        print_node(d.args[i], indent + 1);
-      }
-    }
-    AST::NodeType::EXPR_STRUCT -> {
-      let d: *StructExprNode = cast<*StructExprNode>(node);
-      print_indent(indent);
-      if (d.name != cast<*byte>(0)) { output("StructExpr: ", d.name, "\n"); }
-      else                          { output("StructExpr (anon)\n"); }
-      loop [i: int = 0](i < d.field_count) : (++i) {
-        print_indent(indent + 1); output("field: ", d.field_names[i], "\n");
-        print_node(d.field_vals[i], indent + 2);
-      }
+    AST::NodeType::EXPR_GROUPING -> {
+      print_indent(indent); output("Grouping\n");
+      r(cast<*AstNode>(f[5]), indent + 1);
     }
     AST::NodeType::EXPR_SYSTEM -> {
-      let d: *UnaryNode = cast<*UnaryNode>(node);
       print_indent(indent); output("System\n");
-      print_node(d.operand, indent + 1);
+      r(cast<*AstNode>(f[5]), indent + 1);
+    }
+    AST::NodeType::EXPR_CALL -> {
+      print_indent(indent); output("Call\n");
+      field("callee", cast<*AstNode>(f[4]), indent);
+      let args:      **AstNode = cast<**AstNode>(f[5]);
+      let arg_count: int       = f[6];
+      loop [i: int = 0](i < arg_count) : (++i) { field("arg", args[i], indent); }
+    }
+    AST::NodeType::EXPR_ASSIGNMENT -> {
+      print_indent(indent); output("Assign\n");
+      field("target", cast<*AstNode>(f[4]), indent);
+      field("value",  cast<*AstNode>(f[5]), indent);
     }
     AST::NodeType::EXPR_TERNARY -> {
-      let d: *TernaryNode = cast<*TernaryNode>(node);
       print_indent(indent); output("Ternary\n");
-      print_indent(indent + 1); output("cond:\n");
-      print_node(d.condition, indent + 2);
-      print_indent(indent + 1); output("then:\n");
-      print_node(d.then_expr, indent + 2);
-      print_indent(indent + 1); output("else:\n");
-      print_node(d.else_expr, indent + 2);
+      field("cond", cast<*AstNode>(f[4]), indent);
+      field("then", cast<*AstNode>(f[5]), indent);
+      field("else", cast<*AstNode>(f[6]), indent);
+    }
+    AST::NodeType::EXPR_MEMBER -> {
+      print_indent(indent);
+      if (f[4] == 1) { output("Member(::): ", cast<*byte>(f[6]), "\n"); }
+      else           { output("Member(.): ",  cast<*byte>(f[6]), "\n"); }
+      r(cast<*AstNode>(f[5]), indent + 1);
+    }
+    AST::NodeType::EXPR_INDEX -> {
+      print_indent(indent); output("Index\n");
+      r(cast<*AstNode>(f[4]), indent + 1);
+      r(cast<*AstNode>(f[5]), indent + 1);
+    }
+    AST::NodeType::EXPR_ARRAY -> {
+      print_indent(indent); output("Array\n");
+      let elements:      **AstNode = cast<**AstNode>(f[4]);
+      let element_count: int       = f[5];
+      loop [i: int = 0](i < element_count) : (++i) { r(elements[i], indent + 1); }
+    }
+    AST::NodeType::EXPR_CAST -> {
+      print_indent(indent); output("Cast\n");
+      field("type", cast<*AstNode>(f[4]), indent);
+      field("expr", cast<*AstNode>(f[5]), indent);
+    }
+    AST::NodeType::EXPR_INPUT -> {
+      print_indent(indent); output("Input\n");
+      field("type", cast<*AstNode>(f[4]), indent);
+      if (f[5] != 0) field("msg", cast<*AstNode>(f[5]), indent);
+    }
+    AST::NodeType::EXPR_ALLOC -> {
+      print_indent(indent); output("Alloc\n");
+      r(cast<*AstNode>(f[4]), indent + 1);
+    }
+    AST::NodeType::EXPR_FREE -> {
+      print_indent(indent); output("Free\n");
+      r(cast<*AstNode>(f[4]), indent + 1);
+    }
+    AST::NodeType::EXPR_MEMCPY -> {
+      print_indent(indent); output("Memcpy\n");
+      field("to",   cast<*AstNode>(f[4]), indent);
+      field("from", cast<*AstNode>(f[5]), indent);
+      field("size", cast<*AstNode>(f[6]), indent);
+    }
+    AST::NodeType::EXPR_SIZEOF -> {
+      print_indent(indent);
+      if (f[5] == 1) { output("Sizeof(type)\n"); } else { output("Sizeof(expr)\n"); }
+      r(cast<*AstNode>(f[4]), indent + 1);
+    }
+    AST::NodeType::EXPR_SYSCALL -> {
+      print_indent(indent); output("Syscall\n");
+      let args:  **AstNode = cast<**AstNode>(f[4]);
+      let count: int       = f[5];
+      loop [i: int = 0](i < count) : (++i) { r(args[i], indent + 1); }
+    }
+    AST::NodeType::EXPR_STRUCT -> {
+      print_indent(indent);
+      let name: *byte = cast<*byte>(f[4]);
+      if (name != cast<*byte>(0)) { output("StructExpr: ", name, "\n"); }
+      else                        { output("StructExpr\n"); }
+      let field_names: **byte    = cast<**byte>(f[5]);
+      let field_vals:  **AstNode = cast<**AstNode>(f[6]);
+      let field_count: int       = f[7];
+      loop [i: int = 0](i < field_count) : (++i) {
+        print_indent(indent + 1); output("└─ ", field_names[i], ":\n");
+        r(field_vals[i], indent + 2);
+      }
     }
 
     // ── Types ─────────────────────────────────────────────────────────
     AST::NodeType::TYPE_BASIC -> {
-      let d: *BasicTypeNode = cast<*BasicTypeNode>(node);
-      print_indent(indent); output("Type: ", d.name, "\n");
+      print_indent(indent); output("Type: ", cast<*byte>(f[4]), "\n");
     }
     AST::NodeType::TYPE_POINTER -> {
-      let d: *PointerTypeNode = cast<*PointerTypeNode>(node);
       print_indent(indent); output("Type: *\n");
-      print_node(d.pointee_type, indent + 1);
+      r(cast<*AstNode>(f[4]), indent + 1);
     }
     AST::NodeType::TYPE_ARRAY -> {
-      let d: *ArrayTypeNode = cast<*ArrayTypeNode>(node);
       print_indent(indent); output("Type: []\n");
-      print_node(d.element_type, indent + 1);
-      print_indent(indent + 1); output("size:\n");
-      print_node(d.size, indent + 2);
+      r(cast<*AstNode>(f[4]), indent + 1);
+      field("size", cast<*AstNode>(f[5]), indent);
     }
     AST::NodeType::TYPE_FUNCTION -> {
-      let d: *FuncTypeNode = cast<*FuncTypeNode>(node);
       print_indent(indent); output("Type: fn\n");
-      loop [i: int = 0](i < d.param_count) : (++i) {
-        print_indent(indent + 1); output("param:\n");
-        print_node(d.param_types[i], indent + 2);
-      }
-      print_indent(indent + 1); output("return:\n");
-      print_node(d.return_type, indent + 2);
+      let param_types: **AstNode = cast<**AstNode>(f[4]);
+      let param_count: int       = f[5];
+      loop [i: int = 0](i < param_count) : (++i) { field("param", param_types[i], indent); }
+      field("return", cast<*AstNode>(f[6]), indent);
     }
     AST::NodeType::TYPE_RESOLUTION -> {
-      let d: *ResolutionNode = cast<*ResolutionNode>(node);
       print_indent(indent); output("Type: ");
-      loop [i: int = 0](i < d.part_count) : (++i) {
+      let parts:      **byte = cast<**byte>(f[4]);
+      let part_count: int    = f[5];
+      loop [i: int = 0](i < part_count) : (++i) {
         if (i > 0) output("::");
-        output(d.parts[i]);
+        output(parts[i]);
       }
       output("\n");
     }
 
     _ -> {
       print_indent(indent);
-      output("Unknown node kind: ", node.kind, "\n");
+      output("Unknown(", kind, ")\n");
     }
   }
 }
-

@@ -40,7 +40,7 @@ const parse -> fn (p: *Parser) *AstNode {
 
   let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
   
-  loop (p.has_tokens()) {
+  loop [i: int = 0](p.has_tokens()) : (i++) {
     let stmt: *AstNode = PSTMT::parser_stmt(p);
     if (stmt == cast<*AstNode>(0)) continue;
     stmts.push_back(cast<*void>(&stmt));
@@ -97,16 +97,13 @@ pub const main -> fn (argc: int, argv: **byte) int {
     let tok: Token = LEXER::next_token(&lexer);
     tokens.push_back(cast<*void>(&tok));
   }
-  tokens.remove_at(tokens.size - 1);
   
   // Parser Stage ----------------------------------------------------------
   let tks: *Token = cast<*Token>(tokens.data);
   let p: *Parser = PARS::create_parser(tks, tokens.size, build_config.filepath);
   defer { PARS::free_parser(p); }
 
-  output("Before Parser\n");
   let node: *AstNode = parse(p);
-  output("After Parser\n");
 
   if (p.had_error == 1) {
     ERR::error_report();

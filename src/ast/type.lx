@@ -5,64 +5,63 @@
 #returns_ownership
 pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AstNode {
   let node: *BasicTypeNode = cast<*BasicTypeNode>(alloc(sizeof<BasicTypeNode>));
-  let base: *AstNode       = cast<*AstNode>(node);
-  base.kind     = AST::NodeType::TYPE_BASIC;
-  base.category = AST::NodeCategory::Node_Category_TYPE;
-  base.line     = line;
-  base.col      = col;
-  node.name = name;
-  return base;
+  let f: *int = cast<*int>(node);
+  f[0] = AST::NodeType::TYPE_BASIC;
+  f[1] = AST::NodeCategory::Node_Category_TYPE;
+  f[2] = line;
+  f[3] = col;
+  f[4] = cast<int>(name);
+  return cast<*AstNode>(node);
 }
 
 #returns_ownership
 pub const make_pointer_type -> fn (pointee_type: *AstNode, line: int, col: int) *AstNode {
   let node: *PointerTypeNode = cast<*PointerTypeNode>(alloc(sizeof<PointerTypeNode>));
-  let base: *AstNode         = cast<*AstNode>(node);
-  base.kind     = AST::NodeType::TYPE_POINTER;
-  base.category = AST::NodeCategory::Node_Category_TYPE;
-  base.line     = line;
-  base.col      = col;
-  node.pointee_type = pointee_type;
-  return base;
+  let f: *int = cast<*int>(node);
+  f[0] = AST::NodeType::TYPE_POINTER;
+  f[1] = AST::NodeCategory::Node_Category_TYPE;
+  f[2] = line;
+  f[3] = col;
+  f[4] = cast<int>(pointee_type);
+  return cast<*AstNode>(node);
 }
 
 #returns_ownership
 pub const make_array_type -> fn (element_type: *AstNode, size: *AstNode, line: int, col: int) *AstNode {
   let node: *ArrayTypeNode = cast<*ArrayTypeNode>(alloc(sizeof<ArrayTypeNode>));
-  let base: *AstNode       = cast<*AstNode>(node);
-  base.kind     = AST::NodeType::TYPE_ARRAY;
-  base.category = AST::NodeCategory::Node_Category_TYPE;
-  base.line     = line;
-  base.col      = col;
-  node.element_type = element_type;
-  node.size         = size;
-  return base;
+  let f: *int = cast<*int>(node);
+  f[0] = AST::NodeType::TYPE_ARRAY;
+  f[1] = AST::NodeCategory::Node_Category_TYPE;
+  f[2] = line;
+  f[3] = col;
+  f[4] = cast<int>(element_type);
+  f[5] = cast<int>(size);
+  return cast<*AstNode>(node);
 }
 
 #returns_ownership
 pub const make_func_type -> fn (param_types: **AstNode, param_count: int, return_type: *AstNode, line: int, col: int) *AstNode {
   let node: *FuncTypeNode = cast<*FuncTypeNode>(alloc(sizeof<FuncTypeNode>));
-  let base: *AstNode      = cast<*AstNode>(node);
-  base.kind     = AST::NodeType::TYPE_FUNCTION;
-  base.category = AST::NodeCategory::Node_Category_TYPE;
-  base.line     = line;
-  base.col      = col;
-  node.param_types = param_types;
-  node.param_count = param_count;
-  node.return_type = return_type;
-  return base;
+  let f: *int = cast<*int>(node);
+  f[0] = AST::NodeType::TYPE_FUNCTION;
+  f[1] = AST::NodeCategory::Node_Category_TYPE;
+  f[2] = line;
+  f[3] = col;
+  f[4] = cast<int>(param_types);
+  f[5] = param_count;
+  f[6] = cast<int>(return_type);
+  return cast<*AstNode>(node);
 }
 
 #returns_ownership
 pub const make_resolution_type -> fn (parts: **byte, part_count: int, line: int, col: int) *AstNode {
   let node: *ResolutionNode = cast<*ResolutionNode>(alloc(sizeof<ResolutionNode>));
-  let base: *AstNode        = cast<*AstNode>(node);
-  base.kind     = AST::NodeType::TYPE_RESOLUTION;
-  base.category = AST::NodeCategory::Node_Category_TYPE;
-  base.line     = line;
-  base.col      = col;
-  node.parts      = parts;
-  node.part_count = part_count;
-  return base;
+  let f: *int = cast<*int>(node);
+  f[0] = AST::NodeType::TYPE_RESOLUTION;
+  f[1] = AST::NodeCategory::Node_Category_TYPE;
+  f[2] = line;
+  f[3] = col;
+  f[4] = cast<int>(parts);
+  f[5] = part_count;
+  return cast<*AstNode>(node);
 }
-
