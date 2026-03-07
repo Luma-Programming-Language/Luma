@@ -1890,6 +1890,55 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
 #endif
 }
 
+// Helper: recursively compute the size of any LLVM type
+static uint64_t compute_type_size(LLVMTypeRef type) {
+  LLVMTypeKind kind = LLVMGetTypeKind(type);
+
+  switch (kind) {
+  case LLVMIntegerTypeKind: {
+    unsigned width = LLVMGetIntTypeWidth(type);
+    return width / 8;
+  }
+  case LLVMFloatTypeKind:
+    return 4;
+  case LLVMDoubleTypeKind:
+    return 8;
+  case LLVMPointerTypeKind:
+    return 8;
+  case LLVMStructTypeKind: {
+    unsigned field_count = LLVMCountStructElementTypes(type);
+    LLVMTypeRef *field_types = malloc(field_count * sizeof(LLVMTypeRef));
+    LLVMGetStructElementTypes(type, field_types);
+
+    uint64_t total_size = 0;
+    uint64_t max_align  = 1;
+
+    for (unsigned i = 0; i < field_count; i++) {
+      uint64_t fsize  = compute_type_size(field_types[i]);  // recurse
+      uint64_t falign = fsize > 8 ? 8 : (fsize == 0 ? 1 : fsize);
+
+      // align current offset
+      if (total_size % falign != 0)
+        total_size += falign - (total_size % falign);
+
+      total_size += fsize;
+      if (falign > max_align)
+        max_align = falign;
+    }
+
+    free(field_types);
+
+    // align final struct size to max_align
+    if (total_size % max_align != 0)
+      total_size += max_align - (total_size % max_align);
+
+    return total_size;
+  }
+  default:
+    return 8;
+  }
+}
+
 // sizeof<type || expr>
 LLVMValueRef codegen_expr_sizeof(CodeGenContext *ctx, AstNode *node) {
   LLVMTypeRef type;
@@ -1904,78 +1953,8 @@ LLVMValueRef codegen_expr_sizeof(CodeGenContext *ctx, AstNode *node) {
   if (!type)
     return NULL;
 
-  LLVMTypeKind kind = LLVMGetTypeKind(type);
-
-  switch (kind) {
-  case LLVMIntegerTypeKind: {
-    unsigned width = LLVMGetIntTypeWidth(type);
-    return LLVMConstInt(LLVMInt64TypeInContext(ctx->context), width / 8, false);
-  }
-  case LLVMFloatTypeKind:
-    return LLVMConstInt(LLVMInt64TypeInContext(ctx->context), 4, false);
-  case LLVMDoubleTypeKind:
-    return LLVMConstInt(LLVMInt64TypeInContext(ctx->context), 8, false);
-  case LLVMPointerTypeKind:
-    return LLVMConstInt(LLVMInt64TypeInContext(ctx->context), 8, false);
-  case LLVMStructTypeKind: {
-    unsigned field_count = LLVMCountStructElementTypes(type);
-    LLVMTypeRef *field_types = malloc(field_count * sizeof(LLVMTypeRef));
-    LLVMGetStructElementTypes(type, field_types);
-
-    uint64_t total_size = 0;
-    uint64_t max_align = 1;
-
-    for (unsigned i = 0; i < field_count; i++) {
-      LLVMTypeRef ftype = field_types[i];
-      uint64_t fsize = 0;
-      uint64_t falign = 1;
-
-      LLVMTypeKind fkind = LLVMGetTypeKind(ftype);
-      switch (fkind) {
-      case LLVMIntegerTypeKind:
-        fsize = LLVMGetIntTypeWidth(ftype) / 8;
-        falign = fsize > 8 ? 8 : fsize; // int64 align=8
-        break;
-      case LLVMFloatTypeKind:
-        fsize = 4;
-        falign = 4;
-        break;
-      case LLVMDoubleTypeKind:
-        fsize = 8;
-        falign = 8;
-        break;
-      case LLVMPointerTypeKind:
-        fsize = 8;
-        falign = 8;
-        break;
-      default:
-        fsize = 8;
-        falign = 8;
-        break;
-      }
-
-      // align current offset
-      if (total_size % falign != 0)
-        total_size += falign - (total_size % falign);
-
-      total_size += fsize;
-      if (falign > max_align)
-        max_align = falign;
-    }
-
-    // align final struct size to max_align
-    if (total_size % max_align != 0)
-      total_size += max_align - (total_size % max_align);
-
-    free(field_types);
-
-    return LLVMConstInt(LLVMInt64TypeInContext(ctx->context), total_size,
-                        false);
-  }
-
-  default:
-    return LLVMConstInt(LLVMInt64TypeInContext(ctx->context), 8, false);
-  }
+  uint64_t size = compute_type_size(type);
+  return LLVMConstInt(LLVMInt64TypeInContext(ctx->context), size, false);
 }
 
 // alloc(expr) - allocates memory on heap using malloc
