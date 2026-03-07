@@ -13,5 +13,8 @@ pub const main -> fn (argc: int, argv: **byte) int {
     let filename: *byte = args.get(1);
     output(sizeof<filename>, "\n");
 
+    let size: int = 10;
+    let arr: [int; size];
+
     return 0;
 }

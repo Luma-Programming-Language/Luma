@@ -1,10 +1,13 @@
 @module "parser_type"
 
+@use "std_string" as STRING
 @use "std_vector" as VEC
 
 @use "lexer_tokens" as TOK
+@use "ast_expr" as EAST
 @use "ast_type" as TAST
 @use "parser" as PARS
+@use "ast" as AST
 
 #returns_ownership const pointer_type    -> fn (p: *Parser) *AstNode;
 #returns_ownership const array_type      -> fn (p: *Parser) *AstNode;
@@ -13,7 +16,7 @@
 #returns_ownership
 const tnud -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
   let kind: int = p.current().kind;
 
   switch (kind) {
@@ -52,24 +55,10 @@ pub const parse_type -> fn (p: *Parser) *AstNode {
 }
 
 #returns_ownership
-const pointer_type -> fn (p: *Parser) *AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
-
-  let pointee: *AstNode = parse_type(p);
-  if (pointee == cast<*AstNode>(0)) {
-    p.error("TypeError", "Expected type after '*' in pointer type.");
-    return cast<*AstNode>(0);
-  }
-
-  return TAST::make_pointer_type(pointee, line, col);
-}
-
-#returns_ownership
 const array_type -> fn (p: *Parser) *AstNode {
-/*
+
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   let element_type: *AstNode = parse_type(p);
   if (element_type == cast<*AstNode>(0)) {
@@ -83,18 +72,40 @@ const array_type -> fn (p: *Parser) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after array element type.");
 
-  // Import parse_expr from parser_expr module
-  let size: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
-  if (size == cast<*AstNode>(0)) {
-    p.error("SyntaxError", "Expected size expression after ';' in array type.");
-    return cast<*AstNode>(0);
+  let size: *AstNode = cast<*AstNode>(0);
+  switch(PARS::search_literal_map(p.current().kind)) {
+    AST::LiteralType::LITERAL_INT -> {
+      let val: *byte = p.get_name();
+      let int_val: int = STRING::atio(val);
+      free(val);
+      p.advance();
+      size = EAST::make_literal_int(int_val, line, col);
+    }
+    AST::LiteralType::LITERAL_IDENT -> {
+      let val: *byte = p.get_name();
+      p.advance();
+      size = EAST::make_identifier(val, line, col);
+    }
   }
 
   p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close array type.");
 
   return TAST::make_array_type(element_type, size, line, col); 
-*/
   return cast<*AstNode>(0);
+}
+
+#returns_ownership
+const pointer_type -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let col:  int = p.current().whitespace_len;
+
+  let pointee: *AstNode = parse_type(p);
+  if (pointee == cast<*AstNode>(0)) {
+    p.error("TypeError", "Expected type after '*' in pointer type.");
+    return cast<*AstNode>(0);
+  }
+
+  return TAST::make_pointer_type(pointee, line, col);
 }
 
 #returns_ownership
