@@ -22,7 +22,8 @@
 #returns_ownership
 const parse -> fn (p: *Parser) *AstNode {
   let line: int = p.current().line; 
-  
+  let col:  int = p.current().col; 
+
   if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
     p.error("Parser Error", "Expected @module at the start of a file.");
     return cast<*AstNode>(0);
@@ -49,7 +50,7 @@ const parse -> fn (p: *Parser) *AstNode {
   let module_node: *AstNode = MAST::make_module(
     module_name, "", p.file_path,
     PARS::vec_to_node_array(&stmts), stmts.size,
-    line, 0
+    line, col
   );
   VEC::free_vector(&stmts);
 
@@ -59,7 +60,7 @@ const parse -> fn (p: *Parser) *AstNode {
   let program: *AstNode = STMT::make_program(
     PARS::vec_to_node_array(&modules),
     modules.size,
-    line, 0
+    line, col
   );
   VEC::free_vector(&modules);
   
@@ -112,7 +113,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
   PRINT::print_node(node, 0);
 
-  AST::free_node(node);
+  // AST::free_node(node);
   
   return 0;
 }

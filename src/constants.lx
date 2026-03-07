@@ -16,8 +16,8 @@ pub const LumaErrorCode -> enum {
 };
 
 pub const LumaErrorMessage -> struct {
-  code: int, //! Error: Need to fix so that we can have enum types in structs. this is a tc issue 
   message: *byte,
+  code: int, 
 };
 
 pub const LumaBuildConfig -> struct {

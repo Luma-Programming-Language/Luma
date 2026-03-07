@@ -569,7 +569,15 @@ const _switch -> fn (p: *Parser) *AstNode {
         free(tok_name);
         p.advance();
         p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after '_'.");
-        let default_body: *AstNode = block(p);
+
+
+        let default_body: *AstNode = cast<*AstNode>(0);
+        if (p.current().kind == TOK::LumaTokenType::TOK_LBRACE) {
+          default_body = block(p);
+        } else {
+          default_body = parse_stmt(p);
+        }
+        
         if (default_body == cast<*AstNode>(0)) {
           p.error("SyntaxError", "Expected block after default case.");
           VEC::free_vector(&cases);
@@ -607,7 +615,13 @@ const _switch -> fn (p: *Parser) *AstNode {
 
     p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after case value(s).");
 
-    let case_body: *AstNode = block(p);
+    let case_body: *AstNode = cast<*AstNode>(0);
+    if (p.current().kind == TOK::LumaTokenType::TOK_LBRACE) {
+      case_body = block(p);
+    } else {
+      case_body = parse_stmt(p);
+    }
+
     if (case_body == cast<*AstNode>(0)) {
       p.error("SyntaxError", "Expected block after '->'.");
       VEC::free_vector(&cases);
