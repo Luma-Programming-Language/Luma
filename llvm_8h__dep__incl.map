@@ -1,0 +1,103 @@
+<map id="src/llvm/llvm.h" name="src/llvm/llvm.h">
+<area shape="rect" id="Node000001" title=" " alt="" coords="2388,5,2507,31"/>
+<area shape="rect" id="Node000002" href="$help_8h.html" title="Declarations for command&#45;line parsing, file reading, and build configuration." alt="" coords="963,86,1094,111"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="2375,24,1746,42,1380,59,1228,70,1113,81,1073,89,1072,83,1112,76,1228,64,1380,54,1746,37,2374,18"/>
+<area shape="rect" id="Node000004" href="$run_8c.html" title=" " alt="" coords="1067,247,1190,273"/>
+<area shape="poly" id="edge38_Node000001_Node000004" title=" " alt="" coords="2374,23,2078,28,1683,38,1330,56,1213,67,1177,74,1160,81,1144,99,1134,120,1124,168,1124,213,1129,247,1124,247,1119,214,1119,167,1129,118,1140,96,1156,77,1176,69,1212,62,1330,50,1683,33,2078,22,2374,18"/>
+<area shape="rect" id="Node000032" href="$llvm_8c.html" title=" " alt="" coords="1169,86,1320,111"/>
+<area shape="poly" id="edge39_Node000001_Node000032" title=" " alt="" coords="2375,22,2191,24,1933,33,1635,50,1482,64,1333,81,1292,89,1291,83,1332,76,1482,59,1635,45,1933,27,2191,19,2374,17"/>
+<area shape="rect" id="Node000033" href="$llvm_2core_2lookup_8c.html" title=" " alt="" coords="1344,86,1508,111"/>
+<area shape="poly" id="edge40_Node000001_Node000033" title=" " alt="" coords="2375,23,2007,38,1766,55,1521,81,1478,89,1477,83,1520,76,1765,50,2007,33,2374,18"/>
+<area shape="rect" id="Node000034" href="$arrays_8c.html" title=" " alt="" coords="1533,86,1695,111"/>
+<area shape="poly" id="edge41_Node000001_Node000034" title=" " alt="" coords="2374,25,2082,43,1896,59,1708,81,1666,89,1665,83,1707,76,1895,54,2082,37,2374,20"/>
+<area shape="rect" id="Node000035" href="$binary__ops_8c.html" title=" " alt="" coords="1719,79,1871,119"/>
+<area shape="poly" id="edge42_Node000001_Node000035" title=" " alt="" coords="2374,27,2154,47,2019,62,1884,81,1872,83,1871,78,1883,76,2018,57,2153,42,2374,22"/>
+<area shape="rect" id="Node000036" href="$defer_8c.html" title=" " alt="" coords="1895,86,2050,111"/>
+<area shape="poly" id="edge43_Node000001_Node000036" title=" " alt="" coords="2375,32,2064,81,2026,89,2025,83,2063,76,2374,27"/>
+<area shape="rect" id="Node000037" href="$llvm_2expr_2expr_8c.html" title=" " alt="" coords="2075,86,2225,111"/>
+<area shape="poly" id="edge44_Node000001_Node000037" title=" " alt="" coords="2392,37,2194,89,2193,83,2390,32"/>
+<area shape="rect" id="Node000038" href="$member__access_8c.html" title=" " alt="" coords="2250,79,2437,119"/>
+<area shape="poly" id="edge45_Node000001_Node000038" title=" " alt="" coords="2423,41,2370,81,2367,76,2420,37"/>
+<area shape="rect" id="Node000039" href="$module__handles_8c.html" title=" " alt="" coords="2461,79,2641,119"/>
+<area shape="poly" id="edge46_Node000001_Node000039" title=" " alt="" coords="2475,37,2528,76,2525,81,2472,41"/>
+<area shape="rect" id="Node000040" href="$llvm_2stmt_2stmt_8c.html" title=" " alt="" coords="2665,86,2819,111"/>
+<area shape="poly" id="edge47_Node000001_Node000040" title=" " alt="" coords="2504,32,2700,83,2698,89,2503,37"/>
+<area shape="rect" id="Node000041" href="$struct_8c.html" title=" " alt="" coords="2843,86,3009,111"/>
+<area shape="poly" id="edge48_Node000001_Node000041" title=" " alt="" coords="2521,27,2832,76,2871,83,2870,89,2831,81,2520,32"/>
+<area shape="rect" id="Node000042" href="$struct__access_8c.html" title=" " alt="" coords="3033,79,3189,119"/>
+<area shape="poly" id="edge49_Node000001_Node000042" title=" " alt="" coords="2520,22,2745,42,2884,57,3022,76,3033,78,3033,83,3022,81,2883,62,2745,47,2520,27"/>
+<area shape="rect" id="Node000043" href="$struct__expr_8c.html" title=" " alt="" coords="3213,79,3369,119"/>
+<area shape="poly" id="edge50_Node000001_Node000043" title=" " alt="" coords="2520,19,2819,36,3010,53,3202,76,3213,78,3213,83,3202,81,3009,58,2818,42,2520,25"/>
+<area shape="rect" id="Node000044" href="$struct__helpers_8c.html" title=" " alt="" coords="3393,79,3549,119"/>
+<area shape="poly" id="edge51_Node000001_Node000044" title=" " alt="" coords="2520,18,2677,22,2891,32,3135,49,3382,76,3393,78,3393,83,3382,81,3135,54,2891,37,2677,27,2520,23"/>
+<area shape="rect" id="Node000045" href="$llvm_2types_2type_8c.html" title=" " alt="" coords="3573,86,3732,111"/>
+<area shape="poly" id="edge52_Node000001_Node000045" title=" " alt="" coords="2520,17,2703,19,2962,28,3260,46,3413,59,3562,76,3604,83,3604,89,3562,81,3412,64,3259,51,2961,33,2703,25,2520,22"/>
+<area shape="rect" id="Node000046" href="$type__cache_8c.html" title=" " alt="" coords="3757,79,3903,119"/>
+<area shape="poly" id="edge53_Node000001_Node000046" title=" " alt="" coords="2521,18,3132,38,3486,55,3633,65,3745,76,3757,78,3756,83,3744,81,3633,70,3486,60,3132,43,2520,24"/>
+<area shape="rect" id="Node000047" href="$helpers_8c.html" title=" " alt="" coords="3927,86,4090,111"/>
+<area shape="poly" id="edge54_Node000001_Node000047" title=" " alt="" coords="2521,18,3211,37,3618,54,3787,64,3916,76,3960,83,3959,89,3915,81,3787,70,3618,59,3211,42,2520,23"/>
+<area shape="rect" id="Node000003" href="$help_8c.html" title="Implements command&#45;line argument parsing, file reading, help/version/license printing,..." alt="" coords="1419,328,1548,353"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="1027,125,1023,160,1025,202,1035,243,1044,262,1057,278,1084,295,1123,307,1171,314,1223,318,1326,321,1406,325,1419,327,1418,332,1406,331,1326,326,1222,323,1170,319,1122,312,1082,300,1054,282,1040,265,1030,245,1019,202,1018,160,1021,125"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="1045,122,1124,246,1119,248,1041,124"/>
+<area shape="rect" id="Node000005" href="$formatter_8c.html" title=" " alt="" coords="427,167,633,192"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="950,115,603,169,602,164,949,110"/>
+<area shape="rect" id="Node000006" href="$main_8c.html" title="Entry point for the Luma compiler/interpreter build process." alt="" coords="5,328,95,353"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="950,108,724,126,439,155,303,174,185,195,98,218,70,230,53,242,43,262,41,286,49,327,43,328,36,286,38,261,49,238,67,225,96,212,184,189,302,169,438,150,723,121,949,103"/>
+<area shape="rect" id="Node000007" href="$parser_8c.html" title="Implementation of the parser module for the programming language compiler." alt="" coords="63,247,205,273"/>
+<area shape="poly" id="edge6_Node000002_Node000007" title=" " alt="" coords="950,113,830,135,764,150,699,169,673,182,646,195,582,210,527,220,433,226,337,229,217,243,181,250,180,245,216,237,337,224,432,221,526,215,581,205,644,189,670,177,697,164,762,145,829,129,949,108"/>
+<area shape="rect" id="Node000008" href="$parser_8h.html" title="Recursive descent and Pratt parser for the Zura language." alt="" coords="709,167,852,192"/>
+<area shape="poly" id="edge7_Node000002_Node000008" title=" " alt="" coords="981,118,818,169,816,164,979,113"/>
+<area shape="rect" id="Node000021" href="$tc_8c.html" title=" " alt="" coords="1215,247,1365,273"/>
+<area shape="poly" id="edge24_Node000002_Node000021" title=" " alt="" coords="1060,116,1272,245,1270,249,1058,121"/>
+<area shape="rect" id="Node000022" href="$type_8h.html" title="Type checking and symbol table management for AST nodes with memory tracking." alt="" coords="1780,167,1949,192"/>
+<area shape="poly" id="edge25_Node000002_Node000022" title=" " alt="" coords="1108,110,1158,116,1503,149,1780,170,1779,175,1503,154,1158,121,1108,115"/>
+<area shape="poly" id="edge8_Node000008_Node000004" title=" " alt="" coords="845,192,1079,245,1077,250,844,198"/>
+<area shape="poly" id="edge20_Node000008_Node000007" title=" " alt="" coords="696,194,690,195,557,207,453,215,349,224,217,243,180,250,179,245,216,237,349,219,453,210,557,202,690,189,695,189"/>
+<area shape="rect" id="Node000009" href="$lsp_8h.html" title="Language Server Protocol implementation for Luma language." alt="" coords="894,247,993,273"/>
+<area shape="poly" id="edge9_Node000008_Node000009" title=" " alt="" coords="818,195,921,245,918,250,815,200"/>
+<area shape="rect" id="Node000017" href="$parser_2expr_8c.html" title="Expression parsing implementation for the programming language compiler." alt="" coords="539,247,668,273"/>
+<area shape="poly" id="edge19_Node000008_Node000017" title=" " alt="" coords="744,200,630,250,628,245,741,195"/>
+<area shape="rect" id="Node000018" href="$parser__utils_8c.html" title="Utility functions for the parser module." alt="" coords="692,247,869,273"/>
+<area shape="poly" id="edge21_Node000008_Node000018" title=" " alt="" coords="783,206,783,247,778,247,778,206"/>
+<area shape="rect" id="Node000019" href="$parser_2stmt_8c.html" title="Statement parsing implementation for the programming language compiler." alt="" coords="229,247,359,273"/>
+<area shape="poly" id="edge22_Node000008_Node000019" title=" " alt="" coords="696,195,519,219,372,243,339,250,337,245,371,237,518,214,695,189"/>
+<area shape="rect" id="Node000020" href="$parser_2type_8c.html" title=" " alt="" coords="383,247,514,273"/>
+<area shape="poly" id="edge23_Node000008_Node000020" title=" " alt="" coords="719,198,527,243,496,250,495,245,525,237,717,193"/>
+<area shape="poly" id="edge10_Node000009_Node000003" title=" " alt="" coords="995,274,1012,277,1122,296,1208,305,1295,313,1406,325,1419,327,1418,332,1406,331,1295,318,1208,311,1121,301,1011,283,994,279"/>
+<area shape="poly" id="edge18_Node000009_Node000006" title=" " alt="" coords="898,279,882,283,769,300,673,311,508,316,343,317,246,321,132,331,95,335,94,330,131,325,245,316,343,312,508,311,673,305,769,295,882,277,897,274"/>
+<area shape="rect" id="Node000010" href="$lsp__diagnostics_8c.html" title=" " alt="" coords="1215,328,1394,353"/>
+<area shape="poly" id="edge11_Node000009_Node000010" title=" " alt="" coords="997,274,1012,277,1243,325,1241,331,1011,283,996,279"/>
+<area shape="rect" id="Node000011" href="$lsp__document_8c.html" title=" " alt="" coords="143,328,314,353"/>
+<area shape="poly" id="edge12_Node000009_Node000011" title=" " alt="" coords="898,279,883,283,727,306,605,315,483,319,326,331,314,332,314,327,326,325,483,314,605,310,727,301,881,277,897,274"/>
+<area shape="rect" id="Node000012" href="$lsp__features_8c.html" title=" " alt="" coords="339,328,497,353"/>
+<area shape="poly" id="edge13_Node000009_Node000012" title=" " alt="" coords="897,279,882,283,498,332,497,327,882,277,895,274"/>
+<area shape="rect" id="Node000013" href="$lsp__json_8c.html" title=" " alt="" coords="521,328,653,353"/>
+<area shape="poly" id="edge14_Node000009_Node000013" title=" " alt="" coords="896,279,883,283,761,310,654,331,653,325,760,305,881,277,894,274"/>
+<area shape="rect" id="Node000014" href="$lsp__message_8c.html" title=" " alt="" coords="677,328,841,353"/>
+<area shape="poly" id="edge15_Node000009_Node000014" title=" " alt="" coords="905,280,787,330,785,326,903,275"/>
+<area shape="rect" id="Node000015" href="$lsp__module_8c.html" title=" " alt="" coords="866,328,1021,353"/>
+<area shape="poly" id="edge16_Node000009_Node000015" title=" " alt="" coords="946,286,946,328,941,328,941,286"/>
+<area shape="rect" id="Node000016" href="$lsp__server_8c.html" title="Language Server Protocol implementation with type error diagnostics." alt="" coords="1045,328,1191,353"/>
+<area shape="poly" id="edge17_Node000009_Node000016" title=" " alt="" coords="982,276,1094,326,1091,330,980,281"/>
+<area shape="poly" id="edge26_Node000022_Node000004" title=" " alt="" coords="1766,187,1511,205,1357,221,1204,243,1170,250,1169,245,1203,237,1356,216,1510,200,1766,182"/>
+<area shape="poly" id="edge27_Node000022_Node000009" title=" " alt="" coords="1767,188,1450,206,1253,222,1056,243,993,252,992,247,1055,237,1253,217,1449,201,1766,182"/>
+<area shape="poly" id="edge36_Node000022_Node000021" title=" " alt="" coords="1767,193,1586,213,1378,243,1341,250,1340,245,1378,237,1585,208,1766,187"/>
+<area shape="rect" id="Node000023" href="$array_8c.html" title=" " alt="" coords="2967,247,3138,273"/>
+<area shape="poly" id="edge28_Node000022_Node000023" title=" " alt="" coords="1963,179,2148,183,2395,192,2674,210,2956,237,3001,245,3000,250,2955,243,2673,215,2394,198,2147,188,1963,184"/>
+<area shape="rect" id="Node000024" href="$typechecker_2error_8c.html" title=" " alt="" coords="1389,247,1559,273"/>
+<area shape="poly" id="edge29_Node000022_Node000024" title=" " alt="" coords="1795,197,1531,250,1530,245,1794,192"/>
+<area shape="rect" id="Node000025" href="$typechecker_2expr_8c.html" title=" " alt="" coords="1583,247,1749,273"/>
+<area shape="poly" id="edge30_Node000022_Node000025" title=" " alt="" coords="1824,200,1696,250,1694,245,1822,195"/>
+<area shape="rect" id="Node000026" href="$typechecker_2lookup_8c.html" title=" " alt="" coords="1773,247,1956,273"/>
+<area shape="poly" id="edge31_Node000022_Node000026" title=" " alt="" coords="1867,206,1867,247,1862,247,1862,206"/>
+<area shape="rect" id="Node000027" href="$module_8c.html" title=" " alt="" coords="1980,247,2168,273"/>
+<area shape="poly" id="edge32_Node000022_Node000027" title=" " alt="" coords="1909,194,2044,245,2043,250,1907,199"/>
+<area shape="rect" id="Node000028" href="$scope_8c.html" title="Implementation of scope and symbol table management functions." alt="" coords="2192,247,2369,273"/>
+<area shape="poly" id="edge33_Node000022_Node000028" title=" " alt="" coords="1939,192,2221,245,2220,250,1938,197"/>
+<area shape="rect" id="Node000029" href="$static__mem__tracker_8c.html" title=" " alt="" coords="2393,240,2557,280"/>
+<area shape="poly" id="edge34_Node000022_Node000029" title=" " alt="" coords="1964,187,2158,207,2382,237,2393,239,2393,244,2382,243,2157,213,1963,192"/>
+<area shape="rect" id="Node000030" href="$typechecker_2stmt_8c.html" title=" " alt="" coords="2581,247,2751,273"/>
+<area shape="poly" id="edge35_Node000022_Node000030" title=" " alt="" coords="1964,183,2237,202,2404,217,2570,237,2613,245,2612,250,2570,243,2403,223,2237,207,1963,188"/>
+<area shape="rect" id="Node000031" href="$typechecker_2type_8c.html" title="Implementation of type checking and symbol table management functions." alt="" coords="2775,247,2943,273"/>
+<area shape="poly" id="edge37_Node000022_Node000031" title=" " alt="" coords="1964,180,2317,197,2540,213,2764,237,2808,245,2807,250,2763,243,2539,219,2317,202,1963,186"/>
+</map>
