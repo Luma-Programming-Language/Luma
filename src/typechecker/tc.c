@@ -16,7 +16,6 @@ bool typecheck(AstNode *node, Scope *scope, ArenaAllocator *arena, BuildConfig *
   }
 
   case Node_Category_TYPE:
-    printf("DEBUG: Type node - returning true\n");
     return true;
 
   case Node_Category_PREPROCESSOR:
@@ -26,7 +25,8 @@ bool typecheck(AstNode *node, Scope *scope, ArenaAllocator *arena, BuildConfig *
     case AST_PREPROCESSOR_USE:
       return typecheck_use_stmt(node, scope, scope, arena);
     default:
-      fprintf(stderr, "Error: Unknown preprocessor node type %d\n", node->type);
+      tc_error(node, "SyntaxError",
+               "Unknown preprocessor node type %d", node->type);
       return false;
     }
 

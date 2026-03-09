@@ -186,7 +186,9 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
   GrowableArray param_names, param_types;
   if (!growable_array_init(&param_names, parser->arena, 4, sizeof(char *)) ||
       !growable_array_init(&param_types, parser->arena, 4, sizeof(Type *))) {
-    fprintf(stderr, "Failed to initialize parameter arrays.\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize parameter arrays",
+                 line, col, 0);
     return NULL;
   }
 
@@ -218,7 +220,9 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
     char **name_slot = (char **)growable_array_push(&param_names);
     Type **type_slot = (Type **)growable_array_push(&param_types);
     if (!name_slot || !type_slot) {
-      fprintf(stderr, "Out of memory while growing parameter arrays\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing parameter arrays",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -291,7 +295,9 @@ Stmt *enum_stmt(Parser *parser, const char *name, bool is_public) {
 
   GrowableArray members;
   if (!growable_array_init(&members, parser->arena, 4, sizeof(char *))) {
-    fprintf(stderr, "Failed to initialize enum members array.\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize enum members array",
+                 line, col, 0);
     return NULL;
   }
 
@@ -301,7 +307,10 @@ Stmt *enum_stmt(Parser *parser, const char *name, bool is_public) {
   // Parse enum members: member1, member2, ...
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RBRACE) {
     if (p_current(parser).type_ != TOK_IDENTIFIER) {
-      fprintf(stderr, "Expected identifier for enum member\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected identifier for enum member",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
 
@@ -310,7 +319,9 @@ Stmt *enum_stmt(Parser *parser, const char *name, bool is_public) {
 
     char **slot = (char **)growable_array_push(&members);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing enum members array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing enum members array",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *slot = member_name;
@@ -370,7 +381,9 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
   GrowableArray public_fields, private_fields;
   if (!growable_array_init(&public_fields, parser->arena, 4, sizeof(Stmt *)) ||
       !growable_array_init(&private_fields, parser->arena, 4, sizeof(Stmt *))) {
-    fprintf(stderr, "Failed to initialize field arrays.\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize struct field arrays",
+                 line, col, 0);
     return NULL;
   }
 
@@ -453,7 +466,9 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
                                 : (Stmt **)growable_array_push(&private_fields);
 
     if (!slot) {
-      fprintf(stderr, "Failed to add field to struct.\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: failed to add field to struct",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *slot = field_decl;
@@ -572,20 +587,24 @@ Stmt *block_stmt(Parser *parser) {
 
   GrowableArray block;
   if (!growable_array_init(&block, parser->arena, 4, sizeof(Stmt *))) {
-    fprintf(stderr, "Failed to initialize block statement array.\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize block statement array",
+                 p_current(parser).line, p_current(parser).col, 0);
     return NULL;
   }
 
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RBRACE) {
     Stmt *stmt = parse_stmt(parser);
     if (!stmt) {
-      fprintf(stderr, "parse_stmt returned NULL inside block\n");
-      continue; // or return NULL to fail the entire block
+      // parse_stmt already recorded an error; continue for error recovery
+      continue;
     }
 
     Stmt **slot = (Stmt **)growable_array_push(&block);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing block statement array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing block statement array",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -634,7 +653,10 @@ Stmt *if_stmt(Parser *parser) {
 
   if (p_current(parser).type_ != TOK_IF &&
       p_current(parser).type_ != TOK_ELIF) {
-    fprintf(stderr, "Expected 'if' or 'elif' keyword\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected 'if' or 'elif' keyword here",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
     return NULL;
   }
   p_consume(parser, p_current(parser).type_, "Expected 'if' or 'elif' keyword");
@@ -816,7 +838,9 @@ Stmt *loop_init(Parser *parser, int line, int col) {
 Stmt *for_loop_stmt(Parser *parser, int line, int col) {
   GrowableArray intializers;
   if (!growable_array_init(&intializers, parser->arena, 4, sizeof(Expr *))) {
-    fprintf(stderr, "Failed to initialize loop initializers array.\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize loop initializers array",
+                 line, col, 0);
     return NULL;
   }
 
@@ -833,7 +857,9 @@ Stmt *for_loop_stmt(Parser *parser, int line, int col) {
 
     Expr **slot = (Expr **)growable_array_push(&intializers);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing loop initializers array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing loop initializers",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -990,20 +1016,27 @@ Stmt *print_stmt(Parser *parser, bool ln) {
 
   GrowableArray expressions;
   if (!growable_array_init(&expressions, parser->arena, 4, sizeof(Expr *))) {
-    fprintf(stderr, "Failed to initialize print expressions array.\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize print expressions array",
+                 p_current(parser).line, p_current(parser).col, 0);
     return NULL;
   }
 
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RPAREN) {
     Expr *expr = parse_expr(parser, BP_LOWEST);
     if (!expr) {
-      fprintf(stderr, "Failed to parse expression in print statement\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected expression in output statement",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
 
     Expr **slot = (Expr **)growable_array_push(&expressions);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing print expressions array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing print expressions",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -1088,7 +1121,9 @@ Stmt *switch_stmt(Parser *parser) {
 
   GrowableArray cases;
   if (!growable_array_init(&cases, parser->arena, 4, sizeof(Stmt *))) {
-    fprintf(stderr, "Failed to initialize switch cases array.\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize switch cases array",
+                 p_current(parser).line, p_current(parser).col, 0);
     return NULL;
   }
 
@@ -1126,7 +1161,9 @@ Stmt *switch_stmt(Parser *parser) {
 
     GrowableArray case_values;
     if (!growable_array_init(&case_values, parser->arena, 4, sizeof(Expr *))) {
-      fprintf(stderr, "Failed to initialize case values array.\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: failed to initialize case values array",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -1140,7 +1177,9 @@ Stmt *switch_stmt(Parser *parser) {
 
     Expr **value_slot = (Expr **)growable_array_push(&case_values);
     if (!value_slot) {
-      fprintf(stderr, "Out of memory while growing case values array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing case values array",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *value_slot = case_expr;
@@ -1159,7 +1198,9 @@ Stmt *switch_stmt(Parser *parser) {
 
       Expr **additional_slot = (Expr **)growable_array_push(&case_values);
       if (!additional_slot) {
-        fprintf(stderr, "Out of memory while growing case values array\n");
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Internal error: out of memory growing case values array",
+                     p_current(parser).line, p_current(parser).col, 0);
         return NULL;
       }
       *additional_slot = additional_case;
@@ -1188,7 +1229,9 @@ Stmt *switch_stmt(Parser *parser) {
 
     Stmt **case_slot = (Stmt **)growable_array_push(&cases);
     if (!case_slot) {
-      fprintf(stderr, "Out of memory while growing cases array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing switch cases array",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *case_slot = case_stmt;
@@ -1215,13 +1258,17 @@ Stmt *impl_stmt(Parser *parser) {
                            sizeof(Stmt *)) ||
       !growable_array_init(&function_name_types, parser->arena, 4,
                            sizeof(Stmt *))) {
-    fprintf(stderr, "Failed to initialize impl function array list\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize impl function list",
+                 p_current(parser).line, p_current(parser).col, 0);
     return NULL;
   }
 
   if (!growable_array_init(&struct_name_list, parser->arena, 4,
                            sizeof(Stmt *))) {
-    fprintf(stderr, "Failed to initialize impl struct array list");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize impl struct list",
+                 p_current(parser).line, p_current(parser).col, 0);
     return NULL;
   }
 
@@ -1242,8 +1289,10 @@ Stmt *impl_stmt(Parser *parser) {
 
     Type *function_list_type = parse_type(parser);
     if (!function_list_type) {
-      fprintf(stderr, "Failed to parse type for parameter '%s'\n",
-              function_list_name);
+      parser_error(parser, "TypeError", parser->file_path,
+                   "Failed to parse type for impl parameter",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
 
@@ -1251,7 +1300,9 @@ Stmt *impl_stmt(Parser *parser) {
     Type **type_specifier = (Type **)growable_array_push(&function_name_types);
 
     if (!name_identifier || !type_specifier) {
-      fprintf(stderr, "Out of memory while growing function list for impl\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing impl function list",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *name_identifier = function_list_name;
@@ -1280,7 +1331,9 @@ Stmt *impl_stmt(Parser *parser) {
     char **struct_identifier = (char **)growable_array_push(&struct_name_list);
 
     if (!struct_identifier) {
-      fprintf(stderr, "Out of memory while growing struct list for impl\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing impl struct list",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *struct_identifier = struct_list_name;

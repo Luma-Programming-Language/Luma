@@ -81,14 +81,18 @@ Type *resolution_type(Parser *parser) {
   // Build the resolution chain: namespace::name or namespace::sub::name
   GrowableArray parts;
   if (!growable_array_init(&parts, parser->arena, 4, sizeof(char *))) {
-    fprintf(stderr, "Failed to initialize resolution parts array\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize resolution parts array",
+                 line, col, 0);
     return NULL;
   }
 
   // Add the first part (namespace)
   char **slot = (char **)growable_array_push(&parts);
   if (!slot) {
-    fprintf(stderr, "Out of memory while growing resolution parts\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: out of memory growing resolution parts",
+                 line, col, 0);
     return NULL;
   }
   *slot = first_name;
@@ -109,7 +113,9 @@ Type *resolution_type(Parser *parser) {
 
     slot = (char **)growable_array_push(&parts);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing resolution parts\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing resolution parts",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *slot = part;
@@ -159,15 +165,19 @@ Type *tnud(Parser *parser) {
   case TOK_IDENTIFIER:              // Could be simple type or namespace::Type
     return resolution_type(parser); // This handles its own advancing
   default:
-    fprintf(stderr, "Unexpected token in type: %d\n", p_current(parser).type_);
+    parser_error(parser, "TypeError", parser->file_path,
+                 "Expected a type name here",
+                 line, col, p_current(parser).length);
     return NULL;
   }
 }
 
 Type *tled(Parser *parser, Type *left, BindingPower bp) {
   (void)left;
-  (void)bp; // Suppress unused variable warnings
-  fprintf(stderr, "Parsing type led: %.*s\n", CURRENT_TOKEN_LENGTH(parser),
-          CURRENT_TOKEN_VALUE(parser));
-  return NULL; // No valid type found
+  (void)bp;
+  parser_error(parser, "TypeError", parser->file_path,
+               "Unexpected token in type expression",
+               p_current(parser).line, p_current(parser).col,
+               p_current(parser).length);
+  return NULL;
 }

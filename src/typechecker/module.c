@@ -174,7 +174,7 @@ bool process_module_in_order(const char *module_name, GrowableArray *dep_graph,
   }
 
   if (!module) {
-    fprintf(stderr, "Error: Module '%s' not found\n", module_name);
+    tc_error(modules[0], "Internal Error", "Module '%s' not found", module_name);
     return false;
   }
 
@@ -187,7 +187,8 @@ bool process_module_in_order(const char *module_name, GrowableArray *dep_graph,
 
   Scope *module_scope = find_module_scope(global_scope, module_name);
   if (!module_scope) {
-    fprintf(stderr, "Error: Module scope not found for '%s'\n", module_name);
+    tc_error(module, "Internal Error", "Module scope not found for '%s'",
+             module_name);
     return false;
   }
 

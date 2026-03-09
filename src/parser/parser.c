@@ -103,7 +103,9 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
   };
 
   if (!parser.tks) {
-    fprintf(stderr, "Failed to get tokens from GrowableArray\n");
+    parser_error(&parser, "SyntaxError", parser.file_path,
+                 "Internal error: failed to get tokens from token array",
+                 0, 0, 0);
     return NULL;
   }
 
@@ -134,7 +136,9 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
 
   Stmt **module_slot = (Stmt **)growable_array_push(&modules);
   if (!module_slot) {
-    fprintf(stderr, "Out of memory while growing modules array\n");
+    parser_error(&parser, "SyntaxError", parser.file_path,
+                 "Internal error: out of memory growing modules array",
+                 p_current(&parser).line, p_current(&parser).col, 0);
     return NULL;
   }
   *module_slot = module_stmt;
@@ -150,8 +154,10 @@ Stmt *parse(GrowableArray *tks, ArenaAllocator *arena, BuildConfig *config) {
 
     Stmt **slot = (Stmt **)growable_array_push(&stmts);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing statements array\n");
-      error_report(); // Report any errors before returning
+      parser_error(&parser, "SyntaxError", parser.file_path,
+                   "Internal error: out of memory growing statements array",
+                   p_current(&parser).line, p_current(&parser).col, 0);
+      error_report();
       return NULL;
     }
     *slot = stmt;
@@ -554,7 +560,10 @@ Type *parse_type(Parser *parser) {
     return tnud(parser);
 
   default:
-    fprintf(stderr, "[parse_type] Unexpected token for type: %d\n", tok);
+    parser_error(parser, "TypeError", parser->file_path,
+                 "Expected a type name here",
+                 p_current(parser).line, p_current(parser).col,
+                 p_current(parser).length);
     return NULL;
   }
 }

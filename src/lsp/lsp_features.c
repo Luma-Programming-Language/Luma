@@ -29,13 +29,12 @@ static const char *json_escape_hover(const char *src, ArenaAllocator *arena) {
 
 // ---------------------------------------------------------------------------
 // Internal: find token at a 0-based LSP position.
-// Tokens store 1-based line/col — convert before comparing.
+// Tokens are 1-based (confirmed by log analysis); LSP positions are 0-based.
 // ---------------------------------------------------------------------------
 static Token *find_token_at(LSPDocument *doc, LSPPosition pos) {
   if (!doc || !doc->tokens) return NULL;
   for (size_t i = 0; i < doc->token_count; i++) {
     Token *tok = &doc->tokens[i];
-    // Convert 1-based token coords to 0-based LSP coords
     int tok_line = (int)tok->line - 1;
     int tok_col  = (int)tok->col  - 1;
     int tok_end  = tok_col + (int)tok->length;
@@ -47,6 +46,16 @@ static Token *find_token_at(LSPDocument *doc, LSPPosition pos) {
   return NULL;
 }
 
+// Returns true for tokens that carry a word-like name: identifiers AND
+// keyword/builtin tokens (alloc, outputln, let, if, ...) whose text starts
+// with a letter or underscore.
+static bool token_is_name_like(Token *tok) {
+  if (!tok || !tok->value || tok->length == 0) return false;
+  if (tok->type_ == TOK_IDENTIFIER) return true;
+  char c = tok->value[0];
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
+}
+
 // ---------------------------------------------------------------------------
 // Internal: build a markdown hover string for a symbol.
 // ---------------------------------------------------------------------------
@@ -54,7 +63,16 @@ static const char *hover_for_symbol(Symbol *sym, const char *module_alias,
                                      ArenaAllocator *arena) {
   if (!sym || !sym->name) return NULL;
 
-  const char *type_str = sym->type ? type_to_string(sym->type, arena) : "unknown";
+  // Normalize '.' enum separators to '::' (e.g. "Foo.Bar" -> "Foo::Bar")
+  const char *_raw_type = sym->type ? type_to_string(sym->type, arena) : "unknown";
+  size_t _tlen = strlen(_raw_type);
+  char *_type_buf = arena_alloc(arena, _tlen * 2 + 1, 1);
+  if (_type_buf) {
+    char *_p = _type_buf; const char *_s = _raw_type;
+    while (*_s) { if (*_s == '.') { *_p++ = ':'; *_p++ = ':'; _s++; } else { *_p++ = *_s++; } }
+    *_p = '\0';
+  }
+  const char *type_str = _type_buf ? _type_buf : _raw_type;
 
   // Determine declaration keyword
   const char *kw = "let";
@@ -87,15 +105,89 @@ static const char *hover_for_symbol(Symbol *sym, const char *module_alias,
   if (!result) return NULL;
 
   if (strlen(tags) > 0) {
-    snprintf(result, buf_size, "```luma\\n%s\\n```\\n*%s*", code, tags);
+    snprintf(result, buf_size, "```luma\n%s\n```\n*%s*", code, tags);
   } else {
-    snprintf(result, buf_size, "```luma\\n%s\\n```", code);
+    snprintf(result, buf_size, "```luma\n%s\n```", code);
   }
 
-  return json_escape_hover(result, arena);
+  return result;  // caller applies json_escape_hover()
 }
 
 // ---------------------------------------------------------------------------
+// lsp_hover helpers
+// ---------------------------------------------------------------------------
+
+typedef struct { Symbol *sym; const char *scope_name; bool is_module_scope; } ScopeSymbol;
+
+// Recursively collect symbols, flagging whether they come from a module scope
+// (i.e. an imported dependency) vs the current document's own scope tree.
+static void collect_all_symbols(Scope *scope, ScopeSymbol *buf,
+                                 size_t *count, size_t capacity,
+                                 bool is_imported) {
+  if (!scope || *count >= capacity) return;
+
+  if (scope->symbols.data) {
+    for (size_t i = 0; i < scope->symbols.count && *count < capacity; i++) {
+      Symbol *sym = (Symbol *)((char *)scope->symbols.data + i * sizeof(Symbol));
+      if (sym && sym->name) {
+        buf[*count].sym = sym;
+        buf[*count].scope_name = scope->scope_name ? scope->scope_name : "?";
+        buf[*count].is_module_scope = is_imported;
+        (*count)++;
+      }
+    }
+  }
+
+  if (scope->children.data) {
+    for (size_t i = 0; i < scope->children.count; i++) {
+      Scope **child_ptr = (Scope **)((char *)scope->children.data + i * sizeof(Scope *));
+      if (*child_ptr) {
+        // Children of an already-imported scope stay imported
+        collect_all_symbols(*child_ptr, buf, count, capacity, is_imported);
+      }
+    }
+  }
+}
+
+// Find the name of the function that contains the given line by scanning
+// backwards through the token array for the nearest function-name token.
+// Returns NULL if not determinable.
+static const char *enclosing_function_name(LSPDocument *doc, int line_0based) {
+  if (!doc || !doc->tokens) return NULL;
+  // Walk backwards from the cursor looking for a token on an earlier line
+  // that is an identifier immediately preceded by '->' or 'fn' pattern.
+  // Simpler heuristic: find the last function-scope name in the scope tree
+  // whose associated_node->line is <= cursor line+1 (1-based).
+  // We don't have that info reliably, so just scan tokens for the pattern:
+  //   IDENTIFIER  '->'  'fn'  '('   ... which is a Luma function declaration.
+  // Walk backwards from cursor line.
+  const char *best_fn = NULL;
+  for (size_t i = 0; i < doc->token_count; i++) {
+    Token *tok = &doc->tokens[i];
+    int tok_line = (int)tok->line - 1; // convert to 0-based
+    if (tok_line > line_0based) break;
+    // Look for pattern: identifier followed by '->' on same or next token
+    // In Luma: "const NAME -> fn ..."
+    // We detect by finding identifiers whose next non-ws token is '->'
+    if (tok->type_ == TOK_IDENTIFIER && tok->length > 0 && tok->length < 64) {
+      // Peek ahead for '->'
+      if (i + 1 < doc->token_count) {
+        Token *next = &doc->tokens[i + 1];
+        // token type for '->' — check value
+        if (next->length == 2 && next->value &&
+            next->value[0] == '-' && next->value[1] == '>') {
+          // This looks like a declaration — record as potential function name
+          char tmp[65];
+          memcpy(tmp, tok->value, tok->length);
+          tmp[tok->length] = '\0';
+          best_fn = tok->value; // points into token array (stable)
+        }
+      }
+    }
+  }
+  return best_fn;
+}
+
 // lsp_hover
 // ---------------------------------------------------------------------------
 const char *lsp_hover(LSPDocument *doc, LSPPosition position,
@@ -104,81 +196,194 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
 
   // 1. Find the token at the cursor
   Token *tok = find_token_at(doc, position);
-  if (!tok || tok->type_ != TOK_IDENTIFIER) return NULL;
+  if (!tok || !token_is_name_like(tok)) return NULL;
 
-  // Extract token text
   char name[256];
   size_t len = tok->length < 255 ? tok->length : 255;
   memcpy(name, tok->value, len);
   name[len] = '\0';
 
-  // 2. Look up in local scope chain first
-  if (doc->scope) {
-    Symbol *sym = scope_lookup(doc->scope, name);
-    if (sym) {
-      return hover_for_symbol(sym, NULL, arena);
-    }
-  }
+  fprintf(stderr, "[LSP] lsp_hover: token='%s' type=%d\n", name, tok->type_);
 
-  // 3. Check module-qualified names: look for "ALIAS::name" pattern by
-  //    checking if the token to the left is "::" and further left is an alias.
-  //    For now, search all imported module scopes for this bare name.
+  // 1b. Module alias hover — hovering "io" in "io::print" shows module info.
   if (doc->imports) {
     for (size_t i = 0; i < doc->import_count; i++) {
       ImportedModule *imp = &doc->imports[i];
-      if (!imp->scope || !imp->scope->symbols.data) continue;
-
-      for (size_t j = 0; j < imp->scope->symbols.count; j++) {
-        Symbol *sym = (Symbol *)((char *)imp->scope->symbols.data +
-                                  j * sizeof(Symbol));
-        if (!sym || !sym->name) continue;
-        if (strcmp(sym->name, name) == 0) {
-          const char *alias = imp->alias ? imp->alias : imp->module_path;
-          return hover_for_symbol(sym, alias, arena);
+      const char *alias = imp->alias ? imp->alias : imp->module_path;
+      if (alias && strcmp(alias, name) == 0) {
+        // Build a hover: "module io = @use \"std_io\""
+        size_t buf_size = strlen(imp->module_path) + strlen(alias) + 64;
+        char *plain = arena_alloc(arena, buf_size, 1);
+        if (plain) {
+          snprintf(plain, buf_size, "```luma\n@use \"%s\" as %s\n```\nImported module",
+                   imp->module_path, alias);
+          fprintf(stderr, "[LSP] lsp_hover: module alias '%s'\n", name);
+          return json_escape_hover(plain, arena);
         }
       }
     }
   }
 
-  // 4. If it's a keyword or built-in, show a brief description
+  // 2. Collect symbols from the document's OWN scope tree.
+  //    doc->scope is the global scope; its children include:
+  //      - the current file's module scope (and its nested function/block scopes)
+  //      - imported module scopes (registered as children of global)
+  //    We want to search the current file FIRST before imported modules so that
+  //    a local `buf` beats a stdlib `buf`.
+  //
+  //    Strategy: two passes.
+  //      Pass A — only non-module-scope children of doc->scope (the current file).
+  //      Pass B — module-scope children (imported dependencies).
+  //    Within each pass, prefer the LAST match (deepest/most-local scope wins).
+  //    Additionally, among same-named candidates, prefer the one whose
+  //    scope_name matches the enclosing function at the cursor.
+
+  #define MAX_SYMS 4096
+  static ScopeSymbol all_syms[MAX_SYMS]; // static to avoid 64KB stack frame
+  size_t sym_count = 0;
+
+  if (doc->scope) {
+    // Separate the current file's scope from imported module scopes.
+    // The current file's module scope is a direct child of global that is
+    // a module scope but NOT in doc->imports.
+    // Imported dependency scopes ARE in doc->imports (they have aliases).
+
+    // Build a quick set of imported module scope pointers for O(1) exclusion.
+    Scope *imported_scopes[128];
+    size_t imported_count = 0;
+    if (doc->imports) {
+      for (size_t i = 0; i < doc->import_count && imported_count < 128; i++) {
+        if (doc->imports[i].scope) {
+          imported_scopes[imported_count++] = doc->imports[i].scope;
+        }
+      }
+    }
+
+    // Pass A: current file's own scopes (global + file module + all children
+    // that are NOT imported dependency roots)
+    if (doc->scope->symbols.data) {
+      for (size_t i = 0; i < doc->scope->symbols.count && sym_count < MAX_SYMS; i++) {
+        Symbol *sym = (Symbol *)((char *)doc->scope->symbols.data + i * sizeof(Symbol));
+        if (sym && sym->name) {
+          all_syms[sym_count].sym = sym;
+          all_syms[sym_count].scope_name = doc->scope->scope_name ? doc->scope->scope_name : "global";
+          all_syms[sym_count].is_module_scope = false;
+          sym_count++;
+        }
+      }
+    }
+    if (doc->scope->children.data) {
+      for (size_t i = 0; i < doc->scope->children.count; i++) {
+        Scope **child_ptr = (Scope **)((char *)doc->scope->children.data + i * sizeof(Scope *));
+        Scope *child = *child_ptr;
+        if (!child) continue;
+
+        // Check if this child is an imported dependency root
+        bool is_imported = false;
+        for (size_t j = 0; j < imported_count; j++) {
+          if (imported_scopes[j] == child) { is_imported = true; break; }
+        }
+        collect_all_symbols(child, all_syms, &sym_count, MAX_SYMS, is_imported);
+      }
+    }
+
+    fprintf(stderr, "[LSP] lsp_hover: searching %zu total symbols\n", sym_count);
+
+    // Determine enclosing function name for tie-breaking
+    const char *enc_fn = enclosing_function_name(doc, position.line);
+    fprintf(stderr, "[LSP] lsp_hover: enclosing fn='%s'\n", enc_fn ? enc_fn : "?");
+
+    // Pass A search: current-file symbols only, last match wins,
+    // but an exact scope_name match beats positional order.
+    Symbol *best_local = NULL;
+    const char *best_local_scope = NULL;
+    Symbol *best_fn_match = NULL; // matches enclosing function name exactly
+
+    for (size_t i = 0; i < sym_count; i++) {
+      if (all_syms[i].is_module_scope) continue;
+      Symbol *sym = all_syms[i].sym;
+      if (!sym->name || strcmp(sym->name, name) != 0) continue;
+
+      best_local = sym;
+      best_local_scope = all_syms[i].scope_name;
+
+      // If this scope matches the enclosing function, it's the best possible
+      if (enc_fn && all_syms[i].scope_name &&
+          strcmp(all_syms[i].scope_name, enc_fn) == 0) {
+        best_fn_match = sym;
+        fprintf(stderr, "[LSP] lsp_hover: fn-match '%s' in scope '%s'\n",
+                name, all_syms[i].scope_name);
+      } else {
+        fprintf(stderr, "[LSP] lsp_hover: local candidate '%s' in scope '%s'\n",
+                name, all_syms[i].scope_name);
+      }
+    }
+
+    Symbol *chosen_local = best_fn_match ? best_fn_match : best_local;
+    if (chosen_local) {
+      fprintf(stderr, "[LSP] lsp_hover: using local '%s' from scope '%s'\n",
+              name, best_local_scope);
+      const char *plain = hover_for_symbol(chosen_local, NULL, arena);
+      return plain ? json_escape_hover(plain, arena) : NULL;
+    }
+
+    // Pass B search: imported module symbols
+    Symbol *best_imported = NULL;
+    const char *best_import_alias = NULL;
+    for (size_t i = 0; i < sym_count; i++) {
+      if (!all_syms[i].is_module_scope) continue;
+      Symbol *sym = all_syms[i].sym;
+      if (!sym->name || strcmp(sym->name, name) != 0) continue;
+      if (!sym->is_public) continue; // only show public imported symbols
+      best_imported = sym;
+      best_import_alias = all_syms[i].scope_name;
+      fprintf(stderr, "[LSP] lsp_hover: import candidate '%s' from '%s'\n",
+              name, all_syms[i].scope_name);
+    }
+    if (best_imported) {
+      fprintf(stderr, "[LSP] lsp_hover: using imported '%s' from '%s'\n",
+              name, best_import_alias);
+      const char *plain = hover_for_symbol(best_imported, best_import_alias, arena);
+      return plain ? json_escape_hover(plain, arena) : NULL;
+    }
+  }
+
+  // 3. Keywords and built-ins
   static const struct { const char *kw; const char *desc; } keywords[] = {
-    {"if",       "```luma\\nif (condition) { ... }\\n```\\nConditional branch"},
-    {"elif",     "```luma\\nelif (condition) { ... }\\n```\\nAdditional branch"},
+    {"if",       "```luma\nif (condition) { ... }\n```\nConditional branch"},
+    {"elif",     "```luma\nelif (condition) { ... }\n```\nAdditional branch"},
     {"else",     "Else branch of an if statement"},
-    {"loop",     "```luma\\nloop { ... }\\n```\\nInfinite or conditional loop"},
-    {"switch",   "```luma\\nswitch (value) { case -> result; }\\n```\\nPattern match"},
+    {"loop",     "```luma\nloop { ... }\n```\nInfinite or conditional loop"},
+    {"switch",   "```luma\nswitch (value) { case -> result; }\n```\nPattern match"},
     {"return",   "Return a value from a function"},
     {"break",    "Exit the current loop"},
     {"continue", "Skip to the next loop iteration"},
-    {"let",      "```luma\\nlet name: Type = value;\\n```\\nMutable variable binding"},
-    {"const",    "```luma\\nconst name -> fn (...) Type { ... }\\n```\\nImmutable binding"},
+    {"let",      "```luma\nlet name: Type = value;\n```\nMutable variable binding"},
+    {"const",    "```luma\nconst name -> fn (...) Type { ... }\n```\nImmutable binding"},
     {"pub",      "Mark a declaration as publicly exported"},
     {"fn",       "Function type or declaration"},
     {"struct",   "Struct type declaration"},
     {"enum",     "Enum type declaration"},
-    {"cast",     "```luma\\ncast<Type>(value)\\n```\\nType cast"},
-    {"sizeof",   "```luma\\nsizeof<Type>\\n```\\nSize of a type in bytes"},
-    {"alloc",    "```luma\\nalloc(size)\\n```\\nAllocate heap memory"},
-    {"free",     "```luma\\nfree(ptr)\\n```\\nFree heap memory"},
-    {"output",   "```luma\\noutput(value)\\n```\\nPrint without newline"},
-    {"outputln", "```luma\\noutputln(value)\\n```\\nPrint with newline"},
-    {"input",    "```luma\\ninput<Type>(\\\"prompt\\\")\\n```\\nRead typed input"},
-    {"defer",    "```luma\\ndefer { ... }\\n```\\nRun block when scope exits"},
+    {"cast",     "```luma\ncast<Type>(value)\n```\nType cast"},
+    {"sizeof",   "```luma\nsizeof<Type>\n```\nSize of a type in bytes"},
+    {"alloc",    "```luma\nalloc(size)\n```\nAllocate heap memory (returns *void)"},
+    {"free",     "```luma\nfree(ptr)\n```\nFree heap memory"},
+    {"output",   "```luma\noutput(value)\n```\nPrint without newline"},
+    {"outputln", "```luma\noutputln(value)\n```\nPrint with newline"},
+    {"input",    "```luma\ninput<Type>(\"prompt\")\n```\nRead typed input"},
+    {"defer",    "```luma\ndefer { ... }\n```\nRun block when scope exits"},
+    {"system",   "```luma\nsystem(\"command\")\n```\nExecute a shell command"},
   };
-
   for (size_t i = 0; i < sizeof(keywords)/sizeof(keywords[0]); i++) {
     if (strcmp(name, keywords[i].kw) == 0) {
-      char *result = arena_alloc(arena, strlen(keywords[i].desc) + 1, 1);
-      if (result) {
-        strcpy(result, keywords[i].desc);
-        return result;
-      }
+      fprintf(stderr, "[LSP] lsp_hover: builtin/keyword '%s'\n", name);
+      return json_escape_hover(keywords[i].desc, arena);
     }
   }
 
+  fprintf(stderr, "[LSP] lsp_hover: no hover for '%s'\n", name);
   return NULL;
 }
-
 // ---------------------------------------------------------------------------
 // lsp_definition
 // ---------------------------------------------------------------------------

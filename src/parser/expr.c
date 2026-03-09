@@ -142,19 +142,26 @@ Expr *call_expr(Parser *parser, Expr *left, BindingPower bp) {
 
   GrowableArray args;
   if (!growable_array_init(&args, parser->arena, 4, sizeof(Expr *))) {
-    fprintf(stderr, "Failed to initialize call arguments\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize call arguments",
+                 line, col, 0);
   }
 
   p_consume(parser, TOK_LPAREN, "Expected '(' for function call");
   while (p_current(parser).type_ != TOK_RPAREN) {
     Expr *arg = parse_expr(parser, BP_LOWEST);
     if (!arg) {
-      fprintf(stderr, "Expected expression inside function call\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected expression inside function call",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
     Expr **slot = (Expr **)growable_array_push(&args);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing call arguments\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing call arguments",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
     *slot = arg;
@@ -174,7 +181,9 @@ Expr *assign_expr(Parser *parser, Expr *left, BindingPower bp) {
   int col = p_current(parser).col;
 
   if (p_current(parser).type_ != TOK_EQUAL) {
-    fprintf(stderr, "Expected '=' for assignment\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Expected '=' for assignment",
+                 line, col, p_current(parser).length);
     return NULL;
   }
   p_advance(parser); // Consume the '=' token
@@ -256,7 +265,9 @@ Expr *array_expr(Parser *parser) {
 
   GrowableArray elements;
   if (!growable_array_init(&elements, parser->arena, 4, sizeof(Expr *))) {
-    fprintf(stderr, "Failed to initialize array elements\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize array elements",
+                 line, col, 0);
     return NULL;
   }
 
@@ -264,13 +275,18 @@ Expr *array_expr(Parser *parser) {
   while (p_current(parser).type_ != TOK_RBRACKET) {
     Expr *element = parse_expr(parser, BP_LOWEST);
     if (!element) {
-      fprintf(stderr, "Expected expression inside array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected expression inside array literal",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
 
     Expr **slot = (Expr **)growable_array_push(&elements);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing array elements\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing array elements",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -297,7 +313,9 @@ Expr *struct_expr(Parser *parser) {
   GrowableArray field_names, field_values;
   if (!growable_array_init(&field_names, parser->arena, 4, sizeof(char *)) ||
       !growable_array_init(&field_values, parser->arena, 4, sizeof(Expr *))) {
-    fprintf(stderr, "Failed to initialize struct field arrays\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize struct field arrays",
+                 line, col, 0);
     return NULL;
   }
 
@@ -332,7 +350,9 @@ Expr *struct_expr(Parser *parser) {
     Expr **value_slot = (Expr **)growable_array_push(&field_values);
 
     if (!name_slot || !value_slot) {
-      fprintf(stderr, "Out of memory while growing struct field arrays\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing struct field arrays",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -405,7 +425,9 @@ Expr *named_struct_expr(Parser *parser, Expr *left, BindingPower bp) {
   GrowableArray field_names, field_values;
   if (!growable_array_init(&field_names, parser->arena, 4, sizeof(char *)) ||
       !growable_array_init(&field_values, parser->arena, 4, sizeof(Expr *))) {
-    fprintf(stderr, "Failed to initialize struct field arrays\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize struct field arrays",
+                 line, col, 0);
     return NULL;
   }
 
@@ -440,7 +462,9 @@ Expr *named_struct_expr(Parser *parser, Expr *left, BindingPower bp) {
     Expr **value_slot = (Expr **)growable_array_push(&field_values);
 
     if (!name_slot || !value_slot) {
-      fprintf(stderr, "Out of memory while growing struct field arrays\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing struct field arrays",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
@@ -598,20 +622,27 @@ Expr *syscall_expr(Parser *parser) {
 
   GrowableArray args;
   if (!growable_array_init(&args, parser->arena, 2, sizeof(Expr *))) {
-    fprintf(stderr, "Failed to initialize array elements\n");
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize syscall arguments",
+                 line, col, 0);
     return NULL;
   }
 
   while (p_current(parser).type_ != TOK_RPAREN) {
     Expr *arg = parse_expr(parser, BP_NONE);
     if (!arg) {
-      fprintf(stderr, "Expected expression inside array\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Expected expression inside syscall argument list",
+                   p_current(parser).line, p_current(parser).col,
+                   p_current(parser).length);
       return NULL;
     }
 
     Expr **slot = (Expr **)growable_array_push(&args);
     if (!slot) {
-      fprintf(stderr, "Out of memory while growing array elements\n");
+      parser_error(parser, "SyntaxError", parser->file_path,
+                   "Internal error: out of memory growing syscall arguments",
+                   p_current(parser).line, p_current(parser).col, 0);
       return NULL;
     }
 
