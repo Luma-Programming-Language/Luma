@@ -8,4 +8,3 @@ flags = "-O3 --no-sanitize"
 
 [output]
 binary_dir = "bin"
-

@@ -3,13 +3,13 @@
 @use "std_string" as STRING
 @use "std_vector" as VEC
 
-@use "parser_type" as PTYPE
-@use "parser_expr" as PEXPR
+@use "parser_type"  as PTYPE
+@use "parser_expr"  as PEXPR
 @use "lexer_tokens" as TOK
-@use "ast_module" as MAST
-@use "ast_stmt" as SAST
-@use "parser" as PARS
-@use "ast" as AST
+@use "ast_module"   as MAST
+@use "ast_stmt"     as SAST
+@use "parser"       as PARS
+@use "ast"          as AST
 
 #returns_ownership const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode; 
 #returns_ownership const _fn    -> fn (p: *Parser, name: *byte, is_public: int, 

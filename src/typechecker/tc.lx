@@ -1,0 +1,96 @@
+@module "tc"
+
+@use "std_vector" as VEC
+@use "ast"        as AST
+
+// ─── Type Match Result ────────────────────────────────────────────────────────
+
+pub const TypeMatchResult -> enum {
+  TYPE_MATCH_EXACT,
+  TYPE_MATCH_COMPATIBLE,
+  TYPE_MATCH_NONE,
+};
+
+// ─── Type Error ───────────────────────────────────────────────────────────────
+
+pub const TypeError -> struct {
+  message: *byte,
+  line:    int,
+  col:     int,
+  context: *byte,
+};
+
+// ─── Static Allocation ───────────────────────────────────────────────────────
+
+pub const StaticAllocation -> struct {
+  line:                 int,
+  col:                  int,
+  variable_name:        *byte,
+  original_variable:    *byte,
+  has_matching_free:    int,   // bool
+  free_count:           int,
+  use_after_free_count: int,
+  aliases:              Vector,
+  reported:             int,   // bool
+  function_name:        *byte,
+  file_path:            *byte,
+};
+
+// ─── Static Memory Analyzer ──────────────────────────────────────────────────
+
+pub const StaticMemoryAnalyzer -> struct {
+  allocations:          Vector,
+  skip_memory_tracking: int,   // bool
+};
+
+// ─── Symbol ──────────────────────────────────────────────────────────────────
+
+pub const Symbol -> struct {
+  name:              *byte,
+  type:              *AstNode,
+  is_public:         int,      // bool
+  is_mutable:        int,      // bool
+  scope_depth:       int,
+  returns_ownership: int,      // bool
+  takes_ownership:   int,      // bool
+};
+
+// ─── Scope ───────────────────────────────────────────────────────────────────
+
+pub const Scope -> struct {
+  parent:            *Scope,
+  symbols:           Vector,
+  children:          Vector,
+  scope_name:        *byte,
+  depth:             int,
+  is_function_scope: int,      // bool
+  associated_node:   *AstNode,
+
+  is_module_scope:   int,      // bool
+  module_name:       *byte,
+  imported_modules:  Vector,
+
+  returns_ownership: int,      // bool
+  takes_ownership:   int,      // bool
+
+  memory_analyzer:   *StaticMemoryAnalyzer,
+  deferred_frees:    Vector,   // Vector of *byte (var names)
+
+  config:            *void,    // *BuildConfig — treated as opaque
+};
+
+// ─── Module Import ───────────────────────────────────────────────────────────
+
+pub const ModuleImport -> struct {
+  module_name:  *byte,
+  alias:        *byte,
+  module_scope: *Scope,
+};
+
+// ─── Module Dependency ───────────────────────────────────────────────────────
+
+pub const ModuleDependency -> struct {
+  module_name:  *byte,
+  dependencies: Vector,
+  processed:    int,           // bool
+};

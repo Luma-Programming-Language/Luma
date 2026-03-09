@@ -1,0 +1,56 @@
+@module "tc_error"
+
+@use "std_string" as STR
+@use "error"      as ERR 
+@use "ast"        as AST
+
+// ─── Global Error Context ─────────────────────────────────────────────────────
+
+pub let g_tokens:      *Token = cast<*Token>(0);
+pub let g_token_count: int    = 0;
+pub let g_file_path:   *byte  = cast<*byte>(0);
+
+// ─── Init ─────────────────────────────────────────────────────────────────────
+
+pub const tc_error_init -> fn (tokens: *Token, token_count: int, file_path: *byte) void {
+  g_tokens      = tokens;
+  g_token_count = token_count;
+  g_file_path   = file_path;
+}
+
+// ─── Internal Helper ─────────────────────────────────────────────────────────
+
+const do_error -> fn (node: *AstNode, error_type: *byte, message: *byte, help: *byte, token_len: int) void {
+  let err: ErrorInformation = ErrorInformation {
+    error_type:   error_type,
+    file_path:    g_file_path,
+    message:      message,
+    line:         node.line,
+    col:          node.col,
+    line_text:    ERR::generate_line(g_tokens, g_token_count, node.line),
+    token_length: token_len,
+    label:        "Type Error",
+    help:         help,
+    note:         cast<*byte>(0),
+  };
+
+  ERR::error_add(err);
+}
+
+// ─── Public API ───────────────────────────────────────────────────────────────
+
+pub const tc_error -> fn (node: *AstNode, error_type: *byte, message: *byte) void {
+  do_error(node, error_type, message, cast<*byte>(0), 1);
+}
+
+pub const tc_error_help -> fn (node: *AstNode, error_type: *byte, help: *byte, message: *byte) void {
+  do_error(node, error_type, message, help, 1);
+}
+
+pub const tc_error_id -> fn (node: *AstNode, identifier: *byte, error_type: *byte, message: *byte) void {
+  let len: int = 1;
+  if (identifier != cast<*byte>(0)) {
+    len = STR::strlen(identifier);
+  }
+  do_error(node, error_type, message, cast<*byte>(0), len);
+}

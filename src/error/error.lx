@@ -1,6 +1,6 @@
 @module "error"
 
-@use "std_io" as IO
+@use "std_io"       as IO
 @use "lexer_tokens" as TOK
 
 pub const ErrorInformation -> struct {

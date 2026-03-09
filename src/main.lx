@@ -3,21 +3,21 @@
 @use "std_string" as STRING
 @use "std_vector" as VEC
 @use "std_memory" as MEM
-@use "std_args" as ARGS
-@use "std_io" as IO
+@use "std_args"   as ARGS
+@use "std_io"     as IO
 
-@use "parse_stmt" as PSTMT
+@use "parse_stmt"   as PSTMT
 @use "lexer_tokens" as TOK
-@use "constants" as CONST
-@use "commands" as COMD
-@use "lexer" as LEXER
-@use "parser" as PARS
-@use "error" as ERR
+@use "constants"    as CONST
+@use "commands"     as COMD
+@use "lexer"        as LEXER
+@use "parser"       as PARS
+@use "error"        as ERR
 
-@use "ast_module" as MAST
-@use "ast_print" as PRINT
-@use "ast_stmt" as STMT
-@use "ast" as AST
+@use "ast_module"   as MAST
+@use "ast_print"    as PRINT
+@use "ast_stmt"     as STMT
+@use "ast"          as AST
 
 #returns_ownership
 const parse -> fn (p: *Parser) *AstNode {

@@ -2,9 +2,9 @@
 
 @use "std_string" as STRING
 @use "std_vector" as VEC
-@use "std_args" as ARGS
+@use "std_args"   as ARGS
 
-@use "constants" as CONST
+@use "constants"  as CONST
 
 // Map of available commands and their descriptions for the CLI
 // Usage: compiler [options] <source_file>

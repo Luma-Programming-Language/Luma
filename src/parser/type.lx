@@ -4,10 +4,10 @@
 @use "std_vector" as VEC
 
 @use "lexer_tokens" as TOK
-@use "ast_expr" as EAST
-@use "ast_type" as TAST
-@use "parser" as PARS
-@use "ast" as AST
+@use "ast_expr"     as EAST
+@use "ast_type"     as TAST
+@use "parser"       as PARS
+@use "ast"          as AST
 
 #returns_ownership const pointer_type    -> fn (p: *Parser) *AstNode;
 #returns_ownership const array_type      -> fn (p: *Parser) *AstNode;
@@ -140,8 +140,9 @@ const resolution_type -> fn (p: *Parser) *AstNode {
   }
 
   let node: *AstNode = TAST::make_resolution_type(
-    cast<**byte>(parts.data), parts.size, line, col
+    PARS::vec_to_byte_array(&parts), parts.size, line, col
   );
   VEC::free_vector(&parts);
+
   return node;
 }

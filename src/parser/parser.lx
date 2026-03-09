@@ -4,9 +4,9 @@
 @use "std_memory" as MEM
 
 @use "lexer_tokens" as TOK
-@use "constants" as CONST
-@use "error" as ERR
-@use "ast" as AST
+@use "constants"    as CONST
+@use "error"        as ERR
+@use "ast"          as AST
 
 pub const BindingPower -> enum {
   BP_NONE,        /**< No binding power */
