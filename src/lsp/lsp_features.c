@@ -1,10 +1,6 @@
 #include "lsp.h"
 #include <string.h>
 
-// ---------------------------------------------------------------------------
-// Internal: JSON-escape a string into a static arena buffer.
-// Double-backslash and double-quote so the result is safe inside a JSON string.
-// ---------------------------------------------------------------------------
 static const char *json_escape_hover(const char *src, ArenaAllocator *arena) {
   if (!src) return "";
   size_t len = strlen(src);
@@ -27,17 +23,13 @@ static const char *json_escape_hover(const char *src, ArenaAllocator *arena) {
   return dst;
 }
 
-// ---------------------------------------------------------------------------
-// Internal: find token at a 0-based LSP position.
-// Tokens are 1-based (confirmed by log analysis); LSP positions are 0-based.
-// ---------------------------------------------------------------------------
 static Token *find_token_at(LSPDocument *doc, LSPPosition pos) {
   if (!doc || !doc->tokens) return NULL;
   for (size_t i = 0; i < doc->token_count; i++) {
     Token *tok = &doc->tokens[i];
     int tok_line = (int)tok->line - 1;
-    int tok_col  = (int)tok->col  - 1;
-    int tok_end  = tok_col + (int)tok->length;
+    int tok_col  = (int)tok->col - (int)tok->length + 1;  // 0-based start
+    int tok_end  = tok_col + (int)tok->length;             // unchanged
     if (tok_line == pos.line &&
         tok_col <= pos.character && pos.character < tok_end) {
       return tok;
@@ -46,9 +38,6 @@ static Token *find_token_at(LSPDocument *doc, LSPPosition pos) {
   return NULL;
 }
 
-// Returns true for tokens that carry a word-like name: identifiers AND
-// keyword/builtin tokens (alloc, outputln, let, if, ...) whose text starts
-// with a letter or underscore.
 static bool token_is_name_like(Token *tok) {
   if (!tok || !tok->value || tok->length == 0) return false;
   if (tok->type_ == TOK_IDENTIFIER) return true;
@@ -56,9 +45,6 @@ static bool token_is_name_like(Token *tok) {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == '_';
 }
 
-// ---------------------------------------------------------------------------
-// Internal: build a markdown hover string for a symbol.
-// ---------------------------------------------------------------------------
 static const char *hover_for_symbol(Symbol *sym, const char *module_alias,
                                      ArenaAllocator *arena) {
   if (!sym || !sym->name) return NULL;
@@ -112,10 +98,6 @@ static const char *hover_for_symbol(Symbol *sym, const char *module_alias,
 
   return result;  // caller applies json_escape_hover()
 }
-
-// ---------------------------------------------------------------------------
-// lsp_hover helpers
-// ---------------------------------------------------------------------------
 
 typedef struct { Symbol *sym; const char *scope_name; bool is_module_scope; } ScopeSymbol;
 
@@ -180,8 +162,6 @@ static const char *enclosing_function_name(LSPDocument *doc, int line_0based) {
   return best_fn;
 }
 
-// lsp_hover
-// ---------------------------------------------------------------------------
 const char *lsp_hover(LSPDocument *doc, LSPPosition position,
                       ArenaAllocator *arena) {
   if (!doc) return NULL;
@@ -216,22 +196,8 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
     }
   }
 
-  // 2. Collect symbols from the document's OWN scope tree.
-  //    doc->scope is the global scope; its children include:
-  //      - the current file's module scope (and its nested function/block scopes)
-  //      - imported module scopes (registered as children of global)
-  //    We want to search the current file FIRST before imported modules so that
-  //    a local `buf` beats a stdlib `buf`.
-  //
-  //    Strategy: two passes.
-  //      Pass A — only non-module-scope children of doc->scope (the current file).
-  //      Pass B — module-scope children (imported dependencies).
-  //    Within each pass, prefer the LAST match (deepest/most-local scope wins).
-  //    Additionally, among same-named candidates, prefer the one whose
-  //    scope_name matches the enclosing function at the cursor.
-
   #define MAX_SYMS 4096
-  static ScopeSymbol all_syms[MAX_SYMS]; // static to avoid 64KB stack frame
+  static ScopeSymbol all_syms[MAX_SYMS];
   size_t sym_count = 0;
 
   if (doc->scope) {
@@ -340,7 +306,6 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
     }
   }
 
-  // 3. Keywords and built-ins
   static const struct { const char *kw; const char *desc; } keywords[] = {
     {"if",       "```luma\nif (condition) { ... }\n```\nConditional branch"},
     {"elif",     "```luma\nelif (condition) { ... }\n```\nAdditional branch"},
@@ -376,9 +341,7 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
   fprintf(stderr, "[LSP] lsp_hover: no hover for '%s'\n", name);
   return NULL;
 }
-// ---------------------------------------------------------------------------
-// lsp_definition
-// ---------------------------------------------------------------------------
+
 LSPLocation *lsp_definition(LSPDocument *doc, LSPPosition position,
                             ArenaAllocator *arena) {
   if (!doc) return NULL;
@@ -396,9 +359,6 @@ LSPLocation *lsp_definition(LSPDocument *doc, LSPPosition position,
   return loc;
 }
 
-// ---------------------------------------------------------------------------
-// lsp_completion
-// ---------------------------------------------------------------------------
 LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
                                   size_t *completion_count,
                                   ArenaAllocator *arena) {

@@ -5,10 +5,6 @@
 
 #include "lsp.h"
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
 // Skip over a JSON string value starting AT the opening '"'.
 // Returns pointer to the character AFTER the closing '"', or NULL on error.
 static const char *skip_json_string(const char *p) {
@@ -78,10 +74,6 @@ const char *find_json_value(const char *json, const char *key) {
 
   return NULL;
 }
-
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
 
 char *extract_string(const char *json, const char *key, ArenaAllocator *arena) {
   const char *value = find_json_value(json, key);
@@ -181,10 +173,6 @@ LSPPosition extract_position(const char *json) {
   return pos;
 }
 
-// ---------------------------------------------------------------------------
-// lsp_parse_method — unchanged logic, but now uses find_json_value
-// ---------------------------------------------------------------------------
-
 LSPMethod lsp_parse_method(const char *json) {
   if (!json) {
     fprintf(stderr, "[LSP] parse_method: NULL input\n");
@@ -239,10 +227,6 @@ LSPMethod lsp_parse_method(const char *json) {
   return LSP_METHOD_UNKNOWN;
 }
 
-// ---------------------------------------------------------------------------
-// Response / notification senders
-// ---------------------------------------------------------------------------
-
 void lsp_send_response(int id, const char *result) {
   // Use heap buffer so large responses (completions) don't overflow
   size_t result_len = result ? strlen(result) : 4;
@@ -286,10 +270,6 @@ void lsp_send_error(int id, int code, const char *message) {
   printf("Content-Length: %d\r\n\r\n%s", msg_len, json_msg);
   fflush(stdout);
 }
-
-// ---------------------------------------------------------------------------
-// JSON serialization helpers
-// ---------------------------------------------------------------------------
 
 // Write a JSON-escaped version of `src` into `dst`, stopping before
 // dst_end - 1 to leave room for the NUL terminator.

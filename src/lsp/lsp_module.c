@@ -12,10 +12,6 @@
 
 #define LUMA_STD_PATH "/usr/local/lib/luma"
 
-// ---------------------------------------------------------------------------
-// Negative cache: module names already known to not exist anywhere.
-// Avoids repeated fopen() probes on every keystroke.
-// ---------------------------------------------------------------------------
 #define NEGATIVE_CACHE_MAX 64
 static const char *negative_cache[NEGATIVE_CACHE_MAX];
 static size_t      negative_cache_count = 0;
@@ -461,10 +457,6 @@ const char *resolve_module_path(const char *current_uri,
   return lsp_path_to_uri(full_path, arena);
 }
 
-// ---------------------------------------------------------------------------
-// Module AST cache helpers
-// ---------------------------------------------------------------------------
-
 void lsp_ast_cache_init(LSPServer *server) {
   memset(server->ast_cache, 0, sizeof(server->ast_cache));
   server->ast_cache_count = 0;
@@ -514,9 +506,6 @@ static void cache_store(LSPServer *server, const char *uri,
   }
 }
 
-// ---------------------------------------------------------------------------
-// parse_imported_module_ast — with mtime-based caching
-// ---------------------------------------------------------------------------
 AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
                                    BuildConfig *config, ArenaAllocator *arena) {
   // 1. If the file is already open in the editor, use its AST directly.
@@ -530,14 +519,12 @@ AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
   if (!file_path)
     return NULL;
 
-  // 2. Stat to get mtime.
   struct stat st;
   long mtime = 0;
   if (stat(file_path, &st) == 0) {
     mtime = (long)st.st_mtime;
   }
 
-  // 3. Cache lookup.
   AstNode *cached = cache_lookup(server, module_uri, mtime);
   if (cached) {
     fprintf(stderr, "[LSP] Cache: AST hit for %s\n", module_uri);
@@ -546,7 +533,6 @@ AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
 
   fprintf(stderr, "[LSP] Cache: parsing %s (mtime=%ld)\n", module_uri, (long)mtime);
 
-  // 4. Read, lex, parse.
   FILE *f = fopen(file_path, "r");
   if (!f)
     return NULL;
@@ -583,7 +569,6 @@ AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
     result = module_ast->stmt.program.modules[0];
   }
 
-  // 5. Store in cache.
   cache_store(server, module_uri, result, mtime);
 
   return result;

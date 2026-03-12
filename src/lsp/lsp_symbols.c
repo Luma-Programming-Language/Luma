@@ -1,20 +1,11 @@
 #include "lsp.h"
 #include <string.h>
 
-// ---------------------------------------------------------------------------
-// lsp_node_at_position
-// Stub — we don't walk the AST here; callers that need it use the token/symbol
-// helpers instead.
-// ---------------------------------------------------------------------------
 AstNode *lsp_node_at_position(LSPDocument *doc, LSPPosition position) {
   (void)doc;
   (void)position;
   return NULL;
 }
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
 
 // Map a Symbol's type to the closest LSPSymbolKind.
 static LSPSymbolKind symbol_kind_for(Symbol *sym) {
@@ -48,14 +39,6 @@ static int find_token_for_name(LSPDocument *doc, const char *name) {
   return -1;
 }
 
-// ---------------------------------------------------------------------------
-// lsp_document_symbols
-//
-// Walks every symbol in the document's top-level scope and produces one
-// LSPDocumentSymbol per entry.  Line/column information is derived by
-// scanning the token array for the first token whose text matches the
-// symbol name — good enough for go-to-symbol and outline views.
-// ---------------------------------------------------------------------------
 LSPDocumentSymbol **lsp_document_symbols(LSPDocument *doc,
                                          size_t *symbol_count,
                                          ArenaAllocator *arena) {

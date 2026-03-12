@@ -17,9 +17,6 @@
 #include <sys/stat.h>
 #include <unistd.h>
 
-// ---------------------------------------------------------------------------
-// Crash handler
-// ---------------------------------------------------------------------------
 static void crash_handler(int sig) {
   const char *name = "UNKNOWN";
   switch (sig) {
@@ -46,9 +43,6 @@ static void install_crash_handlers(void) {
   signal(SIGILL,  crash_handler);
 }
 
-// ---------------------------------------------------------------------------
-// Watchdog
-// ---------------------------------------------------------------------------
 #define WATCHDOG_SECS 10
 
 typedef struct {
@@ -109,10 +103,6 @@ static void watchdog_init(void) {
   pthread_create(&g_watchdog.thread, NULL, watchdog_thread, NULL);
 }
 
-// ---------------------------------------------------------------------------
-// URI helpers
-// ---------------------------------------------------------------------------
-
 const char *lsp_uri_to_path(const char *uri, ArenaAllocator *arena) {
   if (!uri) return NULL;
   if (strncmp(uri, "file://", 7) == 0) {
@@ -138,10 +128,6 @@ const char *lsp_path_to_uri(const char *path, ArenaAllocator *arena) {
   return uri;
 }
 
-// ---------------------------------------------------------------------------
-// Server init
-// ---------------------------------------------------------------------------
-
 bool lsp_server_init(LSPServer *server, ArenaAllocator *arena) {
   if (!server || !arena) return false;
 
@@ -165,12 +151,6 @@ bool lsp_server_init(LSPServer *server, ArenaAllocator *arena) {
 
   return server->documents != NULL;
 }
-
-// ---------------------------------------------------------------------------
-// Main server loop
-// Uses select() with a 100ms timeout so we can fire debounced analysis
-// even when no new messages are arriving from the client.
-// ---------------------------------------------------------------------------
 
 void lsp_server_run(LSPServer *server) {
   if (!server) return;
@@ -280,10 +260,6 @@ done:
   fprintf(stderr, "[LSP] Server loop exited\n");
   fflush(stderr);
 }
-
-// ---------------------------------------------------------------------------
-// Shutdown
-// ---------------------------------------------------------------------------
 
 void lsp_server_shutdown(LSPServer *server) {
   if (!server) return;

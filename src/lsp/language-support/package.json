@@ -2,88 +2,59 @@
   "name": "luma-language-support",
   "displayName": "Luma Language Support",
   "description": "Syntax highlighting and language support for Luma programming language",
-  "version": "0.1.0",
+  "version": "0.1.5",
   "publisher": "TheDevConnor",
+
   "engines": {
     "vscode": "^1.60.0"
   },
+
   "categories": [
     "Programming Languages"
   ],
+
+  "activationEvents": [
+    "onLanguage:luma"
+  ],
+
+  "main": "./client/out/extension.js",
+
   "contributes": {
     "languages": [
       {
         "id": "luma",
-        "aliases": [
-          "luma",
-          "lux"
-        ],
-        "extensions": [
-          ".lx"
-        ],
+        "aliases": ["luma", "lux"],
+        "extensions": [".lx"],
         "configuration": "./language-configuration.json"
       }
     ],
+
     "semanticTokenScopes": [
       {
         "language": "luma",
         "scopes": {
-          "namespace": [
-            "entity.name.namespace.luma"
-          ],
-          "type": [
-            "entity.name.type.luma"
-          ],
-          "typeParameter": [
-            "entity.name.type.parameter.luma"
-          ],
-          "function": [
-            "entity.name.function.luma"
-          ],
-          "method": [
-            "entity.name.function.method.luma"
-          ],
-          "property": [
-            "variable.other.property.luma"
-          ],
-          "variable": [
-            "variable.other.luma"
-          ],
-          "parameter": [
-            "variable.parameter.luma"
-          ],
-          "keyword": [
-            "keyword.control.luma"
-          ],
-          "modifier": [
-            "storage.modifier.luma"
-          ],
-          "comment": [
-            "comment.line.luma"
-          ],
-          "string": [
-            "string.quoted.luma"
-          ],
-          "number": [
-            "constant.numeric.luma"
-          ],
-          "operator": [
-            "keyword.operator.luma"
-          ],
-          "struct": [
-            "entity.name.type.struct.luma"
-          ],
-          "enum": [
-            "entity.name.type.enum.luma"
-          ],
-          "enumMember": [
-            "variable.other.enummember.luma"
-          ]
+          "namespace": ["entity.name.namespace.luma"],
+          "type": ["entity.name.type.luma"],
+          "typeParameter": ["entity.name.type.parameter.luma"],
+          "function": ["entity.name.function.luma"],
+          "method": ["entity.name.function.method.luma"],
+          "property": ["variable.other.property.luma"],
+          "variable": ["variable.other.luma"],
+          "parameter": ["variable.parameter.luma"],
+          "keyword": ["keyword.control.luma"],
+          "modifier": ["storage.modifier.luma"],
+          "comment": ["comment.line.luma"],
+          "string": ["string.quoted.luma"],
+          "number": ["constant.numeric.luma"],
+          "operator": ["keyword.operator.luma"],
+          "struct": ["entity.name.type.struct.luma"],
+          "enum": ["entity.name.type.enum.luma"],
+          "enumMember": ["variable.other.enummember.luma"]
         }
       }
     ]
   },
-  "main": "./client/out/extension",
+
   "scripts": {
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -b",
@@ -91,8 +62,10 @@
     "lint": "eslint",
     "postinstall": "cd client && npm install && cd .."
   },
+
   "devDependencies": {
     "@types/node": "^20",
     "typescript": "^5.7.2"
   }
 }
+

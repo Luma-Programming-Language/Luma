@@ -1,9 +1,5 @@
 #include "lsp.h"
 
-// ---------------------------------------------------------------------------
-// Debounce state — track last didChange time so we only typecheck after the
-// user has stopped typing for DEBOUNCE_MS milliseconds, or on save.
-// ---------------------------------------------------------------------------
 #include <time.h>
 
 #define DEBOUNCE_MS 500
