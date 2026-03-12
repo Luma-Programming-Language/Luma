@@ -1,0 +1,49 @@
+<map id="src/typechecker/type.h" name="src/typechecker/type.h">
+<area shape="rect" id="Node000001" title="Type checking and symbol table management for AST nodes with memory tracking." alt="" coords="1741,5,1911,31"/>
+<area shape="rect" id="Node000002" href="$run_8c.html" title=" " alt="" coords="782,86,905,111"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="1727,23,1571,26,1369,35,1143,53,917,81,883,89,882,83,916,76,1143,48,1368,30,1571,21,1727,17"/>
+<area shape="rect" id="Node000003" href="$lsp_8h.html" title="Language Server Protocol implementation for Luma language." alt="" coords="929,86,1027,111"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="1727,23,1591,26,1419,36,1229,53,1040,81,1011,88,1010,83,1039,76,1229,48,1418,30,1591,21,1727,17"/>
+<area shape="rect" id="Node000015" href="$array_8c.html" title=" " alt="" coords="1051,86,1222,111"/>
+<area shape="poly" id="edge14_Node000001_Node000015" title=" " alt="" coords="1728,29,1502,49,1236,81,1193,89,1192,83,1235,76,1502,44,1727,24"/>
+<area shape="rect" id="Node000016" href="$typechecker_2error_8c.html" title=" " alt="" coords="1247,86,1416,111"/>
+<area shape="poly" id="edge15_Node000001_Node000016" title=" " alt="" coords="1730,35,1429,81,1389,89,1388,83,1428,76,1729,30"/>
+<area shape="rect" id="Node000017" href="$typechecker_2expr_8c.html" title=" " alt="" coords="1440,86,1607,111"/>
+<area shape="poly" id="edge16_Node000001_Node000017" title=" " alt="" coords="1770,37,1568,89,1567,83,1768,31"/>
+<area shape="rect" id="Node000018" href="$typechecker_2lookup_8c.html" title=" " alt="" coords="1631,86,1813,111"/>
+<area shape="poly" id="edge17_Node000001_Node000018" title=" " alt="" coords="1802,41,1739,88,1736,84,1798,37"/>
+<area shape="rect" id="Node000019" href="$module_8c.html" title=" " alt="" coords="1837,86,2025,111"/>
+<area shape="poly" id="edge18_Node000001_Node000019" title=" " alt="" coords="1854,37,1917,84,1914,88,1851,41"/>
+<area shape="rect" id="Node000020" href="$scope_8c.html" title="Implementation of scope and symbol table management functions." alt="" coords="2049,86,2227,111"/>
+<area shape="poly" id="edge19_Node000001_Node000020" title=" " alt="" coords="1885,31,2093,83,2092,89,1884,37"/>
+<area shape="rect" id="Node000021" href="$static__mem__tracker_8c.html" title=" " alt="" coords="2251,79,2415,119"/>
+<area shape="poly" id="edge20_Node000001_Node000021" title=" " alt="" coords="1925,29,2240,76,2251,78,2250,83,2239,81,1924,35"/>
+<area shape="rect" id="Node000022" href="$typechecker_2stmt_8c.html" title=" " alt="" coords="2439,86,2608,111"/>
+<area shape="poly" id="edge21_Node000001_Node000022" title=" " alt="" coords="1925,24,2155,43,2428,76,2470,83,2469,89,2427,81,2154,49,1924,29"/>
+<area shape="rect" id="Node000023" href="$tc_8c.html" title=" " alt="" coords="2632,86,2783,111"/>
+<area shape="poly" id="edge22_Node000001_Node000023" title=" " alt="" coords="1925,20,2236,36,2428,53,2621,76,2661,83,2660,89,2620,81,2428,58,2236,42,1925,25"/>
+<area shape="rect" id="Node000024" href="$typechecker_2type_8c.html" title="Implementation of type checking and symbol table management functions." alt="" coords="2807,86,2975,111"/>
+<area shape="poly" id="edge23_Node000001_Node000024" title=" " alt="" coords="1925,18,2308,34,2551,51,2796,76,2840,83,2839,89,2795,81,2550,56,2307,39,1925,24"/>
+<area shape="rect" id="Node000004" href="$help_8c.html" title="Implements command&#45;line argument parsing, file reading, help/version/license printing,..." alt="" coords="5,174,135,199"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="933,118,917,121,801,139,702,147,614,150,533,149,363,149,264,155,148,169,112,177,111,171,147,164,264,150,363,144,533,144,614,145,702,142,800,133,916,116,932,113"/>
+<area shape="rect" id="Node000005" href="$lsp__diagnostics_8c.html" title=" " alt="" coords="159,174,338,199"/>
+<area shape="poly" id="edge4_Node000003_Node000005" title=" " alt="" coords="933,118,917,121,832,136,759,144,634,151,509,154,350,169,305,177,304,171,350,164,509,149,634,145,758,139,831,130,916,116,932,112"/>
+<area shape="rect" id="Node000006" href="$lsp__document_8c.html" title=" " alt="" coords="362,174,533,199"/>
+<area shape="poly" id="edge5_Node000003_Node000006" title=" " alt="" coords="931,118,917,121,813,140,732,149,650,156,545,169,504,177,503,171,544,164,649,150,731,143,813,135,916,116,930,113"/>
+<area shape="rect" id="Node000007" href="$lsp__features_8c.html" title=" " alt="" coords="557,174,716,199"/>
+<area shape="poly" id="edge6_Node000003_Node000007" title=" " alt="" coords="930,118,917,121,689,177,688,171,916,116,928,113"/>
+<area shape="rect" id="Node000008" href="$lsp__json_8c.html" title=" " alt="" coords="740,174,872,199"/>
+<area shape="poly" id="edge7_Node000003_Node000008" title=" " alt="" coords="944,120,831,176,828,171,942,115"/>
+<area shape="rect" id="Node000009" href="$lsp__message_8c.html" title=" " alt="" coords="896,174,1060,199"/>
+<area shape="poly" id="edge8_Node000003_Node000009" title=" " alt="" coords="981,125,981,173,975,173,975,125"/>
+<area shape="rect" id="Node000010" href="$lsp__module_8c.html" title=" " alt="" coords="1085,174,1239,199"/>
+<area shape="poly" id="edge9_Node000003_Node000010" title=" " alt="" coords="1016,115,1138,171,1136,176,1014,120"/>
+<area shape="rect" id="Node000011" href="$lsp__semantic__tokens_8c.html" title="LSP textDocument/semanticTokens/full implementation for Luma." alt="" coords="1263,167,1418,207"/>
+<area shape="poly" id="edge10_Node000003_Node000011" title=" " alt="" coords="1028,113,1040,116,1264,166,1263,172,1039,121,1026,118"/>
+<area shape="rect" id="Node000012" href="$lsp__server_8c.html" title="Language Server Protocol implementation with type error diagnostics." alt="" coords="1443,174,1588,199"/>
+<area shape="poly" id="edge11_Node000003_Node000012" title=" " alt="" coords="1026,113,1040,116,1149,135,1234,143,1321,149,1430,164,1468,171,1467,177,1430,169,1320,155,1234,148,1148,140,1039,121,1025,118"/>
+<area shape="rect" id="Node000013" href="$lsp__symbols_8c.html" title=" " alt="" coords="1613,174,1773,199"/>
+<area shape="poly" id="edge12_Node000003_Node000013" title=" " alt="" coords="1024,112,1040,116,1124,130,1196,138,1319,144,1443,148,1601,164,1642,171,1641,177,1600,169,1443,153,1319,150,1196,144,1124,136,1039,121,1023,118"/>
+<area shape="rect" id="Node000014" href="$main_8c.html" title="Entry point for the Luma compiler/interpreter build process." alt="" coords="1797,174,1887,199"/>
+<area shape="poly" id="edge13_Node000003_Node000014" title=" " alt="" coords="1024,113,1040,116,1152,133,1248,140,1333,141,1412,139,1492,137,1577,138,1673,146,1785,164,1812,171,1811,176,1784,169,1672,152,1576,144,1492,142,1412,144,1333,146,1248,145,1151,138,1039,121,1023,118"/>
+</map>
