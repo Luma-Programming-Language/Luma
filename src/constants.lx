@@ -23,18 +23,16 @@ pub const LumaErrorMessage -> struct {
 pub const LumaBuildConfig -> struct {
   filepath: *byte,
   name: *byte,
-
   save: int,
   clean: int,
   check_mem: int,
   lsp_mode: int,
   file_count: int,
   opt_level: int,
-
-  link_files: *Vector,  // pointer instead of value
+  link_files: **byte,
 };
 
-pub const init_build_config -> fn (filepath: *byte, link_files: *Vector) LumaBuildConfig {
+pub const init_build_config -> fn (filepath: *byte, link_files: **byte) LumaBuildConfig {
   return LumaBuildConfig {
     filepath: filepath,
     name: "a.out",

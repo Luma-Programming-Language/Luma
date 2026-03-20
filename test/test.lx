@@ -3,9 +3,9 @@
 @use "std_args" as ARGS
 
 pub const main -> fn (argc: int, argv: **byte) int {
-    let args ARGS::Args = ARGS::init_args(argc, argv);
+    let args: Args = ARGS::init_args(argc, argv);
 
-    if (args.contains("--help")) {
+    if (args.contains("--help") == 0) {
         output("Usage: program [options]\n");
         return 0;
     }

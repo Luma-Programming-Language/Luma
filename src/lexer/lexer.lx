@@ -72,6 +72,17 @@ pub const next_token -> fn (lx: *Lexer) Token {
     let line:  int   = lx.line;
     let col:   int   = lx.col;    // <-- snapshot BEFORE advancing
 
+    if (c == '/' && lx.peek(1) == '/' && lx.peek(2) == '!') {
+      skip_line_comment(lx);
+      continue;
+    }
+
+    // /// item doc comment - skip it for now
+    if (c == '/' && lx.peek(1) == '/' && lx.peek(2) == '/') {
+      skip_line_comment(lx);
+      continue;
+    }
+
     if (c == '@') {
       lx.advance();
       let len: int = 1;

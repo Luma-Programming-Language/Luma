@@ -93,17 +93,16 @@ pub const match_command -> fn (cmd: *byte, usr_cmd: [*byte; 10], count: int) int
   return 0;
 }
 
-pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig, link_files: *Vector) int {
+pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig, link_files: **byte) int {
   loop [i: int = 1](i < args.len()) : (++i) {
     if (match_command(args.get(i), ["-l", "--link"], 2) == 1) {
+      build_config.link_files = cast<**byte>(cast<int>(args.data) + ((i + 1) * sizeof<*byte>));
       let start: int = i + 1;
       loop (start < args.len() && match_command(args.get(start), ["-name", "-O0", "-O1", "-O2", "-O3"], 5) == 0) {
-        let path: *byte = args.get(start);
-        link_files.push_back(cast<*void>(&path));
         build_config.file_count = build_config.file_count + 1;
         start = start + 1;
       }
-    } elif (match_command(args.get(i), ["-name"], 1) == 1) {
+    }elif (match_command(args.get(i), ["-name"], 1) == 1) {
       if (i + 1 < args.len()) {
         build_config.name = args.get(i + 1);
         i = i + 1;

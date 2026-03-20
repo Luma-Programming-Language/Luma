@@ -431,224 +431,454 @@ pub const ResolutionNode -> struct {
 pub const free_node -> fn (node: *AstNode) void {
   if (node == cast<*AstNode>(0)) return;
 
-  let f: *int = cast<*int>(node);
-  let kind:     int = f[0];
-  let category: int = f[1];
+  let kind: int = node.kind;
 
-  if (category == NodeCategory::Node_Category_EXPR) {
-    switch (kind) {
-      NodeType::EXPR_BINARY -> {
-        free_node(cast<*AstNode>(f[5]));
-        free_node(cast<*AstNode>(f[6]));
-      }
-      NodeType::EXPR_UNARY, NodeType::EXPR_DEREF, NodeType::EXPR_ADDR,
-      NodeType::EXPR_GROUPING, NodeType::EXPR_SYSTEM -> {
-        free_node(cast<*AstNode>(f[5]));
-      }
-      NodeType::EXPR_CALL -> {
-        free_node(cast<*AstNode>(f[4]));
-        let args:      **AstNode = cast<**AstNode>(f[5]);
-        let arg_count: int       = f[6];
-        loop [i: int = 0](i < arg_count) : (++i) { free_node(args[i]); }
-        free(args);
-      }
-      NodeType::EXPR_ASSIGNMENT -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-      }
-      NodeType::EXPR_TERNARY -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-        free_node(cast<*AstNode>(f[6]));
-      }
-      NodeType::EXPR_MEMBER -> {
-        free_node(cast<*AstNode>(f[5]));
-      }
-      NodeType::EXPR_INDEX -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-      }
-      NodeType::EXPR_ARRAY -> {
-        let elements:      **AstNode = cast<**AstNode>(f[4]);
-        let element_count: int       = f[5];
-        loop [i: int = 0](i < element_count) : (++i) { free_node(elements[i]); }
-        free(elements);
-      }
-      NodeType::EXPR_CAST, NodeType::EXPR_INPUT -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-      }
-      NodeType::EXPR_ALLOC -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-      NodeType::EXPR_FREE -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-      NodeType::EXPR_MEMCPY -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-        free_node(cast<*AstNode>(f[6]));
-      }
-      NodeType::EXPR_SIZEOF -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-      NodeType::EXPR_SYSCALL -> {
-        let args:  **AstNode = cast<**AstNode>(f[4]);
-        let count: int       = f[5];
-        loop [i: int = 0](i < count) : (++i) { free_node(args[i]); }
-        free(args);
-      }
-      NodeType::EXPR_STRUCT -> {
-        let field_vals:  **AstNode = cast<**AstNode>(f[6]);
-        let field_names: **byte    = cast<**byte>(f[5]);
-        let field_count: int       = f[7];
-        loop [i: int = 0](i < field_count) : (++i) { free_node(field_vals[i]); }
-        free(field_names);
-        free(field_vals);
-      }
-      NodeType::EXPR_LITERAL -> {
-        let string_val: *byte = cast<*byte>(f[7]);
-        if (string_val != cast<*byte>(0)) free(string_val);
-      }
+  // ── Preprocessor ──────────────────────────────────────────────────────────
+
+  if (kind == NodeType::PREPROCESSOR_MODULE) {
+    let n: *ModuleNode = cast<*ModuleNode>(node);
+    let i: int = 0;
+    loop (i < n.body_count) {
+      free_node(n.body[i]);
+      i = i + 1;
     }
-  } elif (category == NodeCategory::Node_Category_STMT) {
-    switch (kind) {
-      NodeType::PROGRAM -> {
-        let modules:      **AstNode = cast<**AstNode>(f[4]);
-        let module_count: int       = f[5];
-        loop [i: int = 0](i < module_count) : (++i) { free_node(modules[i]); }
-        free(modules);
-      }
-      NodeType::STMT_EXPRESSION -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-      NodeType::STMT_VAR_DECL, NodeType::STMT_CONST_DECL -> {
-        free_node(cast<*AstNode>(f[6]));
-        free_node(cast<*AstNode>(f[7]));
-      }
-      NodeType::STMT_FUNCTION -> {
-        let param_names: **byte    = cast<**byte>(f[6]);
-        let param_types: **AstNode = cast<**AstNode>(f[7]);
-        let param_count: int       = f[8];
-        loop [i: int = 0](i < param_count) : (++i) { free_node(param_types[i]); }
-        free(param_names);
-        free(param_types);
-        free_node(cast<*AstNode>(f[9]));
-        free_node(cast<*AstNode>(f[11]));
-      }
-      NodeType::STMT_STRUCT -> {
-        let public_members:  **AstNode = cast<**AstNode>(f[6]);
-        let public_count:    int       = f[7];
-        let private_members: **AstNode = cast<**AstNode>(f[8]);
-        let private_count:   int       = f[9];
-        loop [i: int = 0](i < public_count)  : (++i) { free_node(public_members[i]); }
-        loop [i: int = 0](i < private_count) : (++i) { free_node(private_members[i]); }
-        free(public_members);
-        free(private_members);
-      }
-      NodeType::STMT_FIELD_DECL -> {
-        free_node(cast<*AstNode>(f[6]));
-        free_node(cast<*AstNode>(f[7]));
-      }
-      NodeType::STMT_ENUM -> {
-        free(cast<**byte>(f[6]));
-      }
-      NodeType::STMT_IF -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-        let elif_stmts: **AstNode = cast<**AstNode>(f[6]);
-        let elif_count: int       = f[7];
-        loop [i: int = 0](i < elif_count) : (++i) { free_node(elif_stmts[i]); }
-        free(elif_stmts);
-        free_node(cast<*AstNode>(f[8]));
-      }
-      NodeType::STMT_LOOP -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-        free_node(cast<*AstNode>(f[6]));
-        let initializer: **AstNode = cast<**AstNode>(f[7]);
-        let init_count:  int       = f[8];
-        loop [i: int = 0](i < init_count) : (++i) { free_node(initializer[i]); }
-        free(initializer);
-      }
-      NodeType::STMT_RETURN -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-      NodeType::STMT_BLOCK -> {
-        let statements: **AstNode = cast<**AstNode>(f[4]);
-        let stmt_count: int       = f[5];
-        loop [i: int = 0](i < stmt_count) : (++i) { free_node(statements[i]); }
-        free(statements);
-      }
-      NodeType::STMT_PRINT -> {
-        let expressions: **AstNode = cast<**AstNode>(f[4]);
-        let expr_count:  int       = f[5];
-        loop [i: int = 0](i < expr_count) : (++i) { free_node(expressions[i]); }
-        free(expressions);
-      }
-      NodeType::STMT_DEFER -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-      NodeType::STMT_SWITCH -> {
-        free_node(cast<*AstNode>(f[4]));
-        let cases:      **AstNode = cast<**AstNode>(f[5]);
-        let case_count: int       = f[6];
-        loop [i: int = 0](i < case_count) : (++i) { free_node(cases[i]); }
-        free(cases);
-        free_node(cast<*AstNode>(f[7]));
-      }
-      NodeType::STMT_IMPL -> {
-        let function_name_list:  **byte    = cast<**byte>(f[4]);
-        let function_type_list:  **AstNode = cast<**AstNode>(f[5]);
-        let struct_name_list:    **byte    = cast<**byte>(f[6]);
-        let function_name_count: int       = f[7];
-        loop [i: int = 0](i < function_name_count) : (++i) { free_node(function_type_list[i]); }
-        free(function_name_list);
-        free(function_type_list);
-        free(struct_name_list);
-        free_node(cast<*AstNode>(f[9]));
-      }
-      NodeType::STMT_CASE -> {
-        let values:      **AstNode = cast<**AstNode>(f[4]);
-        let value_count: int       = f[5];
-        loop [i: int = 0](i < value_count) : (++i) { free_node(values[i]); }
-        free(values);
-        free_node(cast<*AstNode>(f[6]));
-      }
-      NodeType::STMT_DEFAULT -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-    }
-  } elif (category == NodeCategory::Node_Category_TYPE) {
-    switch (kind) {
-      NodeType::TYPE_POINTER -> {
-        free_node(cast<*AstNode>(f[4]));
-      }
-      NodeType::TYPE_ARRAY -> {
-        free_node(cast<*AstNode>(f[4]));
-        free_node(cast<*AstNode>(f[5]));
-      }
-      NodeType::TYPE_FUNCTION -> {
-        let param_types: **AstNode = cast<**AstNode>(f[4]);
-        let param_count: int       = f[5];
-        loop [i: int = 0](i < param_count) : (++i) { free_node(param_types[i]); }
-        free(param_types);
-        free_node(cast<*AstNode>(f[6]));
-      }
-      NodeType::TYPE_RESOLUTION -> {
-        free(cast<**byte>(f[4]));
-      }
-    }
-  } elif (category == NodeCategory::Node_Category_PREPROCESSOR) {
-    switch (kind) {
-      NodeType::PREPROCESSOR_MODULE -> {
-        let body:       **AstNode = cast<**AstNode>(f[7]);
-        let body_count: int       = f[8];
-        loop [i: int = 0](i < body_count) : (++i) { free_node(body[i]); }
-        free(body);
-      }
-    }
+    free(n.body);
+    free(n.name);
+    free(node);
+    return;
   }
 
+  if (kind == NodeType::PREPROCESSOR_USE) {
+    let n: *UseNode = cast<*UseNode>(node);
+    free(n.module_name);
+    free(n.alias);
+    free(node);
+    return;
+  }
+
+  // ── Expressions ───────────────────────────────────────────────────────────
+
+  if (kind == NodeType::EXPR_LITERAL) {
+    let n: *LiteralNode = cast<*LiteralNode>(node);
+    if (n.lit_type == LiteralType::LITERAL_STRING) {
+      free(n.string_val);
+    }
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_IDENTIFIER) {
+    // name is NOT freed — may point to static binary data, not heap
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_BINARY || kind == NodeType::EXPR_RANGE) {
+    let n: *BinaryNode = cast<*BinaryNode>(node);
+    free_node(n.left);
+    free_node(n.right);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_UNARY   ||
+      kind == NodeType::EXPR_DEREF   ||
+      kind == NodeType::EXPR_ADDR    ||
+      kind == NodeType::EXPR_GROUPING ||
+      kind == NodeType::EXPR_SYSTEM) {
+    let n: *UnaryNode = cast<*UnaryNode>(node);
+    free_node(n.operand);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_CALL) {
+    let n: *CallNode = cast<*CallNode>(node);
+    free_node(n.callee);
+    let i: int = 0;
+    loop (i < n.arg_count) {
+      free_node(n.args[i]);
+      i = i + 1;
+    }
+    free(n.args);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_ASSIGNMENT) {
+    let n: *AssignNode = cast<*AssignNode>(node);
+    free_node(n.target);
+    free_node(n.value);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_TERNARY) {
+    let n: *TernaryNode = cast<*TernaryNode>(node);
+    free_node(n.condition);
+    free_node(n.then_expr);
+    free_node(n.else_expr);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_MEMBER) {
+    let n: *MemberNode = cast<*MemberNode>(node);
+    free_node(n.object);
+    free(n.member);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_INDEX) {
+    let n: *IndexNode = cast<*IndexNode>(node);
+    free_node(n.object);
+    free_node(n.index);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_ARRAY) {
+    let n: *ArrayNode = cast<*ArrayNode>(node);
+    let i: int = 0;
+    loop (i < n.element_count) {
+      free_node(n.elements[i]);
+      i = i + 1;
+    }
+    free(n.elements);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_CAST || kind == NodeType::EXPR_INPUT) {
+    let n: *CastNode = cast<*CastNode>(node);
+    free_node(n.type_node);
+    free_node(n.castee);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_ALLOC) {
+    let n: *AllocNode = cast<*AllocNode>(node);
+    free_node(n.size);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_FREE) {
+    let n: *FreeNode = cast<*FreeNode>(node);
+    free_node(n.ptr);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_MEMCPY) {
+    let n: *MemcpyNode = cast<*MemcpyNode>(node);
+    free_node(n.to);
+    free_node(n.from);
+    free_node(n.size);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_SIZEOF) {
+    let n: *SizeofNode = cast<*SizeofNode>(node);
+    free_node(n.object);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_SYSCALL) {
+    let n: *SyscallNode = cast<*SyscallNode>(node);
+    let i: int = 0;
+    loop (i < n.count) {
+      free_node(n.args[i]);
+      i = i + 1;
+    }
+    free(n.args);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::EXPR_STRUCT) {
+    let n: *StructExprNode = cast<*StructExprNode>(node);
+    let i: int = 0;
+    loop (i < n.field_count) {
+      free(n.field_names[i]);
+      free_node(n.field_vals[i]);
+      i = i + 1;
+    }
+    free(n.field_names);
+    free(n.field_vals);
+    free(n.name);
+    free(node);
+    return;
+  }
+
+  // ── Statements ────────────────────────────────────────────────────────────
+
+  if (kind == NodeType::PROGRAM) {
+    let n: *ProgramNode = cast<*ProgramNode>(node);
+    let i: int = 0;
+    loop (i < n.module_count) {
+      free_node(n.modules[i]);
+      i = i + 1;
+    }
+    free(n.modules);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_EXPRESSION) {
+    let n: *ExprStmtNode = cast<*ExprStmtNode>(node);
+    free_node(n.expression);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_VAR_DECL || kind == NodeType::STMT_CONST_DECL) {
+    let n: *VarDeclNode = cast<*VarDeclNode>(node);
+    free(n.name);
+    free_node(n.var_type);
+    free_node(n.initializer);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_FUNCTION) {
+    let n: *FuncDeclNode = cast<*FuncDeclNode>(node);
+    let i: int = 0;
+    loop (i < n.param_count) {
+      free(n.param_names[i]);
+      free_node(n.param_types[i]);
+      i = i + 1;
+    }
+    free(n.param_names);
+    free(n.param_types);
+    free(n.name);
+    free_node(n.return_type);
+    free_node(n.body);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_STRUCT) {
+    let n: *StructDeclNode = cast<*StructDeclNode>(node);
+    let i: int = 0;
+    loop (i < n.public_count) {
+      free_node(n.public_members[i]);
+      i = i + 1;
+    }
+    free(n.public_members);
+    let j: int = 0;
+    loop (j < n.private_count) {
+      free_node(n.private_members[j]);
+      j = j + 1;
+    }
+    free(n.private_members);
+    free(n.name);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_FIELD_DECL) {
+    let n: *FieldDeclNode = cast<*FieldDeclNode>(node);
+    free(n.name);
+    free_node(n.type_node);
+    free_node(n.function);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_ENUM) {
+    let n: *EnumDeclNode = cast<*EnumDeclNode>(node);
+    let i: int = 0;
+    loop (i < n.member_count) {
+      free(n.members[i]);
+      i = i + 1;
+    }
+    free(n.members);
+    free(n.name);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_IF) {
+    let n: *IfStmtNode = cast<*IfStmtNode>(node);
+    free_node(n.condition);
+    free_node(n.then_stmt);
+    let i: int = 0;
+    loop (i < n.elif_count) {
+      free_node(n.elif_stmts[i]);
+      i = i + 1;
+    }
+    free(n.elif_stmts);
+    free_node(n.else_stmt);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_LOOP) {
+    let n: *LoopStmtNode = cast<*LoopStmtNode>(node);
+    free_node(n.condition);
+    free_node(n.optional);
+    free_node(n.body);
+    let i: int = 0;
+    loop (i < n.init_count) {
+      free_node(n.initializer[i]);
+      i = i + 1;
+    }
+    free(n.initializer);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_RETURN) {
+    let n: *ReturnStmtNode = cast<*ReturnStmtNode>(node);
+    free_node(n.value);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_BLOCK) {
+    let n: *BlockNode = cast<*BlockNode>(node);
+    let i: int = 0;
+    loop (i < n.stmt_count) {
+      free_node(n.statements[i]);
+      i = i + 1;
+    }
+    free(n.statements);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_PRINT) {
+    let n: *PrintStmtNode = cast<*PrintStmtNode>(node);
+    let i: int = 0;
+    loop (i < n.expr_count) {
+      free_node(n.expressions[i]);
+      i = i + 1;
+    }
+    free(n.expressions);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_BREAK_CONTINUE) {
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_DEFER) {
+    let n: *DeferNode = cast<*DeferNode>(node);
+    free_node(n.statement);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_SWITCH) {
+    let n: *SwitchNode = cast<*SwitchNode>(node);
+    free_node(n.condition);
+    let i: int = 0;
+    loop (i < n.case_count) {
+      free_node(n.cases[i]);
+      i = i + 1;
+    }
+    free(n.cases);
+    free_node(n.default_case);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_IMPL) {
+    let n: *ImplNode = cast<*ImplNode>(node);
+    let i: int = 0;
+    loop (i < n.function_name_count) {
+      free(n.function_name_list[i]);
+      free_node(n.function_type_list[i]);
+      i = i + 1;
+    }
+    free(n.function_name_list);
+    free(n.function_type_list);
+    let j: int = 0;
+    loop (j < n.struct_name_count) {
+      free(n.struct_name_list[j]);
+      j = j + 1;
+    }
+    free(n.struct_name_list);
+    free_node(n.body);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_CASE) {
+    let n: *CaseNode = cast<*CaseNode>(node);
+    let i: int = 0;
+    loop (i < n.value_count) {
+      free_node(n.values[i]);
+      i = i + 1;
+    }
+    free(n.values);
+    free_node(n.body);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::STMT_DEFAULT) {
+    let n: *DefaultNode = cast<*DefaultNode>(node);
+    free_node(n.body);
+    free(node);
+    return;
+  }
+
+  // ── Types ─────────────────────────────────────────────────────────────────
+
+  if (kind == NodeType::TYPE_BASIC) {
+    // name is NOT freed — points to static keyword string data, not heap
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::TYPE_POINTER) {
+    let n: *PointerTypeNode = cast<*PointerTypeNode>(node);
+    free_node(n.pointee_type);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::TYPE_ARRAY) {
+    let n: *ArrayTypeNode = cast<*ArrayTypeNode>(node);
+    free_node(n.element_type);
+    free_node(n.size);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::TYPE_FUNCTION) {
+    let n: *FuncTypeNode = cast<*FuncTypeNode>(node);
+    let i: int = 0;
+    loop (i < n.param_count) {
+      free_node(n.param_types[i]);
+      i = i + 1;
+    }
+    free(n.param_types);
+    free_node(n.return_type);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::TYPE_RESOLUTION) {
+    let n: *ResolutionNode = cast<*ResolutionNode>(node);
+    let i: int = 0;
+    loop (i < n.part_count) {
+      free(n.parts[i]);
+      i = i + 1;
+    }
+    free(n.parts);
+    free(node);
+    return;
+  }
+
+  // Fallback
   free(node);
 }

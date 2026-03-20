@@ -20,19 +20,70 @@
 @use "ast"          as AST
 
 #returns_ownership
-const parse -> fn (p: *Parser) *AstNode {
-  let line: int = p.current().line; 
-  let col:  int = p.current().col; 
+const resolve_path -> fn (path: *byte) *byte {
+  let std_prefix: *byte = "/usr/local/lib/luma/";
+  let prefix_len: int = STRING::strlen(std_prefix);
+  let path_len:   int = STRING::strlen(path);
+
+  let std_path: *byte = cast<*byte>(alloc(prefix_len + path_len + 1));
+  MEM::memcpy(cast<*void>(std_path), cast<*void>(std_prefix), prefix_len);
+  MEM::memcpy(cast<*void>(cast<int>(std_path) + prefix_len), cast<*void>(path), path_len);
+  std_path[prefix_len + path_len] = '\0';
+
+  let fd: int = __syscall__(2, cast<int>(std_path), 0, 0);
+  if (fd >= 0) {
+    __syscall__(3, fd, 0, 0);
+    return std_path;
+  }
+
+  free(std_path);
+  return path;
+}
+
+#returns_ownership
+const parse_file -> fn (path: *byte) *AstNode {
+  let resolved: *byte = resolve_path(path);
+
+  let src: *byte = IO::read_file(resolved);
+
+  if (resolved != path) { free(resolved); }
+
+  if (src == cast<*byte>(0)) {
+    output("Error: could not read file: ", path, "\n");
+    return cast<*AstNode>(0);
+  }
+
+  let tokens: Vector = VEC::create_vector(sizeof<Token>);
+  let lexer: Lexer = TOK::create_lexer(src);
+
+  loop (lexer.is_end() == 0) {
+    let tok: Token = LEXER::next_token(&lexer);
+    tokens.push_back(cast<*void>(&tok));
+  }
+
+  let tks: *Token = cast<*Token>(tokens.data);
+  let p: *Parser = PARS::create_parser(tks, tokens.size, path);
+
+  let line: int = p.current().line;
+  let col:  int = p.current().col;
 
   if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
     p.error("Parser Error", "Expected @module at the start of a file.");
+    ERR::error_report();
+    VEC::free_vector(&tokens);
+    free(src);
+    PARS::free_parser(p);
     return cast<*AstNode>(0);
   }
   p.advance();
-  
+
   if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER &&
       p.current().kind != TOK::LumaTokenType::TOK_STRING) {
     p.error("Parser Error", "Expected module name after @module.");
+    ERR::error_report();
+    VEC::free_vector(&tokens);
+    free(src);
+    PARS::free_parser(p);
     return cast<*AstNode>(0);
   }
 
@@ -40,37 +91,41 @@ const parse -> fn (p: *Parser) *AstNode {
   p.advance();
 
   let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
-  
+
   loop [i: int = 0](p.has_tokens()) : (i++) {
     let stmt: *AstNode = PSTMT::parse_stmt(p);
     if (stmt == cast<*AstNode>(0)) continue;
     stmts.push_back(cast<*void>(&stmt));
   }
-  
+
   let module_node: *AstNode = MAST::make_module(
-    module_name, "", p.file_path,
+    module_name, "", path,
     PARS::vec_to_node_array(&stmts), stmts.size,
     line, col
   );
+
+  if (p.had_error == 1) {
+    ERR::error_report();
+    AST::free_node(module_node);
+    VEC::free_vector(&stmts);
+    VEC::free_vector(&tokens);
+    free(src);
+    PARS::free_parser(p);
+    return cast<*AstNode>(0);
+  }
+
   VEC::free_vector(&stmts);
+  VEC::free_vector(&tokens);
+  free(src);
+  PARS::free_parser(p);
 
-  let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
-  modules.push_back(cast<*void>(&module_node));
-
-  let program: *AstNode = STMT::make_program(
-    PARS::vec_to_node_array(&modules),
-    modules.size,
-    line, col
-  );
-  VEC::free_vector(&modules);
-  
-  return program;
+  return module_node;
 }
 
 pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
   args = args.tail();
-  
+
   if (args.is_empty() == 1 || COMD::match_command(args.get(0), ["-h", "--help"], 2) == 1) {
     COMD::print_commands();
     return 0;
@@ -78,43 +133,47 @@ pub const main -> fn (argc: int, argv: **byte) int {
     output("Luma Compiler ", CONST::Luma_Compiler_version, "\n");
     return 0;
   } elif (COMD::match_command(args.get(0), ["-l", "--license"], 2) == 1) {
-    COMD::print_license(); 
+    COMD::print_license();
     return 0;
   }
-  
-  let link_files: Vector = VEC::create_vector(sizeof<*byte>);
-  defer { VEC::free_vector(&link_files); }
 
-  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0), &link_files);
-  if (COMD::parse_args(&args, &build_config, &link_files) != 0) { return 1; }
+  let link_files: **byte = cast<**byte>(alloc(4028 * sizeof<*byte>));
+  defer { free(link_files); }
 
-  // Lexer Stage ----------------------------------------------------------
-  let tokens: Vector = VEC::create_vector(sizeof<Token>);
-  let src: *byte = IO::read_file(build_config.filepath);
-  let lexer: Lexer = TOK::create_lexer(src);
-  defer { VEC::free_vector(&tokens); free(src); }
-  
-  loop (lexer.is_end() == 0) {
-    let tok: Token = LEXER::next_token(&lexer);
-    tokens.push_back(cast<*void>(&tok));
-  }
-  
-  // Parser Stage ----------------------------------------------------------
-  let tks: *Token = cast<*Token>(tokens.data);
-  let p: *Parser = PARS::create_parser(tks, tokens.size, build_config.filepath);
-  defer { PARS::free_parser(p); }
+  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0), link_files);
+  if (COMD::parse_args(&args, &build_config, link_files) != 0) { return 1; }
 
-  let node: *AstNode = parse(p);
+  let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
 
-  if (p.had_error == 1) {
-    ERR::error_report();
+  let main_module: *AstNode = parse_file(build_config.filepath);
+  if (main_module == cast<*AstNode>(0)) {
+    VEC::free_vector(&modules);
     return 1;
   }
+  modules.push_back(cast<*void>(&main_module));
 
-  PRINT::print_node(node, 0);
+  loop [i: int = 0](i < build_config.file_count) : (++i) {
+    let linked_module: *AstNode = parse_file(build_config.link_files[i]);
+    if (linked_module == cast<*AstNode>(0)) {
+      loop [j: int = 0](j < modules.size) : (++j) {
+        AST::free_node(cast<*AstNode>(modules.get(j)));
+      }
+      VEC::free_vector(&modules);
+      return 1;
+    }
+    modules.push_back(cast<*void>(&linked_module));
+  }
 
-  // AST::free_node(node);
-  
+  let program: *AstNode = STMT::make_program(
+    PARS::vec_to_node_array(&modules),
+    modules.size,
+    0, 0
+  );
+
+  PRINT::print_node(program, 0);
+
+  // AST::free_node(program);
+  VEC::free_vector(&modules);
+
   return 0;
 }
-
