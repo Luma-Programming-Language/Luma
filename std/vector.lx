@@ -34,15 +34,13 @@ const local_memcpy -> fn (dest: *void, src: *void, n: int) *void {
 }
 
 #returns_ownership
-const local_realloc -> fn (ptr: *void, new_size: int) *void {
+const local_realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
     if (ptr == cast<*void>(0)) {
         return alloc(new_size);
     }
- 
     let new_ptr: *void = alloc(new_size);
-    local_memcpy(new_ptr, ptr, new_size);
+    local_memcpy(new_ptr, ptr, old_size);
     free(ptr);
- 
     return new_ptr;
 }
 
@@ -82,11 +80,9 @@ pub const Vector -> struct {
         if (index < 0 || index > self.size) return 0;
 
         if (self.size >= self.capacity) {
+            let old_size: int = self.capacity * self.element_size;
             self.capacity = self.capacity * 2;
-            self.data = local_realloc(
-                self.data,
-                self.capacity * self.element_size
-            );
+            self.data = local_realloc(self.data, old_size, self.capacity * self.element_size);
         }
 
         // shift elements right
@@ -124,8 +120,9 @@ pub const Vector -> struct {
     /// ```
     push_back -> fn (elem: *void) void {
         if (self.size >= self.capacity) {
+            let old_size: int = self.capacity * self.element_size;
             self.capacity = self.capacity * 2;
-            self.data = local_realloc(self.data, self.capacity * self.element_size);
+            self.data = local_realloc(self.data, old_size, self.capacity * self.element_size);
         }
 
         let dest: *void = cast<*void>(

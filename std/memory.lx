@@ -253,13 +253,13 @@ pub const calloc -> fn (count: int, size: int) *void {
 /// data = cast<*int>(memory::realloc(cast<*void>(data), 20 * sizeof<int>));
 /// ```
 #returns_ownership 
-pub const realloc -> fn (ptr: *void, new_size: int) *void {
+pub const realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
     if (ptr == cast<*void>(0)) {
         return alloc(new_size);
     }
  
     let new_ptr: *void = alloc(new_size);
-    memcpy(new_ptr, ptr, new_size);
+    memcpy(new_ptr, ptr, old_size);
     free(ptr);
  
     return new_ptr;

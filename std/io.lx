@@ -33,12 +33,12 @@ const local_memcpy -> fn (dest: *void, src: *void, n: int) *void {
 
 /// Local realloc implementation
 #returns_ownership 
-const local_realloc -> fn (ptr: *void, new_size: int) *void {
+const local_realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
     if (ptr == cast<*void>(0)) {
         return alloc(new_size);
     }
     let new_ptr: *void = alloc(new_size);
-    local_memcpy(new_ptr, ptr, new_size);
+    local_memcpy(new_ptr, ptr, old_size);
     free(ptr);
     return new_ptr;
 }
@@ -367,7 +367,7 @@ pub const read_file -> fn (path: *byte) *byte {
     // If buffer is full (minus null terminator space), grow it
     if (total_read >= buffer_size - 1) {
       let new_size: int = buffer_size * BUFFER_GROWTH_FACTOR;
-      let new_buffer: *byte = cast<*byte>(local_realloc(cast<*void>(buffer), new_size * sizeof<byte>));
+      let new_buffer: *byte = cast<*byte>(local_realloc(cast<*void>(buffer), buffer_size, new_size));
       
       if (new_buffer == cast<*byte>(0)) {
         local_eprint("Error: Failed to grow buffer\n");
@@ -386,12 +386,19 @@ pub const read_file -> fn (path: *byte) *byte {
 
   // Shrink buffer to exact size to save memory
   if (total_read < buffer_size - 1) {
-    let final_buffer: *byte = cast<*byte>(alloc((total_read + 1) * sizeof<byte>));
+    let final_buffer: *byte = cast<*byte>(alloc((total_read + 3) * sizeof<byte>));
     if (final_buffer != cast<*byte>(0)) {
-      local_memcpy(cast<*void>(final_buffer), cast<*void>(buffer), total_read + 1);
-      free(buffer);
-      buffer = final_buffer;
+        local_memcpy(cast<*void>(final_buffer), cast<*void>(buffer), total_read + 1);
+        final_buffer[total_read + 1] = cast<byte>(0);
+        final_buffer[total_read + 2] = cast<byte>(0);
+        free(buffer);
+        buffer = final_buffer;
     }
+
+    // and the null terminator line:
+    buffer[total_read]     = cast<byte>(0);
+    buffer[total_read + 1] = cast<byte>(0);
+    buffer[total_read + 2] = cast<byte>(0);
   }
 
   local_close(fd);
