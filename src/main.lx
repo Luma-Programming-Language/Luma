@@ -20,29 +20,8 @@
 @use "ast"          as AST
 
 #returns_ownership
-const resolve_path -> fn (path: *byte) *byte {
-  let std_prefix: *byte = "/usr/local/lib/luma/";
-  let prefix_len: int = STRING::strlen(std_prefix);
-  let path_len:   int = STRING::strlen(path);
-
-  let std_path: *byte = cast<*byte>(alloc(prefix_len + path_len + 1));
-  MEM::memcpy(cast<*void>(std_path), cast<*void>(std_prefix), prefix_len);
-  MEM::memcpy(cast<*void>(cast<int>(std_path) + prefix_len), cast<*void>(path), path_len);
-  std_path[prefix_len + path_len] = '\0';
-
-  let fd: int = __syscall__(2, cast<int>(std_path), 0, 0);
-  if (fd >= 0) {
-    __syscall__(3, fd, 0, 0);
-    return std_path;
-  }
-
-  free(std_path);
-  return path;
-}
-
-#returns_ownership
 const parse_file -> fn (path: *byte) *AstNode {
-  let resolved: *byte = resolve_path(path);
+  let resolved: *byte = COMD::resolve_path(path);
 
   let src: *byte = IO::read_file(resolved);
 
@@ -126,17 +105,6 @@ pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
   args = args.tail();
 
-  if (args.is_empty() == 1 || COMD::match_command(args.get(0), ["-h", "--help"], 2) == 1) {
-    COMD::print_commands();
-    return 0;
-  } elif (COMD::match_command(args.get(0), ["-v", "--version"], 2) == 1) {
-    output("Luma Compiler ", CONST::Luma_Compiler_version, "\n");
-    return 0;
-  } elif (COMD::match_command(args.get(0), ["-l", "--license"], 2) == 1) {
-    COMD::print_license();
-    return 0;
-  }
-
   let link_files: **byte = cast<**byte>(alloc(4028 * sizeof<*byte>));
   defer { free(link_files); }
 
@@ -144,7 +112,6 @@ pub const main -> fn (argc: int, argv: **byte) int {
   if (COMD::parse_args(&args, &build_config, link_files) != 0) { return 1; }
 
   let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
-
   let main_module: *AstNode = parse_file(build_config.filepath);
   if (main_module == cast<*AstNode>(0)) {
     VEC::free_vector(&modules);
@@ -154,20 +121,13 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
   loop [i: int = 0](i < build_config.file_count) : (++i) {
     let linked_module: *AstNode = parse_file(build_config.link_files[i]);
-    if (linked_module == cast<*AstNode>(0)) {
-      loop [j: int = 0](j < modules.size) : (++j) {
-        AST::free_node(cast<*AstNode>(modules.get(j)));
-      }
-      VEC::free_vector(&modules);
-      return 1;
-    }
     modules.push_back(cast<*void>(&linked_module));
   }
 
   let program: *AstNode = STMT::make_program(
     PARS::vec_to_node_array(&modules),
     modules.size,
-    0, 0
+    1, 0
   );
 
   PRINT::print_node(program, 0);

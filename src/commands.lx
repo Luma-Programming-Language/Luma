@@ -1,45 +1,11 @@
 @module "commands"
 
 @use "std_string" as STRING
+@use "std_memory" as MEM
 @use "std_vector" as VEC
 @use "std_args"   as ARGS
 
 @use "constants"  as CONST
-
-// Map of available commands and their descriptions for the CLI
-// Usage: compiler [options] <source_file>
-// 
-// Options:
-//   -h, --help              Show this help message
-//   -v, --version           Show version information
-//   -lc, --license          Show license information
-//   -lsp, --lsp             Run as Language Server Protocol server
-//   -name <name>            Set output binary name
-//   -save                   Save intermediate files
-//   -clean                  Clean build artifacts
-//   -debug                  Enable debug mode
-//   --no-sanitize           Disable memory sanitization
-//   -l, -link <files...>    Link additional files
-//   -doc                    Generates Documantation based on comments
-// 
-// Optimization:
-//   -O0                     No optimization (fastest compilation)
-//   -O1                     Basic optimization
-//   -O2                     Moderate optimization (default)
-//   -O3                     Aggressive optimization (best performance)
-// 
-// Formatting:
-//   fmt, format             Format source code
-//   -fc, --format-check     Check formatting without modifying
-//   -fi, --format-in-place  Format file in-place
-// 
-// LSP Mode:
-//   When running with -lsp, the compiler acts as a language server.
-//   This mode is used by editors/IDEs for:
-//     - Code completion
-//     - Hover information
-//     - Real-time diagnostics
-//     - Document symbols
 
 pub const print_commands -> fn () void {
   output("╭─────────────────────────────────────────────────╮\n");
@@ -94,15 +60,34 @@ pub const match_command -> fn (cmd: *byte, usr_cmd: [*byte; 10], count: int) int
 }
 
 pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig, link_files: **byte) int {
+  if (args.is_empty() == 1) { print_commands(); return 1; }
+
+  let first: *byte = args.get(0);
+  if (match_command(first, ["-v", "--version"], 2) == 1) { 
+    output("Luma Compiler ", CONST::Luma_Compiler_version, "\n");
+    return 1;
+  } elif (match_command(first, ["-h", "--help"], 2) == 1) { 
+    print_commands(); 
+    return 1;
+  } elif (match_command(first, ["-l", "--license"], 2) == 1) {
+    print_license(); 
+    return 1;
+  }
+
   loop [i: int = 1](i < args.len()) : (++i) {
-    if (match_command(args.get(i), ["-l", "--link"], 2) == 1) {
+    let arg: *byte = args.get(i);
+    if (match_command(arg, ["-l", "--link"], 2) == 1) {
+      /// Add in a 'args.ptr_at(i + 1)' function into the args lib
       build_config.link_files = cast<**byte>(cast<int>(args.data) + ((i + 1) * sizeof<*byte>));
-      let start: int = i + 1;
-      loop (start < args.len() && match_command(args.get(start), ["-name", "-O0", "-O1", "-O2", "-O3"], 5) == 0) {
+
+      let j: int = i + 1;
+      loop (j < args.len() && match_command(args.get(j), ["-name", "-O0", "-O1", "-O2", "-O3"], 5) == 0) {
         build_config.file_count = build_config.file_count + 1;
-        start = start + 1;
+        ++j;
       }
-    }elif (match_command(args.get(i), ["-name"], 1) == 1) {
+      
+      i = j - 1;
+    } elif (match_command(arg, ["-name"], 1) == 1) {
       if (i + 1 < args.len()) {
         build_config.name = args.get(i + 1);
         i = i + 1;
@@ -110,11 +95,31 @@ pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig, link_fi
         output("Error: Missing output name after -name\n");
         return 1;
       }
-    } elif (match_command(args.get(i), ["-O0"], 1) == 1) { build_config.opt_level = 0;
-    } elif (match_command(args.get(i), ["-O1"], 1) == 1) { build_config.opt_level = 1;
-    } elif (match_command(args.get(i), ["-O2"], 1) == 1) { build_config.opt_level = 2;
-    } elif (match_command(args.get(i), ["-O3"], 1) == 1) { build_config.opt_level = 3;
+    } elif (match_command(arg, ["-O0", "-O1", "-O2", "-O3"], 4) == 1) { 
+      build_config.opt_level = cast<int>(cast<int>(arg[2]) - cast<int>('0'));
     }
   }
+
   return 0;
+}
+
+#returns_ownership
+pub const resolve_path -> fn (path: *byte) *byte {
+  let std_prefix: *byte = "/usr/local/lib/luma/";
+  let prefix_len: int = STRING::strlen(std_prefix);
+  let path_len:   int = STRING::strlen(path);
+
+  let std_path: *byte = cast<*byte>(alloc(prefix_len + path_len + 1));
+  MEM::memcpy(cast<*void>(std_path), cast<*void>(std_prefix), prefix_len);
+  MEM::memcpy(cast<*void>(cast<int>(std_path) + prefix_len), cast<*void>(path), path_len);
+  std_path[prefix_len + path_len] = '\0';
+
+  let fd: int = __syscall__(2, cast<int>(std_path), 0, 0);
+  if (fd >= 0) {
+    __syscall__(3, fd, 0, 0);
+    return std_path;
+  }
+
+  free(std_path);
+  return path;
 }

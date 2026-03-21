@@ -16,148 +16,6 @@ Program
     Use: ast_print as PRINT
     Use: ast_stmt as STMT
     Use: ast as AST
-    FuncDecl: resolve_path [#ro]
-      └─ param: path
-        Type: *
-          Type: char
-    └─ return
-      Type: *
-        Type: char
-    └─ body
-      Block
-        VarDecl: std_prefix
-        └─ type
-          Type: *
-            Type: char
-        └─ init
-          Literal(str): \'/usr/local/lib/luma/\'
-        VarDecl: prefix_len
-        └─ type
-          Type: int
-        └─ init
-          Call
-          └─ callee
-            Member(::): strlen
-              Ident: STRING
-          └─ arg
-            Ident: std_prefix
-        VarDecl: path_len
-        └─ type
-          Type: int
-        └─ init
-          Call
-          └─ callee
-            Member(::): strlen
-              Ident: STRING
-          └─ arg
-            Ident: path
-        VarDecl: std_path
-        └─ type
-          Type: *
-            Type: char
-        └─ init
-          Cast
-          └─ type
-            Type: *
-              Type: char
-          └─ expr
-            Alloc
-              Binary: +
-                Binary: +
-                  Ident: prefix_len
-                  Ident: path_len
-                Literal(int): 1
-        ExprStmt
-          Call
-          └─ callee
-            Member(::): memcpy
-              Ident: MEM
-          └─ arg
-            Cast
-            └─ type
-              Type: *
-                Type: void
-            └─ expr
-              Ident: std_path
-          └─ arg
-            Cast
-            └─ type
-              Type: *
-                Type: void
-            └─ expr
-              Ident: std_prefix
-          └─ arg
-            Ident: prefix_len
-        ExprStmt
-          Call
-          └─ callee
-            Member(::): memcpy
-              Ident: MEM
-          └─ arg
-            Cast
-            └─ type
-              Type: *
-                Type: void
-            └─ expr
-              Binary: +
-                Cast
-                └─ type
-                  Type: int
-                └─ expr
-                  Ident: std_path
-                Ident: prefix_len
-          └─ arg
-            Cast
-            └─ type
-              Type: *
-                Type: void
-            └─ expr
-              Ident: path
-          └─ arg
-            Ident: path_len
-        ExprStmt
-          Assign
-          └─ target
-            Index
-              Ident: std_path
-              Binary: +
-                Ident: prefix_len
-                Ident: path_len
-          └─ value
-            Literal(char)
-        VarDecl: fd
-        └─ type
-          Type: int
-        └─ init
-          Syscall
-            Literal(int): 2
-            Cast
-            └─ type
-              Type: int
-            └─ expr
-              Ident: std_path
-            Literal(int): 0
-            Literal(int): 0
-        If
-        └─ cond
-          Binary: >=
-            Ident: fd
-            Literal(int): 0
-        └─ then
-          Block
-            ExprStmt
-              Syscall
-                Literal(int): 3
-                Ident: fd
-                Literal(int): 0
-                Literal(int): 0
-            Return
-              Ident: std_path
-        ExprStmt
-          Free
-            Ident: std_path
-        Return
-          Ident: path
     FuncDecl: parse_file [#ro]
       └─ param: path
         Type: *
@@ -174,7 +32,8 @@ Program
         └─ init
           Call
           └─ callee
-            Ident: resolve_path
+            Member(::): resolve_path
+              Ident: COMD
           └─ arg
             Ident: path
         VarDecl: src
@@ -669,111 +528,6 @@ Program
             └─ callee
               Member(.): tail
                 Ident: args
-        If
-        └─ cond
-          Binary: ||
-            Binary: ==
-              Call
-              └─ callee
-                Member(.): is_empty
-                  Ident: args
-              Literal(int): 1
-            Binary: ==
-              Call
-              └─ callee
-                Member(::): match_command
-                  Ident: COMD
-              └─ arg
-                Call
-                └─ callee
-                  Member(.): get
-                    Ident: args
-                └─ arg
-                  Literal(int): 0
-              └─ arg
-                Array
-                  Literal(str): \'-h\'
-                  Literal(str): \'--help\'
-              └─ arg
-                Literal(int): 2
-              Literal(int): 1
-        └─ then
-          Block
-            ExprStmt
-              Call
-              └─ callee
-                Member(::): print_commands
-                  Ident: COMD
-            Return
-              Literal(int): 0
-        └─ elif
-          If
-          └─ cond
-            Binary: ==
-              Call
-              └─ callee
-                Member(::): match_command
-                  Ident: COMD
-              └─ arg
-                Call
-                └─ callee
-                  Member(.): get
-                    Ident: args
-                └─ arg
-                  Literal(int): 0
-              └─ arg
-                Array
-                  Literal(str): \'-v\'
-                  Literal(str): \'--version\'
-              └─ arg
-                Literal(int): 2
-              Literal(int): 1
-          └─ then
-            Block
-              ExprStmt
-                Call
-                └─ callee
-                  Ident: output
-                └─ arg
-                  Literal(str): \'Luma Compiler \'
-                └─ arg
-                  Member(::): Luma_Compiler_version
-                    Ident: CONST
-                └─ arg
-                  Literal(str): \'\n\'
-              Return
-                Literal(int): 0
-        └─ elif
-          If
-          └─ cond
-            Binary: ==
-              Call
-              └─ callee
-                Member(::): match_command
-                  Ident: COMD
-              └─ arg
-                Call
-                └─ callee
-                  Member(.): get
-                    Ident: args
-                └─ arg
-                  Literal(int): 0
-              └─ arg
-                Array
-                  Literal(str): \'-l\'
-                  Literal(str): \'--license\'
-              └─ arg
-                Literal(int): 2
-              Literal(int): 1
-          └─ then
-            Block
-              ExprStmt
-                Call
-                └─ callee
-                  Member(::): print_license
-                    Ident: COMD
-              Return
-                Literal(int): 0
         VarDecl: link_files
         └─ type
           Type: *
@@ -922,62 +676,6 @@ Program
                   Member(.): link_files
                     Ident: build_config
                   Ident: i
-            If
-            └─ cond
-              Binary: ==
-                Ident: linked_module
-                Cast
-                └─ type
-                  Type: *
-                    Type: AstNode
-                └─ expr
-                  Literal(int): 0
-            └─ then
-              Block
-                Loop
-                └─ init
-                  VarDecl: j
-                  └─ type
-                    Type: int
-                  └─ init
-                    Literal(int): 0
-                └─ cond
-                  Binary: <
-                    Ident: j
-                    Member(.): size
-                      Ident: modules
-                └─ step
-                  Unary: x++
-                    Ident: j
-                └─ body
-                  Block
-                    ExprStmt
-                      Call
-                      └─ callee
-                        Member(::): free_node
-                          Ident: AST
-                      └─ arg
-                        Cast
-                        └─ type
-                          Type: *
-                            Type: AstNode
-                        └─ expr
-                          Call
-                          └─ callee
-                            Member(.): get
-                              Ident: modules
-                          └─ arg
-                            Ident: j
-                ExprStmt
-                  Call
-                  └─ callee
-                    Member(::): free_vector
-                      Ident: VEC
-                  └─ arg
-                    Addr
-                      Ident: modules
-                Return
-                  Literal(int): 1
             ExprStmt
               Call
               └─ callee
@@ -1012,7 +710,7 @@ Program
             Member(.): size
               Ident: modules
           └─ arg
-            Literal(int): 0
+            Literal(int): 1
           └─ arg
             Literal(int): 0
         ExprStmt
@@ -4305,6 +4003,7 @@ Program
               Ident: argc
   Module: commands
     Use: std_string as STRING
+    Use: std_memory as MEM
     Use: std_vector as VEC
     Use: std_args as ARGS
     Use: constants as CONST
@@ -4603,6 +4302,111 @@ Program
       Type: int
     └─ body
       Block
+        If
+        └─ cond
+          Binary: ==
+            Call
+            └─ callee
+              Member(.): is_empty
+                Ident: args
+            Literal(int): 1
+        └─ then
+          Block
+            ExprStmt
+              Call
+              └─ callee
+                Ident: print_commands
+            Return
+              Literal(int): 1
+        VarDecl: first
+        └─ type
+          Type: *
+            Type: char
+        └─ init
+          Call
+          └─ callee
+            Member(.): get
+              Ident: args
+          └─ arg
+            Literal(int): 0
+        If
+        └─ cond
+          Binary: ==
+            Call
+            └─ callee
+              Ident: match_command
+            └─ arg
+              Ident: first
+            └─ arg
+              Array
+                Literal(str): \'-v\'
+                Literal(str): \'--version\'
+            └─ arg
+              Literal(int): 2
+            Literal(int): 1
+        └─ then
+          Block
+            ExprStmt
+              Call
+              └─ callee
+                Ident: output
+              └─ arg
+                Literal(str): \'Luma Compiler \'
+              └─ arg
+                Member(::): Luma_Compiler_version
+                  Ident: CONST
+              └─ arg
+                Literal(str): \'\n\'
+            Return
+              Literal(int): 1
+        └─ elif
+          If
+          └─ cond
+            Binary: ==
+              Call
+              └─ callee
+                Ident: match_command
+              └─ arg
+                Ident: first
+              └─ arg
+                Array
+                  Literal(str): \'-h\'
+                  Literal(str): \'--help\'
+              └─ arg
+                Literal(int): 2
+              Literal(int): 1
+          └─ then
+            Block
+              ExprStmt
+                Call
+                └─ callee
+                  Ident: print_commands
+              Return
+                Literal(int): 1
+        └─ elif
+          If
+          └─ cond
+            Binary: ==
+              Call
+              └─ callee
+                Ident: match_command
+              └─ arg
+                Ident: first
+              └─ arg
+                Array
+                  Literal(str): \'-l\'
+                  Literal(str): \'--license\'
+              └─ arg
+                Literal(int): 2
+              Literal(int): 1
+          └─ then
+            Block
+              ExprStmt
+                Call
+                └─ callee
+                  Ident: print_license
+              Return
+                Literal(int): 1
         Loop
         └─ init
           VarDecl: i
@@ -4622,6 +4426,17 @@ Program
             Ident: i
         └─ body
           Block
+            VarDecl: arg
+            └─ type
+              Type: *
+                Type: char
+            └─ init
+              Call
+              └─ callee
+                Member(.): get
+                  Ident: args
+              └─ arg
+                Ident: i
             If
             └─ cond
               Binary: ==
@@ -4629,12 +4444,7 @@ Program
                 └─ callee
                   Ident: match_command
                 └─ arg
-                  Call
-                  └─ callee
-                    Member(.): get
-                      Ident: args
-                  └─ arg
-                    Ident: i
+                  Ident: arg
                 └─ arg
                   Array
                     Literal(str): \'-l\'
@@ -4672,7 +4482,7 @@ Program
                             Sizeof(type)
                               Type: *
                                 Type: char
-                VarDecl: start
+                VarDecl: j
                 └─ type
                   Type: int
                 └─ init
@@ -4683,7 +4493,7 @@ Program
                 └─ cond
                   Binary: &&
                     Binary: <
-                      Ident: start
+                      Ident: j
                       Call
                       └─ callee
                         Member(.): len
@@ -4698,7 +4508,7 @@ Program
                           Member(.): get
                             Ident: args
                         └─ arg
-                          Ident: start
+                          Ident: j
                       └─ arg
                         Array
                           Literal(str): \'-name\'
@@ -4722,13 +4532,16 @@ Program
                             Ident: build_config
                           Literal(int): 1
                     ExprStmt
-                      Assign
-                      └─ target
-                        Ident: start
-                      └─ value
-                        Binary: +
-                          Ident: start
-                          Literal(int): 1
+                      Unary: x++
+                        Ident: j
+                ExprStmt
+                  Assign
+                  └─ target
+                    Ident: i
+                  └─ value
+                    Binary: -
+                      Ident: j
+                      Literal(int): 1
             └─ elif
               If
               └─ cond
@@ -4737,12 +4550,7 @@ Program
                   └─ callee
                     Ident: match_command
                   └─ arg
-                    Call
-                    └─ callee
-                      Member(.): get
-                        Ident: args
-                    └─ arg
-                      Ident: i
+                    Ident: arg
                   └─ arg
                     Array
                       Literal(str): \'-name\'
@@ -4803,104 +4611,15 @@ Program
                   └─ callee
                     Ident: match_command
                   └─ arg
-                    Call
-                    └─ callee
-                      Member(.): get
-                        Ident: args
-                    └─ arg
-                      Ident: i
+                    Ident: arg
                   └─ arg
                     Array
                       Literal(str): \'-O0\'
-                  └─ arg
-                    Literal(int): 1
-                  Literal(int): 1
-              └─ then
-                Block
-                  ExprStmt
-                    Assign
-                    └─ target
-                      Member(.): opt_level
-                        Ident: build_config
-                    └─ value
-                      Literal(int): 0
-            └─ elif
-              If
-              └─ cond
-                Binary: ==
-                  Call
-                  └─ callee
-                    Ident: match_command
-                  └─ arg
-                    Call
-                    └─ callee
-                      Member(.): get
-                        Ident: args
-                    └─ arg
-                      Ident: i
-                  └─ arg
-                    Array
                       Literal(str): \'-O1\'
-                  └─ arg
-                    Literal(int): 1
-                  Literal(int): 1
-              └─ then
-                Block
-                  ExprStmt
-                    Assign
-                    └─ target
-                      Member(.): opt_level
-                        Ident: build_config
-                    └─ value
-                      Literal(int): 1
-            └─ elif
-              If
-              └─ cond
-                Binary: ==
-                  Call
-                  └─ callee
-                    Ident: match_command
-                  └─ arg
-                    Call
-                    └─ callee
-                      Member(.): get
-                        Ident: args
-                    └─ arg
-                      Ident: i
-                  └─ arg
-                    Array
                       Literal(str): \'-O2\'
-                  └─ arg
-                    Literal(int): 1
-                  Literal(int): 1
-              └─ then
-                Block
-                  ExprStmt
-                    Assign
-                    └─ target
-                      Member(.): opt_level
-                        Ident: build_config
-                    └─ value
-                      Literal(int): 2
-            └─ elif
-              If
-              └─ cond
-                Binary: ==
-                  Call
-                  └─ callee
-                    Ident: match_command
-                  └─ arg
-                    Call
-                    └─ callee
-                      Member(.): get
-                        Ident: args
-                    └─ arg
-                      Ident: i
-                  └─ arg
-                    Array
                       Literal(str): \'-O3\'
                   └─ arg
-                    Literal(int): 1
+                    Literal(int): 4
                   Literal(int): 1
               └─ then
                 Block
@@ -4910,9 +4629,167 @@ Program
                       Member(.): opt_level
                         Ident: build_config
                     └─ value
-                      Literal(int): 3
+                      Cast
+                      └─ type
+                        Type: int
+                      └─ expr
+                        Binary: -
+                          Cast
+                          └─ type
+                            Type: int
+                          └─ expr
+                            Index
+                              Ident: arg
+                              Literal(int): 2
+                          Cast
+                          └─ type
+                            Type: int
+                          └─ expr
+                            Literal(char)
         Return
           Literal(int): 0
+    FuncDecl: resolve_path [pub] [#ro]
+      └─ param: path
+        Type: *
+          Type: char
+    └─ return
+      Type: *
+        Type: char
+    └─ body
+      Block
+        VarDecl: std_prefix
+        └─ type
+          Type: *
+            Type: char
+        └─ init
+          Literal(str): \'/usr/local/lib/luma/\'
+        VarDecl: prefix_len
+        └─ type
+          Type: int
+        └─ init
+          Call
+          └─ callee
+            Member(::): strlen
+              Ident: STRING
+          └─ arg
+            Ident: std_prefix
+        VarDecl: path_len
+        └─ type
+          Type: int
+        └─ init
+          Call
+          └─ callee
+            Member(::): strlen
+              Ident: STRING
+          └─ arg
+            Ident: path
+        VarDecl: std_path
+        └─ type
+          Type: *
+            Type: char
+        └─ init
+          Cast
+          └─ type
+            Type: *
+              Type: char
+          └─ expr
+            Alloc
+              Binary: +
+                Binary: +
+                  Ident: prefix_len
+                  Ident: path_len
+                Literal(int): 1
+        ExprStmt
+          Call
+          └─ callee
+            Member(::): memcpy
+              Ident: MEM
+          └─ arg
+            Cast
+            └─ type
+              Type: *
+                Type: void
+            └─ expr
+              Ident: std_path
+          └─ arg
+            Cast
+            └─ type
+              Type: *
+                Type: void
+            └─ expr
+              Ident: std_prefix
+          └─ arg
+            Ident: prefix_len
+        ExprStmt
+          Call
+          └─ callee
+            Member(::): memcpy
+              Ident: MEM
+          └─ arg
+            Cast
+            └─ type
+              Type: *
+                Type: void
+            └─ expr
+              Binary: +
+                Cast
+                └─ type
+                  Type: int
+                └─ expr
+                  Ident: std_path
+                Ident: prefix_len
+          └─ arg
+            Cast
+            └─ type
+              Type: *
+                Type: void
+            └─ expr
+              Ident: path
+          └─ arg
+            Ident: path_len
+        ExprStmt
+          Assign
+          └─ target
+            Index
+              Ident: std_path
+              Binary: +
+                Ident: prefix_len
+                Ident: path_len
+          └─ value
+            Literal(char)
+        VarDecl: fd
+        └─ type
+          Type: int
+        └─ init
+          Syscall
+            Literal(int): 2
+            Cast
+            └─ type
+              Type: int
+            └─ expr
+              Ident: std_path
+            Literal(int): 0
+            Literal(int): 0
+        If
+        └─ cond
+          Binary: >=
+            Ident: fd
+            Literal(int): 0
+        └─ then
+          Block
+            ExprStmt
+              Syscall
+                Literal(int): 3
+                Ident: fd
+                Literal(int): 0
+                Literal(int): 0
+            Return
+              Ident: std_path
+        ExprStmt
+          Free
+            Ident: std_path
+        Return
+          Ident: path
   Module: ast_type
     Use: ast as AST
     FuncDecl: make_basic_type [pub] [#ro]
