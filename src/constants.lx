@@ -29,10 +29,10 @@ pub const LumaBuildConfig -> struct {
   lsp_mode: int,
   file_count: int,
   opt_level: int,
-  link_files: **byte,
+  link_files: *Vector,
 };
 
-pub const init_build_config -> fn (filepath: *byte, link_files: **byte) LumaBuildConfig {
+pub const init_build_config -> fn (filepath: *byte, link_files: *Vector) LumaBuildConfig {
   return LumaBuildConfig {
     filepath: filepath,
     name: "a.out",

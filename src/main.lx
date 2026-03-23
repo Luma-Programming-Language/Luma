@@ -19,10 +19,30 @@
 @use "ast_stmt"     as STMT
 @use "ast"          as AST
 
+#takes_ownership
+const fail -> fn (
+  tokens: *Vector,
+  stmts: *Vector,
+  src: *byte,
+  p: *Parser
+) *AstNode {
+  if (stmts != cast<*Vector>(0)) { VEC::free_vector(stmts); }
+  if (tokens != cast<*Vector>(0)) { VEC::free_vector(tokens); }
+  if (src != cast<*byte>(0)) { free(src); }
+  if (p != cast<*Parser>(0)) { PARS::free_parser(p); }
+
+  return cast<*AstNode>(0);
+}
+
+#takes_ownership
+const fail_early -> fn (src: *byte) *AstNode {
+  if (src != cast<*byte>(0)) { free(src); }
+  return cast<*AstNode>(0);
+}
+
 #returns_ownership
 const parse_file -> fn (path: *byte) *AstNode {
   let resolved: *byte = COMD::resolve_path(path);
-
   let src: *byte = IO::read_file(resolved);
 
   if (resolved != path) { free(resolved); }
@@ -49,10 +69,7 @@ const parse_file -> fn (path: *byte) *AstNode {
   if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
     p.error("Parser Error", "Expected @module at the start of a file.");
     ERR::error_report();
-    VEC::free_vector(&tokens);
-    free(src);
-    PARS::free_parser(p);
-    return cast<*AstNode>(0);
+    return fail(&tokens, cast<*Vector>(0), src, p);
   }
   p.advance();
 
@@ -60,10 +77,7 @@ const parse_file -> fn (path: *byte) *AstNode {
       p.current().kind != TOK::LumaTokenType::TOK_STRING) {
     p.error("Parser Error", "Expected module name after @module.");
     ERR::error_report();
-    VEC::free_vector(&tokens);
-    free(src);
-    PARS::free_parser(p);
-    return cast<*AstNode>(0);
+    return fail(&tokens, cast<*Vector>(0), src, p);
   }
 
   let module_name: *byte = p.get_name();
@@ -73,8 +87,9 @@ const parse_file -> fn (path: *byte) *AstNode {
 
   loop [i: int = 0](p.has_tokens()) : (i++) {
     let stmt: *AstNode = PSTMT::parse_stmt(p);
-    if (stmt == cast<*AstNode>(0)) continue;
-    stmts.push_back(cast<*void>(&stmt));
+    if (stmt != cast<*AstNode>(0)) {
+      stmts.push_back(cast<*void>(&stmt));
+    }
   }
 
   let module_node: *AstNode = MAST::make_module(
@@ -86,11 +101,7 @@ const parse_file -> fn (path: *byte) *AstNode {
   if (p.had_error == 1) {
     ERR::error_report();
     AST::free_node(module_node);
-    VEC::free_vector(&stmts);
-    VEC::free_vector(&tokens);
-    free(src);
-    PARS::free_parser(p);
-    return cast<*AstNode>(0);
+    return fail(&tokens, &stmts, src, p);
   }
 
   VEC::free_vector(&stmts);
@@ -105,35 +116,39 @@ pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
   args = args.tail();
 
-  let link_files: **byte = cast<**byte>(alloc(4028 * sizeof<*byte>));
-  defer { free(link_files); }
-
-  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0), link_files);
-  if (COMD::parse_args(&args, &build_config, link_files) != 0) { return 1; }
-
+  let link_files: Vector = VEC::create_vector(sizeof<*byte>);
   let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
-  let main_module: *AstNode = parse_file(build_config.filepath);
-  if (main_module == cast<*AstNode>(0)) {
-    VEC::free_vector(&modules);
-    return 1;
+  defer { VEC::free_vector(&modules); VEC::free_vector(&link_files); }
+
+  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0), &link_files);
+  if (COMD::parse_args(&args, &build_config, &link_files) != 0) { return 1; }
+
+  let it: VectorIter = link_files.iter();
+  loop {
+    let ptr: *void = it.next();
+    if (ptr == cast<*void>(0)) 
+      break;
+
+    let file: *byte = cast<*byte>(ptr);
+    output(file);
   }
-  modules.push_back(cast<*void>(&main_module));
 
-  loop [i: int = 0](i < build_config.file_count) : (++i) {
-    let linked_module: *AstNode = parse_file(build_config.link_files[i]);
-    modules.push_back(cast<*void>(&linked_module));
-  }
+  // let main_module: *AstNode = parse_file(build_config.filepath);
+  // if (main_module == cast<*AstNode>(0)) { return 1; }
+  // modules.push_back(cast<*void>(&main_module));
 
-  let program: *AstNode = STMT::make_program(
-    PARS::vec_to_node_array(&modules),
-    modules.size,
-    1, 0
-  );
+  // loop [i: int = 0](i < build_config.file_count) : (++i) {
+  //   let linked_module: *AstNode = parse_file();
+  //   modules.push_back(cast<*void>(&linked_module));
+  // }
 
-  PRINT::print_node(program, 0);
+  // let program: *AstNode = STMT::make_program(
+  //   PARS::vec_to_node_array(&modules),
+  //   modules.size,
+  //   1, 0
+  // );
 
-  // AST::free_node(program);
-  VEC::free_vector(&modules);
+  // PRINT::print_node(program, 0);
 
   return 0;
 }
