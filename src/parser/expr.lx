@@ -1,6 +1,7 @@
 @module "parser_expr"
 
 @use "std_string" as STRING
+@use "std_memory" as MEM
 @use "std_vector" as VEC
 
 @use "parser_type"  as PTYPE
@@ -103,10 +104,16 @@ const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 
   if (left.kind == AST::NodeType::EXPR_IDENTIFIER) {
     let d: *IdentifierNode = cast<*IdentifierNode>(left);
-    struct_name = d.name;
+    let len: int = STRING::strlen(d.name);
+    struct_name = cast<*byte>(alloc(len + 1));
+    MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.name), len);
+    struct_name[len] = '\0';
   } elif (left.kind == AST::NodeType::EXPR_MEMBER) {
     let d: *MemberNode = cast<*MemberNode>(left);
-    struct_name = d.member;
+    let len: int = STRING::strlen(d.member);
+    struct_name = cast<*byte>(alloc(len + 1));
+    MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.member), len);
+    struct_name[len] = '\0';
   } else {
     p.error("Syntax Error", "Expected identifier before '{' for named struct.");
     return cast<*AstNode>(0);

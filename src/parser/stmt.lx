@@ -1,6 +1,7 @@
 @module "parse_stmt"
 
 @use "std_string" as STRING
+@use "std_memory" as MEM
 @use "std_vector" as VEC
 
 @use "parser_type"  as PTYPE
@@ -93,6 +94,7 @@ const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ow
 
     let type: *AstNode = PTYPE::parse_type(p);
     if (type == cast<*AstNode>(0)) {
+      free(name);
       p.error("TypeError", "Expected a type to be followed by a ':'.");
       return cast<*AstNode>(0);
     }
@@ -100,6 +102,8 @@ const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ow
     p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' after the const type.");
     let value: *AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
     if (value == cast<*AstNode>(0)) {
+      free(name);
+      AST::free_node(type);
       p.error("SyntaxError", "Expected a value after '='.");
       return cast<*AstNode>(0);
     }
@@ -116,6 +120,7 @@ const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ow
     TOK::LumaTokenType::TOK_ENUM   -> return _enum(p, name, is_public);
     
     _ -> {
+      free(name);
       p.error("SyntaxError", "Expected a (function, struct, or enum) after a const declaration.");
       return cast<*AstNode>(0);
     }
@@ -292,6 +297,13 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
     if (p.current().kind == TOK::LumaTokenType::TOK_RIGHT_ARROW) {
       p.advance();
       field_function = _fn(p, field_name, public_member, field_returns_ownership, field_takes_ownership);
+
+      // _fn took ownership of field_name, so make a fresh copy for field_decl
+      let len: int = STRING::strlen(field_name);
+      let name_copy: *byte = cast<*byte>(alloc(len + 1));
+      MEM::memcpy(cast<*void>(name_copy), cast<*void>(field_name), len);
+      name_copy[len] = '\0';
+      field_name = name_copy;
     } else {
       p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after field name.");
       field_type = PTYPE::parse_type(p);

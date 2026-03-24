@@ -116,39 +116,36 @@ pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
   args = args.tail();
 
-  let link_files: Vector = VEC::create_vector(sizeof<*byte>);
   let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
-  defer { VEC::free_vector(&modules); VEC::free_vector(&link_files); }
+  defer { VEC::free_vector(&modules); }
 
-  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0), &link_files);
-  if (COMD::parse_args(&args, &build_config, &link_files) != 0) { return 1; }
+  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0));
+  if (COMD::parse_args(&args, &build_config) != 0) { return 1; }
 
-  let it: VectorIter = link_files.iter();
+  let main_module: *AstNode = parse_file(build_config.filepath);
+  if (main_module == cast<*AstNode>(0)) { return 1; }
+  modules.push_back(cast<*void>(&main_module));
+
+  let it: VectorIter = build_config.link_files.iter();
   loop {
     let ptr: *void = it.next();
-    if (ptr == cast<*void>(0)) 
-      break;
+    if (ptr == cast<*void>(0)) break;
 
-    let file: *byte = cast<*byte>(ptr);
-    output(file);
+    let addr: *int = cast<*int>(ptr);
+
+    let linked_module: *AstNode = parse_file(cast<*byte>(*addr));
+    modules.push_back(cast<*void>(&linked_module));
   }
 
-  // let main_module: *AstNode = parse_file(build_config.filepath);
-  // if (main_module == cast<*AstNode>(0)) { return 1; }
-  // modules.push_back(cast<*void>(&main_module));
+  let program: *AstNode = STMT::make_program(
+    PARS::vec_to_node_array(&modules),
+    modules.size,
+    1, 0
+  );
 
-  // loop [i: int = 0](i < build_config.file_count) : (++i) {
-  //   let linked_module: *AstNode = parse_file();
-  //   modules.push_back(cast<*void>(&linked_module));
-  // }
+  defer { AST::free_node(program); VEC::free_vector(&build_config.link_files);}
 
-  // let program: *AstNode = STMT::make_program(
-  //   PARS::vec_to_node_array(&modules),
-  //   modules.size,
-  //   1, 0
-  // );
-
-  // PRINT::print_node(program, 0);
+  PRINT::print_node(program, 0);
 
   return 0;
 }

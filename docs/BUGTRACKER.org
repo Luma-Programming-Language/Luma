@@ -1,9 +1,0 @@
-* Bug Tracking
-
-** Major Bugs [0%]
-
-** Minor Bugs [0%]
-    - Not being able to take the address of an enum.
-
-** Fixed Bugs [0%]
-

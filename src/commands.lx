@@ -59,7 +59,7 @@ pub const match_command -> fn (cmd: *byte, usr_cmd: [*byte; 10], count: int) int
   return 0;
 }
 
-pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig, link_files: *Vector) int {
+pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig) int {
   if (args.is_empty() == 1) { print_commands(); return 1; }
 
   let first: *byte = args.get(0);

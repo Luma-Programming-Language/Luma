@@ -468,9 +468,10 @@ pub const free_node -> fn (node: *AstNode) void {
   }
 
   if (kind == NodeType::EXPR_IDENTIFIER) {
-    // name is NOT freed — may point to static binary data, not heap
-    free(node);
-    return;
+      let n: *IdentifierNode = cast<*IdentifierNode>(node);
+      free(n.name);
+      free(node);
+      return;
   }
 
   if (kind == NodeType::EXPR_BINARY || kind == NodeType::EXPR_RANGE) {
@@ -834,7 +835,8 @@ pub const free_node -> fn (node: *AstNode) void {
   // ── Types ─────────────────────────────────────────────────────────────────
 
   if (kind == NodeType::TYPE_BASIC) {
-    // name is NOT freed — points to static keyword string data, not heap
+    let n: *BasicTypeNode = cast<*BasicTypeNode>(node);
+    free(n.name);
     free(node);
     return;
   }

@@ -20,13 +20,13 @@ const tnud -> fn (p: *Parser) *AstNode {
   let kind: int = p.current().kind;
 
   switch (kind) {
-    TOK::LumaTokenType::TOK_INT    -> { p.advance(); return TAST::make_basic_type("int",    line, col); }
-    TOK::LumaTokenType::TOK_UINT   -> { p.advance(); return TAST::make_basic_type("uint",   line, col); }
-    TOK::LumaTokenType::TOK_DOUBLE -> { p.advance(); return TAST::make_basic_type("double", line, col); }
-    TOK::LumaTokenType::TOK_FLOAT  -> { p.advance(); return TAST::make_basic_type("float",  line, col); }
-    TOK::LumaTokenType::TOK_BOOL   -> { p.advance(); return TAST::make_basic_type("bool",   line, col); }
-    TOK::LumaTokenType::TOK_VOID   -> { p.advance(); return TAST::make_basic_type("void",   line, col); }
-    TOK::LumaTokenType::TOK_CHAR   -> { p.advance(); return TAST::make_basic_type("char",   line, col); }
+    TOK::LumaTokenType::TOK_INT    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK::LumaTokenType::TOK_UINT   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK::LumaTokenType::TOK_DOUBLE -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK::LumaTokenType::TOK_FLOAT  -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK::LumaTokenType::TOK_BOOL   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK::LumaTokenType::TOK_VOID   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK::LumaTokenType::TOK_CHAR   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
     TOK::LumaTokenType::TOK_STAR       -> { p.advance(); return pointer_type(p);    }
     TOK::LumaTokenType::TOK_LBRACKET   -> { p.advance(); return array_type(p);      }
     TOK::LumaTokenType::TOK_IDENTIFIER -> { return resolution_type(p);              }
