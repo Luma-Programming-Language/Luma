@@ -99,6 +99,8 @@ pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig) int {
       i = i + 1;
     } elif (match_command(arg, ["-O0", "-O1", "-O2", "-O3"], 4) == 1) { 
       build_config.opt_level = cast<int>(cast<int>(arg[2]) - cast<int>('0'));
+    } elif (match_command(arg, ["--no-sanitize"], 1) == 1) {
+      build_config.check_mem = 0; // disable the static analyzer
     }
   }
 

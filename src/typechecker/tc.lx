@@ -1,7 +1,9 @@
 @module "tc"
 
-@use "std_vector" as VEC
-@use "ast"        as AST
+@use "std_vector"   as VEC
+
+@use "constants"    as CONST
+@use "ast"          as AST
 
 // ─── Type Match Result ────────────────────────────────────────────────────────
 
@@ -76,7 +78,7 @@ pub const Scope -> struct {
   memory_analyzer:   *StaticMemoryAnalyzer,
   deferred_frees:    Vector,   // Vector of *byte (var names)
 
-  config:            *void,    // *BuildConfig — treated as opaque
+  config:            LumaBuildConfig,    // *BuildConfig — treated as opaque
 };
 
 // ─── Module Import ───────────────────────────────────────────────────────────
@@ -94,3 +96,28 @@ pub const ModuleDependency -> struct {
   dependencies: Vector,
   processed:    int,           // bool
 };
+
+pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) int {
+  let root_scope: Scope;
+  let did_fail: int = 0;
+  root_scope.config = config;
+
+
+  switch (node.category) {
+    AST::NodeCategory::Node_Category_PREPROCESSOR -> {}
+    AST::NodeCategory::Node_Category_TYPE -> {}
+    AST::NodeCategory::Node_Category_STMT -> {}
+    AST::NodeCategory::Node_Category_EXPR -> {}
+  }
+
+  if (did_fail == 1) return 0;
+  
+  // Then check the static analyzer for any memory issues
+  if (root_scope.config.check_mem == 1) {
+    output("Checking memory\n");
+    
+    if (did_fail == 1) return 0;
+  }
+  
+  return 1;
+}

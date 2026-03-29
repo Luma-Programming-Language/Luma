@@ -19,6 +19,8 @@
 @use "ast_stmt"     as STMT
 @use "ast"          as AST
 
+@use "tc"           as TC
+
 #takes_ownership
 const fail -> fn (
   tokens: *Vector,
@@ -146,6 +148,9 @@ pub const main -> fn (argc: int, argv: **byte) int {
   defer { AST::free_node(program); VEC::free_vector(&build_config.link_files);}
 
   PRINT::print_node(program, 0);
+
+  let tc: int = TC::typecheck(program, build_config);
+  output(tc, "\n");
 
   return 0;
 }
