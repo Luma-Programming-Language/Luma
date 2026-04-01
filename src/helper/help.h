@@ -28,7 +28,7 @@
 /** Enable debug logs for arena allocator (comment to disable) */
 #define DEBUG_ARENA_ALLOC 1
 
-#define Luma_Compiler_version "v0.1.18"
+#define Luma_Compiler_version "v0.1.19"
 
 /** Error codes returned by the compiler */
 typedef enum {
