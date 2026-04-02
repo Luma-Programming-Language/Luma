@@ -95,17 +95,16 @@ static LLVMTargetMachineRef create_target_machine(void) {
   char *host_cpu = LLVMGetHostCPUName();
   char *host_features = LLVMGetHostCPUFeatures();
 
-  #if (__APPLE__) 
-    LLVMCodeModel code_model = LLVMCodeModelDefault;
-  #else 
-    LLVMCodeModel code_model = LLVMCodeModelSmall;
-  #endif 
+#if defined(__APPLE__)
+  LLVMCodeModel code_model = LLVMCodeModelDefault;
+#else
+  LLVMCodeModel code_model = LLVMCodeModelSmall;
+#endif
 
   LLVMTargetMachineRef machine = LLVMCreateTargetMachine(
       target, target_triple, host_cpu, host_features,
       LLVMCodeGenLevelNone, // Fast compilation, no optimization
-      LLVMRelocPIC, 
-      code_model);
+      LLVMRelocPIC, code_model);
 
   LLVMDisposeMessage(host_cpu);
   LLVMDisposeMessage(host_features);
