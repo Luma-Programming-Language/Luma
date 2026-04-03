@@ -1358,12 +1358,20 @@ LLVMValueRef codegen_expr_cast(CodeGenContext *ctx, AstNode *node) {
   // Integer to Pointer
   if (source_kind == LLVMIntegerTypeKind &&
       target_kind == LLVMPointerTypeKind) {
+    if (!target_type) {
+      fprintf(stderr, "Error: target_type is NULL in inttoptr cast\n");
+      return NULL;
+    }
     return LLVMBuildIntToPtr(ctx->builder, value, target_type, "inttoptr");
   }
 
   // Pointer to Integer
   if (source_kind == LLVMPointerTypeKind &&
       target_kind == LLVMIntegerTypeKind) {
+    if (!target_type) {
+      fprintf(stderr, "Error: target_type is NULL in ptrtoint cast\n");
+      return NULL;
+    }
     return LLVMBuildPtrToInt(ctx->builder, value, target_type, "ptrtoint");
   }
 
