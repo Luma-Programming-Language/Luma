@@ -1,0 +1,28 @@
+var searchData=
+[
+  ['data_0',['data',['../structGrowableArray.html#a6b01d8aef29d5e023b568563dcb0a6ae',1,'GrowableArray']]],
+  ['default_5fbody_1',['default_body',['../structAstNode.html#a6858083e2dcc372cd972df35a9eac8ec',1,'AstNode']]],
+  ['default_5fcase_2',['default_case',['../structAstNode.html#a92c81ef8fa9549c3419dc8135a2b0b6a',1,'AstNode']]],
+  ['default_5fclause_3',['default_clause',['../structAstNode.html#a6af262f340d6997c54a3a4a4d3b92ac5',1,'AstNode']]],
+  ['default_5fconfig_4',['default_config',['../formatter_8c.html#ae18ee8610510ed9573f691fe75399991',1,'formatter.c']]],
+  ['defer_5fstmt_5',['defer_stmt',['../structAstNode.html#a09947ebb8fcd374c125258d0dd374f1f',1,'AstNode']]],
+  ['deferred_5fcapacity_6',['deferred_capacity',['../structCodeGenContext.html#aa570259741820427582e6127b5006a1c',1,'CodeGenContext']]],
+  ['deferred_5fcount_7',['deferred_count',['../structCodeGenContext.html#abbb34cc201f65d676f0247fc985f1a3a',1,'CodeGenContext']]],
+  ['deferred_5ffrees_8',['deferred_frees',['../structScope.html#afa59975f9539f0834a9e025c585a3177',1,'Scope']]],
+  ['deferred_5fstatements_9',['deferred_statements',['../structCodeGenContext.html#a8f6c92c2793187ec7971f8d63c24f3a8',1,'CodeGenContext']]],
+  ['dep_5fcount_10',['dep_count',['../structModuleDependencyInfo.html#ad737758535bc2282555100a0dfdeab50',1,'ModuleDependencyInfo']]],
+  ['dependencies_11',['dependencies',['../structModuleDependency.html#afe1a7210640a07cb90ac77eda796609e',1,'ModuleDependency::dependencies'],['../structModuleDependencyInfo.html#a1b78d1eb6d1e805cf25b0b169e0da385',1,'ModuleDependencyInfo::dependencies']]],
+  ['depth_12',['depth',['../structScope.html#acadd2817c773d471917e96bfd8c2072a',1,'Scope']]],
+  ['deref_13',['deref',['../structAstNode.html#abbd376d1dff25d099279944163544190',1,'AstNode']]],
+  ['detail_14',['detail',['../structLSPCompletionItem.html#a2485601744dca59932bd379e02c8fe98',1,'LSPCompletionItem']]],
+  ['diagnostic_5fcount_15',['diagnostic_count',['../structLSPDocument.html#a60a657d9b97adb97a539631d850da8e5',1,'LSPDocument']]],
+  ['diagnostics_16',['diagnostics',['../structLSPDocument.html#a50299102d55f4f3aabe323ee0f039521',1,'LSPDocument']]],
+  ['dll_5fcallconv_17',['dll_callconv',['../structAstNode.html#a5405ba85b751b024730a55732ce271fe',1,'AstNode']]],
+  ['dll_5fname_18',['dll_name',['../structAstNode.html#ad6fc75130475f5f831d765110b9a6586',1,'AstNode']]],
+  ['doc_5fcomment_19',['doc_comment',['../structAstNode.html#a2ce7fabe0ccdcb26c2518788b9aa521b',1,'AstNode']]],
+  ['document_5fcapacity_20',['document_capacity',['../structLSPServer.html#a9e7b7d824b1154e388cc7c6101ed6c94',1,'LSPServer']]],
+  ['document_5fcount_21',['document_count',['../structLSPServer.html#a664a97b942f86b5355a8572173b7aad0',1,'LSPServer']]],
+  ['documentation_22',['documentation',['../structLSPCompletionItem.html#a6d4f5b5b60db13934c5d060c5e7780c4',1,'LSPCompletionItem']]],
+  ['documents_23',['documents',['../structLSPServer.html#a1578e2b70a11a7c9afa8e9b7118ae789',1,'LSPServer']]],
+  ['done_24',['done',['../structWatchdog.html#a34b5c058ea35dabd49cae77bd4998db0',1,'Watchdog']]]
+];
