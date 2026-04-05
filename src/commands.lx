@@ -28,6 +28,8 @@ pub const print_commands -> fn () void {
   output("  -l, -link <files>    Link additional source files\n");
   output("  -save                Save intermediate IR files\n");
   output("  -clean               Clean build artifacts\n");
+  output("  -t, --target <os>    Set target platform (linux, macos, windows)\n");
+  output("                       Default: auto-detected host system\n");
   output("\n");
 
   output("  Optimization\n");

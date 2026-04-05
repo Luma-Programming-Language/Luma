@@ -55,11 +55,13 @@ pub const LumaTokenType -> enum {
 
   // prepocessor directives
   TOK_MODULE, /**< @module */
-  TOK_USE,    /**< @use */
+  TOK_USE,    /**< @use    */
+  TOK_OS,     /**< @os     */
 
   // function attibutes
   TOK_RETURNS_OWNERSHIP, /** #returns_ownership */
-  TOK_TAKES_OWNERSHIP,    /** #takes_ownership */
+  TOK_TAKES_OWNERSHIP,   /** #takes_ownership   */
+  TOK_DLL_IMPORT,        /** #dll_import        */
 
   // Symbols
   TOK_SYMBOL,      /**< Fallback symbol */
@@ -222,9 +224,9 @@ pub const lookup_double -> fn (c: byte, c2: byte) int {
   return -1;
 }
 
-const KEYWORD_COUNT: int = 41;
+const KEYWORD_COUNT: int = 43;
 const Keyword -> struct { val: *byte, kind: int };
-pub const keyword_map: [Keyword; 41] = [
+pub const keyword_map: [Keyword; 43] = [
   // Primitive Types
   Keyword { val: "int",    kind: LumaTokenType::TOK_INT },
   Keyword { val: "double", kind: LumaTokenType::TOK_DOUBLE },
@@ -237,10 +239,12 @@ pub const keyword_map: [Keyword; 41] = [
   // Preprocessor Directives
   Keyword { val: "@module", kind: LumaTokenType::TOK_MODULE },
   Keyword { val: "@use",    kind: LumaTokenType::TOK_USE },
+  Keyword { val: "@os",     kind: LumaTokenType::TOK_OS },
 
   // Function Attributes
   Keyword { val: "#returns_ownership", kind: LumaTokenType::TOK_RETURNS_OWNERSHIP },
   Keyword { val: "#takes_ownership",   kind: LumaTokenType::TOK_TAKES_OWNERSHIP },
+  Keyword { val: "#dll_import",        kind: LumaTokenType::TOK_DLL_IMPORT },
 
   // Built-in Functions
   Keyword { val: "__syscall__", kind: LumaTokenType::TOK_SYSCALL },
