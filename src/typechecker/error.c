@@ -2,6 +2,7 @@
 #include "type.h"
 #include <stdarg.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 Token *g_tokens = NULL;
@@ -26,7 +27,15 @@ void tc_error_init(Token *tokens, int token_count, const char *file_path,
  * Usage: tc_error(node, "Type Error", "Variable '%s' not found", var_name);
  */
 void tc_error(AstNode *node, const char *error_type, const char *format, ...) {
-  char *message = arena_alloc(g_arena, 512, alignof(char));
+  char message_buffer[512];
+  char *message = message_buffer;
+
+  if (g_arena) {
+    message = arena_alloc(g_arena, 512, alignof(char));
+    if (!message) {
+      message = message_buffer;
+    }
+  }
 
   va_list args;
   va_start(args, format);
@@ -36,7 +45,11 @@ void tc_error(AstNode *node, const char *error_type, const char *format, ...) {
   ErrorInformation error = {0};
   error.error_type = error_type;
   error.file_path = g_file_path;
-  error.message = message;
+  if (g_arena && message != message_buffer) {
+    error.message = message;
+  } else {
+    error.message = strdup(message);
+  }
   error.line = (int)node->line;
   error.col = (int)node->column;
   error.token_length = 1;
@@ -54,7 +67,15 @@ void tc_error(AstNode *node, const char *error_type, const char *format, ...) {
  */
 void tc_error_help(AstNode *node, const char *error_type, const char *help,
                    const char *format, ...) {
-  char *message = arena_alloc(g_arena, 512, alignof(char));
+  char message_buffer[512];
+  char *message = message_buffer;
+
+  if (g_arena) {
+    message = arena_alloc(g_arena, 512, alignof(char));
+    if (!message) {
+      message = message_buffer;
+    }
+  }
 
   va_list args;
   va_start(args, format);
@@ -64,7 +85,11 @@ void tc_error_help(AstNode *node, const char *error_type, const char *help,
   ErrorInformation error = {0};
   error.error_type = error_type;
   error.file_path = g_file_path;
-  error.message = message;
+  if (g_arena && message != message_buffer) {
+    error.message = message;
+  } else {
+    error.message = strdup(message);
+  }
   error.line = (int)node->line;
   error.col = (int)node->column;
   error.token_length = 1;
@@ -83,7 +108,12 @@ void tc_error_help(AstNode *node, const char *error_type, const char *help,
  */
 void tc_error_id(AstNode *node, const char *identifier, const char *error_type,
                  const char *format, ...) {
-  char *message = arena_alloc(g_arena, 512, alignof(char));
+  char message_buffer[512];
+  char *message = message_buffer;
+
+  if (g_arena) {
+    message = arena_alloc(g_arena, 512, alignof(char));
+  }
 
   va_list args;
   va_start(args, format);
@@ -93,7 +123,11 @@ void tc_error_id(AstNode *node, const char *identifier, const char *error_type,
   ErrorInformation error = {0};
   error.error_type = error_type;
   error.file_path = g_file_path;
-  error.message = message;
+  if (g_arena && message != message_buffer) {
+    error.message = message;
+  } else {
+    error.message = strdup(message);
+  }
   error.line = (int)node->line;
   error.col = (int)node->column;
   error.token_length = identifier ? (int)strlen(identifier) : 1;

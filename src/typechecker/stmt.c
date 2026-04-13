@@ -1247,6 +1247,11 @@ bool typecheck_use_stmt(AstNode *node, Scope *current_scope,
   const char *module_name = node->preprocessor.use.module_name;
   const char *alias = node->preprocessor.use.alias;
 
+  if (!module_name || module_name[0] == '\0') {
+    tc_error(node, "Use Error", "Module name is missing or empty");
+    return false;
+  }
+
   // Find the module scope
   Scope *module_scope = find_module_scope(global_scope, module_name);
   if (!module_scope) {

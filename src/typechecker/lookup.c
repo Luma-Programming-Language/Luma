@@ -264,7 +264,7 @@ bool typecheck_program_multipass(AstNode *program, Scope *global_scope,
 
       if (body[j]->type == AST_PREPROCESSOR_USE) {
         if (!typecheck_use_stmt(body[j], module_scope, global_scope, arena)) {
-          // error
+          return false;
         }
       }
     }

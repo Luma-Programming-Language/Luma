@@ -273,28 +273,32 @@ bool error_report(void) {
     printf(BOLD_WHITE("[%s]"), e->error_type);
     printf(": %s\n", e->message); // Normal white text for message
 
-    // File location with arrow - use blue for better contrast
-    printf("  ");
-    printf(BOLD_BLUE("-->"));
-    printf(GRAY(" %s:%d:%d\n"), e->file_path, e->line, e->col);
+    // File location with arrow - only show if file_path is set
+    if (e->file_path) {
+      printf("  ");
+      printf(BOLD_BLUE("-->"));
+      printf(GRAY(" %s:%d:%d\n"), e->file_path, e->line, e->col);
 
-    // Empty gutter line
-    print_gutter(max_width);
-    printf("\n");
+      // Empty gutter line
+      print_gutter(max_width);
+      printf("\n");
 
-    // Source line
-    if (e->line_text) {
-      print_source_line(e->line, e->line_text, max_width);
+      // Source line
+      if (e->line_text) {
+        print_source_line(e->line, e->line_text, max_width);
 
-      // Extract token for accurate positioning
-      char token_buffer[128];
-      const char *token_text =
-          extract_token_text(e, token_buffer, sizeof(token_buffer));
+        // Extract token for accurate positioning
+        char token_buffer[128];
+        const char *token_text =
+            extract_token_text(e, token_buffer, sizeof(token_buffer));
 
-      // Error indicator with label - use yellow for carets to stand out
-      print_indicator(e->col, e->token_length, e->line, e->line_text,
-                      token_text, token_text ? strlen(token_text) : 0,
-                      max_width, e->label);
+        // Error indicator with label - use yellow for carets to stand out
+        print_indicator(e->col, e->token_length, e->line, e->line_text,
+                        token_text, token_text ? strlen(token_text) : 0,
+                        max_width, e->label);
+      }
+    } else {
+      // No file info available - just skip the location display entirely
     }
 
     // Additional context with distinct colors
