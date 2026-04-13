@@ -3,6 +3,7 @@
 pub const NodeType -> enum {
   PREPROCESSOR_MODULE,
   PREPROCESSOR_USE,
+  PREPROCESSOR_OS,
 
   EXPR_LITERAL,
   EXPR_IDENTIFIER,
@@ -136,6 +137,14 @@ pub const UseNode -> struct {
   base:        AstNode,
   module_name: *byte,
   alias:       *byte,
+};
+
+pub const OsNode -> struct {
+  base: AstNode,
+  platforms: **byte,
+  bodies: **AstNode,
+  has_default: int,
+  default_body: *AstNode,
 };
 
 // ─── Expression Nodes ────────────────────────────────────────────────────────
@@ -453,6 +462,11 @@ pub const free_node -> fn (node: *AstNode) void {
     free(n.module_name);
     free(n.alias);
     free(node);
+    return;
+  }
+
+  if (kind == NodeType::PREPROCESSOR_OS) {
+    let n: *OsNode = cast<*OsNode>(node);
     return;
   }
 
