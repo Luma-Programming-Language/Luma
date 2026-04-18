@@ -50,14 +50,25 @@ jobs:
           update: true
           install: mingw-w64-x86_64-llvm
 
-      - name: Add MSYS2 MinGW to PATH (Windows)
+      - name: Configure Meson native file (Windows)
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          echo "C:\msys64\mingw64\bin" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          $llvmConfig = "C:\msys64\mingw64\bin\llvm-config.exe"
+          Write-Host "llvm-config exists: $(Test-Path $llvmConfig)"
+          @"
+          [binaries]
+          llvm-config = '$llvmConfig'
+          "@ | Set-Content native.ini
+          Get-Content native.ini
 
       - name: Configure (release)
+        if: runner.os != 'Windows'
         run: meson setup build/ --buildtype=release
+
+      - name: Configure (release, Windows)
+        if: runner.os == 'Windows'
+        run: meson setup build/ --buildtype=release --native-file=native.ini
 
       - name: Build (release)
         run: meson compile -C build/
