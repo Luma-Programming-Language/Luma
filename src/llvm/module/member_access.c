@@ -9,13 +9,6 @@
 //   - Works with the existing import system that creates alias.symbol entries
 // ============================================================================
 
-// Forward declarations
-static LLVMValueRef handle_symbol_value(CodeGenContext *ctx, LLVM_Symbol *sym);
-
-// ============================================================================
-// PUBLIC API
-// ============================================================================
-
 /**
  * @brief Handle compile-time member access (::)
  *
@@ -101,7 +94,6 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  // Not found in current module, search other modules
   LLVMModuleRef current_llvm_module =
       ctx->current_module ? ctx->current_module->module : ctx->module;
 
@@ -112,7 +104,6 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
       continue;
     }
 
-    // Try LLVM module first (faster for functions)
     LLVMValueRef source_func =
         LLVMGetNamedFunction(search_module->module, member);
 
@@ -136,7 +127,6 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
       return existing;
     }
 
-    // Check symbol table
     LLVM_Symbol *source_sym = find_symbol_in_module(search_module, member);
     if (source_sym) {
       if (source_sym->is_function) {
@@ -182,48 +172,16 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
  * @brief Check if an identifier might be a module/alias
  */
 bool is_module_identifier(CodeGenContext *ctx, const char *name) {
-  // Check if there are any symbols with this prefix
   char prefix[258];
   snprintf(prefix, sizeof(prefix), "%s.", name);
 
-  // Check current module
   for (LLVM_Symbol *sym = ctx->current_module->symbols; sym; sym = sym->next) {
     if (strncmp(sym->name, prefix, strlen(prefix)) == 0) {
       return true;
     }
   }
 
-  // Also check if it's an actual module name
   return find_module(ctx, name) != NULL;
-}
-
-/**
- * @brief Handle different symbol types appropriately
- */
-static LLVMValueRef handle_symbol_value(CodeGenContext *ctx, LLVM_Symbol *sym) {
-  if (sym->is_function) {
-    return sym->value;
-  }
-
-  if (is_enum_constant(sym)) {
-    return LLVMGetInitializer(sym->value);
-  }
-
-  // Check if it's a global constant variable
-  if (LLVMIsAGlobalVariable(sym->value)) {
-    if (LLVMIsGlobalConstant(sym->value)) {
-      // For global constants, return the initializer value
-      LLVMValueRef init = LLVMGetInitializer(sym->value);
-      if (init) {
-        return init;
-      }
-    }
-    // For non-const globals, load the value
-    return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "load_global");
-  }
-
-  // Regular variable - load it
-  return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "load");
 }
 
 /**
@@ -242,7 +200,6 @@ const char *get_module_name_from_access(AstNode *node) {
     return node->expr.member.object->expr.identifier.name;
   }
 
-  // Chained access
   if (node->expr.member.object->type == AST_EXPR_MEMBER) {
     return get_module_name_from_access(node->expr.member.object);
   }
@@ -261,7 +218,6 @@ bool validate_module_access(CodeGenContext *ctx, const char *prefix,
   snprintf(qualified_name, sizeof(qualified_name), "%s.%s", prefix,
            symbol_name);
 
-  // Check if symbol exists in current module
   LLVM_Symbol *sym = find_symbol_in_module(ctx->current_module, qualified_name);
   if (sym) {
     return true;
@@ -270,7 +226,6 @@ bool validate_module_access(CodeGenContext *ctx, const char *prefix,
   fprintf(stderr, "Error: Symbol '%s' not found\n", qualified_name);
   fprintf(stderr, "  Available symbols with prefix '%s':\n", prefix);
 
-  // List available symbols with this prefix for debugging
   char prefix_dot[258];
   snprintf(prefix_dot, sizeof(prefix_dot), "%s.", prefix);
 

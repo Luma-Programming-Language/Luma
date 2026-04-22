@@ -1,0 +1,5 @@
+option('llvm',
+  type        : 'string',
+  value       : '>=20.0',
+  description : 'Minimum required LLVM version. Luma requires 20.0+ due to bug fixes in constant generation.',
+)

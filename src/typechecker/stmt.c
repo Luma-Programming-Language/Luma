@@ -89,6 +89,7 @@ bool is_pointer_assignment(AstNode *assignment) {
 
 static bool function_signatures_match(AstNode *proto_type, AstNode *impl_type,
                                       ArenaAllocator *arena) {
+  (void)arena;
   if (!proto_type || !impl_type)
     return false;
   if (proto_type->type != AST_TYPE_FUNCTION ||

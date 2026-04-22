@@ -1,8 +1,7 @@
 build
 obj
-lux
+bin
 
-# autotools
 autom4te.cache
 
 # Linux executables (files without extensions)
@@ -34,8 +33,3 @@ package-lock.json
 tsconfig.tsbuildinfo
 src/lsp/language-support/client/out
 
-# ignore macOS hidden files
-.DS_Store
-
-# Bear / clangd
-compile_commands.json

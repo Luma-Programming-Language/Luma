@@ -20,27 +20,6 @@ static bool ensure_directory(const char *path) {
   return true;
 }
 
-// Escape markdown special characters
-static void write_escaped_markdown(FILE *f, const char *text) {
-  if (!text)
-    return;
-
-  for (const char *p = text; *p; p++) {
-    switch (*p) {
-    case '*':
-    case '_':
-    case '`':
-    case '[':
-    case ']':
-    case '#':
-      fputc('\\', f);
-      // fallthrough
-    default:
-      fputc(*p, f);
-    }
-  }
-}
-
 // Write formatted doc comment (handles markdown syntax in comments)
 static void write_doc_comment(FILE *f, const char *doc, int indent_level) {
   if (!doc || !*doc)
@@ -547,16 +526,13 @@ static void generate_enum_docs(FILE *f, AstNode *enm, DocGenConfig config) {
     return;
   }
 
-  // Enum header
   fprintf(f, "### %s `%s`\n\n", is_public ? "pub" : "priv", name);
 
-  // Documentation comment
   if (doc && *doc) {
     write_doc_comment(f, doc, 0);
     fprintf(f, "\n");
   }
 
-  // Enum values
   fprintf(f, "**Values:**\n\n");
   for (size_t i = 0; i < enm->stmt.enum_decl.member_count; i++) {
     fprintf(f, "- `%s`\n", enm->stmt.enum_decl.members[i]);
@@ -564,23 +540,17 @@ static void generate_enum_docs(FILE *f, AstNode *enm, DocGenConfig config) {
   fprintf(f, "\n");
 }
 
-// Variables - simpler formatting
 static void generate_var_docs(FILE *f, AstNode *var, DocGenConfig config) {
+  (void)config;
   const char *name = var->stmt.var_decl.name;
   const char *doc = var->stmt.var_decl.doc_comment;
   bool is_public = var->stmt.var_decl.is_public;
   bool is_mutable = var->stmt.var_decl.is_mutable;
   
-  // if (!is_public && !config.include_private) {
-  //   return;
-  // }
-  
-  // Variable header
   fprintf(f, "### %s `%s`\n\n", 
           is_public ? "public" : "private", 
           name);
   
-  // Type info
   fprintf(f, "**Type:** ");
   if (var->stmt.var_decl.var_type) {
     print_type(f, var->stmt.var_decl.var_type);
@@ -589,7 +559,6 @@ static void generate_var_docs(FILE *f, AstNode *var, DocGenConfig config) {
   }
   fprintf(f, " (%s)\n\n", is_mutable ? "mutable" : "constant");
   
-  // Documentation
   if (doc && *doc) {
     write_doc_comment(f, doc, 0);
     fprintf(f, "\n");
@@ -604,16 +573,13 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
   const char *module_name = module->preprocessor.module.name;
   const char *module_doc = module->preprocessor.module.doc_comment;
 
-  // Module header
   fprintf(f, "# Module: %s\n\n", module_name ? module_name : "unnamed");
 
-  // Module documentation
   if (module_doc && *module_doc) {
     write_doc_comment(f, module_doc, 0);
     fprintf(f, "\n");
   }
 
-  // Table of contents
   fprintf(f, "## Table of Contents\n\n");
   fprintf(f, "- [Structures](#structures)\n");
   fprintf(f, "- [Enumerations](#enumerations)\n");
@@ -622,9 +588,7 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
 
   fprintf(f, "---\n\n");
 
-  // Process module body
   if (module->preprocessor.module.body) {
-    // Collect different declaration types
     bool has_structs = false;
     bool has_enums = false;
     bool has_functions = false;
@@ -656,7 +620,6 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
       }
     }
 
-    // Structures section
     if (has_structs) {
       fprintf(f, "## Structures\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
@@ -667,7 +630,6 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
       }
     }
 
-    // Enumerations section
     if (has_enums) {
       fprintf(f, "## Enumerations\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
@@ -678,7 +640,6 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
       }
     }
 
-    // Functions section
     if (has_functions) {
       fprintf(f, "## Functions\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
@@ -689,7 +650,6 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
       }
     }
 
-    // Variables section
     if (has_vars) {
       fprintf(f, "## Variables\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
@@ -710,14 +670,12 @@ bool generate_documentation(AstNode *program, DocGenConfig config) {
     return false;
   }
 
-  // Ensure output directory exists
   if (!ensure_directory(config.output_dir)) {
     return false;
   }
 
   printf("Generating documentation in %s/...\n", config.output_dir);
 
-  // Generate index file
   char index_path[512];
   snprintf(index_path, sizeof(index_path), "%s/README.md", config.output_dir);
 
@@ -731,7 +689,6 @@ bool generate_documentation(AstNode *program, DocGenConfig config) {
   fprintf(index_file, "Generated documentation for the project.\n\n");
   fprintf(index_file, "## Modules\n\n");
 
-  // Generate documentation for each module
   bool success = true;
   for (size_t i = 0; i < program->stmt.program.module_count; i++) {
     AstNode *module = program->stmt.program.modules[i];
@@ -745,10 +702,8 @@ bool generate_documentation(AstNode *program, DocGenConfig config) {
       module_name = "unnamed";
     }
 
-    // Add to index
     fprintf(index_file, "- [%s](%s.md)\n", module_name, module_name);
 
-    // Generate module documentation file
     char doc_path[512];
     snprintf(doc_path, sizeof(doc_path), "%s/%s.md", config.output_dir,
              module_name);

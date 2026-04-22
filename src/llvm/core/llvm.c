@@ -225,8 +225,6 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
     return false;
   }
 
-  clock_t total_start = clock();
-
   // Count modules
   size_t module_count = 0;
   for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
@@ -290,10 +288,6 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
       }
     }
   }
-
-  // Cleanup
-  clock_t total_end = clock();
-  double total_time = (double)(total_end - total_start) / CLOCKS_PER_SEC;
 
   free(tasks);
   free(threads);

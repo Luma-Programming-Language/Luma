@@ -31,7 +31,7 @@ static int find_token_for_name(LSPDocument *doc, const char *name) {
   size_t name_len = strlen(name);
   for (size_t i = 0; i < doc->token_count; i++) {
     Token *tok = &doc->tokens[i];
-    if (tok->type_ == TOK_IDENTIFIER && tok->length == (size_t)name_len &&
+    if (tok->type_ == TOK_IDENTIFIER && (size_t)tok->length == (size_t)name_len &&
         tok->value && strncmp(tok->value, name, name_len) == 0) {
       return (int)i;
     }

@@ -533,7 +533,6 @@ LLVMTypeRef codegen_type_struct(CodeGenContext *ctx, const char *struct_name) {
   return NULL;
 }
 
-// Helper function to create a struct literal/initializer (if needed)
 LLVMValueRef codegen_struct_literal(CodeGenContext *ctx,
                                     const char *struct_name,
                                     LLVMValueRef *field_values,
@@ -564,9 +563,8 @@ LLVMValueRef codegen_struct_literal(CodeGenContext *ctx,
   }
 
   if (all_constant) {
-    return LLVMConstStruct(field_values, field_count, false);
+    return LLVMConstStructInContext(ctx->context, field_values, field_count, 0);
   } else {
-    // Runtime construction
     LLVMValueRef struct_alloca =
         LLVMBuildAlloca(ctx->builder, struct_info->llvm_type, "struct_lit");
 
