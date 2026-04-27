@@ -242,11 +242,40 @@ bool parse_args(int argc, char *argv[], BuildConfig *config,
   config->opt_level = 2; // Default opt_level is 2 unless told
 
 #if defined(__APPLE__)
-  config->target_os = "macos";
+  #include <TargetConditionals.h>
+  #if TARGET_OS_IPHONE
+    config->target_os = "ios";
+  #elif TARGET_OS_MAC
+    config->target_os = "macos";
+  #else
+    config->target_os = "apple";
+  #endif
+
+#elif defined(__ANDROID__)
+  config->target_os = "android";
+
 #elif defined(__linux__)
   config->target_os = "linux";
+#elif defined(__aarch64__) || defined(_M_ARM64) 
+  config->target_os = "aarch64";
+
+#elif defined(_WIN64)
+  config->target_os = "windows64";
 #elif defined(_WIN32)
   config->target_os = "windows";
+
+#elif defined(__FreeBSD__)
+  config->target_os = "freebsd";
+#elif defined(__NetBSD__)
+  config->target_os = "netbsd";
+#elif defined(__OpenBSD__)
+  config->target_os = "openbsd";
+#elif defined(__DragonFly__)
+  config->target_os = "dragonfly";
+
+#elif defined(__unix__) || defined(__unix)
+  config->target_os = "unix";
+
 #else
   config->target_os = "unknown";
 #endif

@@ -17,8 +17,12 @@
 // Helper function to create directory if it doesn't exist
 // NOTE Replaced with macro
 #ifdef _WIN32
+#include <direct.h>
+#define MKDIR(path) _mkdir(path)
 #define create_directory(path) (mkdir((path)) == 0 || errno == EEXIST)
 #else
+#include <unistd.h>
+#define MKDIR(path) mkdir(path, 0755)
 #define create_directory(path) (mkdir((path), 0755) == 0 || errno == EEXIST)
 #endif
 
@@ -75,7 +79,6 @@ void save_module_output_files(CodeGenContext *ctx, const char *output_dir) {
   }
 }
 
-// ADD THIS NEW HELPER FUNCTION
 const char *resolve_import_path(const char *path, ArenaAllocator *allocator) {
   // Check if this is a std/ import
   if (strncmp(path, "std/", 4) == 0 || strncmp(path, "std\\", 4) == 0) {
@@ -103,7 +106,7 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
   if (!ctx) {
     return false;
   }
-
+  
   const char *base_name = config.name ? config.name : "output";
   const char *output_dir = config.save ? "output" : "obj";
 
@@ -149,76 +152,148 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
   return true;
 }
 
-bool link_object_files(const char *output_dir, const char *executable_name,
-                       int opt_level, CodeGenContext *ctx) {
-  // Collect all @link libraries across all modules (deduplicated)
-  char lib_flags[1024] = {0};
-  const char *seen[MAX_LINK_LIBS];
-  size_t seen_count = 0;
+bool ensure_directory_exists(const char *path) {
+  char temp[1024];
+  snprintf(temp, sizeof(temp), "%s", path);
 
-  if (ctx) {
-    for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
-      for (size_t i = 0; i < unit->link_lib_count; i++) {
-        const char *lib = unit->link_libs[i];
+  size_t len = strlen(temp);
+  if (len == 0)
+    return false;
 
-        // Deduplicate
-        bool already_seen = false;
-        for (size_t j = 0; j < seen_count; j++) {
-          if (strcmp(seen[j], lib) == 0) {
-            already_seen = true;
-            break;
-          }
-        }
-        if (already_seen)
-          continue;
-        seen[seen_count++] = lib;
+  // Remove trailing slash
+  if (temp[len - 1] == '/' || temp[len - 1] == '\\')
+    temp[len - 1] = '\0';
 
-        // "libc.so.6" or "libm.so.2" -> -l:libname  (versioned soname)
-        // "pthread" or "m"            -> -lpthread    (bare name)
-        char flag[256];
-        if (strstr(lib, ".so") || strstr(lib, ".dylib") || strstr(lib, ".a")) {
-          snprintf(flag, sizeof(flag), " -l:%s", lib);
-        } else {
-          snprintf(flag, sizeof(flag), " -l%s", lib);
-        }
-        strncat(lib_flags, flag, sizeof(lib_flags) - strlen(lib_flags) - 1);
+  for (char *p = temp + 1; *p; p++) {
+    if (*p == '/' || *p == '\\') {
+      char old = *p;
+      *p = '\0';
+
+      if (MKDIR(temp) != 0 && errno != EEXIST) {
+        perror("mkdir");
+        return false;
       }
+
+      *p = old;
     }
   }
 
-  char command[2048];
-  // ... your existing platform switch, just append lib_flags at the end ...
-#if defined(__APPLE__)
-  if (opt_level > 0)
-    snprintf(command, sizeof(command), "cc -O%d %s/*.o -o %s -lSystem%s",
-             opt_level, output_dir, executable_name, lib_flags);
-  else
-    snprintf(command, sizeof(command), "cc %s/*.o -o %s -lSystem%s", output_dir,
-             executable_name, lib_flags);
-#else
-  if (opt_level > 0) {
-    snprintf(command, sizeof(command), "cc -O%d -pie %s/*.o -o %s%s", opt_level,
-             output_dir, executable_name, lib_flags);
-    printf("\n\nCommand: %s\n\n", command);
-  } else {
-    snprintf(command, sizeof(command), "cc -pie %s/*.o -o %s%s", output_dir,
-             executable_name, lib_flags);
-    printf("\n\nCommand: %s\n\n", command);
+  if (MKDIR(temp) != 0 && errno != EEXIST) {
+    perror("mkdir");
+    return false;
   }
+
+  return true;
+}
+
+bool ensure_parent_directory(const char *filepath) {
+  char path[1024];
+  snprintf(path, sizeof(path), "%s", filepath);
+
+  char *last_slash = strrchr(path, '/');
+
+#if defined(_WIN32)
+  char *last_backslash = strrchr(path, '\\');
+  if (!last_slash || (last_backslash && last_backslash > last_slash))
+    last_slash = last_backslash;
+#endif
+
+  // No parent directory
+  if (!last_slash)
+    return true;
+
+  *last_slash = '\0';
+
+  return ensure_directory_exists(path);
+}
+
+void collect_link_flags(CodeGenContext *ctx, char *lib_flags,
+                               size_t lib_flags_size) {
+  const char *seen[MAX_LINK_LIBS];
+  size_t seen_count = 0;
+
+  if (!ctx)
+    return;
+
+  for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
+    for (size_t i = 0; i < unit->link_lib_count; i++) {
+      const char *lib = unit->link_libs[i];
+      bool duplicate = false;
+
+      for (size_t j = 0; j < seen_count; j++) {
+        if (strcmp(seen[j], lib) == 0) {
+          duplicate = true;
+          break;
+        }
+      }
+
+      if (duplicate || seen_count >= MAX_LINK_LIBS)
+        continue;
+
+      seen[seen_count++] = lib;
+
+      char flag[256];
+      if (strstr(lib, ".so") || strstr(lib, ".dylib") || strstr(lib, ".a")) {
+        snprintf(flag, sizeof(flag), " -l:%s", lib);
+      } else {
+        snprintf(flag, sizeof(flag), " -l%s", lib);
+      }
+
+      strncat(lib_flags, flag, lib_flags_size - strlen(lib_flags) - 1);
+    }
+  }
+}
+
+
+bool link_object_files(const char *output_dir, const char *executable_name,
+                       int opt_level, CodeGenContext *ctx) {
+  if (!ensure_directory_exists(output_dir)) {
+    fprintf(stderr, "Failed to create object directory: %s\n", output_dir);
+    return false;
+  }
+
+  if (!ensure_parent_directory(executable_name)) {
+    fprintf(stderr, "Failed to create executable directory for: %s\n",
+            executable_name);
+    return false;
+  }
+
+  char lib_flags[1024] = {0};
+  collect_link_flags(ctx, lib_flags, sizeof(lib_flags));
+
+  char command[4096];
+
+#if defined(__APPLE__)
+  snprintf(
+      command, sizeof(command),
+      opt_level > 0 ? "cc -O%d %s/*.o -o %s -lSystem%s"
+                    : "cc %s/*.o -o %s -lSystem%s",
+      opt_level, output_dir, executable_name, lib_flags);
+
+#else
+  snprintf(command, sizeof(command),
+           opt_level > 0 ? "cc -O%d -pie %s/*.o -o %s%s"
+                         : "cc -pie %d/*.o -o %s%s",
+           opt_level, output_dir, executable_name, lib_flags);
 #endif
 
   int result = system(command);
+
   if (result != 0) {
-    fprintf(stderr, "Linking failed with exit code %d\n", result);
-    // Remove the -no-pie fallback on macOS, it's not valid there
+    fprintf(stderr, "Primary linking failed with exit code %d\n", result);
+
 #if !defined(__APPLE__)
-    printf("Trying alternative linking approach...\n");
-    snprintf(command, sizeof(command), "gcc -O%d -no-pie %s/*.o -o %s",
-             opt_level, output_dir, executable_name);
+    printf("Trying fallback linker...\n");
+
+    snprintf(command, sizeof(command),
+             opt_level > 0 ? "gcc -O%d -no-pie %s/*.o -o %s%s"
+                           : "gcc -no-pie %d/*.o -o %s%s",
+             opt_level, output_dir, executable_name, lib_flags);
+
     result = system(command);
+
     if (result != 0) {
-      fprintf(stderr, "Alternative linking also failed with exit code %d\n",
-              result);
+      fprintf(stderr, "Fallback linking failed with exit code %d\n", result);
       return false;
     }
 #else
@@ -228,7 +303,7 @@ bool link_object_files(const char *output_dir, const char *executable_name,
 
   return true;
 }
-// UPDATED parse_file_to_module
+
 Stmt *parse_file_to_module(const char *path, size_t position,
                            ArenaAllocator *allocator, BuildConfig *config) {
   // Resolve the path if it's a std/ import
@@ -322,7 +397,6 @@ Stmt *parse_file_to_module(const char *path, size_t position,
   return NULL;
 }
 
-// UPDATED lex_and_parse_file
 AstNode *lex_and_parse_file(const char *path, ArenaAllocator *allocator,
                             BuildConfig *config) {
   // Resolve the path if it's a std/ import
@@ -377,7 +451,6 @@ bool run_build(BuildConfig config, ArenaAllocator *allocator) {
       config.is_document ? 4 : 10; // Fewer stages for doc generation
   int step = 0;
 
-  // START TIMER
   CompileTimer timer;
   timer_start(&timer);
 
@@ -453,8 +526,6 @@ bool run_build(BuildConfig config, ArenaAllocator *allocator) {
     goto cleanup;
   }
 
-  // NORMAL BUILD PROCESS (if not in documentation mode)
-
   // Stage 4: Typechecking
   print_progress_with_time(++step, total_stages, "Typechecking", &timer);
 
@@ -482,7 +553,6 @@ bool run_build(BuildConfig config, ArenaAllocator *allocator) {
   print_progress_with_time(++step, total_stages, "Finalizing", &timer);
   print_progress_with_time(++step, total_stages, "Completed", &timer);
 
-  // STOP TIMER AND PRINT FINAL TIME
   timer_stop(&timer);
 
   if (timer.elapsed_ms < 1000.0) {

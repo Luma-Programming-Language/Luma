@@ -368,10 +368,9 @@ Token next_token(Lexer *lx) {
   if (is_at_end(lx)) {
     return MAKE_TOKEN(TOK_EOF, lx->current, lx, 0, wh_count);
   }
-
+  
+  // This is a /// doc comment
   if (peek(lx, 0) == '/' && peek(lx, 1) == '/' && peek(lx, 2) == '/') {
-    // This is a /// doc comment
-    const char *start = lx->current;
     advance(lx); // first /
     advance(lx); // second /
     advance(lx); // third /
@@ -392,9 +391,8 @@ Token next_token(Lexer *lx) {
                       wh_count);
   }
 
+  // This is a //! module doc comment
   if (peek(lx, 0) == '/' && peek(lx, 1) == '/' && peek(lx, 2) == '!') {
-    // This is a //! module doc comment
-    const char *start = lx->current;
     advance(lx); // first /
     advance(lx); // second /
     advance(lx); // third (!)
@@ -517,7 +515,6 @@ Token next_token(Lexer *lx) {
   }
 
   if (c == '\'') {
-    const char *char_start = lx->current; // Start after opening quote
     char actual_char = 0; // The actual character value we'll store
     int char_count = 0;   // How many characters we consumed
 
