@@ -39,8 +39,8 @@ echo "Installing Luma compiler to $BIN_DIR..."
 if [ -f "./luma" ]; then
     cp ./luma "$BIN_DIR/"
     chmod +x "$BIN_DIR/luma"
-elif [ -f "./bin/luma" ]; then
-    cp ./bin/luma "$BIN_DIR/"
+elif [ -f "./build/luma" ]; then
+    cp ./build/luma "$BIN_DIR/"
     chmod +x "$BIN_DIR/luma"
 else
     echo "Error: Could not find luma binary!"

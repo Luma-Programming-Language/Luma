@@ -49,6 +49,14 @@ pub const qsort    -> fn (base: *void, count: int, size: int, cmp: *void) void;
 pub const bsearch  -> fn (key: *void, base: *void, count: int, size: int, cmp: *void) *void;
 
 // ============================================================================
+// time.h
+// ============================================================================
+
+pub const time    -> fn (t: *int) int;
+pub const clock   -> fn () int;
+pub const difftime -> fn (t1: int, t0: int) double;
+
+// ============================================================================
 // string.h
 // ============================================================================
 
