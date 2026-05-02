@@ -816,23 +816,6 @@ LLVMValueRef codegen_stmt_print(CodeGenContext *ctx, AstNode *node) {
   for (size_t i = 0; i < node->stmt.print_stmt.expr_count; i++) {
     AstNode *expr = node->stmt.print_stmt.expressions[i];
 
-    // Check if this is a nested indexing expression that might fail
-    if (expr->type == AST_EXPR_INDEX) {
-      // Validate the indexing chain before attempting to generate
-      AstNode *current = expr;
-      int depth = 0;
-
-      while (current->type == AST_EXPR_INDEX) {
-        depth++;
-        current = current->expr.index.object;
-      }
-
-      if (depth > 1) {
-        // This is nested indexing - add debug info
-        printf("Debug: Processing nested indexing with depth %d\n", depth);
-      }
-    }
-
     LLVMValueRef value = codegen_expr(ctx, expr);
     if (!value) {
       fprintf(stderr, "Error: Failed to generate expression for printing\n");

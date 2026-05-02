@@ -2089,50 +2089,79 @@ LLVMValueRef codegen_expr_deref(CodeGenContext *ctx, AstNode *node) {
   return LLVMBuildLoad2(ctx->builder, element_type, ptr, "deref");
 }
 
-// &expr - get address of expression
+static LLVMTypeRef resolve_pointer_element_type(CodeGenContext *ctx,
+                                                AstNode *expr) {
+  if (expr->type == AST_EXPR_IDENTIFIER) {
+    const char *var_name = expr->expr.identifier.name;
+    LLVM_Symbol *sym = find_symbol(ctx, var_name);
+    if (sym && sym->element_type) {
+      return sym->element_type;
+    }
+  } else if (expr->type == AST_EXPR_MEMBER) {
+    const char *field_name = expr->expr.member.member;
+    AstNode *member_obj = expr->expr.member.object;
+
+    if (member_obj->type == AST_EXPR_IDENTIFIER) {
+      LLVM_Symbol *sym = find_symbol(ctx, member_obj->expr.identifier.name);
+      if (sym) {
+        for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+          if (info->llvm_type == sym->element_type ||
+              info->llvm_type == sym->type) {
+            int idx = get_field_index(info, field_name);
+            if (idx >= 0 && info->field_element_types[idx]) {
+              return info->field_element_types[idx];
+            }
+            break;
+          }
+        }
+      }
+    }
+  }
+  return NULL;
+}
+
 LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
   AstNode *target = node->expr.addr.object;
 
+  // &identifier
   if (target->type == AST_EXPR_IDENTIFIER) {
     LLVM_Symbol *sym = find_symbol(ctx, target->expr.identifier.name);
     if (sym && !sym->is_function) {
       return sym->value;
     }
-  } else if (target->type == AST_EXPR_DEREF) {
+    fprintf(stderr, "Error: Cannot take address of '%s'\n",
+            target->expr.identifier.name);
+    return NULL;
+  }
+
+  // &(expr) - unwrap grouping and recurse
+  if (target->type == AST_EXPR_GROUPING) {
+      node->expr.addr.object = target->expr.grouping.expr;
+      return codegen_expr_addr(ctx, node);
+  }
+
+  // &(*ptr) => just return ptr
+  if (target->type == AST_EXPR_DEREF) {
     return codegen_expr(ctx, target->expr.deref.object);
-  } else if (target->type == AST_EXPR_INDEX) {
-    LLVMValueRef object = codegen_expr(ctx, target->expr.index.object);
-    if (!object) {
-      return NULL;
-    }
+  }
 
+  // &expr[index]
+  if (target->type == AST_EXPR_INDEX) {
     LLVMValueRef index = codegen_expr(ctx, target->expr.index.index);
-    if (!index) {
+    if (!index)
       return NULL;
-    }
 
-    LLVMTypeRef object_type = LLVMTypeOf(object);
+    LLVMTypeRef object_type =
+        LLVMTypeOf(codegen_expr(ctx, target->expr.index.object));
     LLVMTypeKind object_kind = LLVMGetTypeKind(object_type);
 
     if (object_kind == LLVMPointerTypeKind) {
-      LLVMTypeRef element_type = NULL;
+      LLVMValueRef base_ptr = codegen_expr(ctx, target->expr.index.object);
+      if (!base_ptr)
+        return NULL;
 
-      if (target->expr.index.object->type == AST_EXPR_IDENTIFIER) {
-        const char *var_name = target->expr.index.object->expr.identifier.name;
-        LLVM_Symbol *sym = find_symbol(ctx, var_name);
-        if (sym && sym->element_type) {
-          element_type = sym->element_type;
-        }
-      }
-
-      if (!element_type &&
-          target->expr.index.object->type == AST_EXPR_IDENTIFIER) {
-        const char *var_name = target->expr.index.object->expr.identifier.name;
-        if (strstr(var_name, "int") && !strstr(var_name, "char")) {
-          element_type = LLVMInt64TypeInContext(ctx->context);
-        }
-      }
-
+      LLVMTypeRef element_type =
+          resolve_pointer_element_type(ctx, target->expr.index.object);
       if (!element_type) {
         fprintf(
             stderr,
@@ -2140,33 +2169,41 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
         return NULL;
       }
 
-      return LLVMBuildGEP2(ctx->builder, element_type, object, &index, 1,
+      return LLVMBuildGEP2(ctx->builder, element_type, base_ptr, &index, 1,
                            "element_addr");
+
     } else if (object_kind == LLVMArrayTypeKind) {
-      LLVMValueRef array_ptr;
+      LLVMValueRef array_ptr = NULL;
 
       if (target->expr.index.object->type == AST_EXPR_IDENTIFIER) {
         LLVM_Symbol *sym =
             find_symbol(ctx, target->expr.index.object->expr.identifier.name);
         if (sym && !sym->is_function) {
           array_ptr = sym->value;
-        } else {
-          return NULL;
         }
-      } else {
+      }
+
+      if (!array_ptr) {
+        LLVMValueRef object = codegen_expr(ctx, target->expr.index.object);
+        if (!object)
+          return NULL;
         array_ptr =
             LLVMBuildAlloca(ctx->builder, object_type, "temp_array_ptr");
         LLVMBuildStore(ctx->builder, object, array_ptr);
       }
 
-      LLVMValueRef indices[2];
-      indices[0] = LLVMConstInt(LLVMInt32TypeInContext(ctx->context), 0, false);
-      indices[1] = index;
-
+      LLVMValueRef indices[2] = {
+          LLVMConstInt(LLVMInt32TypeInContext(ctx->context), 0, false), index};
       return LLVMBuildGEP2(ctx->builder, object_type, array_ptr, indices, 2,
                            "array_element_addr");
     }
-  } else if (target->type == AST_EXPR_MEMBER) {
+
+    fprintf(stderr, "Error: Cannot index into non-array, non-pointer type\n");
+    return NULL;
+  }
+
+  // &expr.field
+  if (target->type == AST_EXPR_MEMBER) {
     const char *field_name = target->expr.member.member;
     AstNode *object = target->expr.member.object;
 
@@ -2177,10 +2214,9 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
         return NULL;
       }
 
-      StructInfo *struct_info = NULL;
       LLVMTypeRef sym_type = sym->type;
+      StructInfo *struct_info = NULL;
 
-      // Find struct info by matching llvm_type directly
       for (StructInfo *info = ctx->struct_types; info; info = info->next) {
         if (info->llvm_type == sym_type ||
             (LLVMGetTypeKind(sym_type) == LLVMPointerTypeKind &&
@@ -2190,7 +2226,6 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
         }
       }
 
-      // Fallback: find by field name
       if (!struct_info) {
         struct_info = find_struct_by_field_cached(ctx, field_name);
       }
@@ -2208,8 +2243,6 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
         return NULL;
       }
 
-      // Get the struct pointer — sym->value is the alloca for a direct struct,
-      // or an alloca holding a pointer for pointer-to-struct
       LLVMValueRef struct_ptr = sym->value;
       if (LLVMGetTypeKind(sym_type) == LLVMPointerTypeKind) {
         struct_ptr = LLVMBuildLoad2(ctx->builder,
@@ -2217,13 +2250,10 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
                                     sym->value, "load_struct_ptr");
       }
 
-      // Return a GEP directly into the struct field — no copy
       return LLVMBuildStructGEP2(ctx->builder, struct_info->llvm_type,
                                  struct_ptr, field_index, "field_addr");
     }
 
-    // Fallback for non-identifier objects (chained access etc.)
-    // Still use temp storage as before, but emit a warning
     fprintf(stderr, "Warning: Taking address of complex member expression — "
                     "writes through this pointer may not persist\n");
     LLVMValueRef member_value = codegen_expr_struct_access(ctx, target);
@@ -2239,6 +2269,9 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
     return temp_storage;
   }
 
-  fprintf(stderr, "Error: Cannot take address of this expression type\n");
+  fprintf(
+      stderr,
+      "Error: Cannot take address of this expression type (node type: %d)\n",
+      target->type);
   return NULL;
 }
