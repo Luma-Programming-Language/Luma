@@ -64,7 +64,7 @@ Expr *primary(Parser *parser) {
       break;
     case LITERAL_BOOL:
       value = arena_alloc(parser->arena, sizeof(bool), alignof(bool));
-      *(bool *)value = (strcmp(current.value, "true") == 0);
+      *(bool *)value = (current.type_ == TOK_TRUE);
       break;
     case LITERAL_IDENT:
       value = get_name(parser); // Get the identifier name
