@@ -301,6 +301,8 @@ Expr *nud(Parser *parser) {
   case TOK_STRING:
   case TOK_CHAR_LITERAL:
   case TOK_IDENTIFIER:
+  case TOK_TRUE:
+  case TOK_FALSE:
     return primary(parser);
   case TOK_MINUS:
   case TOK_PLUS:
