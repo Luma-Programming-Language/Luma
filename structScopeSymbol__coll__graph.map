@@ -1,0 +1,10 @@
+<map id="ScopeSymbol" name="ScopeSymbol">
+<area shape="rect" id="Node000001" title=" " alt="" coords="5,405,116,431"/>
+<area shape="rect" id="Node000002" href="$structSymbol.html" title="Represents a symbol with associated type and metadata." alt="" coords="25,317,96,343"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="63,357,63,405,58,405,58,357"/>
+<area shape="rect" id="Node000003" href="$structAstNode.html" title=" " alt="" coords="22,161,99,187"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="63,200,63,317,58,317,58,200"/>
+<area shape="poly" id="edge3_Node000003_Node000003" title=" " alt="" coords="86,153,100,150,113,153,122,161,126,174,121,189,108,197,90,197,73,189,75,184,92,191,106,192,117,186,121,174,118,164,111,158,100,156,87,158"/>
+<area shape="rect" id="Node000004" href="$structToken.html" title="Represents a single token extracted by the lexer." alt="" coords="31,5,90,31"/>
+<area shape="poly" id="edge4_Node000003_Node000004" title=" " alt="" coords="63,44,63,161,58,161,58,44"/>
+</map>
