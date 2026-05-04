@@ -104,7 +104,7 @@ const local_realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
 // Low-level I/O — platform-specific
 // ============================================================================
 
-const local_write -> fn (fd: int, buf: *void, count: int) int {
+pub const local_write -> fn (fd: int, buf: *void, count: int) int {
     @os {
         "linux"   -> { return __syscall__(SYS_WRITE, fd, cast<int>(buf), count); }
         "macos"   -> { return __syscall__(SYS_WRITE, fd, cast<int>(buf), count); }
@@ -116,7 +116,7 @@ const local_write -> fn (fd: int, buf: *void, count: int) int {
     }
 }
 
-const local_read -> fn (fd: int, buf: *void, count: int) int {
+pub const local_read -> fn (fd: int, buf: *void, count: int) int {
     @os {
         "linux"   -> { return __syscall__(SYS_READ, fd, cast<int>(buf), count); }
         "macos"   -> { return __syscall__(SYS_READ, fd, cast<int>(buf), count); }
@@ -129,7 +129,7 @@ const local_read -> fn (fd: int, buf: *void, count: int) int {
     }
 }
 
-const local_open_read -> fn (path: *byte) int {
+pub const local_open_read -> fn (path: *byte) int {
     @os {
         "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDONLY, 0); }
         "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDONLY, 0); }
@@ -155,7 +155,20 @@ const local_open_write -> fn (path: *byte) int {
     }
 }
 
-const local_close -> fn (fd: int) int {
+pub const local_open_create -> fn (path: *byte) int {
+    @os {
+        "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), 577, 420); }
+        "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), 577, 420); }
+        "windows" -> {
+            return CreateFileA(
+                path, GENERIC_WRITE, 0,
+                cast<*void>(0), 2, 128, 0
+            );
+        }
+    }
+}
+
+pub const local_close -> fn (fd: int) int {
     @os {
         "linux"   -> { return __syscall__(SYS_CLOSE, fd); }
         "macos"   -> { return __syscall__(SYS_CLOSE, fd); }
@@ -163,7 +176,7 @@ const local_close -> fn (fd: int) int {
     }
 }
 
-const local_is_error -> fn (result: int) bool {
+pub const local_is_error -> fn (result: int) bool {
     @os {
         "linux"   -> { return result < 0 && result >= -4095; }
         "macos"   -> { return result < 0 && result >= -4095; }
@@ -186,6 +199,28 @@ const local_eprint -> fn (s: *byte) int {
             return local_write_str(handle, s);
         }
     }
+}
+
+pub const write_binary -> fn (path: *byte, data: *void, size: int) int {
+    let fd: int = local_open_write(path);
+    if (local_is_error(fd)) {
+        local_eprint("Error: Could not open file for binary write\n");
+        return -1;
+    }
+    let written: int = local_write(fd, data, size);
+    local_close(fd);
+    return written;
+}
+
+pub const read_binary -> fn (path: *byte, data: *void, size: int) int {
+    let fd: int = local_open_read(path);
+    if (local_is_error(fd)) {
+        local_eprint("Error: Could not open file for binary read\n");
+        return -1;
+    }
+    let bytes_read: int = local_read(fd, data, size);
+    local_close(fd);
+    return bytes_read;
 }
 
 const INITIAL_BUFFER_SIZE: int  = 4096;
