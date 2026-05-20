@@ -21,10 +21,6 @@
 
 @module "std_arena"
 
-@use "std_string" as string
-@use "std_memory" as mem
-@use "std_io" as io
-
 /// Default arena size (1MB)
 const ARENA_DEFAULT_SIZE: int = 1024 * 1024;
 /// Null pointer constant
@@ -144,8 +140,7 @@ pub const alloc_arena -> fn (a: *Arena, size: int) *void {
     let aligned_offset: int = a.curr_offset + padding;
 
     if (aligned_offset + size > a.buf_len) {
-        io::print_err("Arena allocator: insufficient space (requested: %d bytes, available: %d bytes)\n", 
-                [size, (a.buf_len - aligned_offset)]);
+        output("Arena allocator: insufficient space! (", size, " bytes requested, ", (a.buf_len - aligned_offset), " bytes available)\n");
         return NULL;
     }
 
