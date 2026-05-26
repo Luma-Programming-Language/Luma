@@ -91,8 +91,8 @@ Type *resolution_type(Parser *parser) {
   char **slot = (char **)growable_array_push(&parts);
   if (!slot) {
     parser_error(parser, "SyntaxError", parser->file_path,
-                 "Internal error: out of memory growing resolution parts",
-                 line, col, 0);
+                 "Internal error: out of memory growing resolution parts", line,
+                 col, 0);
     return NULL;
   }
   *slot = first_name;
@@ -126,6 +126,64 @@ Type *resolution_type(Parser *parser) {
                                 line, col);
 }
 
+Type *function_type(Parser *parser, Type *return_type) {
+  int line = p_current(parser).line;
+  int col = p_current(parser).col;
+
+  p_consume(parser, TOK_LPAREN,
+            "Expected '(' to start function parameter list");
+
+  // Parse parameter types
+  GrowableArray param_types;
+  if (!growable_array_init(&param_types, parser->arena, 4, sizeof(Type *))) {
+    parser_error(parser, "SyntaxError", parser->file_path,
+                 "Internal error: failed to initialize parameter types array",
+                 line, col, 0);
+    return NULL;
+  }
+
+  if (p_current(parser).type_ != TOK_RPAREN) {
+    while (true) {
+      Type *param_type = parse_type(parser);
+      if (!param_type) {
+        parser_error(parser, "TypeError", parser->file_path,
+                     "Expected type in function parameter list",
+                     p_current(parser).line, p_current(parser).col,
+                     p_current(parser).length);
+        return NULL;
+      }
+
+      Type **slot = (Type **)growable_array_push(&param_types);
+      if (!slot) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Internal error: out of memory growing parameter types",
+                     line, col, 0);
+        return NULL;
+      }
+      *slot = param_type;
+
+      if (p_current(parser).type_ == TOK_COMMA) {
+        p_advance(parser); // Consume the comma and continue
+      } else {
+        break; // No more parameters
+      }
+    }
+  }
+
+  p_consume(parser, TOK_RPAREN,
+            "Expected ')' to close function parameter list");
+
+  return_type = tnud(parser);
+  if (!return_type) {
+    parser_error(parser, "TypeError", parser->file_path,
+                 "Expected return type after function parameter list", line, col, 0);
+    return NULL;
+  }
+
+  return create_function_type(parser->arena, (Type **)param_types.data,
+                              param_types.count, return_type, line, col);
+}
+
 // tnud() is responsible for parsing a type and ADVANCING past it
 Type *tnud(Parser *parser) {
   int line = p_current(parser).line;
@@ -156,18 +214,21 @@ Type *tnud(Parser *parser) {
   case TOK_CHAR:
     p_advance(parser);
     return create_basic_type(parser->arena, "char", line, col);
-  case TOK_STAR:       // Pointer type
-    p_advance(parser); // Consume the '*' token
+  case TOK_STAR:       
+    p_advance(parser); 
     return pointer(parser);
-  case TOK_LBRACKET:   // Array type
-    p_advance(parser); // Consume the '[' token
+  case TOK_LBRACKET:
+    p_advance(parser);
     return array_type(parser);
-  case TOK_IDENTIFIER:              // Could be simple type or namespace::Type
-    return resolution_type(parser); // This handles its own advancing
+  case TOK_FN:
+    p_advance(parser);
+    return function_type(parser, NULL);
+  case TOK_IDENTIFIER:
+    return resolution_type(parser);
   default:
     parser_error(parser, "TypeError", parser->file_path,
-                 "Expected a type name here",
-                 line, col, p_current(parser).length);
+                 "Expected a type name here", line, col,
+                 p_current(parser).length);
     return NULL;
   }
 }
@@ -176,8 +237,7 @@ Type *tled(Parser *parser, Type *left, BindingPower bp) {
   (void)left;
   (void)bp;
   parser_error(parser, "TypeError", parser->file_path,
-               "Unexpected token in type expression",
-               p_current(parser).line, p_current(parser).col,
-               p_current(parser).length);
+               "Unexpected token in type expression", p_current(parser).line,
+               p_current(parser).col, p_current(parser).length);
   return NULL;
 }
