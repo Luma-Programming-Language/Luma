@@ -55,7 +55,6 @@ static const KeywordEntry keywords[] = {
     {"continue", TOK_CONTINUE},
     {"struct", TOK_STRUCT},
     {"enum", TOK_ENUM},
-    {"mod", TOK_MOD},
     {"import", TOK_IMPORT},
     {"true", TOK_TRUE},
     {"false", TOK_FALSE},

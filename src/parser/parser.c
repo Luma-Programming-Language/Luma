@@ -684,6 +684,7 @@ Type *parse_type(Parser *parser) {
   case TOK_CHAR:
   case TOK_STAR:       // Pointer type
   case TOK_LBRACKET:   // Array type
+  case TOK_FN:
   case TOK_IDENTIFIER: // Could be simple type or namespace::Type
     return tnud(parser);
 

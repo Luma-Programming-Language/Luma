@@ -218,23 +218,46 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     if (declared_type) {
       TypeMatchResult match = types_match(declared_type, init_type);
       if (match == TYPE_MATCH_NONE) {
-        if (declared_type && declared_type->type == AST_TYPE_ARRAY) {
+        if (declared_type->type == AST_TYPE_ARRAY) {
           if (!validate_array_type(declared_type, scope, arena)) {
             return false;
           }
-          if (initializer && !validate_array_initializer(
-                                 declared_type, initializer, scope, arena)) {
-            return false;
-          }
+        } else if (declared_type->type == AST_TYPE_FUNCTION &&
+                   init_type->type == AST_TYPE_FUNCTION) {
+          tc_error_help(node, "Function Type Mismatch",
+                        "The assigned function must have a matching signature",
+                        "Variable '%s' expects a function of type '%s', "
+                        "but the assigned function has type '%s'",
+                        name, type_to_string(declared_type, arena),
+                        type_to_string(init_type, arena));
+          return false;
+        } else if (declared_type->type == AST_TYPE_FUNCTION) {
+          tc_error_help(
+              node, "Type Mismatch",
+              "This variable holds a function — assign a compatible function",
+              "Variable '%s' has function type '%s', "
+              "but the initializer is not a function (got '%s')",
+              name, type_to_string(declared_type, arena),
+              type_to_string(init_type, arena));
+          return false;
+        } else if (init_type->type == AST_TYPE_FUNCTION) {
+          tc_error_help(node, "Type Mismatch",
+                        "A function was assigned where a value is expected",
+                        "Variable '%s' has type '%s', "
+                        "but a function of type '%s' was assigned",
+                        name, type_to_string(declared_type, arena),
+                        type_to_string(init_type, arena));
+          return false;
         } else {
+          // Original generic message
           tc_error_help(
               node, "Type Mismatch",
               "Check that the initializer type matches the declared type",
               "Cannot assign '%s' to variable '%s' of type '%s'",
               type_to_string(init_type, arena), name,
               type_to_string(declared_type, arena));
+          return false;
         }
-        return false;
       }
     } else {
       declared_type = init_type;

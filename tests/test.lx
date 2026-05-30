@@ -1,15 +1,14 @@
 @module "main"
 
-// example of using a function type
-const add -> fn (x: fn (int) int, y: int) int {
-    return x(y) + y;
-}
+@use "std_math" as math
 
-const x -> fn (int) int {
-    return 2;
+// example of using a function type
+const add -> fn (x: fn (int, int) int, y: int) int {
+    return x(y, y) + 3;
 }
 
 pub const main -> fn () int {
-    output(add(x, 3)); // should output 8
+    let x: fn (int, int) int = math::mod;
+    output(add(x, 3));
     return 0;
 }

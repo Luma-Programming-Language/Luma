@@ -204,6 +204,7 @@ BindingPower tget_bp(Parser *parser, LumaTokenType kind);
 
 Type *pointer(Parser *parser);
 Type *array_type(Parser *parser);
+Type *function_type(Parser *parser, Type *return_type);
 
 Stmt *use_stmt(Parser *parser);
 Stmt *os_stmt(Parser *parser);

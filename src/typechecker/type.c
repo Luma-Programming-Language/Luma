@@ -8,9 +8,11 @@
  * scope management system.
  */
 
+#include <stddef.h>
 #include <stdio.h>
 #include <string.h>
 
+#include "src/ast/ast.h"
 #include "type.h"
 
 TypeMatchResult types_match(AstNode *type1, AstNode *type2) {
@@ -71,7 +73,7 @@ TypeMatchResult types_match(AstNode *type1, AstNode *type2) {
     if (!type2_is_builtin && strcmp(name1, "int") == 0) {
       return TYPE_MATCH_COMPATIBLE; // int -> enum
     }
-    
+
     // float <-> double
     if ((strcmp(name1, "float") == 0 && strcmp(name2, "double") == 0) ||
         (strcmp(name1, "double") == 0 && strcmp(name2, "float") == 0)) {
@@ -181,6 +183,32 @@ TypeMatchResult types_match(AstNode *type1, AstNode *type2) {
                        type2->type_data.array.element_type);
   }
 
+  if (type1->type == AST_TYPE_FUNCTION && type2->type == AST_TYPE_FUNCTION) {
+    if (type1->type_data.function.param_count !=
+        type2->type_data.function.param_count) {
+      return TYPE_MATCH_NONE;
+    }
+
+    TypeMatchResult ret_match =
+        types_match(type1->type_data.function.return_type,
+                    type2->type_data.function.return_type);
+    if (ret_match == TYPE_MATCH_NONE) {
+      return TYPE_MATCH_NONE;
+    }
+
+    size_t param_count = type1->type_data.function.param_count;
+    for (size_t i = 0; i < param_count; i++) {
+      TypeMatchResult param_match =
+          types_match(type1->type_data.function.param_types[i],
+                      type2->type_data.function.param_types[i]);
+      if (param_match == TYPE_MATCH_NONE) {
+        return TYPE_MATCH_NONE;
+      }
+    }
+
+    return TYPE_MATCH_EXACT;
+  }
+
   return TYPE_MATCH_NONE;
 }
 
@@ -261,17 +289,36 @@ const char *type_to_string(AstNode *type, ArenaAllocator *arena) {
   }
 
   case AST_TYPE_FUNCTION: {
-    // For function types, show return type and parameter count
     AstNode *return_type = type->type_data.function.return_type;
+    AstNode **param_types = type->type_data.function.param_types;
     size_t param_count = type->type_data.function.param_count;
 
+    // Build "fn(T1, T2, ...) R"
+    // First pass: calculate total length needed
+    size_t len = strlen("fn() ") + 1;
     const char *return_str =
-        return_type ? type_to_string(return_type, arena) : "<null>";
+        return_type ? type_to_string(return_type, arena) : "void";
+    len += strlen(return_str);
 
-    size_t len =
-        strlen("fn(") + strlen(return_str) + 20; // extra space for param count
-    char *result = arena_alloc(arena, len, len);
-    snprintf(result, len, "fn(%zu params) -> %s", param_count, return_str);
+    const char **param_strs =
+        arena_alloc(arena, param_count * sizeof(char *), alignof(char *));
+    for (size_t i = 0; i < param_count; i++) {
+      param_strs[i] =
+          param_types[i] ? type_to_string(param_types[i], arena) : "?";
+      len += strlen(param_strs[i]);
+      if (i + 1 < param_count)
+        len += 2; // ", "
+    }
+
+    char *result = arena_alloc(arena, len, 1);
+    size_t offset = 0;
+    offset += snprintf(result + offset, len - offset, "fn(");
+    for (size_t i = 0; i < param_count; i++) {
+      offset += snprintf(result + offset, len - offset, "%s", param_strs[i]);
+      if (i + 1 < param_count)
+        offset += snprintf(result + offset, len - offset, ", ");
+    }
+    snprintf(result + offset, len - offset, ") %s", return_str);
     return result;
   }
 
@@ -326,10 +373,11 @@ AstNode *get_struct_member_type(AstNode *struct_type, const char *member_name) {
     return NULL;
   }
 
-  // fprintf(stderr, "DEBUG: Looking for member '%s' in struct with %zu members:\n",
-          // member_name, struct_type->type_data.struct_type.member_count);
+  // fprintf(stderr, "DEBUG: Looking for member '%s' in struct with %zu
+  // members:\n", member_name, struct_type->type_data.struct_type.member_count);
   for (size_t i = 0; i < struct_type->type_data.struct_type.member_count; i++) {
-    // fprintf(stderr, "  - %s\n", struct_type->type_data.struct_type.member_names[i]);
+    // fprintf(stderr, "  - %s\n",
+    // struct_type->type_data.struct_type.member_names[i]);
     if (strcmp(struct_type->type_data.struct_type.member_names[i],
                member_name) == 0) {
       return struct_type->type_data.struct_type.member_types[i];

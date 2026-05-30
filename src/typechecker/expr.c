@@ -479,7 +479,11 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
 
   AstNode *func_type = func_symbol->type;
   if (func_type->type != AST_TYPE_FUNCTION) {
-    tc_error(expr, "Call Error", "'%s' is not a function", func_name);
+    tc_error_help(expr, "Call Error",
+                  "Only functions and function-typed variables can be called",
+                  "'%s' is not callable — it has type '%s'",
+                  func_name ? func_name : "expression",
+                  type_to_string(func_type, arena));
     return NULL;
   }
 
@@ -556,11 +560,42 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
     }
 
     if (match == TYPE_MATCH_NONE) {
-      const char *param_str = type_to_string(param_types[i], arena);
-      const char *arg_str = type_to_string(arg_type, arena);
-      tc_error_help(
-          expr, "Call Error", "Argument %zu to function '%s' has wrong type.",
-          "Expected '%s', got '%s'", i + 1, func_name, param_str, arg_str);
+      if (param_types[i]->type == AST_TYPE_FUNCTION &&
+          arg_type->type == AST_TYPE_FUNCTION) {
+        tc_error_help(expr, "Function Signature Mismatch",
+                      "The function passed must have a matching signature",
+                      "Argument %zu to '%s': expected '%s', got '%s'", i + 1,
+                      func_name ? func_name : "function",
+                      type_to_string(param_types[i], arena),
+                      type_to_string(arg_type, arena));
+      } else if (param_types[i]->type == AST_TYPE_FUNCTION) {
+        // Expected a function, got something else entirely
+        tc_error_help(
+            expr, "Call Error",
+            "This parameter expects a function — pass a function or "
+            "function-typed variable",
+            "Argument %zu to '%s': expected a function of type '%s', got '%s'",
+            i + 1, func_name ? func_name : "function",
+            type_to_string(param_types[i], arena),
+            type_to_string(arg_type, arena));
+      } else if (arg_type->type == AST_TYPE_FUNCTION) {
+        // Passed a function where a plain value was expected
+        tc_error_help(
+            expr, "Call Error",
+            "A function was passed where a value is expected",
+            "Argument %zu to '%s': expected '%s', got function of type '%s'",
+            i + 1, func_name ? func_name : "function",
+            type_to_string(param_types[i], arena),
+            type_to_string(arg_type, arena));
+      } else {
+        // Original generic message for non-function mismatches
+        tc_error_help(expr, "Call Error",
+                      "Argument %zu to function '%s' has wrong type.",
+                      "Expected '%s', got '%s'", i + 1,
+                      func_name ? func_name : "function",
+                      type_to_string(param_types[i], arena),
+                      type_to_string(arg_type, arena));
+      }
       return NULL;
     }
   }
