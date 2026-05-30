@@ -66,28 +66,37 @@ static void set_struct_return_convention(LLVMValueRef function,
 
 // Modified variable declaration function
 LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
+  AstNode *ast_type = node->stmt.var_decl.var_type;
+  bool is_fn_type = ast_type && ast_type->type == AST_TYPE_FUNCTION;
+
   LLVMTypeRef var_type = codegen_type(ctx, node->stmt.var_decl.var_type);
   if (!var_type)
     return NULL;
 
+  LLVMTypeRef alloca_type =
+      is_fn_type ? LLVMPointerType(var_type, 0) : var_type;
+
   // Extract element type if this is a pointer
   LLVMTypeRef element_type =
       extract_element_type_from_ast(ctx, node->stmt.var_decl.var_type);
+  if (is_fn_type)
+    element_type = var_type;
 
   LLVMValueRef var_ref;
   LLVMModuleRef current_llvm_module =
       ctx->current_module ? ctx->current_module->module : ctx->module;
 
   if (ctx->current_function == NULL) {
-    var_ref =
-        LLVMAddGlobal(current_llvm_module, var_type, node->stmt.var_decl.name);
+    var_ref = LLVMAddGlobal(current_llvm_module, alloca_type,
+                            node->stmt.var_decl.name);
     if (node->stmt.var_decl.is_public) {
       LLVMSetLinkage(var_ref, LLVMExternalLinkage);
     } else {
       LLVMSetLinkage(var_ref, LLVMInternalLinkage);
     }
   } else {
-    var_ref = LLVMBuildAlloca(ctx->builder, var_type, node->stmt.var_decl.name);
+    var_ref =
+        LLVMBuildAlloca(ctx->builder, alloca_type, node->stmt.var_decl.name);
   }
 
   // Handle initializer with type checking
@@ -96,7 +105,7 @@ LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
     if (init_val) {
       LLVMTypeRef init_type = LLVMTypeOf(init_val);
 
-      if (var_type != init_type) {
+      if (!is_fn_type && alloca_type != init_type) {
         // Handle type conversions
         LLVMTypeKind var_kind = LLVMGetTypeKind(var_type);
         LLVMTypeKind init_kind = LLVMGetTypeKind(init_type);
@@ -122,23 +131,17 @@ LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
       }
 
       if (ctx->current_function == NULL) {
-        if (LLVMIsConstant(init_val)) {
+        if (LLVMIsConstant(init_val))
           LLVMSetInitializer(var_ref, init_val);
-        } else {
+        else {
           fprintf(stderr,
                   "Error: Global variable initializer must be constant\n");
-          LLVMValueRef def = get_default_value(var_type);
+          LLVMValueRef def = get_default_value(alloca_type);
           if (def)
             LLVMSetInitializer(var_ref, def);
         }
       } else {
         LLVMBuildStore(ctx->builder, init_val, var_ref);
-      }
-    } else {
-      if (ctx->current_function == NULL) {
-        LLVMValueRef def = get_default_value(var_type);
-        if (def)
-          LLVMSetInitializer(var_ref, def);
       }
     }
   } else {
@@ -152,13 +155,11 @@ LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
   // **FIX: Check if this is actually a function**
   // A variable declaration like "const str_arg -> fn (...)" creates a function,
   // not a variable, so we need to check the actual LLVM value
-  bool is_actually_function =
-      (LLVMGetTypeKind(var_type) == LLVMFunctionTypeKind) ||
-      LLVMIsAFunction(var_ref);
+  bool is_actually_function = LLVMIsAFunction(var_ref);
 
   // Add symbol with element type information and correct is_function flag
-  add_symbol_with_element_type(ctx, node->stmt.var_decl.name, var_ref, var_type,
-                               element_type, is_actually_function);
+  add_symbol_with_element_type(ctx, node->stmt.var_decl.name, var_ref,
+                               alloca_type, element_type, is_actually_function);
   return var_ref;
 }
 
@@ -193,9 +194,20 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
     return NULL;
   }
 
-  // Create function type
+  LLVMTypeRef *llvm_param_types = (LLVMTypeRef *)arena_alloc(
+      ctx->arena, sizeof(LLVMTypeRef) * node->stmt.func_decl.param_count,
+      alignof(LLVMTypeRef));
+
+  for (size_t i = 0; i < node->stmt.func_decl.param_count; i++) {
+    if (LLVMGetTypeKind(param_types[i]) == LLVMFunctionTypeKind) {
+      llvm_param_types[i] = LLVMPointerType(param_types[i], 0);
+    } else {
+      llvm_param_types[i] = param_types[i];
+    }
+  }
+
   LLVMTypeRef func_type = LLVMFunctionType(
-      return_type, param_types, node->stmt.func_decl.param_count, false);
+      return_type, llvm_param_types, node->stmt.func_decl.param_count, false);
 
   LLVMModuleRef current_llvm_module =
       ctx->current_module ? ctx->current_module->module : ctx->module;
@@ -374,17 +386,28 @@ generate_body: {
   ctx->current_function = function;
   init_defer_stack(ctx);
 
-  // Add parameters to symbol table as allocas
   for (size_t i = 0; i < node->stmt.func_decl.param_count; i++) {
     LLVMValueRef param = LLVMGetParam(function, i);
-    LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, param_types[i],
+    bool is_fn_param = LLVMGetTypeKind(param_types[i]) == LLVMFunctionTypeKind;
+
+    // fn-typed params are passed as function pointers — alloca a ptr slot
+    LLVMTypeRef alloca_type =
+        is_fn_param ? LLVMPointerType(param_types[i], 0) : param_types[i];
+
+    LLVMValueRef alloca = LLVMBuildAlloca(ctx->builder, alloca_type,
                                           node->stmt.func_decl.param_names[i]);
     LLVMBuildStore(ctx->builder, param, alloca);
 
+    // element_type: for fn params it's the function type itself;
+    // for regular params extract from the AST as normal
     LLVMTypeRef element_type =
-        extract_element_type_from_ast(ctx, node->stmt.func_decl.param_types[i]);
+        is_fn_param ? param_types[i]
+                    : extract_element_type_from_ast(
+                          ctx, node->stmt.func_decl.param_types[i]);
+
     add_symbol_with_element_type(ctx, node->stmt.func_decl.param_names[i],
-                                 alloca, param_types[i], element_type, false);
+                                 alloca, alloca_type, element_type,
+                                 false /* is_function */);
   }
 
   // Create blocks for normal return and cleanup

@@ -4,7 +4,7 @@
 
 // example of using a function type
 const add -> fn (x: fn (int, int) int, y: int) int {
-    return x(y, y) + 3;
+    return x(y, 15) + 3;
 }
 
 pub const main -> fn () int {

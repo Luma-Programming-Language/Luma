@@ -1,3 +1,4 @@
+#include <llvm-c/Core.h>
 #include <stdio.h>
 #include <stdlib.h>
 
@@ -135,10 +136,11 @@ LLVMValueRef codegen_expr_identifier(CodeGenContext *ctx, AstNode *node) {
     if (sym->is_function) {
       return sym->value;
     } else if (is_enum_constant(sym)) {
-      // Enum constant - return the constant value directly
       return LLVMGetInitializer(sym->value);
+    } else if (sym->element_type &&
+               LLVMGetTypeKind(sym->element_type) == LLVMFunctionTypeKind) {
+      return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "fn_ptr");
     } else {
-      // Load variable value
       return LLVMBuildLoad2(ctx->builder, sym->type, sym->value, "load");
     }
   }
@@ -255,19 +257,11 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
   LLVMValueRef *args = NULL;
   size_t arg_count = node->expr.call.arg_count;
 
-  // Check if this is a method call (obj.method())
   if (callee->type == AST_EXPR_MEMBER && !callee->expr.member.is_compiletime) {
-    // Method call: obj.method(arg1, arg2)
+    // Method call: obj.method(args...)
     const char *member_name = callee->expr.member.member;
     AstNode *object = callee->expr.member.object;
 
-    LLVMValueRef method_func = NULL;
-    char qualified_method_name[512];
-
-    // We need to determine the struct type from the object expression
-    // to construct the qualified method name (e.g., "String.equals")
-
-    // First, evaluate the object to get its type
     LLVMValueRef object_value = codegen_expr(ctx, object);
     if (!object_value) {
       fprintf(stderr, "Error: Failed to evaluate object for method call\n");
@@ -276,17 +270,12 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
 
     LLVMTypeRef object_type = LLVMTypeOf(object_value);
     LLVMTypeKind object_kind = LLVMGetTypeKind(object_type);
-
-    // Determine the actual struct type
     StructInfo *struct_info = NULL;
 
     if (object_kind == LLVMPointerTypeKind) {
-      // Object is a pointer - need to find what it points to
-      // Check if we have element type info from the symbol table
       if (object->type == AST_EXPR_IDENTIFIER) {
         LLVM_Symbol *sym = find_symbol(ctx, object->expr.identifier.name);
         if (sym && sym->element_type) {
-          // Find the struct info from the element type
           for (StructInfo *info = ctx->struct_types; info; info = info->next) {
             if (info->llvm_type == sym->element_type) {
               struct_info = info;
@@ -296,7 +285,6 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
         }
       }
     } else if (object_kind == LLVMStructTypeKind) {
-      // Object is a struct value directly
       for (StructInfo *info = ctx->struct_types; info; info = info->next) {
         if (info->llvm_type == object_type) {
           struct_info = info;
@@ -311,27 +299,23 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
       return NULL;
     }
 
-    // Construct the qualified method name
+    char qualified_method_name[512];
     snprintf(qualified_method_name, sizeof(qualified_method_name), "%s.%s",
              struct_info->name, member_name);
 
-    // First try current module
     LLVMModuleRef current_llvm_module =
         ctx->current_module ? ctx->current_module->module : ctx->module;
-    method_func =
+    LLVMValueRef method_func =
         LLVMGetNamedFunction(current_llvm_module, qualified_method_name);
 
-    // If not found in current module, search all other modules
     if (!method_func) {
       for (ModuleCompilationUnit *unit = ctx->modules; unit;
            unit = unit->next) {
         if (unit == ctx->current_module)
           continue;
-
         LLVMValueRef found_func =
             LLVMGetNamedFunction(unit->module, qualified_method_name);
         if (found_func) {
-          // CRITICAL FIX: Create external declaration in current module
           LLVMTypeRef func_type = LLVMGlobalGetValueType(found_func);
           method_func = LLVMAddFunction(current_llvm_module,
                                         qualified_method_name, func_type);
@@ -350,11 +334,8 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
 
     callee_value = method_func;
 
-    // Allocate space for arguments (typechecker already added self!)
     args = (LLVMValueRef *)arena_alloc(
         ctx->arena, sizeof(LLVMValueRef) * arg_count, alignof(LLVMValueRef));
-
-    // Generate all arguments (including self at index 0)
     for (size_t i = 0; i < arg_count; i++) {
       args[i] = codegen_expr(ctx, node->expr.call.args[i]);
       if (!args[i]) {
@@ -364,17 +345,16 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
         return NULL;
       }
     }
+
   } else {
-    // Regular function call or compile-time member access (module::func)
+    // Regular call or module::func
     callee_value = codegen_expr(ctx, callee);
     if (!callee_value) {
       return NULL;
     }
 
-    // Allocate space for arguments
     args = (LLVMValueRef *)arena_alloc(
         ctx->arena, sizeof(LLVMValueRef) * arg_count, alignof(LLVMValueRef));
-
     for (size_t i = 0; i < arg_count; i++) {
       args[i] = codegen_expr(ctx, node->expr.call.args[i]);
       if (!args[i]) {
@@ -383,24 +363,26 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  // CRITICAL: Validate callee_value before proceeding
   if (!callee_value) {
     fprintf(stderr, "Error: callee_value is NULL in codegen_expr_call\n");
     return NULL;
   }
 
-  // CRITICAL: Check if callee_value is actually a function
-  if (!LLVMIsAFunction(callee_value)) {
-    fprintf(stderr, "Error: callee_value is not a function\n");
-    LLVMDumpValue(callee_value);
-    return NULL;
-  }
+  LLVMTypeRef func_type = NULL;
+  LLVMValueRef fn_value = callee_value;
 
-  // Get the function type to check return type
-  LLVMTypeRef func_type = LLVMGlobalGetValueType(callee_value);
-  if (!func_type) {
-    fprintf(stderr, "Error: Failed to get function type\n");
-    return NULL;
+  if (LLVMIsAFunction(callee_value)) {
+    func_type = LLVMGlobalGetValueType(callee_value);
+
+  } else if (callee->type == AST_EXPR_IDENTIFIER) {
+    LLVM_Symbol *sym = find_symbol(ctx, callee->expr.identifier.name);
+    if (sym && sym->element_type &&
+        LLVMGetTypeKind(sym->element_type) == LLVMFunctionTypeKind) {
+      // callee_value is already the loaded fn pointer from
+      // codegen_expr_identifier
+      fn_value = callee_value;
+      func_type = sym->element_type;
+    }
   }
 
   LLVMTypeRef return_type = LLVMGetReturnType(func_type);
@@ -409,56 +391,33 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     return NULL;
   }
 
-  // Check if return type is void
+  // Void return
   if (LLVMGetTypeKind(return_type) == LLVMVoidTypeKind) {
-    LLVMBuildCall2(ctx->builder, func_type, callee_value, args, arg_count, "");
+    LLVMBuildCall2(ctx->builder, func_type, fn_value, args, arg_count, "");
     return LLVMConstNull(LLVMVoidTypeInContext(ctx->context));
   }
 
-  // CRITICAL: For struct returns, we need special handling
-  LLVMTypeKind return_kind = LLVMGetTypeKind(return_type);
-  if (return_kind == LLVMStructTypeKind) {
-    // Check if this is a cross-module call
-    LLVMModuleRef callee_module = LLVMGetGlobalParent(callee_value);
+  // Struct return — cross-module fixup only makes sense for direct functions
+  if (LLVMGetTypeKind(return_type) == LLVMStructTypeKind &&
+      LLVMIsAFunction(fn_value)) {
+    LLVMModuleRef callee_module = LLVMGetGlobalParent(fn_value);
     LLVMModuleRef current_llvm_module =
         ctx->current_module ? ctx->current_module->module : ctx->module;
 
-    bool is_cross_module = (callee_module != current_llvm_module);
-
-    if (is_cross_module) {
-      // For cross-module struct returns, ensure we have a proper external
-      // declaration
-      const char *func_name = LLVMGetValueName(callee_value);
-
-      // Check if we already have a declaration in current module
+    if (callee_module != current_llvm_module) {
+      const char *func_name = LLVMGetValueName(fn_value);
       LLVMValueRef local_func =
           LLVMGetNamedFunction(current_llvm_module, func_name);
-
       if (!local_func) {
-        // Create external declaration
         local_func = LLVMAddFunction(current_llvm_module, func_name, func_type);
         LLVMSetLinkage(local_func, LLVMExternalLinkage);
       }
-
-      // CRITICAL: Ensure both functions have the same calling convention
-      LLVMCallConv source_cc = LLVMGetFunctionCallConv(callee_value);
-      LLVMSetFunctionCallConv(local_func, source_cc);
-
-      // Use local declaration for the call
-      callee_value = local_func;
+      LLVMSetFunctionCallConv(local_func, LLVMGetFunctionCallConv(fn_value));
+      fn_value = local_func;
     }
-
-    // For struct returns, allocate space and load the result
-    // This ensures proper struct return handling regardless of ABI
-    LLVMValueRef call_result = LLVMBuildCall2(
-        ctx->builder, func_type, callee_value, args, arg_count, "struct_call");
-
-    // The struct is returned by value - just return it
-    return call_result;
   }
 
-  // Regular (non-struct, non-void) return
-  return LLVMBuildCall2(ctx->builder, func_type, callee_value, args, arg_count,
+  return LLVMBuildCall2(ctx->builder, func_type, fn_value, args, arg_count,
                         "call");
 }
 
@@ -2136,8 +2095,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
 
   // &(expr) - unwrap grouping and recurse
   if (target->type == AST_EXPR_GROUPING) {
-      node->expr.addr.object = target->expr.grouping.expr;
-      return codegen_expr_addr(ctx, node);
+    node->expr.addr.object = target->expr.grouping.expr;
+    return codegen_expr_addr(ctx, node);
   }
 
   // &(*ptr) => just return ptr
