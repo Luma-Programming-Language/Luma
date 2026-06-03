@@ -927,7 +927,9 @@ LLVMValueRef codegen_stmt_print(CodeGenContext *ctx, AstNode *node) {
       LLVMBuildCall2(ctx->builder, printf_type, printf_func, args, 2, "");
     }
   }
-  return LLVMConstNull(LLVMVoidTypeInContext(ctx->context));
+  // A print statement produces no value; return NULL rather than a null void
+  // constant (LLVMConstNull on void traps with SIGILL on some LLVM builds).
+  return NULL;
 }
 
 LLVMValueRef codegen_stmt_defer(CodeGenContext *ctx, AstNode *node) {
