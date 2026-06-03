@@ -391,10 +391,10 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     return NULL;
   }
 
-  // Void return
   if (LLVMGetTypeKind(return_type) == LLVMVoidTypeKind) {
-    LLVMBuildCall2(ctx->builder, func_type, fn_value, args, arg_count, "");
-    return LLVMConstNull(LLVMVoidTypeInContext(ctx->context));
+    //Return the call instruction itself
+    return LLVMBuildCall2(ctx->builder, func_type, fn_value, args, arg_count,
+                          "");
   }
 
   // Struct return — cross-module fixup only makes sense for direct functions
@@ -1978,12 +1978,13 @@ LLVMValueRef codegen_expr_free(CodeGenContext *ctx, AstNode *node) {
   LLVMValueRef void_ptr = LLVMBuildPointerCast(ctx->builder, ptr, void_ptr_type,
                                                "cast_to_void_ptr");
 
-  // Call free with the void pointer (no name since it returns void)
+  // Call free with the void pointer (no name since it returns void).
+  
   LLVMTypeRef free_func_type = LLVMGlobalGetValueType(free_func);
-  LLVMBuildCall2(ctx->builder, free_func_type, free_func, &void_ptr, 1, "");
-
-  // Return a void constant since free() doesn't return a value
-  return LLVMConstNull(LLVMVoidTypeInContext(ctx->context));
+  
+  // Return the call instruction itself
+  return LLVMBuildCall2(ctx->builder, free_func_type, free_func, &void_ptr, 1,
+                        "");
 }
 
 LLVMValueRef codegen_expr_deref(CodeGenContext *ctx, AstNode *node) {
