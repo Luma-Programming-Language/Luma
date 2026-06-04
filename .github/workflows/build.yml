@@ -71,7 +71,19 @@ jobs:
         run: |
           curl -L -o llvm-installer.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-win64.exe
           Start-Process -Wait -FilePath .\llvm-installer.exe -ArgumentList "/S"
-          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
+          # Find llvm-config.exe wherever it was installed
+          $found = Get-ChildItem -Path "C:\Program Files\LLVM" -Recurse -Filter "llvm-config.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $found) {
+            $found = Get-ChildItem -Path "C:\ProgramData" -Recurse -Filter "llvm-config.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
+          }
+          if ($found) {
+            $dir = $found.Directory.FullName
+            Add-Content $env:GITHUB_PATH $dir
+            Write-Host "llvm-config.exe found at: $dir"
+          } else {
+            Write-Error "llvm-config.exe not found after install"
+            exit 1
+          }
 
       - name: Configure (release)
         run: meson setup build/ --buildtype=release
