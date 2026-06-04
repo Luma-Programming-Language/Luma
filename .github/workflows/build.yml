@@ -69,25 +69,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-            choco install llvm -y
-            # Find where llvm-config actually landed
-            $llvmConfig = Get-ChildItem "C:\Program Files" -Recurse -Name "llvm-config.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-            if ($llvmConfig) {
-              $llvmBin = Split-Path (Join-Path "C:\Program Files" $llvmConfig)
-              Write-Host "Found llvm-config at: $llvmBin"
-              Add-Content $env:GITHUB_PATH $llvmBin
-            } else {
-              # Also check C:\LLVM which is another common choco install location
-              $llvmConfig2 = Get-ChildItem "C:\" -Recurse -Depth 4 -Name "llvm-config.exe" -ErrorAction SilentlyContinue | Select-Object -First 1
-              if ($llvmConfig2) {
-                $llvmBin2 = Split-Path (Join-Path "C:\" $llvmConfig2)
-                Write-Host "Found llvm-config at: $llvmBin2"
-                Add-Content $env:GITHUB_PATH $llvmBin2
-              } else {
-                Write-Error "llvm-config.exe not found anywhere"
-                exit 1
-              }
-            }
+          choco install llvm -y
+          $candidates = @(
+            "C:\Program Files\LLVM\bin",
+            "C:\LLVM\bin",
+            "C:\ProgramData\chocolatey\bin"
+          )
+          $found = $candidates | Where-Object { Test-Path "$_\llvm-config.exe" } | Select-Object -First 1
+          if (-not $found) { Write-Error "llvm-config.exe not found"; exit 1 }
+          Write-Host "Found at: $found"
+          Add-Content $env:GITHUB_PATH $found
+
       - name: Configure (release)
         run: meson setup build/ --buildtype=release
 
