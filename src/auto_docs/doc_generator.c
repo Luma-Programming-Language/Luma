@@ -147,129 +147,89 @@ static void generate_function_docs(FILE *f, AstNode *func, DocGenConfig config) 
     return;
   }
   
+  // Find first doc marker
+  const char *first_marker = NULL;
+  const char *markers[] = {"# Parameters", "# Returns", "# Example", NULL};
+  if (doc) for (int m = 0; markers[m]; m++) {
+    const char *p = strstr(doc, markers[m]);
+    if (p && (!first_marker || p < first_marker)) first_marker = p;
+  }
+
   // Function header
-  fprintf(f, "### %s `%s`\n\n", is_public ? "public" : "private", name);
-  
-  // Documentation comment (stop before # Parameters or # Returns if present)
+  fprintf(f, "### `%s`\n\n", name);
+
+  // Documentation comment (stop before first marker)
   if (doc && *doc) {
-    write_doc_comment_until_marker(f, doc, "# Parameters");
-    write_doc_comment_until_marker(f, doc, "# Returns");
-    write_doc_comment_until_marker(f, doc, "# Example");
+    write_doc_comment_until_marker(f, doc, first_marker);
     fprintf(f, "\n");
   }
-  
-  // Function signature
-  fprintf(f, "**Signature:**\n```luma\n");
-  
-  // Modifiers
+
+  // Modifiers line
+  fprintf(f, "```luma\n");
+  if (func->stmt.func_decl.is_dll_import) {
+    fprintf(f, "#dll_import(\"%s\"", func->stmt.func_decl.dll_name ? func->stmt.func_decl.dll_name : "");
+    if (func->stmt.func_decl.dll_callconv) {
+      fprintf(f, ", callconv: \"%s\"", func->stmt.func_decl.dll_callconv);
+    }
+    fprintf(f, ")\n");
+  }
+  if (func->stmt.func_decl.is_lib_import) {
+    fprintf(f, "#lib_import(\"%s\")\n", func->stmt.func_decl.lib_name ? func->stmt.func_decl.lib_name : "");
+  }
   if (func->stmt.func_decl.returns_ownership) {
-    fprintf(f, "#returns_ownership ");
+    fprintf(f, "#returns_ownership\n");
   }
   if (func->stmt.func_decl.takes_ownership) {
-    fprintf(f, "#takes_ownership ");
+    fprintf(f, "#takes_ownership\n");
   }
-  if (is_public) {
-    fprintf(f, "pub ");
-  }
-  
-  fprintf(f, "const %s -> fn(", name);
-  
-  // Parameters
+  fprintf(f, "%s %s -> fn(\n", is_public ? "pub" : "     ", name);
+
+  // Parameters (one per line)
   for (size_t i = 0; i < func->stmt.func_decl.param_count; i++) {
-    if (i > 0) fprintf(f, ", ");
+    fprintf(f, "    ");
     fprintf(f, "%s: ", func->stmt.func_decl.param_names[i]);
     if (func->stmt.func_decl.param_types && func->stmt.func_decl.param_types[i]) {
       print_type(f, func->stmt.func_decl.param_types[i]);
     } else {
       fprintf(f, "?");
     }
+    if (i < func->stmt.func_decl.param_count - 1)
+      fprintf(f, ",");
+    fprintf(f, "\n");
   }
-  
+
   fprintf(f, ") ");
-  
-  // Return type
   if (func->stmt.func_decl.return_type) {
     print_type(f, func->stmt.func_decl.return_type);
   } else {
     fprintf(f, "void");
   }
-  
-  fprintf(f, ";\n```\n\n");
-  
-  // Now print Parameters section if it exists
-  if (doc && strstr(doc, "# Parameters")) {
-    const char *params_start = strstr(doc, "# Parameters");
-    const char *params_end = strstr(params_start + 1, "\n#");
-    if (!params_end) params_end = params_start + strlen(params_start);
-    
-    fprintf(f, "**Parameters:**\n");
-    const char *line = params_start;
-    while (line < params_end) {
-      const char *line_end = strchr(line, '\n');
-      if (!line_end) line_end = params_end;
-      
-      // Skip the "# Parameters" header itself
-      if (strncmp(line, "# Parameters", 12) != 0) {
-        fprintf(f, "%.*s\n", (int)(line_end - line), line);
-      }
-      
-      if (*line_end == '\n') {
-        line = line_end + 1;
-      } else {
-        break;
-      }
+  fprintf(f, "\n```\n\n");
+
+  // Extract and print Parameters/Returns/Example sections
+  if (doc) for (int m = 0; markers[m]; m++) {
+    const char *section_start = strstr(doc, markers[m]);
+    if (!section_start) continue;
+
+    const char *section_end = NULL;
+    for (int n = m + 1; markers[n]; n++) {
+      const char *p = strstr(section_start + 1, markers[n]);
+      if (p && (!section_end || p < section_end)) section_end = p;
     }
-    fprintf(f, "\n");
-  }
-  
-  // Print Returns section if it exists
-  if (doc && strstr(doc, "# Returns")) {
-    const char *returns_start = strstr(doc, "# Returns");
-    const char *returns_end = strstr(returns_start + 1, "\n#");
-    if (!returns_end) returns_end = returns_start + strlen(returns_start);
-    
-    fprintf(f, "**Returns:**\n");
-    const char *line = returns_start;
-    while (line < returns_end) {
+    if (!section_end) section_end = section_start + strlen(section_start);
+
+    fprintf(f, "**%s:**\n", markers[m] + 2);
+    const char *line = section_start;
+    while (line < section_end) {
       const char *line_end = strchr(line, '\n');
-      if (!line_end) line_end = returns_end;
-      
-      // Skip the "# Returns" header itself
-      if (strncmp(line, "# Returns", 9) != 0) {
+      if (!line_end || line_end >= section_end) line_end = section_end;
+
+      if (strncmp(line, markers[m], strlen(markers[m])) != 0) {
         fprintf(f, "%.*s\n", (int)(line_end - line), line);
       }
-      
-      if (*line_end == '\n') {
-        line = line_end + 1;
-      } else {
-        break;
-      }
-    }
-    fprintf(f, "\n");
-  }
-  
-  // Print Example section if it exists
-  if (doc && strstr(doc, "# Example")) {
-    const char *example_start = strstr(doc, "# Example");
-    const char *example_end = strstr(example_start + 1, "\n#");
-    if (!example_end) example_end = example_start + strlen(example_start);
-    
-    fprintf(f, "**Example:**\n");
-    const char *line = example_start;
-    while (line < example_end) {
-      const char *line_end = strchr(line, '\n');
-      if (!line_end) line_end = example_end;
-      
-      // Skip the "# Example" header itself
-      if (strncmp(line, "# Example", 9) != 0) {
-        fprintf(f, "%.*s\n", (int)(line_end - line), line);
-      }
-      
-      if (*line_end == '\n') {
-        line = line_end + 1;
-      } else {
-        break;
-      }
+
+      if (*line_end == '\n') line = line_end + 1;
+      else break;
     }
     fprintf(f, "\n");
   }
@@ -286,25 +246,20 @@ static void generate_struct_docs(FILE *f, AstNode *strct, DocGenConfig config) {
   }
 
   // Struct header
-  fprintf(f, "### %s `%s`\n\n", is_public ? "public" : "private", name);
+  fprintf(f, "### `%s`\n\n", name);
 
   // Main struct documentation (stop before # Fields marker)
   if (doc && *doc) {
-    // Find where # Fields starts and stop before it
     const char *fields_marker = strstr(doc, "# Fields");
     if (fields_marker) {
-      // Print everything before # Fields
       const char *line = doc;
       while (line < fields_marker) {
         const char *line_end = strchr(line, '\n');
-        if (!line_end || line_end >= fields_marker) {
-          break;
-        }
+        if (!line_end || line_end >= fields_marker) break;
         fprintf(f, "%.*s\n", (int)(line_end - line), line);
         line = line_end + 1;
       }
     } else {
-      // No # Fields marker, print everything
       write_doc_comment(f, doc, 0);
     }
     fprintf(f, "\n");
@@ -321,7 +276,8 @@ static void generate_struct_docs(FILE *f, AstNode *strct, DocGenConfig config) {
   }
 
   if (has_public_fields) {
-    fprintf(f, "**Fields:**\n\n");
+    fprintf(f, "| Field | Type | Description |\n");
+    fprintf(f, "|-------|------|-------------|\n");
     for (size_t i = 0; i < strct->stmt.struct_decl.public_count; i++) {
       AstNode *field = strct->stmt.struct_decl.public_members[i];
       if (field->type == AST_STMT_FIELD_DECL && !field->stmt.field_decl.function) {
@@ -329,27 +285,16 @@ static void generate_struct_docs(FILE *f, AstNode *strct, DocGenConfig config) {
         const char *field_doc = field->stmt.field_decl.doc_comment;
         AstNode *field_type = field->stmt.field_decl.type;
 
-        fprintf(f, "- `%s`: ", field_name);
-        
-        // Print type
-        if (field_type) {
-          print_type(f, field_type);
-        } else {
-          fprintf(f, "?");
-        }
-
-        // Print doc comment
+        fprintf(f, "| `%s` | ", field_name);
+        if (field_type) print_type(f, field_type);
+        else fprintf(f, "?");
+        fprintf(f, " | ");
         if (field_doc && *field_doc) {
-          fprintf(f, " — ");
-          // Get first line only for brief description
           const char *end = strchr(field_doc, '\n');
-          if (end) {
-            fprintf(f, "%.*s", (int)(end - field_doc), field_doc);
-          } else {
-            fprintf(f, "%s", field_doc);
-          }
+          if (end) fprintf(f, "%.*s", (int)(end - field_doc), field_doc);
+          else fprintf(f, "%s", field_doc);
         }
-        fprintf(f, "\n");
+        fprintf(f, " |\n");
       }
     }
     fprintf(f, "\n");
@@ -374,139 +319,86 @@ static void generate_struct_docs(FILE *f, AstNode *strct, DocGenConfig config) {
         const char *method_doc = field->stmt.field_decl.doc_comment;
         AstNode *method_func = field->stmt.field_decl.function;
 
+        // Find first doc marker
+        const char *method_markers[] = {"# Parameters", "# Returns", "# Example", NULL};
+        const char *method_first = NULL;
+        if (method_doc) for (int m = 0; method_markers[m]; m++) {
+          const char *p = strstr(method_doc, method_markers[m]);
+          if (p && (!method_first || p < method_first)) method_first = p;
+        }
+
         // Method name as subheading
         fprintf(f, "#### `%s()`\n\n", method_name);
 
-        // Main description (stop before # Parameters, # Returns, # Example)
+        // Main description (stop before first marker)
         if (method_doc && *method_doc) {
-          const char *stop_at = strstr(method_doc, "# Parameters");
-          if (!stop_at) stop_at = strstr(method_doc, "# Returns");
-          if (!stop_at) stop_at = strstr(method_doc, "# Example");
-          
-          if (stop_at) {
-            const char *line = method_doc;
-            while (line < stop_at) {
-              const char *line_end = strchr(line, '\n');
-              if (!line_end || line_end >= stop_at) {
-                break;
-              }
-              fprintf(f, "%.*s\n", (int)(line_end - line), line);
-              line = line_end + 1;
-            }
-          } else {
-            write_doc_comment(f, method_doc, 0);
-          }
+          write_doc_comment_until_marker(f, method_doc, method_first);
           fprintf(f, "\n");
         }
 
         // Method signature
         if (method_func && method_func->type == AST_STMT_FUNCTION) {
           fprintf(f, "```luma\n");
-          
-          // Modifiers
+          if (method_func->stmt.func_decl.is_dll_import) {
+            fprintf(f, "#dll_import(\"%s\"", method_func->stmt.func_decl.dll_name ? method_func->stmt.func_decl.dll_name : "");
+            if (method_func->stmt.func_decl.dll_callconv) {
+              fprintf(f, ", callconv: \"%s\"", method_func->stmt.func_decl.dll_callconv);
+            }
+            fprintf(f, ")\n");
+          }
+          if (method_func->stmt.func_decl.is_lib_import) {
+            fprintf(f, "#lib_import(\"%s\")\n", method_func->stmt.func_decl.lib_name ? method_func->stmt.func_decl.lib_name : "");
+          }
           if (method_func->stmt.func_decl.returns_ownership) {
-            fprintf(f, "#returns_ownership ");
+            fprintf(f, "#returns_ownership\n");
           }
           if (method_func->stmt.func_decl.takes_ownership) {
-            fprintf(f, "#takes_ownership ");
+            fprintf(f, "#takes_ownership\n");
           }
-          
-          fprintf(f, "%s -> fn(", method_name);
-          
-          // Parameters
+          fprintf(f, "%s -> fn(\n", method_name);
           for (size_t j = 0; j < method_func->stmt.func_decl.param_count; j++) {
-            if (j > 0) fprintf(f, ", ");
-            fprintf(f, "%s: ", method_func->stmt.func_decl.param_names[j]);
+            fprintf(f, "    %s: ", method_func->stmt.func_decl.param_names[j]);
             if (method_func->stmt.func_decl.param_types[j]) {
               print_type(f, method_func->stmt.func_decl.param_types[j]);
             } else {
               fprintf(f, "?");
             }
+            if (j < method_func->stmt.func_decl.param_count - 1) fprintf(f, ",");
+            fprintf(f, "\n");
           }
-          
           fprintf(f, ") ");
-          
-          // Return type
           if (method_func->stmt.func_decl.return_type) {
             print_type(f, method_func->stmt.func_decl.return_type);
           } else {
             fprintf(f, "void");
           }
-          
           fprintf(f, "\n```\n\n");
         }
-        
-        // Parameters section
-        if (method_doc && strstr(method_doc, "# Parameters")) {
-          const char *params_start = strstr(method_doc, "# Parameters");
-          const char *params_end = strstr(params_start + 1, "\n#");
-          if (!params_end) params_end = params_start + strlen(params_start);
-          
-          fprintf(f, "**Parameters:**\n");
-          const char *line = params_start;
-          while (line < params_end) {
-            const char *line_end = strchr(line, '\n');
-            if (!line_end) line_end = params_end;
-            
-            if (strncmp(line, "# Parameters", 12) != 0) {
-              fprintf(f, "%.*s\n", (int)(line_end - line), line);
-            }
-            
-            if (*line_end == '\n') {
-              line = line_end + 1;
-            } else {
-              break;
-            }
+
+        // Extract and print Parameters/Returns/Example sections
+        if (method_doc) for (int m = 0; method_markers[m]; m++) {
+          const char *sec_start = strstr(method_doc, method_markers[m]);
+          if (!sec_start) continue;
+
+          const char *sec_end = NULL;
+          for (int n = m + 1; method_markers[n]; n++) {
+            const char *p = strstr(sec_start + 1, method_markers[n]);
+            if (p && (!sec_end || p < sec_end)) sec_end = p;
           }
-          fprintf(f, "\n");
-        }
-        
-        // Returns section
-        if (method_doc && strstr(method_doc, "# Returns")) {
-          const char *returns_start = strstr(method_doc, "# Returns");
-          const char *returns_end = strstr(returns_start + 1, "\n#");
-          if (!returns_end) returns_end = returns_start + strlen(returns_start);
-          
-          fprintf(f, "**Returns:**\n");
-          const char *line = returns_start;
-          while (line < returns_end) {
+          if (!sec_end) sec_end = sec_start + strlen(sec_start);
+
+          fprintf(f, "**%s:**\n", method_markers[m] + 2);
+          const char *line = sec_start;
+          while (line < sec_end) {
             const char *line_end = strchr(line, '\n');
-            if (!line_end) line_end = returns_end;
-            
-            if (strncmp(line, "# Returns", 9) != 0) {
+            if (!line_end || line_end >= sec_end) line_end = sec_end;
+
+            if (strncmp(line, method_markers[m], strlen(method_markers[m])) != 0) {
               fprintf(f, "%.*s\n", (int)(line_end - line), line);
             }
-            
-            if (*line_end == '\n') {
-              line = line_end + 1;
-            } else {
-              break;
-            }
-          }
-          fprintf(f, "\n");
-        }
-        
-        // Example section
-        if (method_doc && strstr(method_doc, "# Example")) {
-          const char *example_start = strstr(method_doc, "# Example");
-          const char *example_end = strstr(example_start + 1, "\n#");
-          if (!example_end) example_end = example_start + strlen(example_start);
-          
-          fprintf(f, "**Example:**\n");
-          const char *line = example_start;
-          while (line < example_end) {
-            const char *line_end = strchr(line, '\n');
-            if (!line_end) line_end = example_end;
-            
-            if (strncmp(line, "# Example", 9) != 0) {
-              fprintf(f, "%.*s\n", (int)(line_end - line), line);
-            }
-            
-            if (*line_end == '\n') {
-              line = line_end + 1;
-            } else {
-              break;
-            }
+
+            if (*line_end == '\n') line = line_end + 1;
+            else break;
           }
           fprintf(f, "\n");
         }
@@ -544,25 +436,86 @@ static void generate_var_docs(FILE *f, AstNode *var, DocGenConfig config) {
   (void)config;
   const char *name = var->stmt.var_decl.name;
   const char *doc = var->stmt.var_decl.doc_comment;
-  bool is_public = var->stmt.var_decl.is_public;
   bool is_mutable = var->stmt.var_decl.is_mutable;
-  
-  fprintf(f, "### %s `%s`\n\n", 
-          is_public ? "public" : "private", 
-          name);
-  
-  fprintf(f, "**Type:** ");
+
+  fprintf(f, "- **`%s`** : ", name);
   if (var->stmt.var_decl.var_type) {
     print_type(f, var->stmt.var_decl.var_type);
   } else {
     fprintf(f, "inferred");
   }
-  fprintf(f, " (%s)\n\n", is_mutable ? "mutable" : "constant");
-  
+  fprintf(f, " *(%s)*", is_mutable ? "mutable" : "constant");
   if (doc && *doc) {
-    write_doc_comment(f, doc, 0);
+    const char *end = strchr(doc, '\n');
+    fprintf(f, " — ");
+    if (end) fprintf(f, "%.*s", (int)(end - doc), doc);
+    else fprintf(f, "%s", doc);
+  }
+  fprintf(f, "\n");
+}
+
+// Forward declarations
+static void generate_os_docs(FILE *f, AstNode *os_node, DocGenConfig config);
+static void generate_link_docs(FILE *f, AstNode *link_node);
+
+// Generate documentation for declarations inside a block
+static void generate_block_decls(FILE *f, AstNode *block, DocGenConfig config) {
+  if (!block || block->type != AST_STMT_BLOCK)
+    return;
+
+  for (size_t i = 0; i < block->stmt.block.stmt_count; i++) {
+    AstNode *node = block->stmt.block.statements[i];
+    if (!node)
+      continue;
+
+    switch (node->type) {
+    case AST_STMT_STRUCT:
+      generate_struct_docs(f, node, config);
+      break;
+    case AST_STMT_ENUM:
+      generate_enum_docs(f, node, config);
+      break;
+    case AST_STMT_FUNCTION:
+      generate_function_docs(f, node, config);
+      break;
+    case AST_STMT_VAR_DECL:
+      generate_var_docs(f, node, config);
+      break;
+    case AST_PREPROCESSOR_OS:
+      generate_os_docs(f, node, config);
+      break;
+    case AST_PREPROCESSOR_LINK:
+      generate_link_docs(f, node);
+      break;
+    default:
+      break;
+    }
+  }
+}
+
+// Generate documentation for an @os block
+static void generate_os_docs(FILE *f, AstNode *os_node, DocGenConfig config) {
+  for (size_t i = 0; i < os_node->preprocessor.os.arm_count; i++) {
+    const char *platform = os_node->preprocessor.os.platforms[i];
+    fprintf(f, "### `\"%s\"`\n\n", platform);
+    generate_block_decls(f, os_node->preprocessor.os.bodies[i], config);
     fprintf(f, "\n");
   }
+
+  if (os_node->preprocessor.os.has_default &&
+      os_node->preprocessor.os.default_body) {
+    fprintf(f, "### Default `_`\n\n");
+    generate_block_decls(f, os_node->preprocessor.os.default_body, config);
+    fprintf(f, "\n");
+  }
+}
+
+// Generate documentation for @link directives
+static void generate_link_docs(FILE *f, AstNode *link_node) {
+  fprintf(f, "> **FFI library:** `%s`\n>\n",
+          link_node->preprocessor.link.lib_name
+              ? link_node->preprocessor.link.lib_name
+              : "unknown");
 }
 
 bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
@@ -584,9 +537,19 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
   fprintf(f, "- [Structures](#structures)\n");
   fprintf(f, "- [Enumerations](#enumerations)\n");
   fprintf(f, "- [Functions](#functions)\n");
-  fprintf(f, "- [Variables](#variables)\n\n");
+  fprintf(f, "- [Variables](#variables)\n");
 
-  fprintf(f, "---\n\n");
+  bool has_os = false;
+  bool has_links = false;
+  for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
+    AstNode *node = module->preprocessor.module.body[i];
+    if (!node) continue;
+    if (node->type == AST_PREPROCESSOR_OS) has_os = true;
+    if (node->type == AST_PREPROCESSOR_LINK) has_links = true;
+  }
+  if (has_os) fprintf(f, "- [OS-Specific](#os-specific)\n");
+  if (has_links) fprintf(f, "- [Linked Libraries](#linked-libraries)\n");
+  fprintf(f, "\n");
 
   if (module->preprocessor.module.body) {
     bool has_structs = false;
@@ -621,7 +584,7 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
     }
 
     if (has_structs) {
-      fprintf(f, "## Structures\n\n");
+      fprintf(f, "---\n\n## Structures\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
         AstNode *node = module->preprocessor.module.body[i];
         if (node && node->type == AST_STMT_STRUCT) {
@@ -631,7 +594,7 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
     }
 
     if (has_enums) {
-      fprintf(f, "## Enumerations\n\n");
+      fprintf(f, "\n## Enumerations\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
         AstNode *node = module->preprocessor.module.body[i];
         if (node && node->type == AST_STMT_ENUM) {
@@ -641,7 +604,7 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
     }
 
     if (has_functions) {
-      fprintf(f, "## Functions\n\n");
+      fprintf(f, "\n## Functions\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
         AstNode *node = module->preprocessor.module.body[i];
         if (node && node->type == AST_STMT_FUNCTION) {
@@ -651,13 +614,35 @@ bool generate_module_docs(AstNode *module, DocGenConfig config, FILE *f) {
     }
 
     if (has_vars) {
-      fprintf(f, "## Variables\n\n");
+      fprintf(f, "\n## Variables\n\n");
       for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
         AstNode *node = module->preprocessor.module.body[i];
         if (node && node->type == AST_STMT_VAR_DECL) {
           generate_var_docs(f, node, config);
         }
       }
+    }
+
+    if (has_os) {
+      fprintf(f, "\n## OS-Specific\n\n");
+      for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
+        AstNode *node = module->preprocessor.module.body[i];
+        if (node && node->type == AST_PREPROCESSOR_OS) {
+          generate_os_docs(f, node, config);
+        }
+      }
+    }
+
+    if (has_links) {
+      fprintf(f, "\n## Linked Libraries\n\n");
+      fprintf(f, "External native libraries linked by this module.\n\n");
+      for (size_t i = 0; i < module->preprocessor.module.body_count; i++) {
+        AstNode *node = module->preprocessor.module.body[i];
+        if (node && node->type == AST_PREPROCESSOR_LINK) {
+          generate_link_docs(f, node);
+        }
+      }
+      fprintf(f, "\n");
     }
   }
 
