@@ -70,49 +70,10 @@ jobs:
         shell: pwsh
         run: |
           $llvm_version = "20.1.8"
-
-          # Check if LLVM is already available (pre-installed on runner)
-          $existing = Get-Command llvm-config.exe -ErrorAction SilentlyContinue
-          if ($existing) {
-            $dir = Split-Path $existing.Source -Parent
-            Add-Content $env:GITHUB_PATH $dir
-            Write-Host "llvm-config.exe already on PATH at: $dir"
-            exit 0
-          }
-
-          # Broader filesystem search
-          $found = Get-ChildItem -Path "C:\Program Files" -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -First 1
-          if (-not $found) {
-            $found = Get-ChildItem -Path "C:\ProgramData" -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue -Depth 4 | Select-Object -First 1
-          }
-          if ($found) {
-            $dir = $found.Directory.FullName
-            Add-Content $env:GITHUB_PATH $dir
-            Write-Host "llvm-config.exe already present at: $dir"
-            exit 0
-          }
-
-          # Install LLVM
           $installer = "LLVM-${llvm_version}-win64.exe"
           $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvm_version}/${installer}"
           curl -L -o $installer $url
           Start-Process -Wait -FilePath ".\$installer" -ArgumentList "/S"
-
-          # llvm-config is NOT shipped with the official Windows binary.
-          # Use vcpkg (pre-installed on runners) which does include it.
-          Write-Host "Installing llvm via vcpkg (includes llvm-config)..."
-          vcpkg install llvm --triplet x64-windows
-          $found = Get-ChildItem -Path "C:\vcpkg" -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue -Depth 5 | Select-Object -First 1
-          if (-not $found) {
-            $found = Get-ChildItem -Path $env:VCPKG_ROOT -Filter "llvm-config.exe" -Recurse -ErrorAction SilentlyContinue -Depth 5 | Select-Object -First 1
-          }
-          if (-not $found) {
-            Write-Error "llvm-config.exe not found via any method"
-            exit 1
-          }
-          $dir = $found.Directory.FullName
-          Add-Content $env:GITHUB_PATH $dir
-          Write-Host "llvm-config.exe found at: $dir"
 
       - name: Configure (release)
         run: meson setup build/ --buildtype=release
