@@ -72,11 +72,6 @@ jobs:
           choco install llvm -y
           Add-Content $env:GITHUB_PATH "C:\Program Files\LLVM\bin"
 
-      - name: Verify LLVM (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: llvm-config --version
-
       - name: Configure (release)
         run: meson setup build/ --buildtype=release
 
