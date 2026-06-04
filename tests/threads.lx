@@ -3,30 +3,54 @@
 @use "std_thread" as thread
 @use "std_libc"   as c
 
-pub const main -> fn () int {
-  // pthread_mutex_t is 40 bytes on Linux x86_64
-  // allocate on heap so it has proper size
-  let mutex: *int = cast<*int>(c::malloc(40));
-
-  let r: int = thread::pthread_mutex_init(mutex, cast<*void>(0));
-  if (r != 0) {
-    c::puts("FAIL  mutex init");
-    free(cast<*void>(mutex));
-    return 1;
-  }
-  c::puts("PASS  mutex init");
-
-  thread::pthread_mutex_lock(mutex);
-  c::puts("PASS  mutex lock");
-  thread::pthread_mutex_unlock(mutex);
-  c::puts("PASS  mutex unlock");
-
-  thread::pthread_mutex_destroy(mutex);
-  c::puts("PASS  mutex destroy");
-
-  free(cast<*void>(mutex));
-  c::puts("PASS  cleanup");
-
-  return 0;
+// Thread start routine with proper function type
+const thread_func -> fn (arg: *void) *void {
+    let msg: *byte = cast<*byte>(arg);
+    c::puts(msg);
+    return cast<*void>(0);
 }
 
+pub const main -> fn () int {
+    // pthread_mutex_t is 40 bytes on Linux x86_64
+    let mutex: *int = cast<*int>(c::malloc(40));
+
+    let r: int = thread::pthread_mutex_init(mutex, cast<*void>(0));
+    if (r != 0) {
+        c::puts("FAIL  mutex init");
+        free(cast<*void>(mutex));
+        return 1;
+    }
+    c::puts("PASS  mutex init");
+
+    // Create a thread using & to get the function pointer
+    let tid: int = 0;
+    let t: int = thread::pthread_create(&tid, cast<*void>(0),
+                                        &thread_func,
+                                        cast<*void>("hello from luma thread"));
+    if (t != 0) {
+        c::puts("FAIL  pthread_create");
+        return 1;
+    }
+    c::puts("PASS  pthread_create");
+
+    // Wait for thread to finish
+    t = thread::pthread_join(tid, cast<*void>(0));
+    if (t != 0) {
+        c::puts("FAIL  pthread_join");
+        return 1;
+    }
+    c::puts("PASS  pthread_join");
+
+    thread::pthread_mutex_lock(mutex);
+    c::puts("PASS  mutex lock");
+    thread::pthread_mutex_unlock(mutex);
+    c::puts("PASS  mutex unlock");
+
+    thread::pthread_mutex_destroy(mutex);
+    c::puts("PASS  mutex destroy");
+
+    free(cast<*void>(mutex));
+    c::puts("PASS  cleanup");
+
+    return 0;
+}

@@ -247,11 +247,23 @@ AstNode *typecheck_assignment_expr(AstNode *expr, Scope *scope,
 
   TypeMatchResult match = types_match(target_type, value_type);
   if (match == TYPE_MATCH_NONE) {
-    const char *msg = "Type mismatch in assignment";
-    tc_error_help(expr, "Type Mismatch", msg,
-                  "Cannot assign value of type '%s' to variable of type '%s'",
-                  type_to_string(value_type, arena),
-                  type_to_string(target_type, arena));
+    if (target_type->type == AST_TYPE_FUNCTION &&
+        is_pointer_to_function_type(value_type)) {
+      tc_error_help(
+          expr, "Function Type Mismatch",
+          "The address-of operator creates a pointer to a function — "
+          "assign the function directly without '&'",
+          "Variable of type '%s' expects a function, "
+          "but the address of a function of type '%s' was assigned",
+          type_to_string(target_type, arena),
+          type_to_string(value_type->type_data.pointer.pointee_type, arena));
+    } else {
+      const char *msg = "Type mismatch in assignment";
+      tc_error_help(expr, "Type Mismatch", msg,
+                    "Cannot assign value of type '%s' to variable of type '%s'",
+                    type_to_string(value_type, arena),
+                    type_to_string(target_type, arena));
+    }
     return NULL;
   }
 

@@ -22,10 +22,10 @@ pub const PTHREAD_ONCE_SIZE:    int = 4;
 // ============================================================================
 
 // int pthread_create(pthread_t *tid, void *attr, void *(*fn)(void*), void *arg)
-pub const pthread_create  -> fn (tid: *int, attr: *void, _fn: *void, arg: *void) int;
+pub const pthread_create  -> fn (tid: *int, attr: *void, _fn: fn (*void) *void, arg: *void) int;
 
 // int pthread_join(pthread_t tid, void **retval)
-pub const pthread_join    -> fn (tid: int, retval: *void) int;
+pub const pthread_join    -> fn (tid: int, retval: **void) int;
 
 // int pthread_detach(pthread_t tid)
 pub const pthread_detach  -> fn (tid: int) int;
@@ -104,7 +104,7 @@ pub const pthread_rwlock_unlock  -> fn (rwlock: *int) int;
 // ============================================================================
 
 // int pthread_once(pthread_once_t *once, void (*fn)(void))
-pub const pthread_once           -> fn (once: *int, _fn: *void) int;
+pub const pthread_once           -> fn (once: *int, _fn: fn () void) int;
 
 // int pthread_barrier_init(pthread_barrier_t *barrier, void *attr, int count)
 pub const pthread_barrier_init   -> fn (barrier: *int, attr: *void, count: int) int;

@@ -231,6 +231,17 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
                         name, type_to_string(declared_type, arena),
                         type_to_string(init_type, arena));
           return false;
+        } else if (declared_type->type == AST_TYPE_FUNCTION &&
+                   is_pointer_to_function_type(init_type)) {
+          tc_error_help(
+              node, "Function Type Mismatch",
+              "The address-of operator creates a pointer to a function — "
+              "assign the function directly without '&'",
+              "Variable '%s' expects a function of type '%s', "
+              "but the address of a function of type '%s' was assigned",
+              name, type_to_string(declared_type, arena),
+              type_to_string(init_type->type_data.pointer.pointee_type, arena));
+          return false;
         } else if (declared_type->type == AST_TYPE_FUNCTION) {
           tc_error_help(
               node, "Type Mismatch",

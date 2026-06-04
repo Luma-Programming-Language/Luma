@@ -1,14 +1,19 @@
 @module "main"
 
-@use "std_math" as math
-
-// example of using a function type
-const add -> fn (x: fn (int, int) int, y: int) int {
-    return x(y, 15) + 3;
+#returns_ownership
+const add -> fn (x: int, y: int) *int {
+    let result: *int = cast<*int>(alloc(sizeof<int>));
+    *result = x + y;
+    return result;
 }
 
 pub const main -> fn () int {
-    let x: fn (int, int) int = math::mod;
-    output(add(x, 3));
+    const x: fn (int, int) *int = &add;
+
+    let res: *int = x(10, 10);
+    defer { free(res); } 
+    
+    output(*res, "\n");
+
     return 0;
 }

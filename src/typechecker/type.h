@@ -232,6 +232,7 @@ void tc_error_id(AstNode *node, const char *identifier, const char *error_type,
 TypeMatchResult types_match(AstNode *type1, AstNode *type2);
 bool is_numeric_type(AstNode *type);
 bool is_pointer_type(AstNode *type);
+bool is_pointer_to_function_type(AstNode *type);
 bool is_array_type(AstNode *type);
 AstNode *get_element_type(AstNode *array_or_pointer_type,
                           ArenaAllocator *arena);

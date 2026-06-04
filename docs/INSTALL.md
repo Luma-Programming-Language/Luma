@@ -1,4 +1,4 @@
-# Luma Compiler v0.1.0 - Installation Guide
+# Luma Compiler v0.2.0 - Installation Guide
 
 ## Quick Start
 
@@ -6,8 +6,8 @@
 
 ```bash
 # Extract the tarball
-tar -xzf luma-v0.1.0-linux-x86_64.tar.gz
-cd luma-v0.1.0
+tar -xzf luma-v0.2.0-linux-x86_64.tar.gz
+cd luma-v0.2.0
 
 # Install (system-wide, requires sudo)
 sudo ./install.sh
@@ -18,7 +18,7 @@ sudo ./install.sh
 
 ### Windows
 
-1. Extract `luma-v0.1.0-windows-x86_64.zip`
+1. Extract `luma-v0.2.0-windows-x86_64.zip`
 2. Open Command Prompt as Administrator (for system-wide install)
 3. Run `install.bat`
 
@@ -96,7 +96,7 @@ luma --version
 
 You should see:
 ```
-Luma Compiler v0.1.0
+Luma Compiler v0.2.0
 ```
 
 ---

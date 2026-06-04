@@ -2086,7 +2086,7 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
   // &identifier
   if (target->type == AST_EXPR_IDENTIFIER) {
     LLVM_Symbol *sym = find_symbol(ctx, target->expr.identifier.name);
-    if (sym && !sym->is_function) {
+    if (sym) {
       return sym->value;
     }
     fprintf(stderr, "Error: Cannot take address of '%s'\n",

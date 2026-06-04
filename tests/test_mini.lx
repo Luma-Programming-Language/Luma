@@ -1,0 +1,32 @@
+@module "test"
+
+@use "std_thread" as thread
+@use "std_libc"   as c
+
+const my_fn -> fn (arg: *void) *void {
+    c::puts("hello");
+    return cast<*void>(0);
+}
+
+pub const main -> fn () int {
+    let tid: int = 0;
+    let t: int = thread::pthread_create(&tid, cast<*void>(0), my_fn, cast<*void>(0));
+    if (t != 0) {
+        c::puts("FAIL");
+        return 1;
+    }
+    c::puts("PASS");
+
+    let ret: *void = cast<*void>(0);
+    t = thread::pthread_join(tid, &ret);
+    if (t != 0) {
+        c::puts("FAIL  pthread_join");
+        return 1;
+    }
+    c::puts("PASS  pthread_join");
+
+    if (ret == cast<*void>(0)) output("Thread returned NULL (expected)\n");
+    else                       output("Thread returned non-NULL\n");
+
+    return 0;
+}

@@ -112,7 +112,7 @@ void lsp_handle_message(LSPServer *server, const char *message) {
           "}"
           /* ---------------------- */
           "},"
-          "\"serverInfo\":{\"name\":\"Luma LSP\",\"version\":\"0.1.0\"}"
+          "\"serverInfo\":{\"name\":\"Luma LSP\",\"version\":\"0.2.0\"}"
           "}";
       lsp_send_response(request_id, capabilities);
     } else {

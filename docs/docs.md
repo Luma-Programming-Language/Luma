@@ -458,9 +458,109 @@ const find_positive -> fn (numbers: *int, size: int) int {
 };
 ```
 
----
+### Function Types as First-Class Values
 
-## Name Resolution
+Functions are first-class values — `fn` is a real type that can be stored in variables, passed as arguments, and returned.
+
+```luma
+// Declare a variable holding a function
+let op: fn (int, int) int = add;
+
+// Call through the variable
+let result: int = op(5, 3);
+```
+
+#### Function Type Syntax
+
+```
+fn (param_type, param_type, ...) return_type
+```
+
+Examples:
+
+```luma
+// Takes no args, returns void
+fn () void
+
+// Takes two ints, returns int
+fn (int, int) int
+
+// Takes a void pointer, returns a void pointer
+fn (*void) *void
+
+// Returning a pointer — * binds to the return type
+fn (int, int) *int      // function returning pointer to int
+```
+
+#### Assigning Functions to Variables
+
+A function name evaluates to its function type directly — no `&` needed:
+
+```luma
+const add -> fn (a: int, b: int) int { return a + b; }
+const sub -> fn (a: int, b: int) int { return a - b; }
+
+pub const main -> fn () int {
+    let op: fn (int, int) int = add;   // direct assignment
+    outputln(op(10, 3));                // 13
+
+    op = sub;                           // can be reassigned
+    outputln(op(10, 3));                // 7
+
+    return 0;
+}
+```
+
+#### Taking the Address of a Function
+
+Use `&` to get a pointer-to-function when an API explicitly expects a pointer:
+
+```luma
+let ptr: *fn (int, int) int = &add;
+```
+
+**Compatibility:** `fn(...)` and `*fn(...)` are interchangeable. You can pass a function where a pointer-to-function is expected and vice versa:
+
+```luma
+// Both work:
+thread::pthread_create(&tid, null, my_fn, arg);    // function directly
+thread::pthread_create(&tid, null, &my_fn, arg);   // address of function
+```
+
+#### Function Types as Parameters
+
+Function types can appear directly in parameter lists:
+
+```luma
+const std/thread.lx
+pub const pthread_create -> fn (
+    tid: *int,
+    attr: *void,
+    _fn: fn (*void) *void,    // function parameter
+    arg: *void
+) int;
+```
+
+#### Thread Example
+
+```luma
+@use "std_thread" as thread
+
+const worker -> fn (arg: *void) *void {
+    let n: int = cast<int>(arg);
+    outputln("working: ", n);
+    return cast<*void>(0);
+}
+
+pub const main -> fn () int {
+    let tid: int = 0;
+    thread::pthread_create(&tid, cast<*void>(0), worker, cast<*void>(42));
+
+    let ret: *void = cast<*void>(0);
+    thread::pthread_join(tid, &ret);
+    return 0;
+}
+```
 
 Luma uses two distinct operators for name resolution to provide semantic clarity:
 

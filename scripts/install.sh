@@ -1,11 +1,8 @@
 #!/bin/bash
 
-# Luma Compiler Installation Script v0.1.0
-# Installs the Luma compiler and standard library
+# Luma Compiler Installation Script v0.2.0
 
-set -e
-
-VERSION="v0.1.0"
+VERSION="v0.2.0"
 INSTALL_DIR="/usr/local"
 BIN_DIR="$INSTALL_DIR/bin"
 LIB_DIR="$INSTALL_DIR/lib/luma"

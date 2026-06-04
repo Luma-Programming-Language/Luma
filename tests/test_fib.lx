@@ -1,0 +1,42 @@
+@module "test"
+
+@use "std_thread" as thread
+@use "std_libc"   as c
+@use "std_time"   as time
+
+const fib_rec -> fn (n: int) int {
+    if (n <= 1) { return n; }
+    return fib_rec(n - 1) + fib_rec(n - 2);
+}
+
+const fib_thread -> fn (arg: *void) *void {
+    let n: int = cast<int>(arg);
+    return cast<*void>(fib_rec(n));
+}
+
+pub const main -> fn () int {
+    // Sequential: compute two fibs one after another
+    let timer: Timer = time::timer_start();
+    let a: int = fib_rec(40);
+    let b: int = fib_rec(40);
+    let seq_ms: int = time::timer_elapsed_ms(timer);
+    output("sequential: ", a, ", ", b, " (", seq_ms, "ms)\n");
+
+    // Parallel: compute two fibs in separate threads
+    timer = time::timer_start();
+    let tid1: int = 0;
+    let tid2: int = 0;
+    thread::pthread_create(&tid1, cast<*void>(0), fib_thread, cast<*void>(40));
+    thread::pthread_create(&tid2, cast<*void>(0), fib_thread, cast<*void>(40));
+
+    let ret1: *void = cast<*void>(0);
+    let ret2: *void = cast<*void>(0);
+    thread::pthread_join(tid1, &ret1);
+    thread::pthread_join(tid2, &ret2);
+    let par_ms: int = time::timer_elapsed_ms(timer);
+
+    output("parallel:   ", cast<int>(ret1), ", ", cast<int>(ret2), " (", par_ms, "ms)\n");
+    output("parallel (", par_ms, "ms) is faster than sequential (", seq_ms, "ms)\n");
+
+    return 0;
+}

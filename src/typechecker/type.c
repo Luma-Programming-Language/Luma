@@ -209,6 +209,23 @@ TypeMatchResult types_match(AstNode *type1, AstNode *type2) {
     return TYPE_MATCH_EXACT;
   }
 
+  // Function type is compatible with pointer-to-function type
+  if (type1->type == AST_TYPE_FUNCTION && type2->type == AST_TYPE_POINTER) {
+    AstNode *pointee = type2->type_data.pointer.pointee_type;
+    if (pointee && pointee->type == AST_TYPE_FUNCTION) {
+      return types_match(type1, pointee);
+    }
+    return TYPE_MATCH_NONE;
+  }
+
+  if (type1->type == AST_TYPE_POINTER && type2->type == AST_TYPE_FUNCTION) {
+    AstNode *pointee = type1->type_data.pointer.pointee_type;
+    if (pointee && pointee->type == AST_TYPE_FUNCTION) {
+      return types_match(pointee, type2);
+    }
+    return TYPE_MATCH_NONE;
+  }
+
   return TYPE_MATCH_NONE;
 }
 
@@ -232,6 +249,13 @@ bool is_pointer_type(AstNode *type) {
 bool is_array_type(AstNode *type) {
   return type && type->category == Node_Category_TYPE &&
          type->type == AST_TYPE_ARRAY;
+}
+
+bool is_pointer_to_function_type(AstNode *type) {
+  return type && type->category == Node_Category_TYPE &&
+         type->type == AST_TYPE_POINTER &&
+         type->type_data.pointer.pointee_type &&
+         type->type_data.pointer.pointee_type->type == AST_TYPE_FUNCTION;
 }
 
 const char *type_to_string(AstNode *type, ArenaAllocator *arena) {
