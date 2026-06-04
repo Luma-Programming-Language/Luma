@@ -80,7 +80,7 @@ jobs:
         if: runner.os == 'Windows'
         shell: msys2 {0}
         run: |
-          cd ${{ github.workspace }}
+          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
           git clone https://github.com/llvm/llvm-project.git
           cmake -S llvm-project/llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_ASM_COMPILER=gcc
           ninja -C build -j $(nproc)
