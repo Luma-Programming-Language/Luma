@@ -69,20 +69,9 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm -y --force
-          $found = (Get-Command llvm-config.exe -ErrorAction SilentlyContinue).Source
-          if (-not $found) {
-            $candidates = @(
-              "C:\Program Files\LLVM\bin",
-              "C:\ProgramData\chocolatey\lib\llvm\tools\bin",
-              "${env:ChocolateyInstall}\lib\llvm\tools\bin",
-              "C:\LLVM\bin"
-            )
-            $found = $candidates | Where-Object { Test-Path "$_\llvm-config.exe" } | Select-Object -First 1
-          }
-          if (-not $found) { Write-Error "llvm-config.exe not found"; exit 1 }
-          Write-Host "Found at: $found"
-          Add-Content $env:GITHUB_PATH $found
+          curl -L -o llvm-installer.exe https://github.com/llvm/llvm-project/releases/download/llvmorg-20.1.8/LLVM-20.1.8-win64.exe
+          Start-Process -Wait -FilePath .\llvm-installer.exe -ArgumentList "/S"
+          echo "C:\Program Files\LLVM\bin" >> $env:GITHUB_PATH
 
       - name: Configure (release)
         run: meson setup build/ --buildtype=release
