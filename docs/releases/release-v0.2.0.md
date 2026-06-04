@@ -92,12 +92,18 @@ Features:
 
 ## Cross-Platform Support
 
-Luma now supports:
+Luma now supports the following operating systems and architectures, detected automatically at compile time:
 
-* Linux x86_64
-* Windows x86_64
-* macOS x86_64
-* macOS ARM64
+* Linux
+* Windows (32-bit and 64-bit)
+* macOS (Intel and ARM)
+* iOS
+* Android
+* FreeBSD
+* NetBSD
+* OpenBSD
+* DragonFly BSD
+* Generic Unix
 
 ### `@os` Directive
 
@@ -105,15 +111,9 @@ Write platform-specific code directly in the language:
 
 ```lx
 @os linux {
-    // Linux implementation
-}
-
-@os windows {
-    // Windows implementation
-}
-
-@os macos {
-    // macOS implementation
+    "linux"   -> {}
+    "macOS"   -> {}
+    "windows" -> {}
 }
 ```
 
