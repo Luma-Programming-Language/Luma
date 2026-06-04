@@ -13,11 +13,21 @@ add_languages('cpp', native : false, required : true)
 cc = meson.get_compiler('c')
 
 llvm_dep = dependency('llvm',
-  modules  : ['core', 'support', 'irreader'],
-  required : true,
+  modules  : ['core', 'support', 'irreader', 'target', 'analysis', 'all-targets'],
+  required : false,
   version  : get_option('llvm'),
   method   : 'config-tool',
 )
+
+if not llvm_dep.found()
+  llvm_dep = dependency('llvm',
+    modules  : ['core', 'support', 'irreader', 'target', 'analysis', 'all-targets'],
+    required : true,
+    version  : get_option('llvm'),
+    method   : 'config-tool',
+    static   : true,
+  )
+endif
 
 sources = files(
   'src/main.c',
