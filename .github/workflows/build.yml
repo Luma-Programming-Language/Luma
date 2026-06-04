@@ -69,13 +69,17 @@ jobs:
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
-          choco install llvm -y
-          $candidates = @(
-            "C:\Program Files\LLVM\bin",
-            "C:\LLVM\bin",
-            "C:\ProgramData\chocolatey\bin"
-          )
-          $found = $candidates | Where-Object { Test-Path "$_\llvm-config.exe" } | Select-Object -First 1
+          choco install llvm -y --force
+          $found = (Get-Command llvm-config.exe -ErrorAction SilentlyContinue).Source
+          if (-not $found) {
+            $candidates = @(
+              "C:\Program Files\LLVM\bin",
+              "C:\ProgramData\chocolatey\lib\llvm\tools\bin",
+              "${env:ChocolateyInstall}\lib\llvm\tools\bin",
+              "C:\LLVM\bin"
+            )
+            $found = $candidates | Where-Object { Test-Path "$_\llvm-config.exe" } | Select-Object -First 1
+          }
           if (-not $found) { Write-Error "llvm-config.exe not found"; exit 1 }
           Write-Host "Found at: $found"
           Add-Content $env:GITHUB_PATH $found
