@@ -65,15 +65,27 @@ jobs:
           brew install llvm@20
           echo "$(brew --prefix llvm@20)/bin" >> $GITHUB_PATH
 
+      - name: Setup MSYS2 (Windows)
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: MINGW64
+          update: true
+          install: >-
+            mingw-w64-x86_64-gcc
+            mingw-w64-x86_64-cmake
+            mingw-w64-x86_64-ninja
+
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: msys2 {0}
         run: |
-          $llvm_version = "20.1.8"
-          $installer = "LLVM-${llvm_version}-win64.exe"
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvm_version}/${installer}"
-          curl -L -o $installer $url
-          Start-Process -Wait -FilePath ".\$installer" -ArgumentList "/S"
+          cd ${{ github.workspace }}
+          git clone https://github.com/llvm/llvm-project.git
+          cmake -S llvm-project/llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_ASM_COMPILER=gcc
+          ninja -C build -j $(nproc)
+          echo "$(cygpath -w $(pwd))/build/bin" >> $GITHUB_PATH
+          echo "$(cygpath -w /mingw64)/bin" >> $GITHUB_PATH
 
       - name: Configure (release)
         run: meson setup build/ --buildtype=release
