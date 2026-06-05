@@ -16,7 +16,7 @@ llvm_dep = dependency('llvm',
   modules  : ['core', 'support', 'irreader', 'target', 'analysis', 'all-targets'],
   required : false,
   version  : get_option('llvm'),
-  method   : 'config-tool',
+  method   : 'auto',
 )
 
 if not llvm_dep.found()
@@ -24,7 +24,7 @@ if not llvm_dep.found()
     modules  : ['core', 'support', 'irreader', 'target', 'analysis', 'all-targets'],
     required : true,
     version  : get_option('llvm'),
-    method   : 'config-tool',
+    method   : 'auto',
     static   : true,
   )
 endif

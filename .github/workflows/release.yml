@@ -35,6 +35,7 @@ jobs:
           chmod +x llvm.sh
           sudo ./llvm.sh 20
           sudo apt-get install -y llvm-20-dev
+          echo "/usr/lib/llvm-20/bin" >> $GITHUB_PATH
 
       - name: Install LLVM (macOS)
         if: runner.os == 'macOS'
@@ -42,28 +43,15 @@ jobs:
           brew install llvm@20
           echo "$(brew --prefix llvm@20)/bin" >> $GITHUB_PATH
 
-      - name: Setup MSYS2 (Windows)
-        if: runner.os == 'Windows'
-        uses: msys2/setup-msys2@v2
-        with:
-          msystem: MINGW64
-          update: true
-          install: >-
-            mingw-w64-x86_64-gcc
-            mingw-w64-x86_64-cmake
-            mingw-w64-x86_64-ninja
-            git
-
       - name: Install LLVM (Windows)
         if: runner.os == 'Windows'
-        shell: msys2 {0}
+        shell: pwsh
         run: |
-          cd "$(cygpath -u "$GITHUB_WORKSPACE")"
-          git clone https://github.com/llvm/llvm-project.git
-          cmake -S llvm-project/llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_ASM_COMPILER=gcc
-          ninja -C build -j $(nproc)
-          echo "$(cygpath -w $(pwd))/build/bin" >> $GITHUB_PATH
-          echo "$(cygpath -w /mingw64)/bin" >> $GITHUB_PATH
+          $llvm_version = "20.1.8"
+          $installer = "LLVM-${llvm_version}-win64.exe"
+          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvm_version}/${installer}"
+          curl -L -o $installer $url
+          Start-Process -Wait -FilePath ".\$installer" -ArgumentList "/S"
 
       - name: Configure
         run: meson setup build/ --buildtype=release
@@ -89,7 +77,7 @@ jobs:
           mkdir -p staging
           cp build/luma staging/
           cp -r std/ staging/
-          cp README.md LICENSE docs/INSTALL.md staging/
+          cp docs/README.md docs/INSTALL.md staging/
           tar czf "$ARCHIVE" -C staging .
 
       - name: Package (macOS)
@@ -98,7 +86,7 @@ jobs:
           mkdir -p staging
           cp build/luma staging/
           cp -r std/ staging/
-          cp README.md LICENSE docs/INSTALL.md staging/
+          cp docs/README.md docs/INSTALL.md staging/
           tar czf "$ARCHIVE" -C staging .
 
       - name: Package (Windows)
@@ -108,7 +96,7 @@ jobs:
           New-Item -ItemType Directory -Path staging
           Copy-Item build/luma.exe staging/
           Copy-Item -Recurse std/ staging/
-          Copy-Item README.md, LICENSE, docs/INSTALL.md staging/
+          Copy-Item docs/README.md, docs/INSTALL.md staging/
           Compress-Archive -Path staging\* -DestinationPath $env:ARCHIVE
 
       - name: Upload artifact
