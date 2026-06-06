@@ -1,6 +1,6 @@
 # Luma v0.2.1
 
-Bugfix release with AST printer improvements and LLVM bundling for standalone distribution.
+Bugfix release with AST printer improvements (on the self-hosted branch) and LLVM bundling for standalone distribution.
 
 ---
 
