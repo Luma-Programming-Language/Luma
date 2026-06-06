@@ -108,9 +108,17 @@ sources = files(
   'src/typechecker/type.c',
 )
 
+system = host_machine.system()
+if system == 'darwin'
+  rpath_arg = '-Wl,-rpath,@executable_path'
+else
+  rpath_arg = '-Wl,-rpath,$ORIGIN'
+endif
+
 executable('luma',
   sources,
   dependencies : llvm_dep,
   install      : true,
   install_dir  : get_option('bindir'),
+  link_args    : [rpath_arg],
 )

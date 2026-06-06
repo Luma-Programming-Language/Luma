@@ -64,6 +64,10 @@ jobs:
         run: |
           mkdir -p staging
           cp build/luma staging/
+          LLVM_SO=$(ldd build/luma | grep LLVM | sed 's/.*=> //' | sed 's/ (.*)//' | head -1)
+          if [ -n "$LLVM_SO" ]; then
+            cp -L "$LLVM_SO" staging/
+          fi
           cp -r std/ staging/
           cp docs/README.md docs/INSTALL.md staging/
           tar czf "$ARCHIVE" -C staging .
@@ -72,6 +76,11 @@ jobs:
         if: runner.os == 'macOS'
         run: |
           mkdir -p staging
+          LLVM_DYLIB=$(otool -L build/luma | grep LLVM | awk '{print $1}' | head -1)
+          if [ -n "$LLVM_DYLIB" ]; then
+            install_name_tool -change "$LLVM_DYLIB" "@executable_path/$(basename "$LLVM_DYLIB")" build/luma
+            cp -L "$LLVM_DYLIB" staging/
+          fi
           cp build/luma staging/
           cp -r std/ staging/
           cp docs/README.md docs/INSTALL.md staging/

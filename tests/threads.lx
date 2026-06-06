@@ -34,7 +34,7 @@ pub const main -> fn () int {
     c::puts("PASS  pthread_create");
 
     // Wait for thread to finish
-    t = thread::pthread_join(tid, cast<*void>(0));
+    t = thread::pthread_join(tid, cast<**void>(0));
     if (t != 0) {
         c::puts("FAIL  pthread_join");
         return 1;
