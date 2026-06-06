@@ -90,9 +90,8 @@ void static_memory_check_free_nonalloc(StaticMemoryAnalyzer *analyzer,
                                        size_t column,
                                        Token *tokens, int token_count,
                                        const char *file_path,
-                                       const char *function_name) {
-  (void)tokens;
-  (void)token_count;
+                                       const char *function_name,
+                                       ArenaAllocator *arena) {
   if (!var_name)
     return;
 
@@ -106,6 +105,7 @@ void static_memory_check_free_nonalloc(StaticMemoryAnalyzer *analyzer,
     error.line = (int)line;
     error.col = (int)column;
     error.token_length = (int)strlen(var_name);
+    error.line_text = generate_line(arena, tokens, token_count, error.line);
     error.message =
         "Freeing pointer that was not allocated with alloc()";
     error.note = "Only pointers from alloc() should be freed";

@@ -154,7 +154,8 @@ void static_memory_check_free_nonalloc(StaticMemoryAnalyzer *analyzer,
                                        size_t column,
                                        Token *tokens, int token_count,
                                        const char *file_path,
-                                       const char *function_name);
+                                       const char *function_name,
+                                       ArenaAllocator *arena);
 bool is_pointer_assignment(AstNode *assignment);
 
 // ============================================================================
