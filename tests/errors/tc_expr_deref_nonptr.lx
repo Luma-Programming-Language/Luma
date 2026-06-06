@@ -1,0 +1,7 @@
+@module "main"
+
+pub const main -> fn () int {
+    let s: str = "hello";
+    *s;
+    return 0;
+}

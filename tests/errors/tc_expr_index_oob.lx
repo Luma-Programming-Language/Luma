@@ -1,0 +1,7 @@
+@module "main"
+
+pub const main -> fn () int {
+    let arr: [int; 5] = [1, 2, 3, 4, 5];
+    let x: int = arr[10];
+    return 0;
+}

@@ -1,0 +1,7 @@
+@module "main"
+
+pub const main -> fn () int {
+    let x: int = 5;
+    x.nonexistent;
+    return 0;
+}

@@ -32,10 +32,8 @@ typedef struct {
   size_t line;
   size_t column;
   const char *variable_name;
-  const char *original_variable;
   bool has_matching_free;
   int free_count;
-  int use_after_free_count;
   GrowableArray aliases;
   bool reported;
   const char *function_name;
@@ -137,9 +135,6 @@ void static_memory_track_alloc(StaticMemoryAnalyzer *analyzer, size_t line,
                                size_t token_count, const char *file_path);
 void static_memory_track_free(StaticMemoryAnalyzer *analyzer,
                               const char *var_name, const char *function_name);
-void static_memory_report_leaks(StaticMemoryAnalyzer *analyzer,
-                                ArenaAllocator *arena, Token *tokens,
-                                int token_count, const char *file_path);
 int static_memory_check_and_report(StaticMemoryAnalyzer *analyzer,
                                    ArenaAllocator *arena);
 bool static_memory_check_use_after_free(StaticMemoryAnalyzer *analyzer,
@@ -150,12 +145,16 @@ bool static_memory_check_use_after_free(StaticMemoryAnalyzer *analyzer,
                                         const char *function_name);
 
 StaticMemoryAnalyzer *get_static_analyzer(Scope *scope);
-const char *extract_variable_name_from_free(AstNode *free_expr);
 
 void static_memory_track_alias(StaticMemoryAnalyzer *analyzer,
-                               const char *new_var, const char *source_var);
-void static_memory_invalidate_alias(StaticMemoryAnalyzer *analyzer,
-                                    const char *var_name);
+                               const char *new_var, const char *source_var,
+                               const char *function_name);
+void static_memory_check_free_nonalloc(StaticMemoryAnalyzer *analyzer,
+                                       const char *var_name, size_t line,
+                                       size_t column,
+                                       Token *tokens, int token_count,
+                                       const char *file_path,
+                                       const char *function_name);
 bool is_pointer_assignment(AstNode *assignment);
 
 // ============================================================================
@@ -231,11 +230,17 @@ void tc_error_id(AstNode *node, const char *identifier, const char *error_type,
 
 TypeMatchResult types_match(AstNode *type1, AstNode *type2);
 bool is_numeric_type(AstNode *type);
+bool is_integer_type(AstNode *type);
 bool is_pointer_type(AstNode *type);
 bool is_pointer_to_function_type(AstNode *type);
 bool is_array_type(AstNode *type);
+bool is_void_type(AstNode *type);
+bool is_bool_type(AstNode *type);
+bool is_struct_type_node(AstNode *type);
+bool is_function_type(AstNode *type);
+bool is_cast_valid(AstNode *from_type, AstNode *to_type);
 AstNode *get_element_type(AstNode *array_or_pointer_type,
-                          ArenaAllocator *arena);
+                           ArenaAllocator *arena);
 const char *type_to_string(AstNode *type, ArenaAllocator *arena);
 
 // ============================================================================

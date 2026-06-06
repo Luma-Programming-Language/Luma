@@ -1,0 +1,5 @@
+@module "main"
+
+pub const main -> fn (x: int) int {
+    return x;
+}

@@ -1,0 +1,8 @@
+@module "main"
+
+const foo -> fn () void {}
+
+pub const main -> fn () int {
+    let p: *void = &foo();
+    return 0;
+}

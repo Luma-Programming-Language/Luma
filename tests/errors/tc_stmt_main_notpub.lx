@@ -1,0 +1,5 @@
+@module "main"
+
+const main -> fn () int {
+    return 0;
+}

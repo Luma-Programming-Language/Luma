@@ -1,0 +1,10 @@
+@module "main"
+
+const MyStruct -> struct { x: int, y: int };
+
+pub const main -> fn () int {
+    let p: *MyStruct = cast<*MyStruct>(alloc(sizeof<MyStruct>));
+    free(p);
+    p.x;
+    return 0;
+}

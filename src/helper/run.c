@@ -318,6 +318,14 @@ Stmt *parse_file_to_module(const char *path, size_t position,
     return NULL;
   }
 
+  // Copy source into arena so token value pointers remain valid for the
+  // lifetime of the module (error reporting, static analysis, etc.)
+  {
+    const char *tmp = source;
+    source = arena_strdup(allocator, source);
+    free((void *)tmp);
+  }
+
   Lexer lexer;
   init_lexer(&lexer, source, allocator);
 
@@ -325,7 +333,6 @@ Stmt *parse_file_to_module(const char *path, size_t position,
   if (!growable_array_init(&tokens, allocator, MAX_TOKENS, sizeof(Token))) {
     fprintf(stderr, "Failed to initialize token array for %s.\n",
             resolved_path);
-    free((void *)source);
     return NULL;
   }
 
@@ -334,14 +341,12 @@ Stmt *parse_file_to_module(const char *path, size_t position,
     Token *slot = (Token *)growable_array_push(&tokens);
     if (!slot) {
       fprintf(stderr, "Out of memory while growing token array\n");
-      free((void *)source);
       return NULL;
     }
     *slot = tk;
   }
 
   if (error_report()) {
-    free((void *)source);
     return NULL;
   }
 
@@ -353,7 +358,6 @@ Stmt *parse_file_to_module(const char *path, size_t position,
   config->token_count = tokens.count;
 
   AstNode *program_root = parse(&tokens, allocator, config);
-  free((void *)source);
 
   if (!program_root) {
     return NULL;

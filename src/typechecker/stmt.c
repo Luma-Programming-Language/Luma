@@ -165,7 +165,8 @@ bool typecheck_var_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
     if (source_var) {
       StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
       if (analyzer) {
-        static_memory_track_alias(analyzer, name, source_var);
+        const char *func_name = get_current_function_name(scope);
+        static_memory_track_alias(analyzer, name, source_var, func_name);
       }
     }
   }

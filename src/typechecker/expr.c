@@ -38,6 +38,14 @@ AstNode *typecheck_binary_expr(AstNode *expr, Scope *scope,
       return NULL;
     }
 
+    // Modulo requires integer types (not float/double)
+    if (op == BINOP_MOD && (!is_integer_type(left_type) || !is_integer_type(right_type))) {
+      tc_error_help(expr, "Type Error",
+                    "Modulo requires integer operands (int, char)",
+                    "Modulo operation with non-integer type");
+      return NULL;
+    }
+
     // Enhanced type promotion: double > float > int
     AstNode *double_type = create_basic_type(arena, "double", 0, 0);
     AstNode *float_type = create_basic_type(arena, "float", 0, 0);
@@ -70,6 +78,20 @@ AstNode *typecheck_binary_expr(AstNode *expr, Scope *scope,
 
   // Logical operators
   if (op == BINOP_AND || op == BINOP_OR) {
+    if (!is_bool_type(left_type)) {
+      tc_error_help(expr, "Type Error",
+                    "Logical operators require boolean operands",
+                    "Left operand has type '%s', expected 'bool'",
+                    type_to_string(left_type, arena));
+      return NULL;
+    }
+    if (!is_bool_type(right_type)) {
+      tc_error_help(expr, "Type Error",
+                    "Logical operators require boolean operands",
+                    "Right operand has type '%s', expected 'bool'",
+                    type_to_string(right_type, arena));
+      return NULL;
+    }
     return create_basic_type(arena, "bool", expr->line, expr->column);
   }
 
@@ -185,6 +207,17 @@ AstNode *typecheck_assignment_expr(AstNode *expr, Scope *scope,
   if (!target_type || !value_type)
     return NULL;
 
+  // Check that assignment target is mutable
+  if (expr->expr.assignment.target->type == AST_EXPR_IDENTIFIER) {
+    const char *var_name = expr->expr.assignment.target->expr.identifier.name;
+    Symbol *sym = scope_lookup(scope, var_name);
+    if (sym && !sym->is_mutable) {
+      tc_error(expr, "Type Error",
+               "Cannot assign to immutable variable '%s'", var_name);
+      return NULL;
+    }
+  }
+
   // NEW: Track allocations in assignments (e.g., a.buf = alloc(size))
   // Check if we're assigning an allocation to a variable/field
   if (contains_alloc_expression(expr->expr.assignment.value)) {
@@ -240,7 +273,8 @@ AstNode *typecheck_assignment_expr(AstNode *expr, Scope *scope,
     if (target_var && source_var && is_direct_assignment) {
       StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
       if (analyzer) {
-        static_memory_track_alias(analyzer, target_var, source_var);
+        const char *func_name = get_current_function_name(scope);
+        static_memory_track_alias(analyzer, target_var, source_var, func_name);
       }
     }
   }
@@ -732,11 +766,11 @@ AstNode *typecheck_index_expr(AstNode *expr, Scope *scope,
     return NULL;
   }
 
-  if (!is_numeric_type(index_type)) {
+  if (!is_integer_type(index_type)) {
     tc_error_help(
         expr, "Index Type Error",
-        "Array and pointer indices must be numeric types (typically int)",
-        "Index has type '%s', expected numeric type",
+        "Array and pointer indices must be integer types (int or char)",
+        "Index has type '%s', expected integer type",
         type_to_string(index_type, arena));
     return NULL;
   }
@@ -950,6 +984,28 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
       return NULL;
     }
 
+    // Check use-after-free for pointer-to-struct member access
+    if (base_type->type == AST_TYPE_POINTER &&
+        base_object->type == AST_EXPR_IDENTIFIER) {
+      StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+      if (analyzer && g_tokens && g_token_count > 0 && g_file_path) {
+        const char *var_name = base_object->expr.identifier.name;
+        const char *func_name = NULL;
+        Scope *func_scope = scope;
+        while (func_scope && !func_scope->is_function_scope) {
+          func_scope = func_scope->parent;
+        }
+        if (func_scope && func_scope->associated_node) {
+          func_name = func_scope->associated_node->stmt.func_decl.name;
+        }
+        static_memory_check_use_after_free(analyzer, var_name,
+                                           base_object->line,
+                                           base_object->column, arena,
+                                           g_tokens, g_token_count,
+                                           g_file_path, func_name);
+      }
+    }
+
     // Handle pointer dereference: if we have a pointer to struct, automatically
     // dereference it
     if (base_type->type == AST_TYPE_POINTER) {
@@ -1089,8 +1145,28 @@ AstNode *typecheck_deref_expr(AstNode *expr, Scope *scope,
   return pointer_type->type_data.pointer.pointee_type;
 }
 
+static bool is_lvalue(AstNode *expr) {
+  if (!expr)
+    return false;
+  switch (expr->type) {
+  case AST_EXPR_IDENTIFIER:
+  case AST_EXPR_MEMBER:
+  case AST_EXPR_INDEX:
+  case AST_EXPR_DEREF:
+    return true;
+  default:
+    return false;
+  }
+}
+
 AstNode *typecheck_addr_expr(AstNode *expr, Scope *scope,
                              ArenaAllocator *arena) {
+  if (!is_lvalue(expr->expr.addr.object)) {
+    tc_error(expr, "Type Error",
+             "Cannot take address of non-lvalue expression");
+    return NULL;
+  }
+
   AstNode *base_type =
       typecheck_expression(expr->expr.addr.object, scope, arena);
   if (!base_type) {
@@ -1149,6 +1225,9 @@ AstNode *typecheck_free_expr(AstNode *expr, Scope *scope,
     // For indexed expressions like moves[j], extract the base name
     var_name = extract_variable_name(expr->expr.free.ptr);
     is_indexed_free = true;
+  } else {
+    // Fallback: try extract_variable_name for addr/member/cast expressions
+    var_name = extract_variable_name(expr->expr.free.ptr);
   }
 
   if (analyzer && analyzer->skip_memory_tracking && var_name) {
@@ -1188,6 +1267,10 @@ AstNode *typecheck_free_expr(AstNode *expr, Scope *scope,
   } else if (analyzer && var_name) {
     // Normal free - always track it (both indexed and non-indexed)
     const char *func_name = get_current_function_name(scope);
+    static_memory_check_free_nonalloc(analyzer, var_name, expr->line,
+                                       expr->column, g_tokens,
+                                       g_token_count, g_file_path,
+                                       func_name);
     static_memory_track_free(analyzer, var_name, func_name);
   }
 
@@ -1204,7 +1287,6 @@ AstNode *typecheck_memcpy_expr(AstNode *expr, Scope *scope,
 
 AstNode *typecheck_cast_expr(AstNode *expr, Scope *scope,
                              ArenaAllocator *arena) {
-  // Verify the expression being cast is valid
   AstNode *castee_type =
       typecheck_expression(expr->expr.cast.castee, scope, arena);
   if (!castee_type) {
@@ -1212,8 +1294,23 @@ AstNode *typecheck_cast_expr(AstNode *expr, Scope *scope,
     return NULL;
   }
 
-  // Return the target type (the cast always succeeds in this system)
-  return expr->expr.cast.type;
+  AstNode *target_type = expr->expr.cast.type;
+  if (!target_type) {
+    tc_error(expr, "Type Error", "Cast target type is unknown");
+    return NULL;
+  }
+
+  if (!is_cast_valid(castee_type, target_type)) {
+    const char *from_name = type_to_string(castee_type, arena);
+    const char *to_name = type_to_string(target_type, arena);
+    char message[256];
+    snprintf(message, sizeof(message),
+             "Cannot cast '%s' to '%s'", from_name, to_name);
+    tc_error(expr, "Invalid Cast", "%s", message);
+    return NULL;
+  }
+
+  return target_type;
 }
 
 // Add this function to expr.c

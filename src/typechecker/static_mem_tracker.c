@@ -29,7 +29,6 @@ void static_memory_track_alloc(StaticMemoryAnalyzer *analyzer, size_t line,
     alloc->variable_name = arena_strdup(analyzer->arena, var_name);
     alloc->has_matching_free = false;
     alloc->free_count = 0;
-    alloc->use_after_free_count = 0;
     alloc->reported = false;
     alloc->function_name =
         function_name ? arena_strdup(analyzer->arena, function_name) : NULL;
@@ -84,6 +83,35 @@ static StaticAllocation *find_allocation_by_name(StaticMemoryAnalyzer *analyzer,
   }
 
   return NULL;
+}
+
+void static_memory_check_free_nonalloc(StaticMemoryAnalyzer *analyzer,
+                                       const char *var_name, size_t line,
+                                       size_t column,
+                                       Token *tokens, int token_count,
+                                       const char *file_path,
+                                       const char *function_name) {
+  (void)tokens;
+  (void)token_count;
+  if (!var_name)
+    return;
+
+  StaticAllocation *alloc =
+      find_allocation_by_name(analyzer, var_name, function_name);
+
+  if (!alloc) {
+    ErrorInformation error = {0};
+    error.error_type = "Warning";
+    error.file_path = file_path;
+    error.line = (int)line;
+    error.col = (int)column;
+    error.token_length = (int)strlen(var_name);
+    error.message =
+        "Freeing pointer that was not allocated with alloc()";
+    error.note = "Only pointers from alloc() should be freed";
+    error.help = "Remove this free() call or ensure the pointer came from alloc()";
+    error_add(error);
+  }
 }
 
 void static_memory_track_free(StaticMemoryAnalyzer *analyzer,
@@ -150,18 +178,14 @@ bool static_memory_check_use_after_free(StaticMemoryAnalyzer *analyzer,
 }
 
 void static_memory_track_alias(StaticMemoryAnalyzer *analyzer,
-                               const char *new_var, const char *source_var) {
-  // fprintf(stderr, "DEBUG: track_alias called: new='%s', source='%s'\n",
-  // new_var ? new_var : "NULL",
-  // source_var ? source_var : "NULL");
-
+                               const char *new_var, const char *source_var,
+                               const char *function_name) {
   if (!new_var || !source_var || strcmp(new_var, source_var) == 0) {
-    // fprintf(stderr, "DEBUG: Skipping alias (invalid params or same var)\n");
     return;
   }
 
   StaticAllocation *source_alloc =
-      find_allocation_by_name(analyzer, source_var, NULL);
+      find_allocation_by_name(analyzer, source_var, function_name);
 
   if (!source_alloc) {
     // fprintf(stderr, "DEBUG: Source allocation not found for '%s'\n",
@@ -193,16 +217,6 @@ StaticMemoryAnalyzer *get_static_analyzer(Scope *scope) {
     current = current->parent;
   }
   return NULL;
-}
-
-const char *extract_variable_name_from_free(AstNode *free_expr) {
-  AstNode *ptr_expr = free_expr->expr.free.ptr;
-
-  if (ptr_expr && ptr_expr->type == AST_EXPR_IDENTIFIER) {
-    return ptr_expr->expr.identifier.name;
-  }
-
-  return "unknown";
 }
 
 int static_memory_check_and_report(StaticMemoryAnalyzer *analyzer,

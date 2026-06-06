@@ -1,0 +1,6 @@
+@module "main"
+
+pub const main -> fn () int {
+    undefined_function();
+    return 0;
+}

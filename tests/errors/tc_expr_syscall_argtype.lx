@@ -1,0 +1,6 @@
+@module "main"
+
+pub const main -> fn () int {
+    __syscall__("hello");
+    return 0;
+}

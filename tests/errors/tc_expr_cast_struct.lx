@@ -1,0 +1,8 @@
+@module "main"
+
+const MyStruct -> struct { x: int, y: int };
+
+pub const main -> fn () int {
+    let p: *int = cast<*int>(MyStruct { x: 1, y: 2 });
+    return 0;
+}

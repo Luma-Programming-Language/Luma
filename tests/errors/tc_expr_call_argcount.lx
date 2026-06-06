@@ -1,0 +1,10 @@
+@module "main"
+
+const foo -> fn (x: int) int {
+    return x;
+}
+
+pub const main -> fn () int {
+    foo(1, 2, 3);
+    return 0;
+}

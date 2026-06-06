@@ -1,0 +1,9 @@
+@module "main"
+
+const foo -> fn () void {
+    return 42;
+}
+
+pub const main -> fn () int {
+    return 0;
+}

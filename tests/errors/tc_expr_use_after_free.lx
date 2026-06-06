@@ -1,0 +1,9 @@
+@module "main"
+
+pub const main -> fn () int {
+    let x: int = 42;
+    let p: *int = &x;
+    free(p);
+    *p;
+    return 0;
+}

@@ -1,0 +1,6 @@
+@module "main"
+
+pub const main -> fn () int {
+    let arr: [int; 5] = [1, 2, "hello", 4, 5];
+    return 0;
+}

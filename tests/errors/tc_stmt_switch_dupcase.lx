@@ -1,0 +1,18 @@
+@module "main"
+
+const Color -> enum {
+    Red,
+    Green,
+    Blue,
+};
+
+pub const main -> fn () int {
+    let c: Color = Color::Red;
+    switch (c) {
+        Color::Red -> {}
+        Color::Red -> {}
+        Color::Green -> {}
+        Color::Blue -> {}
+    }
+    return 0;
+}

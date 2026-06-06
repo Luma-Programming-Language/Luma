@@ -34,7 +34,7 @@ jobs:
           wget https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
           sudo ./llvm.sh 20
-          sudo apt-get install -y llvm-20-dev
+          sudo apt-get install -y llvm-20-dev patchelf
           echo "/usr/lib/llvm-20/bin" >> $GITHUB_PATH
 
       - name: Install LLVM (macOS)
@@ -64,10 +64,48 @@ jobs:
         run: |
           mkdir -p staging
           cp build/luma staging/
+
           LLVM_SO=$(ldd build/luma | grep LLVM | sed 's/.*=> //' | sed 's/ (.*)//' | head -1)
+
           if [ -n "$LLVM_SO" ]; then
-            cp -L "$LLVM_SO" staging/
+            DEPS_FILE=$(mktemp)
+            echo "$LLVM_SO" > "$DEPS_FILE"
+
+            # Iteratively discover all transitive .so deps via ldd
+            idx=0
+            while true; do
+              current=$(sed -n "$((idx+1))p" "$DEPS_FILE" 2>/dev/null)
+              [ -z "$current" ] && break
+              while IFS= read -r dep; do
+                dep_path=$(echo "$dep" | sed 's/.*=> //' | sed 's/ (.*)//')
+                dep_name=$(basename "$dep_path")
+                case "$dep_name" in
+                  libc.so.6|libm.so.6|libstdc++.so.6|libgcc_s.so.1|ld-linux-*|linux-vdso.so.*)
+                    continue ;;
+                esac
+                if ! grep -qF "$dep_path" "$DEPS_FILE" 2>/dev/null; then
+                  echo "$dep_path" >> "$DEPS_FILE"
+                fi
+              done < <(ldd "$current" 2>/dev/null | grep -E '=> /')
+              idx=$((idx+1))
+            done
+
+            # Copy all deps to staging
+            while IFS= read -r dep; do
+              cp -L "$dep" "staging/$(basename "$dep")"
+            done < "$DEPS_FILE"
+
+            # Set $ORIGIN rpath on all bundled .so so transitive deps resolve locally
+            while IFS= read -r dep; do
+              base=$(basename "$dep")
+              if [ -f "staging/$base" ]; then
+                patchelf --set-rpath '$ORIGIN' "staging/$base" 2>/dev/null || true
+              fi
+            done < "$DEPS_FILE"
+
+            rm "$DEPS_FILE"
           fi
+
           mkdir -p staging/std
           cp -r std/* staging/std/
           cp docs/README.md docs/INSTALL.md staging/

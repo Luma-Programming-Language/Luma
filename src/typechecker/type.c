@@ -241,6 +241,15 @@ bool is_numeric_type(AstNode *type) {
          strcmp(name, "double") == 0 || strcmp(name, "char") == 0;
 }
 
+bool is_integer_type(AstNode *type) {
+  if (!type || type->category != Node_Category_TYPE ||
+      type->type != AST_TYPE_BASIC) {
+    return false;
+  }
+  const char *name = type->type_data.basic.name;
+  return strcmp(name, "int") == 0 || strcmp(name, "char") == 0;
+}
+
 bool is_pointer_type(AstNode *type) {
   return type && type->category == Node_Category_TYPE &&
          type->type == AST_TYPE_POINTER;
@@ -249,6 +258,90 @@ bool is_pointer_type(AstNode *type) {
 bool is_array_type(AstNode *type) {
   return type && type->category == Node_Category_TYPE &&
          type->type == AST_TYPE_ARRAY;
+}
+
+bool is_void_type(AstNode *type) {
+  return type && type->category == Node_Category_TYPE &&
+         type->type == AST_TYPE_BASIC &&
+         strcmp(type->type_data.basic.name, "void") == 0;
+}
+
+bool is_bool_type(AstNode *type) {
+  return type && type->category == Node_Category_TYPE &&
+         type->type == AST_TYPE_BASIC &&
+         strcmp(type->type_data.basic.name, "bool") == 0;
+}
+
+bool is_struct_type_node(AstNode *type) {
+  return type && type->category == Node_Category_TYPE &&
+         type->type == AST_TYPE_STRUCT;
+}
+
+bool is_function_type(AstNode *type) {
+  return type && type->category == Node_Category_TYPE &&
+         type->type == AST_TYPE_FUNCTION;
+}
+
+bool is_cast_valid(AstNode *from_type, AstNode *to_type) {
+  if (!from_type || !to_type)
+    return false;
+
+  // If types match (exact or compatible), cast is trivially valid
+  TypeMatchResult match = types_match(from_type, to_type);
+  if (match != TYPE_MATCH_NONE)
+    return true;
+
+  // Gather type properties
+  bool from_num = is_numeric_type(from_type) || is_bool_type(from_type);
+  bool to_num = is_numeric_type(to_type) || is_bool_type(to_type);
+  bool from_ptr = is_pointer_type(from_type);
+  bool to_ptr = is_pointer_type(to_type);
+  bool from_func = is_function_type(from_type);
+  bool to_func = is_function_type(to_type);
+  bool from_struct = is_struct_type_node(from_type);
+  bool to_struct = is_struct_type_node(to_type);
+  bool to_void = is_void_type(to_type);
+  bool from_void = is_void_type(from_type);
+
+  // Casting FROM void is invalid (no value to cast)
+  if (from_void)
+    return false;
+
+  // Any type can be cast TO void (discard the value)
+  if (to_void)
+    return true;
+
+  // Numeric <-> Numeric
+  if (from_num && to_num)
+    return true;
+
+  // Pointer <-> Pointer
+  if (from_ptr && to_ptr)
+    return true;
+
+  // Pointer <-> Numeric (common systems programming pattern)
+  if ((from_ptr && to_num) || (from_num && to_ptr))
+    return true;
+
+  // Function <-> Pointer (function pointers)
+  if (from_func && to_ptr)
+    return true;
+  if (from_ptr && to_func)
+    return true;
+
+  // Function <-> Function (checked recursively)
+  if (from_func && to_func)
+    return true;
+
+  // Struct -> same struct is valid (identity cast)
+  if (from_struct && to_struct) {
+    const char *name1 = from_type->type_data.struct_type.name;
+    const char *name2 = to_type->type_data.struct_type.name;
+    if (name1 && name2 && strcmp(name1, name2) == 0)
+      return true;
+  }
+
+  return false;
 }
 
 bool is_pointer_to_function_type(AstNode *type) {

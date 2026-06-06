@@ -1,0 +1,6 @@
+@module "main"
+
+pub const main -> fn () int {
+    let x: int = 10 % 2.5;
+    return 0;
+}

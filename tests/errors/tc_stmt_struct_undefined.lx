@@ -1,0 +1,12 @@
+@module "main"
+
+const MyStruct -> struct {
+    x: int,
+    y: int,
+};
+
+pub const main -> fn () int {
+    let s: MyStruct = MyStruct { x: 1, y: 2 };
+    s.z;
+    return 0;
+}

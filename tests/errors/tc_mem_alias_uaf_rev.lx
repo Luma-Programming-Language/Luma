@@ -1,0 +1,9 @@
+@module "main"
+
+pub const main -> fn () int {
+    let p: *int = cast<*int>(alloc(sizeof<int>));
+    let q: *int = p;
+    free(q);
+    *p;
+    return 0;
+}

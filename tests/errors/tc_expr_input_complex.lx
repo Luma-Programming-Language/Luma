@@ -1,0 +1,6 @@
+@module "main"
+
+pub const main -> fn () int {
+    input<*int>("say something");
+    return 0;
+}

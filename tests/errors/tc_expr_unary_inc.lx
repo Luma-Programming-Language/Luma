@@ -1,0 +1,9 @@
+@module "main"
+
+pub const main -> fn () int {
+    let x: int = 5;
+    ++x;
+    let y: str = "hello";
+    ++y;
+    return 0;
+}
