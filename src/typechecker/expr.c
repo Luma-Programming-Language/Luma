@@ -1267,10 +1267,13 @@ AstNode *typecheck_free_expr(AstNode *expr, Scope *scope,
   } else if (analyzer && var_name) {
     // Normal free - always track it (both indexed and non-indexed)
     const char *func_name = get_current_function_name(scope);
-    static_memory_check_free_nonalloc(analyzer, var_name, expr->line,
-                                       expr->column, g_tokens,
-                                       g_token_count, g_file_path,
-                                       func_name);
+    // Only warn about non-allocated free when it's &variable (reliably wrong)
+    if (expr->expr.free.ptr->type == AST_EXPR_ADDR) {
+      static_memory_check_free_nonalloc(analyzer, var_name, expr->line,
+                                         expr->column, g_tokens,
+                                         g_token_count, g_file_path,
+                                         func_name);
+    }
     static_memory_track_free(analyzer, var_name, func_name);
   }
 

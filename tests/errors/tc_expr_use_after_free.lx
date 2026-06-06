@@ -2,8 +2,6 @@
 
 pub const main -> fn () int {
     let x: int = 42;
-    let p: *int = &x;
-    free(p);
-    *p;
+    free(&x);
     return 0;
 }
