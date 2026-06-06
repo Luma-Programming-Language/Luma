@@ -68,21 +68,66 @@ jobs:
           if [ -n "$LLVM_SO" ]; then
             cp -L "$LLVM_SO" staging/
           fi
-          cp -r std/ staging/
+          mkdir -p staging/std
+          cp -r std/* staging/std/
           cp docs/README.md docs/INSTALL.md staging/
           tar czf "$ARCHIVE" -C staging .
 
       - name: Package (macOS)
         if: runner.os == 'macOS'
         run: |
-          mkdir -p staging
+          # Collect LLVM dylib and all its transitive Homebrew deps
           LLVM_DYLIB=$(otool -L build/luma | grep LLVM | awk '{print $1}' | head -1)
-          if [ -n "$LLVM_DYLIB" ]; then
-            install_name_tool -change "$LLVM_DYLIB" "@executable_path/$(basename "$LLVM_DYLIB")" build/luma
-            cp -L "$LLVM_DYLIB" staging/
-          fi
+
+          mkdir -p staging
           cp build/luma staging/
-          cp -r std/ staging/
+
+          if [ -n "$LLVM_DYLIB" ]; then
+            DEPS_FILE=$(mktemp)
+            echo "$LLVM_DYLIB" > "$DEPS_FILE"
+
+            # Iteratively discover all transitive Homebrew dylib deps
+            idx=0
+            while true; do
+              current=$(sed -n "$((idx+1))p" "$DEPS_FILE" 2>/dev/null)
+              [ -z "$current" ] && break
+              for dep in $(otool -L "$current" 2>/dev/null | grep -E '^\s+/(opt/homebrew|usr/local)/' | awk '{print $1}'); do
+                if ! grep -qF "$dep" "$DEPS_FILE" 2>/dev/null; then
+                  echo "$dep" >> "$DEPS_FILE"
+                fi
+              done
+              idx=$((idx+1))
+            done
+
+            # Copy all deps to staging
+            while IFS= read -r dep; do
+              cp -L "$dep" "staging/$(basename "$dep")"
+            done < "$DEPS_FILE"
+
+            # Fix binary references to use @executable_path
+            while IFS= read -r dep; do
+              dylib_base=$(basename "$dep")
+              install_name_tool -change "$dep" "@executable_path/$dylib_base" staging/luma
+            done < "$DEPS_FILE"
+
+            # Fix cross-references between bundled dylibs
+            while IFS= read -r dep; do
+              base=$(basename "$dep")
+              if [ -f "staging/$base" ]; then
+                while IFS= read -r other; do
+                  other_base=$(basename "$other")
+                  if [ "$other" != "$dep" ]; then
+                    install_name_tool -change "$other" "@executable_path/$other_base" "staging/$base" 2>/dev/null || true
+                  fi
+                done < "$DEPS_FILE"
+              fi
+            done < "$DEPS_FILE"
+
+            rm "$DEPS_FILE"
+          fi
+
+          mkdir -p staging/std
+          cp -r std/* staging/std/
           cp docs/README.md docs/INSTALL.md staging/
           tar czf "$ARCHIVE" -C staging .
 
