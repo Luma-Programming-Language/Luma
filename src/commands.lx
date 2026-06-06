@@ -4,6 +4,7 @@
 @use "std_memory" as MEM
 @use "std_vector" as VEC
 @use "std_args"   as ARGS
+@use "std_io"     as IO
 
 @use "constants"  as CONST
 
@@ -109,25 +110,28 @@ pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig) int {
   return 0;
 }
 
+@os {
+  "linux"   -> { const SYS_STD_PREFIX: *byte = "/usr/local/lib/luma/"; }
+  "macos"   -> { const SYS_STD_PREFIX: *byte = "/usr/local/lib/luma/"; }
+  "windows" -> { const SYS_STD_PREFIX: *byte = "C:\\Program Files\\luma\\"; }
+}
+
 #returns_ownership
 pub const resolve_path -> fn (path: *byte) *byte {
-  let std_prefix: *byte = "/usr/local/lib/luma/";
-  let prefix_len: int = STRING::strlen(std_prefix);
+  let prefix_len: int = STRING::strlen(SYS_STD_PREFIX);
   let path_len:   int = STRING::strlen(path);
 
   let std_path: *byte = cast<*byte>(alloc(prefix_len + path_len + 1));
-  MEM::memcpy(cast<*void>(std_path), cast<*void>(std_prefix), prefix_len);
+  MEM::memcpy(cast<*void>(std_path), cast<*void>(SYS_STD_PREFIX), prefix_len);
   MEM::memcpy(cast<*void>(cast<int>(std_path) + prefix_len), cast<*void>(path), path_len);
   std_path[prefix_len + path_len] = '\0';
 
-  // This will have to be changed to the correct syscall number for 
-  // macos when we have the ability to detect systems.
-  let fd: int = __syscall__(2, cast<int>(std_path), 0, 0);
-  if (fd >= 0) {
-    __syscall__(3, fd, 0, 0);
-    return std_path;
+  let fd: int = IO::local_open_read(std_path);
+  if (IO::local_is_error(fd)) {
+    free(std_path);
+    return path;
   }
 
-  free(std_path);
-  return path;
+  IO::local_close(fd);
+  return std_path;
 }

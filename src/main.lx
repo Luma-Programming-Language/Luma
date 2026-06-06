@@ -6,7 +6,7 @@
 @use "std_args"   as ARGS
 @use "std_io"     as IO
 
-@use "parse_stmt"   as PSTMT
+@use "parser_file"   as PFILE
 @use "lexer_tokens" as TOK
 @use "constants"    as CONST
 @use "commands"     as COMD
@@ -21,111 +21,25 @@
 
 @use "tc"           as TC
 
-#takes_ownership
-const fail -> fn (
-  tokens: *Vector,
-  stmts: *Vector,
-  src: *byte,
-  p: *Parser
-) *AstNode {
-  if (stmts != cast<*Vector>(0)) { VEC::free_vector(stmts); }
-  if (tokens != cast<*Vector>(0)) { VEC::free_vector(tokens); }
-  if (src != cast<*byte>(0)) { free(src); }
-  if (p != cast<*Parser>(0)) { PARS::free_parser(p); }
-
-  return cast<*AstNode>(0);
-}
-
-#takes_ownership
-const fail_early -> fn (src: *byte) *AstNode {
-  if (src != cast<*byte>(0)) { free(src); }
-  return cast<*AstNode>(0);
-}
-
-#returns_ownership
-const parse_file -> fn (path: *byte) *AstNode {
-  let resolved: *byte = COMD::resolve_path(path);
-  let src: *byte = IO::read_file(resolved);
-
-  if (resolved != path) { free(resolved); }
-
-  if (src == cast<*byte>(0)) {
-    output("Error: could not read file: ", path, "\n");
-    return cast<*AstNode>(0);
-  }
-
-  let tokens: Vector = VEC::create_vector(sizeof<Token>);
-  let lexer: Lexer = TOK::create_lexer(src);
-
-  loop (lexer.is_end() == 0) {
-    let tok: Token = LEXER::next_token(&lexer);
-    tokens.push_back(cast<*void>(&tok));
-  }
-
-  let tks: *Token = cast<*Token>(tokens.data);
-  let p: *Parser = PARS::create_parser(tks, tokens.size, path);
-
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
-
-  if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
-    p.error("Parser Error", "Expected @module at the start of a file.");
-    ERR::error_report();
-    return fail(&tokens, cast<*Vector>(0), src, p);
-  }
-  p.advance();
-
-  if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER &&
-      p.current().kind != TOK::LumaTokenType::TOK_STRING) {
-    p.error("Parser Error", "Expected module name after @module.");
-    ERR::error_report();
-    return fail(&tokens, cast<*Vector>(0), src, p);
-  }
-
-  let module_name: *byte = p.get_name();
-  p.advance();
-
-  let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
-
-  loop [i: int = 0](p.has_tokens()) : (i++) {
-    let stmt: *AstNode = PSTMT::parse_stmt(p);
-    if (stmt != cast<*AstNode>(0)) {
-      stmts.push_back(cast<*void>(&stmt));
-    }
-  }
-
-  let module_node: *AstNode = MAST::make_module(
-    module_name, "", path,
-    PARS::vec_to_node_array(&stmts), stmts.size,
-    line, col
-  );
-
-  if (p.had_error == 1) {
-    ERR::error_report();
-    AST::free_node(module_node);
-    return fail(&tokens, &stmts, src, p);
-  }
-
-  VEC::free_vector(&stmts);
-  VEC::free_vector(&tokens);
-  free(src);
-  PARS::free_parser(p);
-
-  return module_node;
-}
-
 pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
   args = args.tail();
 
   let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
-  defer { VEC::free_vector(&modules); }
-
   let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0));
-  if (COMD::parse_args(&args, &build_config) != 0) { return 1; }
 
-  let main_module: *AstNode = parse_file(build_config.filepath);
-  if (main_module == cast<*AstNode>(0)) { return 1; }
+  if (COMD::parse_args(&args, &build_config) != 0) {
+    VEC::free_vector(&modules);
+    return 1;
+  }
+
+  let main_module: *AstNode = PFILE::parse_file(build_config.filepath);
+  let program: *AstNode;
+
+  if (main_module == cast<*AstNode>(0)) {
+    VEC::free_vector(&modules);
+    return 1;
+  }
   modules.push_back(cast<*void>(&main_module));
 
   let it: VectorIter = build_config.link_files.iter();
@@ -134,23 +48,26 @@ pub const main -> fn (argc: int, argv: **byte) int {
     if (ptr == cast<*void>(0)) break;
 
     let addr: *int = cast<*int>(ptr);
-
-    let linked_module: *AstNode = parse_file(cast<*byte>(*addr));
-    modules.push_back(cast<*void>(&linked_module));
+    let linked_module: *AstNode = PFILE::parse_file(cast<*byte>(*addr));
+    if (linked_module != cast<*AstNode>(0))
+      modules.push_back(cast<*void>(&linked_module));
   }
 
-  let program: *AstNode = STMT::make_program(
+  program = STMT::make_program(
     PARS::vec_to_node_array(&modules),
     modules.size,
     1, 0
   );
 
-  defer { AST::free_node(program); VEC::free_vector(&build_config.link_files);}
+  VEC::free_vector(&modules);
+  VEC::free_vector(&build_config.link_files);
 
   PRINT::print_node(program, 0);
 
   let tc: int = TC::typecheck(program, build_config);
   output(tc, "\n");
+
+  AST::free_node(program);
 
   return 0;
 }

@@ -1,0 +1,108 @@
+@module "parser_file"
+
+@use "std_vector" as VEC
+@use "std_memory" as MEM
+@use "std_io"     as IO
+
+@use "lexer_tokens" as TOK
+@use "lexer"        as LEXER
+@use "constants"    as CONST
+@use "commands"     as COMD
+@use "error"        as ERR
+@use "ast"          as AST
+@use "ast_module"   as MAST
+
+@use "parser"       as PARS
+@use "parse_stmt"   as PSTMT
+
+#takes_ownership
+const fail -> fn (
+  tokens: *Vector,
+  stmts: *Vector,
+  src: *byte,
+  p: *Parser
+) *AstNode {
+  if (stmts != cast<*Vector>(0)) { VEC::free_vector(stmts); }
+  if (tokens != cast<*Vector>(0)) { VEC::free_vector(tokens); }
+  if (src != cast<*byte>(0)) { free(src); }
+  if (p != cast<*Parser>(0)) { PARS::free_parser(p); }
+
+  return cast<*AstNode>(0);
+}
+
+#takes_ownership
+const fail_early -> fn (src: *byte) *AstNode {
+  if (src != cast<*byte>(0)) { free(src); }
+  return cast<*AstNode>(0);
+}
+
+#returns_ownership
+pub const parse_file -> fn (path: *byte) *AstNode {
+  let resolved: *byte = COMD::resolve_path(path);
+  let src: *byte = IO::read_file(resolved);
+
+  if (resolved != path) { free(resolved); }
+  if (src == cast<*byte>(0)) {
+    output("Error: could not read file: ", path, "\n");
+    return cast<*AstNode>(0);
+  }
+
+  let tokens: Vector = VEC::create_vector(sizeof<Token>);
+  let lexer: Lexer = TOK::create_lexer(src);
+
+  loop (lexer.is_end() == 0) {
+    let tok: Token = LEXER::next_token(&lexer);
+    tokens.push_back(cast<*void>(&tok));
+  }
+
+  let tks: *Token = cast<*Token>(tokens.data);
+  let p: *Parser = PARS::create_parser(tks, tokens.size, path);
+
+  let line: int = p.current().line;
+  let col:  int = p.current().col;
+
+  if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
+    p.error("Parser Error", "Expected @module at the start of a file.");
+    ERR::error_report();
+    return fail(&tokens, cast<*Vector>(0), src, p);
+  }
+  p.advance();
+
+  if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER &&
+      p.current().kind != TOK::LumaTokenType::TOK_STRING) {
+    p.error("Parser Error", "Expected module name after @module.");
+    ERR::error_report();
+    return fail(&tokens, cast<*Vector>(0), src, p);
+  }
+
+  let module_name: *byte = p.get_name();
+  p.advance();
+
+  let stmts: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+  loop [i: int = 0](p.has_tokens()) : (i++) {
+    let stmt: *AstNode = PSTMT::parse_stmt(p);
+    if (stmt != cast<*AstNode>(0)) {
+      stmts.push_back(cast<*void>(&stmt));
+    }
+  }
+
+  let module_node: *AstNode = MAST::make_module(
+    module_name, "", path,
+    PARS::vec_to_node_array(&stmts), stmts.size,
+    line, col
+  );
+
+  if (p.had_error == 1) {
+    ERR::error_report();
+    AST::free_node(module_node);
+    return fail(&tokens, &stmts, src, p);
+  }
+
+  VEC::free_vector(&stmts);
+  VEC::free_vector(&tokens);
+  free(src);
+  PARS::free_parser(p);
+
+  return module_node;
+}

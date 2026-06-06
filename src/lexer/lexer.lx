@@ -172,9 +172,9 @@ pub const next_token -> fn (lx: *Lexer) Token {
         len = len + 1;
       }
       let word: *byte = sym::create_word(start, len);
-      defer { free(word); }
-      let kind: int = sym::lookup_keyword(word);
-      if (kind != -1) return make_token(start, kind, len, line, col, ws);
+      let kw_kind: int = sym::lookup_keyword(word);
+      free(word);
+      if (kw_kind != -1) return make_token(start, kw_kind, len, line, col, ws);
       return make_token(start, sym::LumaTokenType::TOK_IDENTIFIER, len, line, col, ws);
     }
 

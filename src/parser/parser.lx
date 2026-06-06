@@ -2,9 +2,12 @@
 
 @use "std_vector" as VEC
 @use "std_memory" as MEM
+@use "std_io"     as IO
 
 @use "lexer_tokens" as TOK
+@use "lexer"        as LEXER
 @use "constants"    as CONST
+@use "commands"     as COMD
 @use "error"        as ERR
 @use "ast"          as AST
 
@@ -271,6 +274,7 @@ pub const vec_to_node_array -> fn (v: *Vector) **AstNode {
 
   let arr: **AstNode = cast<**AstNode>(alloc(v.size * v.element_size));
   MEM::memcpy(cast<*void>(arr), v.data, v.size * v.element_size);
+
   return arr;
 }
 
@@ -281,5 +285,7 @@ pub const vec_to_byte_array -> fn (v: *Vector) **byte {
   let allocation_size: int = v.size * sizeof<*byte>;
   let arr: **byte = cast<**byte>(alloc(allocation_size));
   MEM::memcpy(cast<*void>(arr), v.data, allocation_size);
+
   return arr;
 }
+
