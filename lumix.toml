@@ -4,7 +4,7 @@ directory = "src"
 entry     = "src/main.lx"
 
 [build]
-flags = "-O2 --no-sanitize"
+flags = "-O2"
 
 [output]
 binary_dir = "bin"

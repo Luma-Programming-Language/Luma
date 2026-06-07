@@ -21,7 +21,7 @@ pub const ErrorInformation -> struct {
 
 const MAX_ERRORS: int = 256;
 let error_list: [ErrorInformation; 256];
-const error_count: int = 0;
+let error_count: int = 0;
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
