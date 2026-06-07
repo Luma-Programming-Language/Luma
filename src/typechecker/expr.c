@@ -218,37 +218,65 @@ AstNode *typecheck_assignment_expr(AstNode *expr, Scope *scope,
     }
   }
 
-  // NEW: Track allocations in assignments (e.g., a.buf = alloc(size))
-  // Check if we're assigning an allocation to a variable/field
-  if (contains_alloc_expression(expr->expr.assignment.value)) {
-    // Check if we're inside a #returns_ownership function
-    bool in_returns_ownership_func = false;
-    Scope *func_scope = scope;
-    while (func_scope && !func_scope->is_function_scope) {
-      func_scope = func_scope->parent;
-    }
-    if (func_scope && func_scope->associated_node) {
-      in_returns_ownership_func =
-          func_scope->associated_node->stmt.func_decl.returns_ownership;
-    }
+  // Determine function scope for ownership checks
+  bool in_returns_ownership_func = false;
+  Scope *func_scope = scope;
+  while (func_scope && !func_scope->is_function_scope) {
+    func_scope = func_scope->parent;
+  }
+  if (func_scope && func_scope->associated_node) {
+    in_returns_ownership_func =
+        func_scope->associated_node->stmt.func_decl.returns_ownership;
+  }
 
+  // Track allocations in assignments (e.g., a.buf = alloc(size))
+  if (contains_alloc_expression(expr->expr.assignment.value)) {
     // Only track if NOT in a #returns_ownership function
     // AND NOT an indexed assignment (like array[i] = alloc(...))
     if (!in_returns_ownership_func &&
-        expr->expr.assignment.target->type !=
-            AST_EXPR_INDEX) { // <-- ADD THIS CHECK
+        expr->expr.assignment.target->type != AST_EXPR_INDEX) {
       StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
       if (analyzer) {
-        // Extract the variable name from the assignment target
         const char *var_name =
             extract_variable_name(expr->expr.assignment.target);
-
         if (var_name) {
           const char *func_name = NULL;
           if (func_scope && func_scope->associated_node) {
             func_name = func_scope->associated_node->stmt.func_decl.name;
           }
+          static_memory_track_alloc(analyzer, expr->line, expr->column,
+                                    var_name, func_name, g_tokens,
+                                    g_token_count, g_file_path);
+        }
+      }
+    }
+  }
 
+  // Track ownership transfer from #returns_ownership calls in assignments
+  if (expr->expr.assignment.value->type == AST_EXPR_CALL &&
+      expr->expr.assignment.target->type == AST_EXPR_IDENTIFIER &&
+      !in_returns_ownership_func) {
+    AstNode *call_expr = expr->expr.assignment.value;
+    AstNode *callee = call_expr->expr.call.callee;
+    Symbol *func_symbol = NULL;
+
+    if (callee->type == AST_EXPR_IDENTIFIER) {
+      func_symbol = scope_lookup(scope, callee->expr.identifier.name);
+    } else if (callee->type == AST_EXPR_MEMBER) {
+      const char *base_name = callee->expr.member.object->expr.identifier.name;
+      const char *member_name = callee->expr.member.member;
+      if (callee->expr.member.is_compiletime) {
+        func_symbol = lookup_qualified_symbol(scope, base_name, member_name);
+      }
+    }
+
+    if (func_symbol && func_symbol->returns_ownership) {
+      StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+      if (analyzer) {
+        const char *var_name =
+            extract_variable_name(expr->expr.assignment.target);
+        const char *func_name = get_current_function_name(scope);
+        if (var_name) {
           static_memory_track_alloc(analyzer, expr->line, expr->column,
                                     var_name, func_name, g_tokens,
                                     g_token_count, g_file_path);
