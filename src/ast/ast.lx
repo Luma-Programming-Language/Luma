@@ -296,6 +296,12 @@ pub const FuncDeclNode -> struct {
   returns_ownership: int,
   takes_ownership:   int,
   forward_declared:  int,
+  dll_import:        int,
+  dll_name:          *byte,
+  dll_callconv:      *byte,
+
+  lib_import:        int,
+  lib_name:          *byte,
 };
 
 pub const StructDeclNode -> struct {

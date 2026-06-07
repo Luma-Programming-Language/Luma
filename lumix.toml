@@ -4,7 +4,7 @@ directory = "src"
 entry     = "src/main.lx"
 
 [build]
-flags = "-O2"
+flags = "-O2 -save"
 
 [output]
 binary_dir = "bin"

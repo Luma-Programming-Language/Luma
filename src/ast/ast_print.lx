@@ -176,6 +176,15 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
       if (f[12] == 1) output(" ", col(_M, _M0), "[#ro]", col(_R, _R0));
       if (f[13] == 1) output(" ", col(_M, _M0), "[#to]", col(_R, _R0));
       if (f[14] == 1) output(" ", col(_M, _M0), "[fwd]", col(_R, _R0));
+      if (f[15] == 1) 
+        output(" ", col(_M, _M0), "[#dll(", 
+                cast<*byte>(f[16]), ", ",cast<*byte>(f[17]), 
+                ")]", col(_R, _R0)
+              );
+      if (f[18] == 1) 
+        output(" ", col(_M, _M0), "[#lib(", 
+                cast<*byte>(f[19]), ")]", col(_R, _R0)
+              );
       ann_lc(node);
       ann_n(f[8], cast<*byte>("params"));
       output("\n");

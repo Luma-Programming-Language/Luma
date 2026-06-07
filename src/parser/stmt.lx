@@ -21,9 +21,14 @@
 #returns_ownership const var     -> fn (p: *Parser, is_public: int) *AstNode;
 #returns_ownership const infinite_loop_stmt  -> fn (p: *Parser) *AstNode;
 #returns_ownership const for_loop_stmt       -> fn (p: *Parser) *AstNode;
-#returns_ownership const print       -> fn (p: *Parser, ln: int) *AstNode;
+#returns_ownership const print_stmt   -> fn (p: *Parser, ln: int) *AstNode;
 #returns_ownership const expr        -> fn (p: *Parser) *AstNode;
 #returns_ownership const use         -> fn (p: *Parser) *AstNode;
+#returns_ownership const os_stmt     -> fn (p: *Parser) *AstNode;
+#returns_ownership const link_stmt   -> fn (p: *Parser) *AstNode;
+#returns_ownership const consume_doc_comments  -> fn (p: *Parser) *byte;
+const apply_dll_import      -> fn (node: *AstNode, dll_name: *byte, dll_callconv: *byte) void;
+const apply_lib_import      -> fn (node: *AstNode, lib_name: *byte) void;
 #returns_ownership const return_stmt -> fn (p: *Parser) *AstNode;
 #returns_ownership const block       -> fn (p: *Parser) *AstNode;
 #returns_ownership const _if         -> fn (p: *Parser) *AstNode;
@@ -34,20 +39,84 @@
 
 #returns_ownership
 pub const parse_stmt -> fn (p: *Parser) *AstNode {
+  let doc_comment: *byte = consume_doc_comments(p);
   let returns_ownership: int = 0;
   let takes_ownership: int = 0;
+  let is_dll_import: int = 0;
+  let is_lib_import: int = 0;
   let is_public: int = 0;
 
+  let dll_conv: *byte;
+  let lib_name: *byte;
+  let dll_name: *byte;
+
   loop (p.current().kind == TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP ||
-        p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP) {
+        p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP   ||
+        p.current().kind == TOK::LumaTokenType::TOK_DLL_IMPORT        ||
+        p.current().kind == TOK::LumaTokenType::TOK_LIB_IMPORT        ) {
     switch(p.current().kind) {
       TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP -> {
-        returns_ownership = 1;
-        p.advance();
+        returns_ownership = 1; p.advance();
       }
       TOK::LumaTokenType::TOK_TAKES_OWNERSHIP -> {
-        takes_ownership = 1;
+        takes_ownership = 1; p.advance();
+      }
+      TOK::LumaTokenType::TOK_DLL_IMPORT -> {
+        is_dll_import = 1; p.advance();
+
+        p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after #dll_import");
+
+        if (p.current().kind != TOK::LumaTokenType::TOK_STRING) {
+          p.error("SyntaxError", "Expected DLL name string as first argument to #dll_import");
+          return cast<*AstNode>(0);
+        }
+        dll_name = p.get_name();
         p.advance();
+
+        if (p.current().kind == TOK::LumaTokenType::TOK_COMMA) {
+          p.advance();
+
+          if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+            p.error("SyntaxError", "Expected 'callconv' option in #dll_import");
+            return cast<*AstNode>(0);
+          }
+
+          let kw: *byte = p.get_name();
+          p.advance();
+
+          if (STRING::strcmp(kw, "callconv") != 0) {
+            p.error("SyntaxError", "Unknown #dll_import option, expected 'callconv'");
+            free(kw);
+            return cast<*AstNode>(0);
+          }
+          free(kw);
+
+          p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after 'callconv'");
+
+          if (p.current().kind != TOK::LumaTokenType::TOK_STRING) {
+            p.error("SyntaxError", "Expected calling convention string after 'callconv:'");
+            return cast<*AstNode>(0);
+          }
+          dll_conv = p.get_name();
+          p.advance();
+        }
+
+        p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close #dll_import");
+      }
+      TOK::LumaTokenType::TOK_LIB_IMPORT -> {
+        is_lib_import = 1; p.advance();
+
+        p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after #lib_import");
+
+        if (p.current().kind != TOK::LumaTokenType::TOK_STRING) {
+          p.error("Syntax Error", "Expected library name string as argument to #lib_import");
+          return cast<*AstNode>(0);
+        }
+
+        lib_name = p.get_name();
+        p.advance();
+
+        p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close #lib_import");
       }
     }
   }
@@ -63,21 +132,99 @@ pub const parse_stmt -> fn (p: *Parser) *AstNode {
     }
   }
 
+  let node: *AstNode = cast<*AstNode>(0);
+
   switch(p.current().kind) {
     TOK::LumaTokenType::TOK_CONTINUE, TOK::LumaTokenType::TOK_BREAK 
-      -> return break_continue_stmt(p, -cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
-    TOK::LumaTokenType::TOK_CONST  -> return _const(p, is_public, returns_ownership, takes_ownership);
-    TOK::LumaTokenType::TOK_VAR    -> return var(p, is_public);
-    TOK::LumaTokenType::TOK_USE    -> return use(p);
-    TOK::LumaTokenType::TOK_RETURN -> return return_stmt(p);
-    TOK::LumaTokenType::TOK_LBRACE -> return block(p);
-    TOK::LumaTokenType::TOK_IF     -> return _if(p);
-    TOK::LumaTokenType::TOK_LOOP   -> return _loop(p);
-    TOK::LumaTokenType::TOK_DEFER  -> return _defer(p);
-    TOK::LumaTokenType::TOK_SWITCH -> return _switch(p);
-    _ -> return expr(p); 
+      -> node = break_continue_stmt(p, -cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
+    TOK::LumaTokenType::TOK_CONST  -> node = _const(p, is_public, returns_ownership, takes_ownership);
+    TOK::LumaTokenType::TOK_VAR    -> node = var(p, is_public);
+    TOK::LumaTokenType::TOK_USE    -> node = use(p);
+    TOK::LumaTokenType::TOK_RETURN -> node = return_stmt(p);
+    TOK::LumaTokenType::TOK_LBRACE -> node = block(p);
+    TOK::LumaTokenType::TOK_IF     -> node = _if(p);
+    TOK::LumaTokenType::TOK_LOOP   -> node = _loop(p);
+    TOK::LumaTokenType::TOK_DEFER  -> node = _defer(p);
+    TOK::LumaTokenType::TOK_SWITCH -> node = _switch(p);
+    TOK::LumaTokenType::TOK_IMPL   -> node = _impl(p);
+    TOK::LumaTokenType::TOK_OS     -> node = os_stmt(p);
+    TOK::LumaTokenType::TOK_LINK   -> node = link_stmt(p);
+    _ -> node = expr(p); 
   }
+
+  if (node != cast<*AstNode>(0) && is_dll_import == 1) {
+    if (node.kind != AST::NodeType::STMT_FUNCTION) {
+      p.error("SyntaxError", "#dll_import can only be applied to function declarations");
+      return cast<*AstNode>(0);
+    }
+    apply_dll_import(node, dll_name, dll_conv);
+  }
+
+  if (node != cast<*AstNode>(0) && is_lib_import == 1) {
+    if (node.kind != AST::NodeType::STMT_FUNCTION) {
+      p.error("SyntaxError", "#lib_import can only be applied to function declarations");
+      return cast<*AstNode>(0);
+    }
+    apply_lib_import(node, lib_name);
+  }
+
+  if (doc_comment != cast<*byte>(0)) free(doc_comment);
+  return node;
 }
+
+#returns_ownership
+const consume_doc_comments -> fn (p: *Parser) *byte {
+  let lines: Vector = VEC::create_vector(sizeof<*byte>);
+
+  loop (p.has_tokens() &&
+         (p.current().kind == TOK::LumaTokenType::TOK_DOC_COMMENT ||
+          p.current().kind == TOK::LumaTokenType::TOK_MODULE_DOC)) {
+    let line: *byte = p.get_name();
+    p.advance();
+    lines.push_back(cast<*void>(&line));
+  }
+
+  if (lines.size == 0) {
+    VEC::free_vector(&lines);
+    return cast<*byte>(0);
+  }
+
+  let total_len: int = 0;
+  loop [i: int = 0](i < lines.size) : (i++) {
+    total_len = total_len + STRING::strlen((cast<**byte>(lines.data))[i]) + 1;
+  }
+
+  let result: *byte = cast<*byte>(alloc(total_len + 1));
+  let ptr: int = cast<int>(result);
+  loop [i: int = 0](i < lines.size) : (i++) {
+    let line: *byte = (cast<**byte>(lines.data))[i];
+    let len: int = STRING::strlen(line);
+    MEM::memcpy(cast<*void>(ptr), cast<*void>(line), len);
+    ptr = ptr + len;
+    cast<*byte>(ptr)[0] = '\n';
+    ptr = ptr + 1;
+    free(line);
+  }
+  cast<*byte>(ptr)[0] = '\0';
+  VEC::free_vector(&lines);
+  return result;
+}
+
+const apply_dll_import -> fn (node: *AstNode, dll_name: *byte, dll_callconv: *byte) void {
+  let f: *int = cast<*int>(node);
+  f[15] = 1;           // is_dll_import = true
+  f[16] = cast<int>(dll_name);
+  f[17] = cast<int>(dll_callconv);
+}
+
+const apply_lib_import -> fn (node: *AstNode, lib_name: *byte) void {
+  let f: *int = cast<*int>(node);
+  f[18] = 1;           // is_lib_import = true
+  f[19] = cast<int>(lib_name);
+}
+
+#returns_ownership const os_stmt     -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership const link_stmt   -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
 
 #returns_ownership 
 const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode {
