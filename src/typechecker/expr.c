@@ -1268,25 +1268,8 @@ AstNode *typecheck_free_expr(AstNode *expr, Scope *scope,
     // Normal free - always track it (both indexed and non-indexed)
     const char *func_name = get_current_function_name(scope);
 
-    // Determine if we should warn about non-allocated free:
-    // 1. &variable is always wrong (stack address)
-    // 2. In #takes_ownership functions, freeing parameters is intentional
-    bool should_warn_nonalloc = false;
+    // Only warn about non-allocated free when it's &variable (reliably wrong)
     if (expr->expr.free.ptr->type == AST_EXPR_ADDR) {
-      should_warn_nonalloc = true;
-    } else if (var_name) {
-      Scope *func_scope = scope;
-      while (func_scope && !func_scope->is_function_scope) {
-        func_scope = func_scope->parent;
-      }
-      bool is_takes_ownership = func_scope && func_scope->associated_node &&
-          func_scope->associated_node->stmt.func_decl.takes_ownership;
-      if (!is_takes_ownership) {
-        should_warn_nonalloc = true;
-      }
-    }
-
-    if (should_warn_nonalloc) {
       static_memory_check_free_nonalloc(analyzer, var_name, expr->line,
                                          expr->column, g_tokens,
                                          g_token_count, g_file_path,
