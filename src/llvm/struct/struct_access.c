@@ -126,9 +126,15 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
         }
     }
     
-    // Fallback: find by field name
+    // Fallback: resolve struct by name from LLVM type
     if (!struct_info) {
-        struct_info = find_struct_by_field_cached(ctx, field_name);
+        if (symbol_kind == LLVMPointerTypeKind && sym->element_type) {
+            const char *type_name = LLVMGetStructName(sym->element_type);
+            if (type_name) struct_info = find_struct_type(ctx, type_name);
+        } else if (symbol_kind == LLVMStructTypeKind) {
+            const char *type_name = LLVMGetStructName(symbol_type);
+            if (type_name) struct_info = find_struct_type(ctx, type_name);
+        }
     }
 
     if (!struct_info) {
@@ -223,7 +229,8 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
         }
 
         if (!struct_info) {
-            struct_info = find_struct_by_field_cached(ctx, field_name);
+            const char *type_name = LLVMGetStructName(base_type);
+            if (type_name) struct_info = find_struct_type(ctx, type_name);
         }
 
         if (struct_info) {
@@ -231,7 +238,11 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
         }
     } else if (base_kind == LLVMPointerTypeKind) {
         struct_ptr = base_value;
-        struct_info = find_struct_by_field_cached(ctx, field_name);
+        LLVMTypeRef pointee_type = LLVMGetElementType(base_type);
+        if (pointee_type) {
+            const char *type_name = LLVMGetStructName(pointee_type);
+            if (type_name) struct_info = find_struct_type(ctx, type_name);
+        }
     } else {
         fprintf(stderr, "Error: Chained access does not produce struct (kind: %d)\n", base_kind);
         return NULL;
@@ -295,7 +306,8 @@ static LLVMValueRef handle_indexed_member(CodeGenContext *ctx, AstNode *node) {
     }
 
     if (!struct_info) {
-        struct_info = find_struct_by_field_cached(ctx, field_name);
+        const char *type_name = LLVMGetStructName(indexed_type);
+        if (type_name) struct_info = find_struct_type(ctx, type_name);
     }
 
     if (!struct_info) {
@@ -344,14 +356,19 @@ static LLVMValueRef handle_call_result_member(CodeGenContext *ctx, AstNode *node
             }
         }
         if (!struct_info) {
-            struct_info = find_struct_by_field_cached(ctx, field_name);
+            const char *type_name = LLVMGetStructName(result_type);
+            if (type_name) struct_info = find_struct_type(ctx, type_name);
         }
         if (struct_info) {
             struct_ptr = alloca_and_store(ctx, result_type, call_result, "call_result_temp");
         }
     } else if (result_kind == LLVMPointerTypeKind) {
         struct_ptr = call_result;
-        struct_info = find_struct_by_field_cached(ctx, field_name);
+        LLVMTypeRef pointee_type = LLVMGetElementType(result_type);
+        if (pointee_type) {
+            const char *type_name = LLVMGetStructName(pointee_type);
+            if (type_name) struct_info = find_struct_type(ctx, type_name);
+        }
     } else {
         return NULL;
     }
@@ -375,9 +392,15 @@ static LLVMValueRef handle_deref_member(CodeGenContext *ctx, AstNode *node) {
     LLVMValueRef ptr = codegen_expr(ctx, node->expr.member.object->expr.deref.object);
     if (!ptr) return NULL;
 
-    StructInfo *struct_info = find_struct_by_field_cached(ctx, field_name);
+    LLVMTypeRef ptr_type = LLVMTypeOf(ptr);
+    LLVMTypeRef pointee_type = LLVMGetElementType(ptr_type);
+    StructInfo *struct_info = NULL;
+    if (pointee_type) {
+        const char *type_name = LLVMGetStructName(pointee_type);
+        if (type_name) struct_info = find_struct_type(ctx, type_name);
+    }
     if (!struct_info) {
-        fprintf(stderr, "Error: Could not find struct with field '%s'\n", field_name);
+        fprintf(stderr, "Error: Could not find struct for deref member access\n");
         return NULL;
     }
 

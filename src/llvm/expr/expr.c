@@ -2187,7 +2187,10 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
       }
 
       if (!struct_info) {
-        struct_info = find_struct_by_field_cached(ctx, field_name);
+        LLVMTypeRef lookup_type = (LLVMGetTypeKind(sym_type) == LLVMPointerTypeKind && sym->element_type)
+            ? sym->element_type : sym_type;
+        const char *type_name = LLVMGetStructName(lookup_type);
+        if (type_name) struct_info = find_struct_type(ctx, type_name);
       }
 
       if (!struct_info) {

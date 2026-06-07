@@ -2,7 +2,6 @@
 #include "../../c_libs/memory/memory.h"
 #include <stdlib.h>
 
-static FieldToStructEntry *field_to_struct_buckets[SYMBOL_HASH_SIZE] = {0};
 static SymbolHashTable *global_symbol_cache = NULL;
 static StructHashTable *global_struct_cache = NULL;
 
@@ -126,48 +125,6 @@ StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name) {
   return NULL;
 }
 
-void cache_struct_field(const char *field_name, StructInfo *info) {
-  unsigned int bucket = hash_string(field_name);
-
-  // Check if already cached
-  for (FieldToStructEntry *entry = field_to_struct_buckets[bucket]; entry;
-       entry = entry->next) {
-    if (strcmp(entry->field_name, field_name) == 0) {
-      return; // Already cached
-    }
-  }
-
-  FieldToStructEntry *new_entry = xmalloc(sizeof(FieldToStructEntry));
-  new_entry->field_name = xstrdup(field_name);
-  new_entry->struct_info = info;
-  new_entry->next = field_to_struct_buckets[bucket];
-  field_to_struct_buckets[bucket] = new_entry;
-}
-
-StructInfo *find_struct_by_field_cached(CodeGenContext *ctx,
-                                        const char *field_name) {
-  unsigned int bucket = hash_string(field_name);
-
-  // Try cache first
-  for (FieldToStructEntry *entry = field_to_struct_buckets[bucket]; entry;
-       entry = entry->next) {
-    if (strcmp(entry->field_name, field_name) == 0) {
-      return entry->struct_info;
-    }
-  }
-
-  // Fallback: linear search and cache result
-  for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-    int field_idx = get_field_index(info, field_name);
-    if (field_idx >= 0) {
-      cache_struct_field(field_name, info);
-      return info;
-    }
-  }
-
-  return NULL;
-}
-
 void preprocess_all_modules(CodeGenContext *ctx) {
   // Pre-cache all symbols from all modules
   for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
@@ -179,10 +136,6 @@ void preprocess_all_modules(CodeGenContext *ctx) {
   // Pre-cache all struct types
   for (StructInfo *info = ctx->struct_types; info; info = info->next) {
     cache_struct(info->name, info);
-
-    for (size_t i = 0; i < info->field_count; i++) {
-      cache_struct_field(info->field_names[i], info);
-    }
   }
 }
 
@@ -217,16 +170,6 @@ void cleanup_module_caches(void) {
     global_struct_cache = NULL;
   }
 
-  for (int i = 0; i < SYMBOL_HASH_SIZE; i++) {
-    FieldToStructEntry *entry = field_to_struct_buckets[i];
-    while (entry) {
-      FieldToStructEntry *next = entry->next;
-      free((void *)entry->field_name);
-      free(entry);
-      entry = next;
-    }
-    field_to_struct_buckets[i] = NULL;
-  }
 }
 
 ModuleDependencyInfo *build_codegen_dependency_info(AstNode **modules,

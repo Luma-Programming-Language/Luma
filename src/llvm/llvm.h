@@ -142,12 +142,6 @@ typedef struct StructHashTable {
   StructHashEntry *buckets[SYMBOL_HASH_SIZE];
 } StructHashTable;
 
-typedef struct FieldToStructEntry {
-  const char *field_name;
-  StructInfo *struct_info;
-  struct FieldToStructEntry *next;
-} FieldToStructEntry;
-
 // =============================================================================
 // MODULE MANAGEMENT FUNCTIONS
 // =============================================================================
@@ -187,9 +181,7 @@ void cache_struct(const char *name, StructInfo *info);
 StructInfo *lookup_cached_struct(const char *name);
 StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
 
-void cache_struct_field(const char *field_name, StructInfo *info);
-StructInfo *find_struct_by_field_cached(CodeGenContext *ctx,
-                                        const char *field_name);
+
 
 // =============================================================================
 // SYMBOL IMPORT AND MODULE INTEROP

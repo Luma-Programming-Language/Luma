@@ -233,11 +233,6 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
   // 2. All methods have been generated successfully
   // This ensures the cached struct is 100% complete and usable
   cache_struct(struct_info->name, struct_info);
-
-  // Cache all field associations for fast field-to-struct lookups
-  for (size_t i = 0; i < struct_info->field_count; i++) {
-    cache_struct_field(struct_info->field_names[i], struct_info);
-  }
   // ==============================
 
   return NULL;
@@ -446,18 +441,25 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
       return NULL;
     }
 
-    // Find the struct info by checking which struct has this field
+    // Find the struct info from the symbol's type
     StructInfo *struct_info = NULL;
-    for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-      int field_idx = get_field_index(info, field_name);
-      if (field_idx >= 0) {
-        struct_info = info;
-        break;
+    LLVMTypeRef sym_type = sym->type;
+    LLVMTypeKind sym_kind = LLVMGetTypeKind(sym_type);
+
+    if (sym_kind == LLVMPointerTypeKind && sym->element_type) {
+      const char *struct_name = LLVMGetStructName(sym->element_type);
+      if (struct_name) {
+        struct_info = find_struct_type(ctx, struct_name);
+      }
+    } else if (sym_kind == LLVMStructTypeKind) {
+      const char *struct_name = LLVMGetStructName(sym_type);
+      if (struct_name) {
+        struct_info = find_struct_type(ctx, struct_name);
       }
     }
 
     if (!struct_info) {
-      fprintf(stderr, "Error: Could not find struct with field '%s'\n",
+      fprintf(stderr, "Error: Could not find struct for field '%s'\n",
               field_name);
       return NULL;
     }
