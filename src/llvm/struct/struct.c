@@ -412,6 +412,29 @@ LLVMValueRef codegen_stmt_field(CodeGenContext *ctx, AstNode *node) {
   return NULL;
 }
 
+/**
+ * When a pointer is declared as *BaseType but the field being accessed belongs to
+ * a derived struct (one whose first field embeds BaseType), find that derived struct.
+ *
+ * Returns the first StructInfo where:
+ *   - field[0] type == base_info->llvm_type  (embeds the base)
+ *   - the struct has a field named field_name
+ *
+ * Returns NULL if no such struct is found.
+ */
+StructInfo *find_concrete_struct_for_base(
+    CodeGenContext *ctx,
+    StructInfo     *base_info,
+    const char     *field_name)
+{
+    for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+        if (info->field_count < 2) continue;
+        if (info->field_types[0] != base_info->llvm_type) continue;
+        if (get_field_index(info, field_name) >= 0) return info;
+    }
+    return NULL;
+}
+
 // Handle struct member assignment (obj.field = value)
 LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
                                             AstNode *node) {
@@ -466,9 +489,27 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
 
     // Find field index and check permissions
     int field_index = get_field_index(struct_info, field_name);
+
+    if (field_index < 0) {
+      // Declared type doesn't have this field.
+      // Try to find a concrete struct that embeds the declared type and has the field.
+      StructInfo *concrete = find_concrete_struct_for_base(ctx, struct_info, field_name);
+      if (concrete) {
+        struct_info = concrete;
+        field_index = get_field_index(concrete, field_name);
+      }
+    }
+
+    if (field_index < 0) {
+      fprintf(stderr,
+          "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+          field_name, struct_info->name);
+      return NULL;
+    }
+
     if (!is_field_access_allowed(ctx, struct_info, field_index)) {
-      fprintf(stderr, "Error: Cannot assign to private field '%s'\n",
-              field_name);
+      fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
+              field_name, struct_info->name);
       return NULL;
     }
 

@@ -297,6 +297,10 @@ void add_struct_type(CodeGenContext *ctx, StructInfo *struct_info);
 int get_field_index(StructInfo *struct_info, const char *field_name);
 bool is_field_access_allowed(CodeGenContext *ctx, StructInfo *struct_info,
                              int field_index);
+StructInfo *find_concrete_struct_for_base(
+    CodeGenContext *ctx,
+    StructInfo     *base_info,
+    const char     *field_name);
 LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
                                    StructInfo *struct_info,
                                    const char *method_name, bool is_public);
