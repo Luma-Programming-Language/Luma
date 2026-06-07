@@ -688,7 +688,8 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
           } else {
             // Normal (non-defer) call - track immediately as freed
             const char *current_func = get_current_function_name(scope);
-            static_memory_track_free(analyzer, arg_var, current_func);
+            static_memory_track_free(analyzer, arg_var, current_func,
+                                     !scope->is_function_scope);
           }
         }
       }
@@ -711,7 +712,8 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
         StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
         if (analyzer) {
           const char *current_func = get_current_function_name(scope);
-          static_memory_track_free(analyzer, self_var, current_func);
+          static_memory_track_free(analyzer, self_var, current_func,
+                                   !scope->is_function_scope);
         }
       }
     }
@@ -1167,6 +1169,17 @@ AstNode *typecheck_addr_expr(AstNode *expr, Scope *scope,
     return NULL;
   }
 
+  // Track that a tracked variable's address was taken
+  // (means ownership might have been transferred to a container/function)
+  if (expr->expr.addr.object->type == AST_EXPR_IDENTIFIER) {
+    const char *var_name = expr->expr.addr.object->expr.identifier.name;
+    StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
+    if (analyzer) {
+      const char *func_name = get_current_function_name(scope);
+      static_memory_mark_addr_taken(analyzer, var_name, func_name);
+    }
+  }
+
   AstNode *base_type =
       typecheck_expression(expr->expr.addr.object, scope, arena);
   if (!base_type) {
@@ -1275,7 +1288,8 @@ AstNode *typecheck_free_expr(AstNode *expr, Scope *scope,
                                          g_token_count, g_file_path,
                                          func_name, arena);
     }
-    static_memory_track_free(analyzer, var_name, func_name);
+    static_memory_track_free(analyzer, var_name, func_name,
+                             !scope->is_function_scope);
   }
 
   return create_basic_type(arena, "void", expr->line, expr->column);

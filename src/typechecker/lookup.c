@@ -43,7 +43,7 @@ bool typecheck_statement(AstNode *stmt, Scope *scope, ArenaAllocator *arena) {
                               i * sizeof(const char *));
           if (*var_ptr) {
             // Mark as freed when exiting this block
-            static_memory_track_free(analyzer, *var_ptr, func_name);
+            static_memory_track_free(analyzer, *var_ptr, func_name, true);
           }
         }
       }

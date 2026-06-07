@@ -34,8 +34,10 @@ typedef struct {
   const char *variable_name;
   bool has_matching_free;
   int free_count;
+  int conditional_free_count;
   GrowableArray aliases;
   bool reported;
+  bool address_taken;
   const char *function_name;
   const char *file_path;
 } StaticAllocation;
@@ -134,7 +136,8 @@ void static_memory_track_alloc(StaticMemoryAnalyzer *analyzer, size_t line,
                                const char *function_name, Token *tokens,
                                size_t token_count, const char *file_path);
 void static_memory_track_free(StaticMemoryAnalyzer *analyzer,
-                              const char *var_name, const char *function_name);
+                              const char *var_name, const char *function_name,
+                              bool is_conditional);
 int static_memory_check_and_report(StaticMemoryAnalyzer *analyzer,
                                    ArenaAllocator *arena);
 bool static_memory_check_use_after_free(StaticMemoryAnalyzer *analyzer,
@@ -149,6 +152,9 @@ StaticMemoryAnalyzer *get_static_analyzer(Scope *scope);
 void static_memory_track_alias(StaticMemoryAnalyzer *analyzer,
                                const char *new_var, const char *source_var,
                                const char *function_name);
+void static_memory_mark_addr_taken(StaticMemoryAnalyzer *analyzer,
+                                   const char *var_name,
+                                   const char *function_name);
 void static_memory_check_free_nonalloc(StaticMemoryAnalyzer *analyzer,
                                        const char *var_name, size_t line,
                                        size_t column,

@@ -543,7 +543,7 @@ bool typecheck_func_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
           (const char **)((char *)func_scope->deferred_frees.data +
                           i * sizeof(const char *));
       if (*var_ptr) {
-        static_memory_track_free(analyzer, *var_ptr, name);
+        static_memory_track_free(analyzer, *var_ptr, name, false);
       }
     }
   }
@@ -1094,7 +1094,8 @@ bool typecheck_return_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
             // Only track as freed if it's a parameter (ownership passthrough)
             // Don't track if it's a local allocation (fresh ownership)
             if (is_parameter) {
-              static_memory_track_free(analyzer, returned_var, func_name);
+              static_memory_track_free(analyzer, returned_var, func_name,
+                                       !scope->is_function_scope);
             }
           }
         }
@@ -1143,7 +1144,7 @@ bool typecheck_if_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
               (const char **)((char *)then_branch->deferred_frees.data +
                               i * sizeof(const char *));
           if (*var_ptr) {
-            static_memory_track_free(analyzer, *var_ptr, func_name);
+            static_memory_track_free(analyzer, *var_ptr, func_name, true);
           }
         }
       }
@@ -1200,7 +1201,7 @@ bool typecheck_if_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
                   (const char **)((char *)elif_scope->deferred_frees.data +
                                   i * sizeof(const char *));
               if (*var_ptr) {
-                static_memory_track_free(analyzer, *var_ptr, func_name);
+                static_memory_track_free(analyzer, *var_ptr, func_name, true);
               }
             }
           }
@@ -1225,7 +1226,7 @@ bool typecheck_if_decl(AstNode *node, Scope *scope, ArenaAllocator *arena) {
               (const char **)((char *)else_branch->deferred_frees.data +
                               i * sizeof(const char *));
           if (*var_ptr) {
-            static_memory_track_free(analyzer, *var_ptr, func_name);
+            static_memory_track_free(analyzer, *var_ptr, func_name, true);
           }
         }
       }

@@ -115,7 +115,8 @@ void static_memory_check_free_nonalloc(StaticMemoryAnalyzer *analyzer,
 }
 
 void static_memory_track_free(StaticMemoryAnalyzer *analyzer,
-                              const char *var_name, const char *function_name) {
+                              const char *var_name, const char *function_name,
+                              bool is_conditional) {
   if (analyzer->skip_memory_tracking) {
     return;
   }
@@ -128,12 +129,25 @@ void static_memory_track_free(StaticMemoryAnalyzer *analyzer,
   }
 
   if (alloc->has_matching_free) {
-    alloc->free_count++;
+    // Track frees separately: conditional (in branch/loop) vs unconditional
+    // (at function scope). This avoids false positive double-free for the
+    // early-return pattern: free in if-branch + free after branch.
+    if (is_conditional) {
+      alloc->conditional_free_count++;
+    } else {
+      alloc->free_count++;
+    }
     return;
   }
 
   alloc->has_matching_free = true;
-  alloc->free_count = 1;
+  if (is_conditional) {
+    alloc->free_count = 0;
+    alloc->conditional_free_count = 1;
+  } else {
+    alloc->free_count = 1;
+    alloc->conditional_free_count = 0;
+  }
 }
 
 // NEW: Check if a variable is accessing freed memory
@@ -219,6 +233,18 @@ StaticMemoryAnalyzer *get_static_analyzer(Scope *scope) {
   return NULL;
 }
 
+void static_memory_mark_addr_taken(StaticMemoryAnalyzer *analyzer,
+                                   const char *var_name,
+                                   const char *function_name) {
+  if (!var_name)
+    return;
+  StaticAllocation *alloc =
+      find_allocation_by_name(analyzer, var_name, function_name);
+  if (alloc) {
+    alloc->address_taken = true;
+  }
+}
+
 int static_memory_check_and_report(StaticMemoryAnalyzer *analyzer,
                                    ArenaAllocator *arena) {
   int issues_found = 0;
@@ -233,7 +259,10 @@ int static_memory_check_and_report(StaticMemoryAnalyzer *analyzer,
     }
 
     if (alloc->free_count > 1) {
-      // Double free - need to re-read the file
+      // Double free detected: multiple unconditional frees at function scope
+      // (conditional frees in branches are tracked separately to avoid
+      // false positives from the early-return + cleanup pattern)
+      // need to re-read the file
       const char *source = read_file(alloc->file_path);
       if (!source)
         continue;
@@ -273,6 +302,12 @@ int static_memory_check_and_report(StaticMemoryAnalyzer *analyzer,
       issues_found++;
 
     } else if (!alloc->has_matching_free) {
+      // Memory leak check - skip if address was taken (ownership may have
+      // been transferred to a container/function)
+      if (alloc->address_taken) {
+        alloc->reported = true;
+        continue;
+      }
       // Memory leak - re-read the file
       const char *source = read_file(alloc->file_path);
       if (!source)
