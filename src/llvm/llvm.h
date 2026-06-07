@@ -183,8 +183,8 @@ void init_struct_cache(void);
 void cache_struct(const char *name, StructInfo *info);
 StructInfo *lookup_cached_struct(const char *name);
 StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
-
-
+LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
+                                            AstNode *node);
 
 // =============================================================================
 // SYMBOL IMPORT AND MODULE INTEROP
