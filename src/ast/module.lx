@@ -8,18 +8,11 @@ pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
   let node: *ModuleNode = cast<*ModuleNode>(alloc(sizeof<ModuleNode>));
   let base: *AstNode = cast<*AstNode>(node);
   
-  // let f: *int = cast<*int>(node);
   base.kind = AST::NodeType::PREPROCESSOR_MODULE;
   base.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
   base.line = line;
   base.col = col;
 
-  // f[4] = cast<int>(name);
-  // f[5] = cast<int>(doc_comment);
-  // f[6] = cast<int>(file_path);
-  // f[7] = cast<int>(body);
-  // f[8] = body_count;
-  
   node.name = name;
   node.doc_comment = doc_comment;
   node.file_path = file_path;
@@ -31,31 +24,35 @@ pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
 
 #returns_ownership
 pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<UseNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let node: *UseNode = cast<*UseNode>(alloc(sizeof<UseNode>));
+  let base: *AstNode = cast<*AstNode>(node);
+
   base.kind = AST::NodeType::PREPROCESSOR_USE;
   base.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(module_name);
-  f[5] = cast<int>(alias);
-  return node;
+
+  node.module_name=  module_name;
+  node.alias = alias;
+
+  return cast<*AstNode>(node);
 }
 
 #returns_ownership
 const make_os -> fn (platforms: **byte, bodies: **AstNode, has_default: int, 
                      default_body: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<OsNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let node: *OsNode = cast<*OsNode>(alloc(sizeof<OsNode>));
+  let base: *AstNode = cast<*AstNode>(node);
+
   base.kind = AST::NodeType::PREPROCESSOR_OS;
   base.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(platforms);
-  f[5] = cast<int>(bodies);
-  f[6] = has_default;
-  f[7] = cast<int>(default_body);
-  return node;
+
+  node.platforms = platforms;
+  node.bodies = bodies;
+  node.has_default = has_default;
+  node.default_body = default_body;
+
+  return cast<*AstNode>(node);
 }

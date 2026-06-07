@@ -4,67 +4,75 @@
 
 #returns_ownership
 pub const make_program -> fn (modules: **AstNode, module_count: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<ProgramNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *ProgramNode = cast<*ProgramNode>(alloc(sizeof<ProgramNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::PROGRAM;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
+
   base.col = col;
-  f[4] = cast<int>(modules);
-  f[5] = module_count;
-  return node;
+  n.modules = modules;
+  n.module_count = module_count;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_expr_stmt -> fn (expression: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<ExprStmtNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *ExprStmtNode = cast<*ExprStmtNode>(alloc(sizeof<ExprStmtNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_EXPRESSION;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(expression);
-  return node;
+
+  n.expression = expression;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AstNode,
                                initializer: *AstNode, is_mutable: int, is_public: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<VarDeclNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *VarDeclNode = cast<*VarDeclNode>(alloc(sizeof<VarDeclNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_VAR_DECL;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(name);
-  f[5] = cast<int>(doc_comment);
-  f[6] = cast<int>(var_type);
-  f[7] = cast<int>(initializer);
-  f[8] = is_mutable;
-  f[9] = is_public;
-  return node;
+
+  n.name = name;
+  n.doc_comment = doc_comment;
+  n.var_type = var_type;
+  n.initializer = initializer;
+  n.is_mutable = is_mutable;
+  n.is_public = is_public;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_const_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AstNode,
                                  initializer: *AstNode, is_public: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<VarDeclNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *VarDeclNode = cast<*VarDeclNode>(alloc(sizeof<VarDeclNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_CONST_DECL;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(name);
-  f[5] = cast<int>(doc_comment);
-  f[6] = cast<int>(var_type);
-  f[7] = cast<int>(initializer);
-  f[8] = 0;
-  f[9] = is_public;
-  return node;
+
+  n.name = name;
+  n.doc_comment = doc_comment;
+  n.var_type = var_type;
+  n.initializer = initializer;
+  n.is_mutable = 0;
+  n.is_public = is_public;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
@@ -72,249 +80,279 @@ pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **
                                 param_count: int, return_type: *AstNode, is_public: int, body: *AstNode,
                                 returns_ownership: int, takes_ownership: int,
                                 forward_declared: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<FuncDeclNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *FuncDeclNode = cast<*FuncDeclNode>(alloc(sizeof<FuncDeclNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_FUNCTION;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4]  = cast<int>(name);
-  f[5]  = cast<int>(doc_comment);
-  f[6]  = cast<int>(param_names);
-  f[7]  = cast<int>(param_types);
-  f[8]  = param_count;
-  f[9]  = cast<int>(return_type);
-  f[10] = is_public;
-  f[11] = cast<int>(body);
-  f[12] = returns_ownership;
-  f[13] = takes_ownership;
-  f[14] = forward_declared;
-  return node;
+
+  n.name = name;
+  n.doc_comment = doc_comment;
+  n.param_names = param_names;
+  n.param_types = param_types;
+  n.param_count = param_count;
+  n.return_type = return_type;
+  n.is_public = is_public;
+  n.body = body;
+  n.returns_ownership = returns_ownership;
+  n.takes_ownership = takes_ownership;
+  n.forward_declared = forward_declared;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_members: **AstNode,
                                   public_count: int, private_members: **AstNode, private_count: int,
                                   is_public: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<StructDeclNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *StructDeclNode = cast<*StructDeclNode>(alloc(sizeof<StructDeclNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_STRUCT;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4]  = cast<int>(name);
-  f[5]  = cast<int>(doc_comment);
-  f[6]  = cast<int>(public_members);
-  f[7]  = public_count;
-  f[8]  = cast<int>(private_members);
-  f[9]  = private_count;
-  f[10] = is_public;
-  return node;
+
+  n.name = name;
+  n.doc_comment = doc_comment;
+  n.public_members = public_members;
+  n.public_count = public_count;
+  n.private_members = private_members;
+  n.private_count = private_count;
+  n.is_public = is_public;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AstNode,
                                  function: *AstNode, is_public: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<FieldDeclNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *FieldDeclNode = cast<*FieldDeclNode>(alloc(sizeof<FieldDeclNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_FIELD_DECL;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(name);
-  f[5] = cast<int>(doc_comment);
-  f[6] = cast<int>(type_node);
-  f[7] = cast<int>(function);
-  f[8] = is_public;
-  return node;
+
+  n.name = name;
+  n.doc_comment = doc_comment;
+  n.type_node = type_node;
+  n.function = function;
+  n.is_public = is_public;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte,
                                 member_count: int, is_public: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<EnumDeclNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *EnumDeclNode = cast<*EnumDeclNode>(alloc(sizeof<EnumDeclNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_ENUM;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(name);
-  f[5] = cast<int>(doc_comment);
-  f[6] = cast<int>(members);
-  f[7] = member_count;
-  f[8] = is_public;
-  return node;
+
+  n.name = name;
+  n.doc_comment = doc_comment;
+  n.members = members;
+  n.member_count = member_count;
+  n.is_public = is_public;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_if_stmt -> fn (condition: *AstNode, then_stmt: *AstNode, elif_stmts: **AstNode,
                               elif_count: int, else_stmt: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<IfStmtNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *IfStmtNode = cast<*IfStmtNode>(alloc(sizeof<IfStmtNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_IF;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(condition);
-  f[5] = cast<int>(then_stmt);
-  f[6] = cast<int>(elif_stmts);
-  f[7] = elif_count;
-  f[8] = cast<int>(else_stmt);
-  return node;
+
+  n.condition = condition;
+  n.then_stmt = then_stmt;
+  n.elif_stmts = elif_stmts;
+  n.elif_count = elif_count;
+  n.else_stmt = else_stmt;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_loop_stmt -> fn (condition: *AstNode, optional: *AstNode, body: *AstNode,
                                 initializer: **AstNode, init_count: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<LoopStmtNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *LoopStmtNode = cast<*LoopStmtNode>(alloc(sizeof<LoopStmtNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_LOOP;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(condition);
-  f[5] = cast<int>(optional);
-  f[6] = cast<int>(body);
-  f[7] = cast<int>(initializer);
-  f[8] = init_count;
-  return node;
+
+  n.condition = condition;
+  n.optional = optional;
+  n.body = body;
+  n.initializer = initializer;
+  n.init_count = init_count;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_return_stmt -> fn (value: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<ReturnStmtNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *ReturnStmtNode = cast<*ReturnStmtNode>(alloc(sizeof<ReturnStmtNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_RETURN;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(value);
-  return node;
+
+  n.value = value;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_block -> fn (statements: **AstNode, stmt_count: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<BlockNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *BlockNode = cast<*BlockNode>(alloc(sizeof<BlockNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_BLOCK;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(statements);
-  f[5] = stmt_count;
-  return node;
+
+  n.statements = statements;
+  n.stmt_count = stmt_count;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_print_stmt -> fn (expressions: **AstNode, expr_count: int, ln: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<PrintStmtNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *PrintStmtNode = cast<*PrintStmtNode>(alloc(sizeof<PrintStmtNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_PRINT;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(expressions);
-  f[5] = expr_count;
-  f[6] = ln;
-  return node;
+
+  n.expressions = expressions;
+  n.expr_count = expr_count;
+  n.ln = ln;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_break_continue -> fn (is_continue: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<BreakContinueNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *BreakContinueNode = cast<*BreakContinueNode>(alloc(sizeof<BreakContinueNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_BREAK_CONTINUE;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = is_continue;
-  return node;
+
+  n.is_continue = is_continue;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_defer_stmt -> fn (statement: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<DeferNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *DeferNode = cast<*DeferNode>(alloc(sizeof<DeferNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_DEFER;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(statement);
-  return node;
+
+  n.statement = statement;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_switch_stmt -> fn (condition: *AstNode, cases: **AstNode, case_count: int,
                                   default_case: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<SwitchNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *SwitchNode = cast<*SwitchNode>(alloc(sizeof<SwitchNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_SWITCH;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(condition);
-  f[5] = cast<int>(cases);
-  f[6] = case_count;
-  f[7] = cast<int>(default_case);
-  return node;
+
+  n.condition = condition;
+  n.cases = cases;
+  n.case_count = case_count;
+  n.default_case = default_case;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: **AstNode, struct_name_list: **byte,
                                 function_name_count: int, struct_name_count: int, body: *AstNode,
                                 line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<ImplNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *ImplNode = cast<*ImplNode>(alloc(sizeof<ImplNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_IMPL;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(function_name_list);
-  f[5] = cast<int>(function_type_list);
-  f[6] = cast<int>(struct_name_list);
-  f[7] = function_name_count;
-  f[8] = struct_name_count;
-  f[9] = cast<int>(body);
-  return node;
+
+  n.function_name_list = function_name_list;
+  n.function_type_list = function_type_list;
+  n.struct_name_list = struct_name_list;
+  n.function_name_count = function_name_count;
+  n.struct_name_count = struct_name_count;
+  n.body = body;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_case_stmt -> fn (values: **AstNode, value_count: int, body: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<CaseNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *CaseNode = cast<*CaseNode>(alloc(sizeof<CaseNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_CASE;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(values);
-  f[5] = value_count;
-  f[6] = cast<int>(body);
-  return node;
+
+  n.values = values;
+  n.value_count = value_count;
+  n.body = body;
+
+  return cast<*AstNode>(n);
 }
 
 #returns_ownership
 pub const make_default_stmt -> fn (body: *AstNode, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<DefaultNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let n: *DefaultNode = cast<*DefaultNode>(alloc(sizeof<DefaultNode>));
+  let base: *AstNode = cast<*AstNode>(n);
+
   base.kind = AST::NodeType::STMT_DEFAULT;
   base.category = AST::NodeCategory::Node_Category_STMT;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(body);
-  return node;
+
+  n.body = body;
+  
+  return cast<*AstNode>(n);
 }
