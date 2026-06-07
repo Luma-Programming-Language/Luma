@@ -167,6 +167,9 @@ void preprocess_all_modules(CodeGenContext *ctx);
 StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
 void cleanup_module_caches(void);
 void debug_object_files(const char *output_dir);
+StructInfo *find_concrete_struct_for_base(CodeGenContext *ctx,
+                                                  StructInfo *base_info,
+                                                  const char *field_name);
 
 unsigned int hash_string(const char *str);
 

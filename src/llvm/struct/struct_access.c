@@ -152,12 +152,14 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
         
         // Check permissions
         if (!cached->is_public) {
-            fprintf(stderr, "Error: Field '%s' is private\n", field_name);
+            fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
+                    field_name, struct_info->name);
             return NULL;
         }
     } else {
         field_index = get_field_index(struct_info, field_name);
 
+        // Declared type doesn't have this field — try embedded-base resolution
         if (field_index < 0) {
             StructInfo *concrete = find_concrete_struct_for_base(ctx, struct_info, field_name);
             if (concrete) {
@@ -168,8 +170,8 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
 
         if (field_index < 0) {
             fprintf(stderr,
-                "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
-                field_name, struct_info->name);
+                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+                    field_name, struct_info->name);
             return NULL;
         }
         
@@ -273,7 +275,8 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
         field_index = cached->field_index;
         field_type = cached->field_type;
         if (!cached->is_public) {
-            fprintf(stderr, "Error: Field '%s' is private\n", field_name);
+            fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
+                    field_name, struct_info->name);
             return NULL;
         }
     } else {
@@ -288,7 +291,9 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
         }
 
         if (field_index < 0 || !is_field_access_allowed(ctx, struct_info, field_index)) {
-            fprintf(stderr, "Error: Cannot access field '%s'\n", field_name);
+            fprintf(stderr,
+                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+                    field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
@@ -347,6 +352,7 @@ static LLVMValueRef handle_indexed_member(CodeGenContext *ctx, AstNode *node) {
         field_type = cached->field_type;
     } else {
         field_index = get_field_index(struct_info, field_name);
+
         if (field_index < 0) {
             StructInfo *concrete = find_concrete_struct_for_base(ctx, struct_info, field_name);
             if (concrete) {
@@ -354,8 +360,11 @@ static LLVMValueRef handle_indexed_member(CodeGenContext *ctx, AstNode *node) {
                 field_index = get_field_index(concrete, field_name);
             }
         }
+
         if (field_index < 0) {
-            fprintf(stderr, "Error: Field '%s' not found\n", field_name);
+            fprintf(stderr,
+                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+                    field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
@@ -409,12 +418,13 @@ static LLVMValueRef handle_call_result_member(CodeGenContext *ctx, AstNode *node
     FieldAccessCache *cached = lookup_field_cache(struct_info->name, field_name);
     int field_index;
     LLVMTypeRef field_type;
-    
+
     if (cached) {
         field_index = cached->field_index;
         field_type = cached->field_type;
     } else {
         field_index = get_field_index(struct_info, field_name);
+
         if (field_index < 0) {
             StructInfo *concrete = find_concrete_struct_for_base(ctx, struct_info, field_name);
             if (concrete) {
@@ -422,8 +432,11 @@ static LLVMValueRef handle_call_result_member(CodeGenContext *ctx, AstNode *node
                 field_index = get_field_index(concrete, field_name);
             }
         }
+
         if (field_index < 0) {
-            fprintf(stderr, "Error: Field '%s' not found\n", field_name);
+            fprintf(stderr,
+                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+                    field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
@@ -456,12 +469,13 @@ static LLVMValueRef handle_deref_member(CodeGenContext *ctx, AstNode *node) {
     FieldAccessCache *cached = lookup_field_cache(struct_info->name, field_name);
     int field_index;
     LLVMTypeRef field_type;
-    
+
     if (cached) {
         field_index = cached->field_index;
         field_type = cached->field_type;
     } else {
         field_index = get_field_index(struct_info, field_name);
+
         if (field_index < 0) {
             StructInfo *concrete = find_concrete_struct_for_base(ctx, struct_info, field_name);
             if (concrete) {
@@ -469,8 +483,11 @@ static LLVMValueRef handle_deref_member(CodeGenContext *ctx, AstNode *node) {
                 field_index = get_field_index(concrete, field_name);
             }
         }
+
         if (field_index < 0) {
-            fprintf(stderr, "Error: Field '%s' not found\n", field_name);
+            fprintf(stderr,
+                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+                    field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
