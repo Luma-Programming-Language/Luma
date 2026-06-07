@@ -4,16 +4,18 @@
 // Used to resolve field access on base-typed pointers (C-style inheritance pattern).
 // Returns NULL if no such struct is found.
 StructInfo *find_concrete_struct_for_base(CodeGenContext *ctx,
-                                          StructInfo *base_info,
-                                          const char *field_name) {
-  for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-    if (info->field_count < 2) continue;
-    // First field must be the embedded base (matched by LLVM type pointer identity)
-    if (info->field_types[0] != base_info->llvm_type) continue;
-    // Must contain the requested field
-    if (get_field_index(info, field_name) >= 0) return info;
-  }
-  return NULL;
+                                          StructInfo     *base_info,
+                                          const char     *field_name) {
+    StructInfo *best = NULL;
+    for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+        if (info->field_count < 2) continue;
+        if (info->field_types[0] != base_info->llvm_type) continue;
+        if (get_field_index(info, field_name) < 0) continue;
+        if (!best || info->field_count > best->field_count) {
+            best = info;
+        }
+    }
+    return best;
 }
 
 // Find a struct type by name
