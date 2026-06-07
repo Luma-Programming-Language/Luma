@@ -5,19 +5,28 @@
 #returns_ownership
 pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte, 
                             body: **AstNode, body_count: int, line: int, col: int) *AstNode {
-  let node: *AstNode = cast<*AstNode>(alloc(sizeof<ModuleNode>));
-  let base: *AstNode = node;
-  let f: *int = cast<*int>(node);
+  let node: *ModuleNode = cast<*ModuleNode>(alloc(sizeof<ModuleNode>));
+  let base: *AstNode = cast<*AstNode>(node);
+  
+  // let f: *int = cast<*int>(node);
   base.kind = AST::NodeType::PREPROCESSOR_MODULE;
   base.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
   base.line = line;
   base.col = col;
-  f[4] = cast<int>(name);
-  f[5] = cast<int>(doc_comment);
-  f[6] = cast<int>(file_path);
-  f[7] = cast<int>(body);
-  f[8] = body_count;
-  return node;
+
+  // f[4] = cast<int>(name);
+  // f[5] = cast<int>(doc_comment);
+  // f[6] = cast<int>(file_path);
+  // f[7] = cast<int>(body);
+  // f[8] = body_count;
+  
+  node.name = name;
+  node.doc_comment = doc_comment;
+  node.file_path = file_path;
+  node.body = body;
+  node.body_count = body_count;
+  
+  return cast<*AstNode>(node);
 }
 
 #returns_ownership
