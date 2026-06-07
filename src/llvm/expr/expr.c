@@ -2123,9 +2123,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
       LLVMTypeRef element_type =
           resolve_pointer_element_type(ctx, target->expr.index.object);
       if (!element_type) {
-        fprintf(
-            stderr,
-            "Error: Could not determine element type for pointer indexing\n");
+        fprintf(stderr,
+                "Error: Could not determine element type for pointer indexing\n");
         return NULL;
       }
 
@@ -2187,10 +2186,14 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
       }
 
       if (!struct_info) {
-        LLVMTypeRef lookup_type = (LLVMGetTypeKind(sym_type) == LLVMPointerTypeKind && sym->element_type)
-            ? sym->element_type : sym_type;
+        LLVMTypeRef lookup_type =
+            (LLVMGetTypeKind(sym_type) == LLVMPointerTypeKind &&
+             sym->element_type)
+                ? sym->element_type
+                : sym_type;
         const char *type_name = LLVMGetStructName(lookup_type);
-        if (type_name) struct_info = find_struct_type(ctx, type_name);
+        if (type_name)
+          struct_info = find_struct_type(ctx, type_name);
       }
 
       if (!struct_info) {
@@ -2199,18 +2202,30 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
         return NULL;
       }
 
+      // Try declared struct first, then embedded-base resolution
       int field_index = get_field_index(struct_info, field_name);
       if (field_index < 0) {
-        fprintf(stderr, "Error: Field '%s' not found in struct '%s'\n",
+        StructInfo *concrete =
+            find_concrete_struct_for_base(ctx, struct_info, field_name);
+        if (concrete) {
+          struct_info = concrete;
+          field_index = get_field_index(concrete, field_name);
+        }
+      }
+      if (field_index < 0) {
+        fprintf(stderr,
+                "Error: Field '%s' not found in struct '%s' or any struct "
+                "embedding it\n",
                 field_name, struct_info->name);
         return NULL;
       }
 
       LLVMValueRef struct_ptr = sym->value;
       if (LLVMGetTypeKind(sym_type) == LLVMPointerTypeKind) {
-        struct_ptr = LLVMBuildLoad2(ctx->builder,
-                                    LLVMPointerType(struct_info->llvm_type, 0),
-                                    sym->value, "load_struct_ptr");
+        struct_ptr =
+            LLVMBuildLoad2(ctx->builder,
+                           LLVMPointerType(struct_info->llvm_type, 0),
+                           sym->value, "load_struct_ptr");
       }
 
       return LLVMBuildStructGEP2(ctx->builder, struct_info->llvm_type,

@@ -93,7 +93,7 @@ static void cache_field_access(StructInfo *info, const char *field_name, int ind
 static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node) {
     const char *field_name = node->expr.member.member;
     const char *var_name = node->expr.member.object->expr.identifier.name;
-    
+
     LLVM_Symbol *sym = find_symbol(ctx, var_name);
     if (!sym || sym->is_function) {
         fprintf(stderr, "Error: Variable %s not found or is a function\n", var_name);
@@ -103,11 +103,10 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
     // Find struct info - try cache first
     StructInfo *struct_info = NULL;
     FieldAccessCache *cached = NULL;
-    
-    // Try to determine struct name from symbol
+
     LLVMTypeRef symbol_type = sym->type;
     LLVMTypeKind symbol_kind = LLVMGetTypeKind(symbol_type);
-    
+
     if (symbol_kind == LLVMPointerTypeKind && sym->element_type) {
         for (StructInfo *info = ctx->struct_types; info; info = info->next) {
             if (info->llvm_type == sym->element_type) {
@@ -125,7 +124,7 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
             }
         }
     }
-    
+
     // Fallback: resolve struct by name from LLVM type
     if (!struct_info) {
         if (symbol_kind == LLVMPointerTypeKind && sym->element_type) {
@@ -145,12 +144,11 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
     // Get field index - use cache if available
     int field_index;
     LLVMTypeRef field_type;
-    
+
     if (cached) {
         field_index = cached->field_index;
         field_type = cached->field_type;
-        
-        // Check permissions
+
         if (!cached->is_public) {
             fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
                     field_name, struct_info->name);
@@ -159,9 +157,10 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
     } else {
         field_index = get_field_index(struct_info, field_name);
 
-        // Declared type doesn't have this field — try embedded-base resolution
+        // Try embedded-base resolution if not found in declared type
         if (field_index < 0) {
-            StructInfo *concrete = find_concrete_struct_for_base(ctx, struct_info, field_name);
+            StructInfo *concrete =
+                find_concrete_struct_for_base(ctx, struct_info, field_name);
             if (concrete) {
                 struct_info = concrete;
                 field_index = get_field_index(concrete, field_name);
@@ -170,20 +169,19 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
 
         if (field_index < 0) {
             fprintf(stderr,
-                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+                    "Error: Field '%s' not found in struct '%s' or any struct "
+                    "embedding it\n",
                     field_name, struct_info->name);
             return NULL;
         }
-        
+
         if (!is_field_access_allowed(ctx, struct_info, field_index)) {
             fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
                     field_name, struct_info->name);
             return NULL;
         }
-        
+
         field_type = struct_info->field_types[field_index];
-        
-        // Cache for next time
         cache_field_access(struct_info, field_name, field_index);
     }
 
@@ -211,7 +209,6 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
                             "array_field_ptr");
     }
 
-    // Load and return
     return LLVMBuildLoad2(ctx->builder, field_type, field_ptr, "field_val");
 }
 

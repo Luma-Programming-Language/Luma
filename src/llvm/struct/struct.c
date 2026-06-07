@@ -480,13 +480,12 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
       return NULL;
     }
 
-    // Find field index — try declared struct first, then embedded-base resolution
+    // Try declared struct first, then embedded-base resolution
     int field_index = get_field_index(struct_info, field_name);
 
     if (field_index < 0) {
-      // Declared type doesn't have the field. Look for a concrete struct that
-      // embeds the declared type as its first field and has the requested field.
-      StructInfo *concrete = find_concrete_struct_for_base(ctx, struct_info, field_name);
+      StructInfo *concrete =
+          find_concrete_struct_for_base(ctx, struct_info, field_name);
       if (concrete) {
         struct_info = concrete;
         field_index = get_field_index(concrete, field_name);
@@ -495,7 +494,8 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
 
     if (field_index < 0) {
       fprintf(stderr,
-              "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
+              "Error: Field '%s' not found in struct '%s' or any struct "
+              "embedding it\n",
               field_name, struct_info->name);
       return NULL;
     }
@@ -507,17 +507,14 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     }
 
     // Handle the different cases for assignment
-    LLVMTypeRef symbol_type = sym->type;
     LLVMValueRef struct_ptr;
 
-    if (LLVMGetTypeKind(symbol_type) == LLVMPointerTypeKind) {
-      // Pointer to struct - load the pointer value
+    if (LLVMGetTypeKind(sym_type) == LLVMPointerTypeKind) {
       LLVMTypeRef ptr_to_struct_type =
           LLVMPointerType(struct_info->llvm_type, 0);
       struct_ptr = LLVMBuildLoad2(ctx->builder, ptr_to_struct_type, sym->value,
                                   "load_struct_ptr");
-    } else if (symbol_type == struct_info->llvm_type) {
-      // Direct struct variable
+    } else if (sym_type == struct_info->llvm_type) {
       struct_ptr = sym->value;
     } else {
       fprintf(stderr,
@@ -531,7 +528,6 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     LLVMTypeRef actual_type = LLVMTypeOf(value);
 
     if (expected_type != actual_type) {
-      // Try basic type conversions
       if (LLVMGetTypeKind(expected_type) == LLVMIntegerTypeKind &&
           LLVMGetTypeKind(actual_type) == LLVMIntegerTypeKind) {
         unsigned expected_bits = LLVMGetIntTypeWidth(expected_type);
@@ -545,7 +541,6 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
       }
     }
 
-    // Use GEP to get the field address and store the value
     LLVMValueRef field_ptr =
         LLVMBuildStructGEP2(ctx->builder, struct_info->llvm_type, struct_ptr,
                             field_index, "field_ptr");
