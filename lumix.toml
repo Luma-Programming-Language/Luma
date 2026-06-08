@@ -3,8 +3,16 @@ name      = "luma"
 directory = "src"
 entry     = "src/main.lx"
 
-[build]
-flags = "-O2 -save"
-
 [output]
 binary_dir = "bin"
+
+[dependiecs]
+paths = [
+    ""
+]
+
+[build]
+flags = "-O2"
+
+[run]
+args = "test/test.lx -l std/args.lx -name test"
