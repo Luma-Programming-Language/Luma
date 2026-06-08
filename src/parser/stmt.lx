@@ -211,20 +211,135 @@ const consume_doc_comments -> fn (p: *Parser) *byte {
 }
 
 const apply_dll_import -> fn (node: *AstNode, dll_name: *byte, dll_callconv: *byte) void {
-  let f: *int = cast<*int>(node);
-  f[15] = 1;           // is_dll_import = true
-  f[16] = cast<int>(dll_name);
-  f[17] = cast<int>(dll_callconv);
+  let n: *FuncDeclNode = cast<*FuncDeclNode>(node);
+  n.dll_import = 1;
+  n.dll_name = dll_name;
+  n.dll_callconv = dll_callconv;
 }
 
 const apply_lib_import -> fn (node: *AstNode, lib_name: *byte) void {
-  let f: *int = cast<*int>(node);
-  f[18] = 1;           // is_lib_import = true
-  f[19] = cast<int>(lib_name);
+  let n: *FuncDeclNode = cast<*FuncDeclNode>(node);
+  n.lib_import = 1;
+  n.lib_name = lib_name;
 }
 
-#returns_ownership const os_stmt     -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
-#returns_ownership const link_stmt   -> fn (p: *Parser) *AstNode { return cast<*AstNode>(0); }
+#returns_ownership 
+const os_stmt     -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let col:  int = p.current().col;
+
+  p.consume(TOK::LumaTokenType::TOK_OS, "Expected '@os' keyword");
+  p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after '@os'");
+
+  let platforms: Vector = VEC::create_vector(sizeof<*byte>);
+  let bodies: Vector = VEC::create_vector(sizeof<*AstNode>);
+  let has_default: int = 0;
+  let default_body: *AstNode = cast<*AstNode>(0);
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+    let arm_line: int = p.current().line;
+    let arm_col:  int = p.current().col;
+
+    // Default arm: _ -> { ... }
+    if (p.current().kind == TOK::LumaTokenType::TOK_IDENTIFIER) {
+      let tok_name: *byte = p.get_name();
+      if (STRING::strcmp(tok_name, "_") == 0) {
+        if (has_default == 1) {
+          p.error("SyntaxError", "Duplicate default arm '_' in @os block.");
+          free(tok_name);
+          VEC::free_vector(&platforms);
+          VEC::free_vector(&bodies);
+          return cast<*AstNode>(0);
+        }
+        p.advance();
+        p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after '_' in @os block.");
+
+        default_body = block(p);
+        if (default_body == cast<*AstNode>(0)) {
+          p.error("SyntaxError", "Expected block body after '->' in @os default arm.");
+          free(tok_name);
+          VEC::free_vector(&platforms);
+          VEC::free_vector(&bodies);
+          return cast<*AstNode>(0);
+        }
+
+        has_default = 1;
+        free(tok_name);
+        continue;
+      }
+      free(tok_name);
+    }
+
+    // Platform arm: "windows" -> { ... }
+    if (p.current().kind != TOK::LumaTokenType::TOK_STRING) {
+      p.error("SyntaxError", "Expected platform string (e.g. ''windows'') or '_' in @os block.");
+      VEC::free_vector(&platforms);
+      VEC::free_vector(&bodies);
+      return cast<*AstNode>(0);
+    }
+
+    let platform: *byte = p.get_name();
+    p.advance();
+
+    p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after platform string in @os block.");
+
+    let arm_body: *AstNode = block(p);
+    if (arm_body == cast<*AstNode>(0)) {
+      p.error("SyntaxError", "Expected block body after '->' in @os arm.");
+      free(platform);
+      VEC::free_vector(&platforms);
+      VEC::free_vector(&bodies);
+      return cast<*AstNode>(0);
+    }
+
+    platforms.push_back(cast<*void>(&platform));
+    bodies.push_back(cast<*void>(&arm_body));
+  }
+
+  // NULL-terminate for OsNode printing/free loops
+  let null_p: *byte = cast<*byte>(0);
+  let null_b: *AstNode = cast<*AstNode>(0);
+  platforms.push_back(cast<*void>(&null_p));
+  bodies.push_back(cast<*void>(&null_b));
+
+  p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to close @os block.");
+
+  if (platforms.size == 0 && has_default == 0) {
+    p.error("SyntaxError", "@os block must have at least one arm.");
+    VEC::free_vector(&platforms);
+    VEC::free_vector(&bodies);
+    return cast<*AstNode>(0);
+  }
+
+  let node: *AstNode = MAST::make_os(
+    PARS::vec_to_byte_array(&platforms), PARS::vec_to_node_array(&bodies),
+    has_default, default_body, line, col
+  );
+  VEC::free_vector(&platforms);
+  VEC::free_vector(&bodies);
+  return node;
+}
+
+#returns_ownership 
+const link_stmt   -> fn (p: *Parser) *AstNode { 
+  let line: int = p.current().line;
+  let col:  int = p.current().col;
+
+  p.consume(TOK::LumaTokenType::TOK_LINK, "Expected '@link' keyword");
+  p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after '@link'");
+
+  if (p.current().kind != TOK::LumaTokenType::TOK_STRING) {
+    p.error("SyntaxError", "Expected library name string in '@link'");
+    return cast<*AstNode>(0);
+  }
+
+  let lib_name: *byte = p.get_name();
+  p.advance();
+
+  p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close '@link'");
+
+  return MAST::make_link(lib_name, line, col);
+}
 
 #returns_ownership 
 const _const -> fn (p: *Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AstNode {

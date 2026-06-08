@@ -39,8 +39,8 @@ pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int)
 }
 
 #returns_ownership
-const make_os -> fn (platforms: **byte, bodies: **AstNode, has_default: int, 
-                     default_body: *AstNode, line: int, col: int) *AstNode {
+pub const make_os -> fn (platforms: **byte, bodies: **AstNode, has_default: int, 
+                         default_body: *AstNode, line: int, col: int) *AstNode {
   let node: *OsNode = cast<*OsNode>(alloc(sizeof<OsNode>));
   let base: *AstNode = cast<*AstNode>(node);
 
@@ -53,6 +53,21 @@ const make_os -> fn (platforms: **byte, bodies: **AstNode, has_default: int,
   node.bodies = bodies;
   node.has_default = has_default;
   node.default_body = default_body;
+
+  return cast<*AstNode>(node);
+}
+
+#returns_ownership
+pub const make_link -> fn (lib_name: *byte, line: int, col: int) *AstNode {
+  let node: *LinkNode = cast<*LinkNode>(alloc(sizeof<LinkNode>));
+  let base: *AstNode = cast<*AstNode>(node);
+
+  base.kind = AST::NodeType::PREPROCESSOR_LINK;
+  base.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
+  base.line = line;
+  base.col = col;
+
+  node.lib_name = lib_name;
 
   return cast<*AstNode>(node);
 }

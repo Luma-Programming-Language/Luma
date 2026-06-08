@@ -4,6 +4,7 @@ pub const NodeType -> enum {
   PREPROCESSOR_MODULE,
   PREPROCESSOR_USE,
   PREPROCESSOR_OS,
+  PREPROCESSOR_LINK,
 
   EXPR_LITERAL,
   EXPR_IDENTIFIER,
@@ -145,6 +146,11 @@ pub const OsNode -> struct {
   bodies: **AstNode,
   has_default: int,
   default_body: *AstNode,
+};
+
+pub const LinkNode -> struct {
+  base: AstNode,
+  lib_name: *byte,
 };
 
 // ─── Expression Nodes ────────────────────────────────────────────────────────
@@ -473,6 +479,23 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::PREPROCESSOR_OS) {
     let n: *OsNode = cast<*OsNode>(node);
+    let i: int = 0;
+    loop (n.platforms[i] != cast<*byte>(0)) {
+      free(n.platforms[i]);
+      free_node(n.bodies[i]);
+      i = i + 1;
+    }
+    free(n.platforms);
+    free(n.bodies);
+    free_node(n.default_body);
+    free(node);
+    return;
+  }
+
+  if (kind == NodeType::PREPROCESSOR_LINK) {
+    let n: *LinkNode = cast<*LinkNode>(node);
+    free(n.lib_name);
+    free(node);
     return;
   }
 

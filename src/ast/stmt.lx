@@ -99,6 +99,11 @@ pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **
   n.returns_ownership = returns_ownership;
   n.takes_ownership = takes_ownership;
   n.forward_declared = forward_declared;
+  n.dll_import = 0;
+  n.dll_name = cast<*byte>(0);
+  n.dll_callconv = cast<*byte>(0);
+  n.lib_import = 0;
+  n.lib_name = cast<*byte>(0);
 
   return cast<*AstNode>(n);
 }

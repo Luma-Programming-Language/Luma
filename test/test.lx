@@ -2,11 +2,6 @@
 
 @use "std_args" as ARGS
 
-#returns_ownership
-#dll_import("kernal32.dll", callconv: "stdcall")
-const random -> fn () void {}
-
-#lib_import("libc")
 pub const main -> fn (argc: int, argv: **byte) int {
     let args: Args = ARGS::init_args(argc, argv);
 

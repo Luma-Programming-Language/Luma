@@ -12,6 +12,7 @@
 #returns_ownership const pointer_type    -> fn (p: *Parser) *AstNode;
 #returns_ownership const array_type      -> fn (p: *Parser) *AstNode;
 #returns_ownership const resolution_type -> fn (p: *Parser) *AstNode;
+#returns_ownership const function_type   -> fn (p: *Parser) *AstNode;
 
 #returns_ownership
 const tnud -> fn (p: *Parser) *AstNode {
@@ -29,6 +30,7 @@ const tnud -> fn (p: *Parser) *AstNode {
     TOK::LumaTokenType::TOK_CHAR   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
     TOK::LumaTokenType::TOK_STAR       -> { p.advance(); return pointer_type(p);    }
     TOK::LumaTokenType::TOK_LBRACKET   -> { p.advance(); return array_type(p);      }
+    TOK::LumaTokenType::TOK_FN         -> { p.advance(); return function_type(p);   }
     TOK::LumaTokenType::TOK_IDENTIFIER -> { return resolution_type(p);              }
     _ -> { return cast<*AstNode>(0); }
   }
@@ -47,7 +49,8 @@ pub const parse_type -> fn (p: *Parser) *AstNode {
       kind == TOK::LumaTokenType::TOK_CHAR   ||
       kind == TOK::LumaTokenType::TOK_IDENTIFIER ||
       kind == TOK::LumaTokenType::TOK_STAR   ||
-      kind == TOK::LumaTokenType::TOK_LBRACKET) {
+      kind == TOK::LumaTokenType::TOK_LBRACKET ||
+      kind == TOK::LumaTokenType::TOK_FN) {
     return tnud(p);
   }
 
@@ -144,5 +147,49 @@ const resolution_type -> fn (p: *Parser) *AstNode {
   );
   VEC::free_vector(&parts);
 
+  return node;
+}
+
+#returns_ownership 
+const function_type   -> fn (p: *Parser) *AstNode {
+  let line: int = p.current().line;
+  let col:  int = p.current().col;
+
+  p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' to start function parameter list.");
+
+  let param_types: Vector = VEC::create_vector(sizeof<*AstNode>);
+
+  if (p.current().kind != TOK::LumaTokenType::TOK_RPAREN) {
+    loop (p.has_tokens()) {
+      let param_type: *AstNode = tnud(p);
+      if (param_type == cast<*AstNode>(0)) {
+        p.error("TypeError", "Expected type in function parameter list.");
+        VEC::free_vector(&param_types);
+        return cast<*AstNode>(0);
+      }
+
+      param_types.push_back(cast<*void>(&param_type));
+
+      if (p.current().kind == TOK::LumaTokenType::TOK_COMMA) {
+        p.advance();
+      } else {
+        break;
+      }
+    }
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close function parameter list.");
+
+  let return_type: *AstNode = tnud(p);
+  if (return_type == cast<*AstNode>(0)) {
+    p.error("TypeError", "Expected return type after function parameter list.");
+    VEC::free_vector(&param_types);
+    return cast<*AstNode>(0);
+  }
+
+  let node: *AstNode = TAST::make_func_type(
+    PARS::vec_to_node_array(&param_types), param_types.size, return_type, line, col
+  );
+  VEC::free_vector(&param_types);
   return node;
 }
