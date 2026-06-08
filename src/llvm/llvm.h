@@ -7,6 +7,7 @@
 #include <llvm-c/ExecutionEngine.h>
 #include <llvm-c/Target.h>
 #include <llvm-c/TargetMachine.h>
+#include <llvm-c/DebugInfo.h>
 
 // Standard Library Headers
 #include <llvm-c/Types.h>
@@ -46,6 +47,10 @@ struct ModuleCompilationUnit {
 
   const char *link_libs[MAX_LINK_LIBS];
   size_t link_lib_count;
+
+  LLVMDIBuilderRef dibuilder;
+  LLVMMetadataRef compile_unit;
+  LLVMMetadataRef file_metadata;
 };
 
 typedef struct ModuleDependencyInfo {
@@ -116,6 +121,10 @@ struct CodeGenContext {
   StructInfo *struct_types;
 
   const char *target_os;
+
+  // Debug Info
+  bool is_debug;
+  LLVMMetadataRef current_func_di;
 
   // Memory Management
   ArenaAllocator *arena;
@@ -209,6 +218,13 @@ void import_variable_symbol(CodeGenContext *ctx, LLVM_Symbol *source_symbol,
 LLVM_Symbol *find_symbol_with_module_support(CodeGenContext *ctx,
                                              const char *name);
 
+// Debug info support
+void setup_module_debug_info(CodeGenContext *ctx, ModuleCompilationUnit *unit,
+                             const char *filename);
+void finalize_module_debug_info(ModuleCompilationUnit *unit);
+void finalize_all_debug_info(CodeGenContext *ctx);
+void set_debug_location(CodeGenContext *ctx, unsigned line, unsigned column);
+
 // =============================================================================
 // MODULE UTILITY FUNCTIONS
 // =============================================================================
@@ -246,7 +262,7 @@ bool generate_program_modules(CodeGenContext *ctx, AstNode *ast_root,
 
 // Object File Generation (per module)
 bool generate_module_object_file(ModuleCompilationUnit *module,
-                                 const char *output_path);
+                                 const char *output_path, bool is_debug);
 
 // Existing API (preserved for compatibility)
 void add_symbol(CodeGenContext *ctx, const char *name, LLVMValueRef value,
@@ -254,7 +270,8 @@ void add_symbol(CodeGenContext *ctx, const char *name, LLVMValueRef value,
 LLVM_Symbol *find_symbol(CodeGenContext *ctx, const char *name);
 char *print_llvm_ir(CodeGenContext *ctx);
 bool generate_object_file(CodeGenContext *ctx, const char *object_filename);
-bool generate_assembly_file(CodeGenContext *ctx, const char *asm_filename);
+bool generate_assembly_file(CodeGenContext *ctx, const char *asm_filename,
+                            bool is_debug);
 char *process_escape_sequences(const char *input);
 LLVMLinkage get_function_linkage(AstNode *node);
 

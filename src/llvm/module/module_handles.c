@@ -258,6 +258,10 @@ static bool process_module_codegen_recursive(CodeGenContext *ctx,
   set_current_module(ctx, unit);
   ctx->module = unit->module;
 
+  setup_module_debug_info(
+      ctx, unit,
+      module->preprocessor.module.file_path);
+
   AstNode **body = module->preprocessor.module.body;
   int body_count = module->preprocessor.module.body_count;
 

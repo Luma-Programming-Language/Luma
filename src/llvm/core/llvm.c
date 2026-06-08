@@ -23,6 +23,7 @@
 typedef struct {
   ModuleCompilationUnit *module;
   const char *output_dir;
+  bool is_debug;
   bool success;
   double compile_time;
 } ModuleCompileTask;
@@ -80,7 +81,8 @@ static bool create_output_directory(const char *path) {
   return true; // Already exists
 }
 
-static LLVMTargetMachineRef create_target_machine(void) {
+static LLVMTargetMachineRef create_target_machine(bool is_debug) {
+  (void)is_debug; // Reserved for future LLVM C API debug info support
   char *target_triple = LLVMGetDefaultTargetTriple();
   LLVMTargetRef target;
   char *error = NULL;
@@ -162,9 +164,9 @@ static bool verify_module(LLVMModuleRef module, const char *module_name) {
 #endif
 
 bool generate_module_object_file(ModuleCompilationUnit *module,
-                                 const char *output_path) {
+                                 const char *output_path, bool is_debug) {
   // Create target machine
-  LLVMTargetMachineRef target_machine = create_target_machine();
+  LLVMTargetMachineRef target_machine = create_target_machine(is_debug);
   if (!target_machine) {
     fprintf(stderr, "Failed to create target machine for module %s\n",
             module->module_name);
@@ -210,7 +212,8 @@ static void *compile_module_worker(void *arg) {
   snprintf(output_path, sizeof(output_path), "%s/%s.o", task->output_dir,
            task->module->module_name);
 
-  task->success = generate_module_object_file(task->module, output_path);
+  task->success = generate_module_object_file(task->module, output_path,
+                                              task->is_debug);
 
   clock_t end = clock();
   task->compile_time = (double)(end - start) / CLOCKS_PER_SEC;
@@ -246,12 +249,16 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
   ModuleCompileTask *tasks = xmalloc(sizeof(ModuleCompileTask) * module_count);
   pthread_t *threads = xmalloc(sizeof(pthread_t) * module_count);
 
+  // Finalize all debug info before compilation
+  finalize_all_debug_info(ctx);
+
   // Initialize tasks
   size_t i = 0;
   for (ModuleCompilationUnit *unit = ctx->modules; unit;
        unit = unit->next, i++) {
     tasks[i].module = unit;
     tasks[i].output_dir = output_dir;
+    tasks[i].is_debug = ctx->is_debug;
     tasks[i].success = false;
     tasks[i].compile_time = 0.0;
   }
@@ -484,6 +491,9 @@ void cleanup_codegen_context(CodeGenContext *ctx) {
   while (unit) {
     ModuleCompilationUnit *next = unit->next;
 
+    // Finalize and dispose DIBuilder if needed
+    finalize_module_debug_info(unit);
+
     // Free symbols
     LLVM_Symbol *sym = unit->symbols;
     while (sym) {
@@ -525,16 +535,18 @@ char *print_llvm_ir(CodeGenContext *ctx) {
 
 bool generate_object_file(CodeGenContext *ctx, const char *object_filename) {
   if (ctx->current_module) {
-    return generate_module_object_file(ctx->current_module, object_filename);
+    return generate_module_object_file(ctx->current_module, object_filename,
+                                       ctx->is_debug);
   }
   return false;
 }
 
-bool generate_assembly_file(CodeGenContext *ctx, const char *asm_filename) {
+bool generate_assembly_file(CodeGenContext *ctx, const char *asm_filename,
+                            bool is_debug) {
   if (!ctx->current_module)
     return false;
 
-  LLVMTargetMachineRef target_machine = create_target_machine();
+  LLVMTargetMachineRef target_machine = create_target_machine(is_debug);
   if (!target_machine) {
     fprintf(stderr, "Failed to create target machine\n");
     return false;
@@ -628,4 +640,52 @@ char *process_escape_sequences(const char *input) {
 
   output[out_idx] = '\0';
   return output;
+}
+
+void setup_module_debug_info(CodeGenContext *ctx, ModuleCompilationUnit *unit,
+                             const char *filename) {
+  if (!ctx->is_debug)
+    return;
+
+  unit->dibuilder = LLVMCreateDIBuilder(unit->module);
+
+  const char *dir = ".";
+  const char *fname = filename ? filename : unit->module_name;
+
+  unit->file_metadata = LLVMDIBuilderCreateFile(
+      unit->dibuilder, fname, strlen(fname), dir, strlen(dir));
+
+  unit->compile_unit = LLVMDIBuilderCreateCompileUnit(
+      unit->dibuilder, LLVMDWARFSourceLanguageC, unit->file_metadata, "Luma",
+      4, false, NULL, 0, 0, NULL, 0, LLVMDWARFEmissionFull, 0, false, false,
+      NULL, 0, NULL, 0);
+
+  LLVMAddModuleFlag(unit->module, LLVMModuleFlagBehaviorWarning,
+                    "Debug Info Version", strlen("Debug Info Version"),
+                    LLVMValueAsMetadata(LLVMConstInt(
+                        LLVMInt32TypeInContext(LLVMGetModuleContext(unit->module)),
+                        3, false)));
+}
+
+void finalize_module_debug_info(ModuleCompilationUnit *unit) {
+  if (unit->dibuilder) {
+    LLVMDIBuilderFinalize(unit->dibuilder);
+    LLVMDisposeDIBuilder(unit->dibuilder);
+    unit->dibuilder = NULL;
+  }
+}
+
+void finalize_all_debug_info(CodeGenContext *ctx) {
+  for (ModuleCompilationUnit *unit = ctx->modules; unit; unit = unit->next) {
+    finalize_module_debug_info(unit);
+  }
+}
+
+void set_debug_location(CodeGenContext *ctx, unsigned line, unsigned column) {
+  if (!ctx->is_debug || !ctx->current_func_di)
+    return;
+
+  LLVMMetadataRef loc = LLVMDIBuilderCreateDebugLocation(
+      ctx->context, line, column, ctx->current_func_di, NULL);
+  LLVMSetCurrentDebugLocation2(ctx->builder, loc);
 }

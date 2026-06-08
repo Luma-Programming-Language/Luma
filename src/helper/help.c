@@ -239,6 +239,7 @@ bool parse_args(int argc, char *argv[], BuildConfig *config,
   config->format_check = false;
   config->format_in_place = false;
   config->lsp_mode = false;
+  config->is_debug = false;
   config->opt_level = 2; // Default opt_level is 2 unless told
 
 #if defined(__APPLE__)
@@ -322,7 +323,7 @@ bool parse_args(int argc, char *argv[], BuildConfig *config,
                  strcmp(arg, "-no-sanitize") == 0) {
         config->check_mem = false;
       } else if (strcmp(arg, "-debug") == 0) {
-        // Placeholder for debug flag
+        config->is_debug = true;
       } else if (strcmp(arg, "fmt") == 0 || strcmp(arg, "format") == 0) {
         config->format = true;
       } else if (strcmp(arg, "-fc") == 0 ||

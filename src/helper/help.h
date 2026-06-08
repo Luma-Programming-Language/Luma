@@ -28,7 +28,7 @@
 /** Enable debug logs for arena allocator (comment to disable) */
 #define DEBUG_ARENA_ALLOC 1
 
-#define Luma_Compiler_version "v0.2.3"
+#define Luma_Compiler_version "v0.2.4"
 
 /** Error codes returned by the compiler */
 typedef enum {
@@ -57,6 +57,7 @@ typedef struct {
   bool format_in_place; // Add in-place formatting flag
   bool lsp_mode;        // Run as Language Server
   bool is_document;     // generate the docs
+  bool is_debug;
   GrowableArray files;  // Change from char** to GrowableArray
   size_t file_count;    // Keep for convenience, or remove and use files.count
   int opt_level;        // 0, 1, 2, or
@@ -105,6 +106,6 @@ bool get_gcc_file_path(const char *filename, char *buffer, size_t buffer_size);
 bool get_lib_paths(char *buffer, size_t buffer_size);
 bool link_with_ld_simple(const char *obj_filename, const char *exe_filename);
 bool link_object_files(const char *output_dir, const char *executable_name,
-                       int opt_level, CodeGenContext *ctx);
+                       int opt_level, bool is_debug, CodeGenContext *ctx);
 bool validate_module_system(CodeGenContext *ctx);
 void save_module_output_files(CodeGenContext *ctx, const char *output_dir);

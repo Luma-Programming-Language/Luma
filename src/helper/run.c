@@ -74,7 +74,7 @@ void save_module_output_files(CodeGenContext *ctx, const char *output_dir) {
     // Generate assembly file
     snprintf(filename, sizeof(filename), "%s/%s.s", output_dir,
              unit->module_name);
-    generate_assembly_file(ctx, filename);
+    generate_assembly_file(ctx, filename, ctx->is_debug);
     // printf("Generated assembly file: %s\n", filename);
   }
 }
@@ -103,6 +103,7 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
                                 CompileTimer *timer) {
   CodeGenContext *ctx = init_codegen_context(allocator);
   ctx->target_os = config.target_os;
+  ctx->is_debug = config.is_debug;
   if (!ctx) {
     return false;
   }
@@ -139,7 +140,7 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
   char exe_file[256];
   snprintf(exe_file, sizeof(exe_file), "%s", base_name);
 
-  if (!link_object_files(output_dir, exe_file, config.opt_level, ctx)) {
+  if (!link_object_files(output_dir, exe_file, config.opt_level, config.is_debug, ctx)) {
     cleanup_codegen_context(ctx);
     return false;
   }
@@ -246,7 +247,7 @@ void collect_link_flags(CodeGenContext *ctx, char *lib_flags,
 
 
 bool link_object_files(const char *output_dir, const char *executable_name,
-                       int opt_level, CodeGenContext *ctx) {
+                       int opt_level, bool is_debug, CodeGenContext *ctx) {
   if (!ensure_directory_exists(output_dir)) {
     fprintf(stderr, "Failed to create object directory: %s\n", output_dir);
     return false;
@@ -262,19 +263,25 @@ bool link_object_files(const char *output_dir, const char *executable_name,
   collect_link_flags(ctx, lib_flags, sizeof(lib_flags));
 
   char command[4096];
+  const char *debug_flags = is_debug ? " -g" : "";
 
 #if defined(__APPLE__)
-  snprintf(
-      command, sizeof(command),
-      opt_level > 0 ? "cc -O%d %s/*.o -o %s -lSystem%s"
-                    : "cc %s/*.o -o %s -lSystem%s",
-      opt_level, output_dir, executable_name, lib_flags);
+  if (opt_level > 0) {
+    snprintf(command, sizeof(command), "cc%s -O%d %s/*.o -o %s -lSystem%s",
+             debug_flags, opt_level, output_dir, executable_name, lib_flags);
+  } else {
+    snprintf(command, sizeof(command), "cc%s %s/*.o -o %s -lSystem%s",
+             debug_flags, output_dir, executable_name, lib_flags);
+  }
 
 #else
-  snprintf(command, sizeof(command),
-           opt_level > 0 ? "cc -O%d -pie %s/*.o -o %s%s"
-                         : "cc -pie %d/*.o -o %s%s",
-           opt_level, output_dir, executable_name, lib_flags);
+  if (opt_level > 0) {
+    snprintf(command, sizeof(command), "cc%s -O%d -pie %s/*.o -o %s%s",
+             debug_flags, opt_level, output_dir, executable_name, lib_flags);
+  } else {
+    snprintf(command, sizeof(command), "cc%s -pie %s/*.o -o %s%s",
+             debug_flags, output_dir, executable_name, lib_flags);
+  }
 #endif
 
   int result = system(command);
@@ -285,10 +292,14 @@ bool link_object_files(const char *output_dir, const char *executable_name,
 #if !defined(__APPLE__)
     printf("Trying fallback linker...\n");
 
-    snprintf(command, sizeof(command),
-             opt_level > 0 ? "gcc -O%d -no-pie %s/*.o -o %s%s"
-                           : "gcc -no-pie %d/*.o -o %s%s",
-             opt_level, output_dir, executable_name, lib_flags);
+    if (opt_level > 0) {
+      snprintf(command, sizeof(command),
+               "gcc%s -O%d -no-pie %s/*.o -o %s%s",
+               debug_flags, opt_level, output_dir, executable_name, lib_flags);
+    } else {
+      snprintf(command, sizeof(command), "gcc%s -no-pie %s/*.o -o %s%s",
+               debug_flags, output_dir, executable_name, lib_flags);
+    }
 
     result = system(command);
 

@@ -377,6 +377,26 @@ generate_body: {
       LLVMAppendBasicBlockInContext(ctx->context, function, "entry");
   LLVMPositionBuilderAtEnd(ctx->builder, entry_block);
 
+  // Set up debug info for this function
+  LLVMMetadataRef old_func_di = ctx->current_func_di;
+  ModuleCompilationUnit *cu = ctx->current_module;
+  if (ctx->is_debug && cu && cu->dibuilder && cu->compile_unit) {
+    LLVMMetadataRef ret_types[] = {LLVMDIBuilderCreateUnspecifiedType(
+        cu->dibuilder, "void", 4)};
+    LLVMMetadataRef subr_type = LLVMDIBuilderCreateSubroutineType(
+        cu->dibuilder, cu->file_metadata, ret_types, 1, LLVMDIFlagZero);
+
+    ctx->current_func_di = LLVMDIBuilderCreateFunction(
+        cu->dibuilder, cu->compile_unit, func_name, strlen(func_name),
+        func_name, strlen(func_name), cu->file_metadata,
+        (unsigned)node->line, subr_type, !node->stmt.func_decl.is_public,
+        true, (unsigned)node->line, LLVMDIFlagZero, false);
+
+    LLVMSetSubprogram(function, ctx->current_func_di);
+
+    set_debug_location(ctx, (unsigned)node->line, (unsigned)node->column);
+  }
+
   // Save old function context
   LLVMValueRef old_function = ctx->current_function;
   DeferredStatement *old_deferred = ctx->deferred_statements;
@@ -450,6 +470,7 @@ generate_body: {
   ctx->current_function = old_function;
   ctx->deferred_statements = old_deferred;
   ctx->deferred_count = old_defer_count;
+  ctx->current_func_di = old_func_di;
 
   return function;
 }
