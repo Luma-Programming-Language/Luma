@@ -29,11 +29,11 @@ pub const StaticAllocation -> struct {
   col:                  int,
   variable_name:        *byte,
   original_variable:    *byte,
-  has_matching_free:    int,   // bool
+  has_matching_free:    bool,
   free_count:           int,
   use_after_free_count: int,
   aliases:              Vector,
-  reported:             int,   // bool
+  reported:             bool,
   function_name:        *byte,
   file_path:            *byte,
 };
@@ -42,7 +42,7 @@ pub const StaticAllocation -> struct {
 
 pub const StaticMemoryAnalyzer -> struct {
   allocations:          Vector,
-  skip_memory_tracking: int,   // bool
+  skip_memory_tracking: bool,
 };
 
 // ─── Symbol ──────────────────────────────────────────────────────────────────
@@ -50,11 +50,11 @@ pub const StaticMemoryAnalyzer -> struct {
 pub const Symbol -> struct {
   name:              *byte,
   type:              *AstNode,
-  is_public:         int,      // bool
-  is_mutable:        int,      // bool
+  is_public:         bool,
+  is_mutable:        bool,
   scope_depth:       int,
-  returns_ownership: int,      // bool
-  takes_ownership:   int,      // bool
+  returns_ownership: bool,
+  takes_ownership:   bool,
 };
 
 // ─── Scope ───────────────────────────────────────────────────────────────────
@@ -65,15 +65,15 @@ pub const Scope -> struct {
   children:          Vector,
   scope_name:        *byte,
   depth:             int,
-  is_function_scope: int,      // bool
+  is_function_scope: bool,
   associated_node:   *AstNode,
 
-  is_module_scope:   int,      // bool
+  is_module_scope:   bool,
   module_name:       *byte,
   imported_modules:  Vector,
 
-  returns_ownership: int,      // bool
-  takes_ownership:   int,      // bool
+  returns_ownership: bool,
+  takes_ownership:   bool,
 
   memory_analyzer:   *StaticMemoryAnalyzer,
   deferred_frees:    Vector,   // Vector of *byte (var names)
@@ -94,12 +94,12 @@ pub const ModuleImport -> struct {
 pub const ModuleDependency -> struct {
   module_name:  *byte,
   dependencies: Vector,
-  processed:    int,           // bool
+  processed:    bool,
 };
 
-pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) int {
+pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
   let root_scope: Scope;
-  let did_fail: int = 0;
+  let did_fail: bool = false;
   root_scope.config = config;
 
 
@@ -110,14 +110,14 @@ pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) int {
     AST::NodeCategory::Node_Category_EXPR -> {}
   }
 
-  if (did_fail == 1) return 0;
+  if (did_fail) return false;
   
   // Then check the static analyzer for any memory issues
-  if (root_scope.config.check_mem == 1) {
+  if (root_scope.config.check_mem) {
     output("Checking memory\n");
     
-    if (did_fail == 1) return 0;
+    if (did_fail) return false;
   }
   
-  return 1;
+  return true;
 }

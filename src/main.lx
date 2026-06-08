@@ -64,7 +64,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
   PRINT::print_node(program, 0);
 
-  let tc: int = TC::typecheck(program, build_config);
+  let tc: bool = TC::typecheck(program, build_config);
   output(tc, "\n");
 
   AST::free_node(program);

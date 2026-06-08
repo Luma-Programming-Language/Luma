@@ -35,7 +35,8 @@
 const nud -> fn (p: *Parser) *AstNode { 
   switch (p.current().kind) {
     TOK::LumaTokenType::TOK_NUMBER, TOK::LumaTokenType::TOK_NUM_FLOAT, TOK::LumaTokenType::TOK_STRING,
-    TOK::LumaTokenType::TOK_CHAR_LITERAL, TOK::LumaTokenType::TOK_IDENTIFIER
+    TOK::LumaTokenType::TOK_CHAR_LITERAL, TOK::LumaTokenType::TOK_IDENTIFIER,
+    TOK::LumaTokenType::TOK_TRUE, TOK::LumaTokenType::TOK_FALSE
       -> return primary(p);
     TOK::LumaTokenType::TOK_MINUS, TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_BANG,
     TOK::LumaTokenType::TOK_TILDE, TOK::LumaTokenType::TOK_PLUSPLUS, TOK::LumaTokenType::TOK_MINUSMINUS
