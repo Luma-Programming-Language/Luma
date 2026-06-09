@@ -63,7 +63,18 @@ pub const match_command -> fn (cmd: *byte, usr_cmd: [*byte; 10], count: int) int
 }
 
 pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig) int {
-  if (args.is_empty() == 1) { print_commands(); return 1; }
+  if (args.is_empty() == 1) { 
+    print_commands(); 
+    return CONST::LumaErrorCode::NO_FILES_ERROR; 
+  }
+
+  @os {
+    "linux"     -> { build_config.os = "linux";     }
+    "macos"     -> { build_config.os = "macos";     }
+    "windows32" -> { build_config.os = "windows32"; }
+    "windows64" -> { build_config.os = "windows64"; }
+    _ -> { build_config.os = "unknown"; }
+  }
 
   let first: *byte = args.get(0);
   if (match_command(first, ["-v", "--version"], 2) == 1) { 
@@ -104,6 +115,8 @@ pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig) int {
       build_config.opt_level = cast<int>(cast<int>(arg[2]) - cast<int>('0'));
     } elif (match_command(arg, ["--no-sanitize"], 1) == 1) {
       build_config.check_mem = false; // disable the static analyzer
+    } elif (match_command(arg, ["--target-os", "-t"], 2) == 1) {
+      build_config.os = args.get(++i);
     }
   }
 
@@ -111,9 +124,10 @@ pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig) int {
 }
 
 @os {
-  "linux"   -> { const SYS_STD_PREFIX: *byte = "/usr/local/lib/luma/"; }
-  "macos"   -> { const SYS_STD_PREFIX: *byte = "/usr/local/lib/luma/"; }
-  "windows" -> { const SYS_STD_PREFIX: *byte = "C:\\Program Files\\luma\\"; }
+  "linux" -> { const SYS_STD_PREFIX: *byte = "/usr/local/lib/luma/"; }
+  "macos" -> { const SYS_STD_PREFIX: *byte = "/usr/local/lib/luma/"; }
+  "windows32" -> { const SYS_STD_PREFIX: *byte = "C:\\Program Files\\luma\\"; }
+  "windows64" -> { const SYS_STD_PREFIX: *byte = "C:\\Program Files\\luma\\"; }
 }
 
 #returns_ownership

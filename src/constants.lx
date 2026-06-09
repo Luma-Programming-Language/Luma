@@ -12,6 +12,7 @@ pub const LumaErrorCode -> enum {
   Lexer_Error,
   Parser_Error,
   Runtime_Error,
+  NO_FILES_ERROR,
   Unknown_Error,
 };
 
@@ -23,6 +24,7 @@ pub const LumaErrorMessage -> struct {
 pub const LumaBuildConfig -> struct {
   filepath: *byte,
   name: *byte,
+  os: *byte,
   save: bool,
   clean: bool,
   check_mem: bool,
@@ -36,6 +38,7 @@ pub const init_build_config -> fn (filepath: *byte) LumaBuildConfig {
   return LumaBuildConfig {
     filepath: filepath,
     name: "a.out",
+    os: "unknown",
     save: false,
     clean: false,
     check_mem: true,

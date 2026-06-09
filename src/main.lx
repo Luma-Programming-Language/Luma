@@ -27,10 +27,11 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
   let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
   let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0));
-
-  if (COMD::parse_args(&args, &build_config) != 0) {
+  
+  let args: int = COMD::parse_args(&args, &build_config);
+  if (args != 0) {
     VEC::free_vector(&modules);
-    return 1;
+    return args;
   }
 
   let main_module: *AstNode = PFILE::parse_file(build_config.filepath);
