@@ -29,7 +29,7 @@
         const STDOUT: int    = 1;
         const STDERR: int    = 2;
     }
-    "windows" -> {
+    "windows64" -> {
         const GENERIC_READ: int        = 2147483648; // 0x80000000
         const GENERIC_WRITE: int       = 1073741824; // 0x40000000
         const FILE_SHARE_READ: int     = 1;
@@ -108,7 +108,7 @@ pub const local_write -> fn (fd: int, buf: *void, count: int) int {
     @os {
         "linux"   -> { return __syscall__(SYS_WRITE, fd, cast<int>(buf), count); }
         "macos"   -> { return __syscall__(SYS_WRITE, fd, cast<int>(buf), count); }
-        "windows" -> {
+        "windows64" -> {
             let written: int = 0;
             WriteFile(fd, buf, count, &written, cast<*void>(0));
             return written;
@@ -120,7 +120,7 @@ pub const local_read -> fn (fd: int, buf: *void, count: int) int {
     @os {
         "linux"   -> { return __syscall__(SYS_READ, fd, cast<int>(buf), count); }
         "macos"   -> { return __syscall__(SYS_READ, fd, cast<int>(buf), count); }
-        "windows" -> {
+        "windows64" -> {
             let bytes_read: int = 0;
             let ok: int = ReadFile(fd, buf, count, &bytes_read, cast<*void>(0));
             if (ok == 0) { return INVALID_HANDLE_VALUE; }
@@ -133,7 +133,7 @@ pub const local_open_read -> fn (path: *byte) int {
     @os {
         "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDONLY, 0); }
         "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDONLY, 0); }
-        "windows" -> {
+        "windows64" -> {
             return CreateFileA(
                 path, GENERIC_READ, FILE_SHARE_READ,
                 cast<*void>(0), OPEN_EXISTING, 128, 0
@@ -146,7 +146,7 @@ const local_open_write -> fn (path: *byte) int {
     @os {
         "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDWR, 0); }
         "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDWR, 0); }
-        "windows" -> {
+        "windows64" -> {
             return CreateFileA(
                 path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
                 cast<*void>(0), OPEN_EXISTING, 128, 0
@@ -159,7 +159,7 @@ pub const local_open_create -> fn (path: *byte) int {
     @os {
         "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), 577, 420); }
         "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), 577, 420); }
-        "windows" -> {
+        "windows64" -> {
             return CreateFileA(
                 path, GENERIC_WRITE, 0,
                 cast<*void>(0), 2, 128, 0
@@ -172,7 +172,7 @@ pub const local_close -> fn (fd: int) int {
     @os {
         "linux"   -> { return __syscall__(SYS_CLOSE, fd); }
         "macos"   -> { return __syscall__(SYS_CLOSE, fd); }
-        "windows" -> { return CloseHandle(fd); }
+        "windows64" -> { return CloseHandle(fd); }
     }
 }
 
@@ -180,7 +180,7 @@ pub const local_is_error -> fn (result: int) bool {
     @os {
         "linux"   -> { return result < 0 && result >= -4095; }
         "macos"   -> { return result < 0 && result >= -4095; }
-        "windows" -> { return result == INVALID_HANDLE_VALUE; }
+        "windows64" -> { return result == INVALID_HANDLE_VALUE; }
     }
 }
 
@@ -194,7 +194,7 @@ const local_eprint -> fn (s: *byte) int {
     @os {
         "linux"   -> { return local_write_str(STDERR, s); }
         "macos"   -> { return local_write_str(STDERR, s); }
-        "windows" -> {
+        "windows64" -> {
             let handle: int = GetStdHandle(STD_ERROR_HANDLE);
             return local_write_str(handle, s);
         }
@@ -351,7 +351,7 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
     @os {
         "linux"   -> { return local_write(STDOUT, cast<*void>(&buffer), buf_index); }
         "macos"   -> { return local_write(STDOUT, cast<*void>(&buffer), buf_index); }
-        "windows" -> {
+        "windows64" -> {
             let handle: int = GetStdHandle(STD_OUTPUT_HANDLE);
             return local_write(handle, cast<*void>(&buffer), buf_index);
         }
