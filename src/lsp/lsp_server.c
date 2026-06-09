@@ -61,7 +61,7 @@ static void install_crash_handlers(void) {
   signal(SIGILL,  crash_handler);
 }
 
-#define WATCHDOG_SECS 10
+#define WATCHDOG_SECS 30
 
 typedef struct {
   pthread_t        thread;
@@ -177,7 +177,7 @@ void lsp_server_run(LSPServer *server) {
   fflush(stderr);
 
   int stdin_fd = fileno(stdin);
-  char header_buf[256];
+  char header_buf[8192];
 
   while (1) {
     // Wait up to 100ms for stdin to be readable, then check debounce
@@ -282,10 +282,18 @@ done:
 void lsp_server_shutdown(LSPServer *server) {
   if (!server) return;
 
+  g_watchdog.done = 1;
+  pthread_cond_signal(&g_watchdog.cv);
+
   for (size_t i = 0; i < server->document_count; i++) {
-    if (server->documents[i] && server->documents[i]->arena)
-      arena_destroy(server->documents[i]->arena);
+    if (server->documents[i]) {
+      if (server->documents[i]->arena)
+        arena_destroy(server->documents[i]->arena);
+      server->documents[i] = NULL;
+    }
   }
+
+  arena_destroy(&server->cache_arena);
 
   server->initialized = false;
   server->document_count = 0;

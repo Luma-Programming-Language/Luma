@@ -241,25 +241,34 @@ const char *lookup_module(LSPServer *server, const char *module_name) {
       return server->module_registry.entries[i].file_uri;
   }
 
-  // 2. Negative cache — skip filesystem probe for known-missing modules
+  // 2. Negative cache — skip filesystem probe for known-missing modules.
+  //    Cleared before each analysis in lsp_document_analyze so retries work.
   if (negative_cache_contains(module_name)) {
     fprintf(stderr, "[LSP] Module '%s' in negative cache, skipping probe\n",
             module_name);
     return NULL;
   }
 
-  // 3. One-time check whether the std lib directory exists at all
-  static int std_lib_exists = -1;
-  if (std_lib_exists == -1) {
+  // 3. Check whether the std lib directory exists (re-check every time in case
+  //    it became available after server start).
+  //    Also try LUMA_STD_PATH/std as a fallback in case the binary layout uses
+  //    a subdirectory.
+  {
     struct stat st;
-    std_lib_exists = (stat(LUMA_STD_PATH, &st) == 0 && S_ISDIR(st.st_mode)) ? 1 : 0;
-    fprintf(stderr, "[LSP] Std lib path '%s': %s\n", LUMA_STD_PATH,
-            std_lib_exists ? "found" : "not found (will skip probes)");
-  }
-
-  if (!std_lib_exists) {
-    negative_cache_insert(module_name);
-    return NULL;
+    const char *probe_paths[] = {LUMA_STD_PATH, LUMA_STD_PATH "/std"};
+    int found = 0;
+    for (size_t pi = 0; pi < sizeof(probe_paths) / sizeof(probe_paths[0]); pi++) {
+      if (stat(probe_paths[pi], &st) == 0 && S_ISDIR(st.st_mode)) {
+        found = 1;
+        break;
+      }
+    }
+    if (!found) {
+      fprintf(stderr, "[LSP] Std lib path '%s' not available, skipping\n",
+              LUMA_STD_PATH);
+      negative_cache_insert(module_name);
+      return NULL;
+    }
   }
 
   // 4. Probe std lib filesystem.
@@ -274,8 +283,9 @@ const char *lookup_module(LSPServer *server, const char *module_name) {
   //      std_memory  ->  std/memory.lx
   //      std_args    ->  std/args.lx
   //
-  //    We try the subdir/file pattern first, then fall back to a flat probe
-  //    (module_name.lx) for any modules that don't follow the convention.
+  //    We try the subdir/file pattern first, then fall back to flat probes
+  //    (module_name.lx in both the root and std/ subdirectory) for any
+  //    modules that don't follow the convention.
 
   // Pattern (a): split on first '_' -> subdir/filename.lx
   const char *underscore = strchr(module_name, '_');
@@ -315,6 +325,28 @@ const char *lookup_module(LSPServer *server, const char *module_name) {
         const char *uri = lsp_path_to_uri(std_path, server->arena);
         free(std_path);
         fprintf(stderr, "[LSP] Found module '%s' in std lib (flat): %s\n",
+                module_name, uri);
+        return uri;
+      }
+      free(std_path);
+    }
+  }
+
+  // Pattern (c): flat name inside std/ subdirectory — LUMA_STD_PATH/std/name.lx
+  // Catches cases where modules are imported as @use "string" rather than
+  // @use "std_string" — the flat probe above won't find them there.
+  {
+    size_t path_len = strlen(LUMA_STD_PATH) + strlen(module_name) + 16;
+    char *std_path = malloc(path_len);
+    if (std_path) {
+      snprintf(std_path, path_len, "%s/std/%s.lx", LUMA_STD_PATH, module_name);
+
+      FILE *test = fopen(std_path, "r");
+      if (test) {
+        fclose(test);
+        const char *uri = lsp_path_to_uri(std_path, server->arena);
+        free(std_path);
+        fprintf(stderr, "[LSP] Found module '%s' in std lib (std/ fallback): %s\n",
                 module_name, uri);
         return uri;
       }
@@ -458,52 +490,12 @@ const char *resolve_module_path(const char *current_uri,
 }
 
 void lsp_ast_cache_init(LSPServer *server) {
-  memset(server->ast_cache, 0, sizeof(server->ast_cache));
-  server->ast_cache_count = 0;
-  arena_allocator_init(&server->cache_arena, 4 * 1024 * 1024);
+  (void)server;
 }
 
 void lsp_ast_cache_invalidate(LSPServer *server, const char *uri) {
-  for (size_t i = 0; i < server->ast_cache_count; i++) {
-    if (server->ast_cache[i].uri &&
-        strcmp(server->ast_cache[i].uri, uri) == 0) {
-      server->ast_cache[i].ast   = NULL;
-      server->ast_cache[i].mtime = 0;
-      fprintf(stderr, "[LSP] Cache: invalidated %s\n", uri);
-      return;
-    }
-  }
-}
-
-static AstNode *cache_lookup(LSPServer *server, const char *uri, long mtime) {
-  for (size_t i = 0; i < server->ast_cache_count; i++) {
-    ModuleASTCacheEntry *e = &server->ast_cache[i];
-    if (e->uri && strcmp(e->uri, uri) == 0) {
-      if (e->ast && e->mtime == mtime) {
-        return e->ast;
-      }
-      return NULL;
-    }
-  }
-  return NULL;
-}
-
-static void cache_store(LSPServer *server, const char *uri,
-                        AstNode *ast, long mtime) {
-  for (size_t i = 0; i < server->ast_cache_count; i++) {
-    ModuleASTCacheEntry *e = &server->ast_cache[i];
-    if (e->uri && strcmp(e->uri, uri) == 0) {
-      e->ast   = ast;
-      e->mtime = mtime;
-      return;
-    }
-  }
-  if (server->ast_cache_count < MODULE_AST_CACHE_MAX) {
-    ModuleASTCacheEntry *e = &server->ast_cache[server->ast_cache_count++];
-    e->uri   = arena_strdup(&server->cache_arena, uri);
-    e->ast   = ast;
-    e->mtime = mtime;
-  }
+  (void)server;
+  (void)uri;
 }
 
 AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
@@ -520,18 +512,15 @@ AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
     return NULL;
 
   struct stat st;
-  long mtime = 0;
-  if (stat(file_path, &st) == 0) {
-    mtime = (long)st.st_mtime;
-  }
+  if (stat(file_path, &st) != 0)
+    return NULL;
 
-  AstNode *cached = cache_lookup(server, module_uri, mtime);
-  if (cached) {
-    fprintf(stderr, "[LSP] Cache: AST hit for %s\n", module_uri);
-    return cached;
-  }
-
-  fprintf(stderr, "[LSP] Cache: parsing %s (mtime=%ld)\n", module_uri, (long)mtime);
+  // Allocate into the caller's arena (doc->arena), NOT cache_arena.
+  // The typechecker mutates AST nodes in place. Using cache_arena meant
+  // every analysis corrupted the shared cache, requiring full invalidation
+  // and re-parse on every keystroke. By using the caller's arena each dep
+  // gets a fresh copy that can be safely mutated.
+  fprintf(stderr, "[LSP] Parsing dep %s into caller arena\n", module_uri);
 
   FILE *f = fopen(file_path, "r");
   if (!f)
@@ -541,17 +530,17 @@ AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
   long size = ftell(f);
   fseek(f, 0, SEEK_SET);
 
-  char *file_content = arena_alloc(&server->cache_arena, size + 1, 1);
+  char *file_content = arena_alloc(arena, size + 1, 1);
   if (!file_content) { fclose(f); return NULL; }
   fread(file_content, 1, size, f);
   file_content[size] = '\0';
   fclose(f);
 
   Lexer lexer;
-  init_lexer(&lexer, file_content, &server->cache_arena);
+  init_lexer(&lexer, file_content, arena);
 
   GrowableArray tokens;
-  growable_array_init(&tokens, &server->cache_arena, 256, sizeof(Token));
+  growable_array_init(&tokens, arena, 256, sizeof(Token));
 
   Token token;
   while ((token = next_token(&lexer)).type_ != TOK_EOF) {
@@ -559,7 +548,7 @@ AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
     if (slot) *slot = token;
   }
 
-  AstNode *module_ast = parse(&tokens, &server->cache_arena, config);
+  AstNode *module_ast = parse(&tokens, arena, config);
   if (!module_ast)
     return NULL;
 
@@ -568,8 +557,6 @@ AstNode *parse_imported_module_ast(LSPServer *server, const char *module_uri,
       module_ast->stmt.program.module_count > 0) {
     result = module_ast->stmt.program.modules[0];
   }
-
-  cache_store(server, module_uri, result, mtime);
 
   return result;
 }

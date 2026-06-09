@@ -33,7 +33,7 @@ LSPDocument *lsp_document_open(LSPServer *server, const char *uri,
 
   doc->arena = arena_alloc(server->arena, sizeof(ArenaAllocator),
                            alignof(ArenaAllocator));
-  arena_allocator_init(doc->arena, 1024 * 1024);
+  arena_allocator_init(doc->arena, 4 * 1024 * 1024);
 
   server->documents[server->document_count++] = doc;
 
@@ -135,8 +135,9 @@ static void collect_all_module_deps(LSPServer *server, const char *module_uri,
   fseek(f, 0, SEEK_SET);
 
   char *content = arena_alloc(arena, size + 1, 1);
-  fread(content, 1, size, f);
-  content[size] = '\0';
+  if (!content) { fclose(f); return; }
+  size_t nread = fread(content, 1, size, f);
+  content[nread] = '\0';
   fclose(f);
 
   LSPDocument temp_doc = {0};
@@ -191,9 +192,13 @@ bool lsp_document_analyze(LSPDocument *doc, LSPServer *server,
   Scope *last_successful_scope = doc->scope;
 
   arena_destroy(doc->arena);
-  arena_allocator_init(doc->arena, 1024 * 1024);
+  arena_allocator_init(doc->arena, 4 * 1024 * 1024);
 
   error_clear();
+
+  // Clear negative module cache so failed lookups from prior analyses
+  // can be retried. Module files may become available mid-session.
+  lsp_negative_cache_clear();
 
   const char *file_path = lsp_uri_to_path(doc->uri, doc->arena);
   if (!file_path) {
@@ -312,18 +317,6 @@ bool lsp_document_analyze(LSPDocument *doc, LSPServer *server,
 
   tc_error_init(doc->tokens, doc->token_count, file_path, doc->arena);
 
-  // IMPORTANT: The typechecker mutates AST nodes (resolves and writes types
-  // back into the nodes inline). Since dependency ASTs live in cache_arena and
-  // are reused across analyses, each typecheck run would corrupt them further —
-  // visible as the "peek expects 2 arguments, got 3/4/5/6..." error that grows
-  // by one on every didChange. We invalidate all cache entries before running
-  // the typechecker so stale mutated ASTs are never reused. The mtime-based
-  // cache will repopulate cleanly on the next parse pass.
-  for (size_t i = 0; i < server->ast_cache_count; i++) {
-    server->ast_cache[i].ast   = NULL;
-    server->ast_cache[i].mtime = 0;
-  }
-
   fprintf(stderr, "[LSP] Starting typecheck with %zu modules...\n",
           all_modules.count);
 
@@ -401,13 +394,14 @@ Symbol *lsp_symbol_at_position(LSPDocument *doc, LSPPosition position) {
     return NULL;
 
   Token *token = lsp_token_at_position(doc, position);
-  if (!token || token->type_ != TOK_IDENTIFIER)
+  if (!token || token->type_ != TOK_IDENTIFIER || !token->value || token->length == 0)
     return NULL;
 
-  char name[256];
-  size_t len = token->length < 255 ? token->length : 255;
-  memcpy(name, token->value, len);
-  name[len] = '\0';
+  size_t buf_size = token->length + 1;
+  char *name = arena_alloc(doc->arena, buf_size, 1);
+  if (!name) return NULL;
+  memcpy(name, token->value, token->length);
+  name[token->length] = '\0';
 
   return scope_lookup(doc->scope, name);
 }

@@ -17,6 +17,9 @@ static long ms_since(struct timespec *t) {
 // Called either immediately (on save/open) or after debounce (on change).
 static void analyze_and_publish(LSPServer *server, LSPDocument *doc,
                                 const char *uri, ArenaAllocator *arena) {
+  if (!server || !doc || !uri || !arena)
+    return;
+
   BuildConfig config = {0};
   config.check_mem = true;
   lsp_document_analyze(doc, server, &config);
@@ -24,9 +27,10 @@ static void analyze_and_publish(LSPServer *server, LSPDocument *doc,
   size_t diag_count;
   LSPDiagnostic *diagnostics = lsp_diagnostics(doc, &diag_count, arena);
 
-  char *params = (char *)malloc(65536);
+  size_t buf_size = 65536;
+  char *params = (char *)malloc(buf_size);
   if (params) {
-    serialize_diagnostics_to_json(uri, diagnostics, diag_count, params, 65536);
+    serialize_diagnostics_to_json(uri, diagnostics, diag_count, params, buf_size);
     lsp_send_notification("textDocument/publishDiagnostics", params);
     free(params);
   }
@@ -245,14 +249,18 @@ void lsp_handle_message(LSPServer *server, const char *message) {
       if (doc) {
         LSPLocation *loc = lsp_definition(doc, position, &temp_arena);
         if (loc) {
-          char result[1024];
-          snprintf(result, sizeof(result),
+          size_t uri_len = loc->uri ? strlen(loc->uri) : 0;
+          size_t result_size = uri_len + 256;
+          char *result = (char *)malloc(result_size);
+          if (!result) { lsp_send_response(request_id, "null"); break; }
+          snprintf(result, result_size,
                    "{\"uri\":\"%s\",\"range\":{\"start\":{\"line\":%d,"
                    "\"character\":%d},"
                    "\"end\":{\"line\":%d,\"character\":%d}}}",
                    loc->uri, loc->range.start.line, loc->range.start.character,
                    loc->range.end.line, loc->range.end.character);
           lsp_send_response(request_id, result);
+          free(result);
         } else {
           lsp_send_response(request_id, "null");
         }

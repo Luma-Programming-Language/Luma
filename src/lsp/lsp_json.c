@@ -89,9 +89,23 @@ char *extract_string(const char *json, const char *key, ArenaAllocator *arena) {
   }
   value++; // skip opening quote
 
+  // Find the actual closing quote so we bound the read correctly.
+  // Using strlen(value) would read past the closing quote into trailing JSON,
+  // which is both wasteful and dangerous if there's a NUL byte after.
+  const char *end = value;
+  while (*end && *end != '"') {
+    if (*end == '\\') {
+      end++;
+      if (*end == 'u') {
+        for (int i = 0; i < 4 && *(end + 1); i++) end++;
+      }
+    }
+    if (*end) end++;
+  }
+  size_t value_len = (size_t)(end - value);
+
   // Allocate a worst-case buffer (unescaping never grows the string)
-  size_t max_len = strlen(value);
-  char *result = arena_alloc(arena, max_len + 1, 1);
+  char *result = arena_alloc(arena, value_len + 1, 1);
   if (!result) {
     fprintf(stderr, "[LSP] extract_string: allocation failed\n");
     return NULL;
@@ -100,7 +114,7 @@ char *extract_string(const char *json, const char *key, ArenaAllocator *arena) {
   char *dst = result;
   const char *src = value;
 
-  while (*src && *src != '"') {
+  while (src < end && *src != '"') {
     if (*src == '\\') {
       src++;
       if (!*src)
@@ -261,14 +275,19 @@ void lsp_send_notification(const char *method, const char *params) {
 }
 
 void lsp_send_error(int id, int code, const char *message) {
-  char json_msg[512];
-  int msg_len = snprintf(json_msg, sizeof(json_msg),
-                         "{\"jsonrpc\":\"2.0\",\"id\":%d,\"error\":{"
-                         "\"code\":%d,\"message\":\"%s\"}}",
-                         id, code, message ? message : "");
+  size_t msg_len = strlen(message ? message : "") + 128;
+  char *json_msg = (char *)malloc(msg_len);
+  if (!json_msg)
+    return;
 
-  printf("Content-Length: %d\r\n\r\n%s", msg_len, json_msg);
+  int len = snprintf(json_msg, msg_len,
+                     "{\"jsonrpc\":\"2.0\",\"id\":%d,\"error\":{"
+                     "\"code\":%d,\"message\":\"%s\"}}",
+                     id, code, message ? message : "");
+
+  printf("Content-Length: %d\r\n\r\n%s", len, json_msg);
   fflush(stdout);
+  free(json_msg);
 }
 
 // Write a JSON-escaped version of `src` into `dst`, stopping before

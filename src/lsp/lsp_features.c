@@ -73,17 +73,22 @@ static const char *hover_for_symbol(Symbol *sym, const char *module_alias,
   }
 
   // Build the code line shown in the hover
-  char code[512];
+  size_t code_size = (module_alias ? strlen(module_alias) : 0) + strlen(sym->name) + strlen(type_str) + 16;
+  char *code = arena_alloc(arena, code_size, 1);
+  if (!code) return NULL;
   if (module_alias) {
-    snprintf(code, sizeof(code), "%s::%s: %s", module_alias, sym->name, type_str);
+    snprintf(code, code_size, "%s::%s: %s", module_alias, sym->name, type_str);
   } else {
-    snprintf(code, sizeof(code), "%s %s: %s", kw, sym->name, type_str);
+    snprintf(code, code_size, "%s %s: %s", kw, sym->name, type_str);
   }
 
   // Build visibility/mutability tags
-  char tags[128] = "";
-  if (sym->is_public)   strncat(tags, "public ", sizeof(tags) - strlen(tags) - 1);
-  if (sym->is_mutable)  strncat(tags, "mutable ", sizeof(tags) - strlen(tags) - 1);
+  size_t tags_size = 256;
+  char *tags = arena_alloc(arena, tags_size, 1);
+  if (!tags) return NULL;
+  tags[0] = '\0';
+  if (sym->is_public)   strncat(tags, "public ", tags_size - strlen(tags) - 1);
+  if (sym->is_mutable)  strncat(tags, "mutable ", tags_size - strlen(tags) - 1);
 
   // Final markdown
   size_t buf_size = strlen(code) + strlen(tags) + 128;
@@ -137,7 +142,7 @@ static void collect_all_symbols(Scope *scope, ScopeSymbol *buf,
 static const char *enclosing_function_name(LSPDocument *doc, int line_0based) {
   if (!doc || !doc->tokens) return NULL;
 
-  static char fn_name_buf[65];
+  static char fn_name_buf[256];
   const char *best_fn = NULL;
 
   for (size_t i = 0; i < doc->token_count; i++) {
@@ -146,11 +151,11 @@ static const char *enclosing_function_name(LSPDocument *doc, int line_0based) {
 
     if (tok_line > line_0based) break;
 
-    if (tok->type_ == TOK_IDENTIFIER && tok->length > 0 && tok->length < 64) {
+    if (tok->type_ == TOK_IDENTIFIER && tok->length > 0) {
       if (i + 1 < doc->token_count) {
         Token *next = &doc->tokens[i + 1];
         if (next->type_ == TOK_RIGHT_ARROW) {
-          size_t copy_len = tok->length < 64 ? tok->length : 64;
+          int copy_len = tok->length < (int)sizeof(fn_name_buf) - 1 ? tok->length : (int)sizeof(fn_name_buf) - 1;
           memcpy(fn_name_buf, tok->value, copy_len);
           fn_name_buf[copy_len] = '\0';
           best_fn = fn_name_buf;
@@ -168,12 +173,13 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
 
   // 1. Find the token at the cursor
   Token *tok = find_token_at(doc, position);
-  if (!tok || !token_is_name_like(tok)) return NULL;
+  if (!tok || !token_is_name_like(tok) || !tok->value || tok->length == 0) return NULL;
 
-  char name[256];
-  size_t len = tok->length < 255 ? tok->length : 255;
-  memcpy(name, tok->value, len);
-  name[len] = '\0';
+  size_t name_len = tok->length;
+  char *name = arena_alloc(arena, name_len + 1, 1);
+  if (!name) return NULL;
+  memcpy(name, tok->value, name_len);
+  name[name_len] = '\0';
 
   fprintf(stderr, "[LSP] lsp_hover: token='%s' type=%d\n", name, tok->type_);
 
@@ -474,55 +480,113 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
     }
   }
 
-  Scope *local_scope = doc->scope;
+  if (doc->scope) {
+    // Build a set of imported module scopes so we can filter their
+    // private symbols during the BFS below.  Those symbols are shown
+    // separately (with a "module::" prefix) in the imports section,
+    // so we only want public ones here.
+    Scope *imported_scopes[128];
+    size_t imported_scope_count = 0;
+    if (doc->imports) {
+      for (size_t i = 0; i < doc->import_count && imported_scope_count < 128; i++) {
+        if (doc->imports[i].scope)
+          imported_scopes[imported_scope_count++] = doc->imports[i].scope;
+      }
+    }
 
-  if (local_scope) {
-    Scope *current_scope = local_scope;
-    int scope_depth = 0;
+    // BFS over the full scope tree so variables at every depth appear.
+    Scope *to_process[256];
+    int to_process_count = 0;
+    int depth[256];
 
-    while (current_scope) {
-      if (current_scope->symbols.data && current_scope->symbols.count > 0) {
-        for (size_t i = 0; i < current_scope->symbols.count; i++) {
-          Symbol *sym = (Symbol *)((char *)current_scope->symbols.data +
-                                   i * sizeof(Symbol));
+    to_process[0] = doc->scope;
+    depth[0] = 0;
+    to_process_count = 1;
 
+    for (int i = 0; i < to_process_count; i++) {
+      Scope *sc = to_process[i];
+      int sc_depth = depth[i];
+
+      // Is this scope an imported module root?
+      bool is_imported_scope = false;
+      for (size_t k = 0; k < imported_scope_count; k++) {
+        if (imported_scopes[k] == sc) { is_imported_scope = true; break; }
+      }
+
+      if (sc->symbols.data && sc->symbols.count > 0) {
+        for (size_t j = 0; j < sc->symbols.count; j++) {
+          Symbol *sym = (Symbol *)((char *)sc->symbols.data +
+                                   j * sizeof(Symbol));
           if (!sym || !sym->name || !sym->type) continue;
+          // Only show public symbols from imported module scopes
+          if (is_imported_scope && !sym->is_public) continue;
 
           LSPCompletionItem *item =
               (LSPCompletionItem *)growable_array_push(&completions);
-          if (item) {
-            item->label = arena_strdup(arena, sym->name);
+          if (!item) continue;
 
-            if (sym->type->type == AST_TYPE_FUNCTION) {
-              item->kind = LSP_COMPLETION_FUNCTION;
-              char snippet[512];
-              snprintf(snippet, sizeof(snippet), "%s()$0", sym->name);
-              item->insert_text = arena_strdup(arena, snippet);
+          item->label = arena_strdup(arena, sym->name);
+
+          if (sym->type->type == AST_TYPE_FUNCTION) {
+            item->kind = LSP_COMPLETION_FUNCTION;
+            size_t snippet_size = strlen(sym->name) + 16;
+            char *snippet = arena_alloc(arena, snippet_size, 1);
+            if (snippet) {
+              snprintf(snippet, snippet_size, "%s()$0", sym->name);
+              item->insert_text = snippet;
               item->format = LSP_INSERT_FORMAT_SNIPPET;
-              item->detail = type_to_string(sym->type, arena);
-            } else if (sym->type->type == AST_TYPE_STRUCT) {
-              item->kind = LSP_COMPLETION_STRUCT;
-              item->insert_text = arena_strdup(arena, sym->name);
-              item->format = LSP_INSERT_FORMAT_PLAIN_TEXT;
-              item->detail = type_to_string(sym->type, arena);
             } else {
-              item->kind = LSP_COMPLETION_VARIABLE;
               item->insert_text = arena_strdup(arena, sym->name);
               item->format = LSP_INSERT_FORMAT_PLAIN_TEXT;
-              item->detail = type_to_string(sym->type, arena);
             }
-
-            char sort[8];
-            snprintf(sort, sizeof(sort), "%d", scope_depth);
-            item->sort_text = arena_strdup(arena, sort);
-            item->documentation = NULL;
-            item->filter_text = NULL;
+          } else if (sym->type->type == AST_TYPE_STRUCT) {
+            item->kind = LSP_COMPLETION_STRUCT;
+            item->insert_text = arena_strdup(arena, sym->name);
+            item->format = LSP_INSERT_FORMAT_PLAIN_TEXT;
+          } else {
+            item->kind = LSP_COMPLETION_VARIABLE;
+            item->insert_text = arena_strdup(arena, sym->name);
+            item->format = LSP_INSERT_FORMAT_PLAIN_TEXT;
           }
+
+          item->detail = type_to_string(sym->type, arena);
+          char sort[16];
+          snprintf(sort, sizeof(sort), "%d", sc_depth);
+          item->sort_text = arena_strdup(arena, sort);
+          item->documentation = NULL;
+          item->filter_text = NULL;
         }
       }
 
-      current_scope = current_scope->parent;
-      scope_depth++;
+      // Walk parent chain (outer scopes are "higher" depth)
+      if (sc->parent && to_process_count < 256) {
+        bool already = false;
+        for (int k = 0; k < to_process_count; k++) {
+          if (to_process[k] == sc->parent) { already = true; break; }
+        }
+        if (!already) {
+          to_process[to_process_count] = sc->parent;
+          depth[to_process_count] = sc_depth + 1;
+          to_process_count++;
+        }
+      }
+
+      // Walk children (inner scopes are "lower" depth)
+      if (sc->children.data && sc->children.count > 0) {
+        for (size_t k = 0; k < sc->children.count && to_process_count < 256; k++) {
+          Scope *child = *(Scope **)((char *)sc->children.data + k * sizeof(Scope *));
+          if (!child) continue;
+          bool already = false;
+          for (int m = 0; m < to_process_count; m++) {
+            if (to_process[m] == child) { already = true; break; }
+          }
+          if (!already) {
+            to_process[to_process_count] = child;
+            depth[to_process_count] = sc_depth + 1;
+            to_process_count++;
+          }
+        }
+      }
     }
   }
 
@@ -541,18 +605,32 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
         if (!sym || !sym->name || !sym->type || !sym->is_public) continue;
         if (strncmp(sym->name, "__", 2) == 0) continue;
 
+        bool is_struct = (sym->type->type == AST_TYPE_STRUCT);
+        bool is_enum   = (sym->type->type == AST_TYPE_ENUM);
+        bool needs_prefix = !is_struct && !is_enum;
+
         LSPCompletionItem *item =
             (LSPCompletionItem *)growable_array_push(&completions);
         if (item) {
-          size_t label_len = strlen(prefix) + strlen(sym->name) + 3;
-          char *label = arena_alloc(arena, label_len, 1);
-          snprintf(label, label_len, "%s::%s", prefix, sym->name);
+          if (needs_prefix) {
+            size_t label_len = strlen(prefix) + strlen(sym->name) + 3;
+            char *label = arena_alloc(arena, label_len, 1);
+            snprintf(label, label_len, "%s::%s", prefix, sym->name);
+            item->label = label;
+            item->insert_text = arena_strdup(arena, label);
+          } else {
+            item->label = arena_strdup(arena, sym->name);
+            item->insert_text = arena_strdup(arena, sym->name);
+          }
 
-          item->label = label;
-          item->kind = (sym->type->type == AST_TYPE_FUNCTION)
-                           ? LSP_COMPLETION_FUNCTION
-                           : LSP_COMPLETION_VARIABLE;
-          item->insert_text = arena_strdup(arena, label);
+          if (sym->type->type == AST_TYPE_FUNCTION) {
+            item->kind = LSP_COMPLETION_FUNCTION;
+          } else if (is_struct) {
+            item->kind = LSP_COMPLETION_STRUCT;
+          } else {
+            item->kind = LSP_COMPLETION_VARIABLE;
+          }
+
           item->format = LSP_INSERT_FORMAT_PLAIN_TEXT;
           item->detail = type_to_string(sym->type, arena);
           item->documentation = NULL;
