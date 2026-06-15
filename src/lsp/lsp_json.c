@@ -305,7 +305,7 @@ void lsp_send_error(int id, int code, const char *message) {
 // Write a JSON-escaped version of `src` into `dst`, stopping before
 // dst_end - 1 to leave room for the NUL terminator.
 // Returns number of bytes written (excluding NUL).
-static size_t json_escape(char *dst, size_t dst_size, const char *src) {
+size_t json_escape(char *dst, size_t dst_size, const char *src) {
   char *out = dst;
   char *end = dst + dst_size - 1; // reserve 1 for '\0'
   while (*src && out < end) {

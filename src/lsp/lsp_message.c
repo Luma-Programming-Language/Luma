@@ -1,4 +1,5 @@
 #include "lsp.h"
+#include "../helper/help.h"
 
 #include <time.h>
 
@@ -22,6 +23,7 @@ static void analyze_and_publish(LSPServer *server, LSPDocument *doc,
 
   BuildConfig config = {0};
   config.check_mem = true;
+  config.target_os = detect_target_os();
   lsp_document_analyze(doc, server, &config);
 
   size_t diag_count;
@@ -480,20 +482,61 @@ void lsp_handle_message(LSPServer *server, const char *message) {
 
   case LSP_METHOD_TEXT_DOCUMENT_COMPLETION_ITEM_RESOLVE: {
     fprintf(stderr, "[LSP] Handling completionItem/resolve\n");
-    // For now, return the item as-is (no async resolution needed)
-    // Extract the label and return it
-    const char *label = extract_string(message, "label", &temp_arena);
+    char *label = extract_string(message, "label", &temp_arena);
+    int kind = extract_int(message, "kind");
+    char *detail = extract_string(message, "detail", &temp_arena);
+    char *insert_text = extract_string(message, "insertText", &temp_arena);
+    int insert_fmt = extract_int(message, "insertTextFormat");
+    char *sort_text = extract_string(message, "sortText", &temp_arena);
+    char *filter_text = extract_string(message, "filterText", &temp_arena);
+
     if (label) {
-      size_t result_size = strlen(label) + 64;
+      size_t result_size = 4096;
       char *result = (char *)malloc(result_size);
-      if (result) {
-        snprintf(result, result_size,
-                 "{\"label\":\"%s\"}", label);
-        lsp_send_response(request_id, result);
-        free(result);
-      } else {
-        lsp_send_response(request_id, "null");
+      if (!result) { lsp_send_response(request_id, "null"); break; }
+
+      size_t off = 0;
+      off += snprintf(result + off, result_size - off,
+                      "{\"label\":\"%s\"", label);
+
+      if (kind >= 1)
+        off += snprintf(result + off, result_size - off,
+                        ",\"kind\":%d", kind);
+
+      if (detail) {
+        char escaped[512];
+        json_escape(escaped, sizeof(escaped), detail);
+        off += snprintf(result + off, result_size - off,
+                        ",\"detail\":\"%s\"", escaped);
       }
+
+      if (insert_text) {
+        char escaped[2048];
+        json_escape(escaped, sizeof(escaped), insert_text);
+        off += snprintf(result + off, result_size - off,
+                        ",\"insertText\":\"%s\"", escaped);
+        if (insert_fmt >= 1)
+          off += snprintf(result + off, result_size - off,
+                          ",\"insertTextFormat\":%d", insert_fmt);
+      }
+
+      if (sort_text) {
+        char escaped[64];
+        json_escape(escaped, sizeof(escaped), sort_text);
+        off += snprintf(result + off, result_size - off,
+                        ",\"sortText\":\"%s\"", escaped);
+      }
+
+      if (filter_text) {
+        char escaped[256];
+        json_escape(escaped, sizeof(escaped), filter_text);
+        off += snprintf(result + off, result_size - off,
+                        ",\"filterText\":\"%s\"", escaped);
+      }
+
+      off += snprintf(result + off, result_size - off, "}");
+      lsp_send_response(request_id, result);
+      free(result);
     } else {
       lsp_send_response(request_id, "null");
     }

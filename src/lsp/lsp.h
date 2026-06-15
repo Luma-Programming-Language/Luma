@@ -375,6 +375,7 @@ int extract_int(const char *json, const char *key);
 LSPPosition extract_position(const char *json);
 
 // JSON serialization helpers
+size_t json_escape(char *dst, size_t dst_size, const char *src);
 void serialize_diagnostics_to_json(const char *uri, LSPDiagnostic *diagnostics,
                                    size_t diag_count, char *output,
                                    size_t output_size);

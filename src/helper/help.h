@@ -28,7 +28,7 @@
 /** Enable debug logs for arena allocator (comment to disable) */
 #define DEBUG_ARENA_ALLOC 1
 
-#define Luma_Compiler_version "v0.2.4"
+#define Luma_Compiler_version "v0.2.5"
 
 /** Error codes returned by the compiler */
 typedef enum {
@@ -78,6 +78,8 @@ const char *read_file(const char *filename);
 int print_help();
 int print_version();
 int print_license();
+
+const char *detect_target_os(void);
 
 AstNode *lex_and_parse_file(const char *path, ArenaAllocator *allocator,
                             BuildConfig *config);

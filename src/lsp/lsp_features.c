@@ -375,7 +375,6 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
     {"alloc",    "```luma\nalloc(size)\n```\nAllocate heap memory (returns *void)"},
     {"free",     "```luma\nfree(ptr)\n```\nFree heap memory"},
     {"output",   "```luma\noutput(value)\n```\nPrint without newline"},
-    {"outputln", "```luma\noutputln(value)\n```\nPrint with newline"},
     {"input",    "```luma\ninput<Type>(\"prompt\")\n```\nRead typed input"},
     {"defer",    "```luma\ndefer { ... }\n```\nRun block when scope exits"},
     {"system",   "```luma\nsystem(\"command\")\n```\nExecute a shell command"},
@@ -633,13 +632,13 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
         if (imported_scopes[k] == sc) { is_imported_scope = true; break; }
       }
 
+      if (is_imported_scope) continue;
+
       if (sc->symbols.data && sc->symbols.count > 0) {
         for (size_t j = 0; j < sc->symbols.count; j++) {
           Symbol *sym = (Symbol *)((char *)sc->symbols.data +
                                    j * sizeof(Symbol));
           if (!sym || !sym->name || !sym->type) continue;
-          // Only show public symbols from imported module scopes
-          if (is_imported_scope && !sym->is_public) continue;
 
           LSPCompletionItem *item =
               (LSPCompletionItem *)growable_array_push(&completions);

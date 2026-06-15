@@ -213,6 +213,47 @@ bool run_formatter(BuildConfig config, ArenaAllocator *allocator) {
   return true;
 }
 
+const char *detect_target_os(void) {
+#if defined(__APPLE__)
+  #include <TargetConditionals.h>
+  #if TARGET_OS_IPHONE
+    return "ios";
+  #elif TARGET_OS_MAC
+    return "macos";
+  #else
+    return "apple";
+  #endif
+
+#elif defined(__ANDROID__)
+  return "android";
+
+#elif defined(__linux__)
+  return "linux";
+#elif defined(__aarch64__) || defined(_M_ARM64) 
+  return "aarch64";
+
+#elif defined(_WIN64)
+  return "windows64";
+#elif defined(_WIN32)
+  return "windows";
+
+#elif defined(__FreeBSD__)
+  return "freebsd";
+#elif defined(__NetBSD__)
+  return "netbsd";
+#elif defined(__OpenBSD__)
+  return "openbsd";
+#elif defined(__DragonFly__)
+  return "dragonfly";
+
+#elif defined(__unix__) || defined(__unix)
+  return "unix";
+
+#else
+  return "unknown";
+#endif
+}
+
 /**
  * @brief Parses command-line arguments and configures the build.
  *
@@ -241,45 +282,7 @@ bool parse_args(int argc, char *argv[], BuildConfig *config,
   config->lsp_mode = false;
   config->is_debug = false;
   config->opt_level = 2; // Default opt_level is 2 unless told
-
-#if defined(__APPLE__)
-  #include <TargetConditionals.h>
-  #if TARGET_OS_IPHONE
-    config->target_os = "ios";
-  #elif TARGET_OS_MAC
-    config->target_os = "macos";
-  #else
-    config->target_os = "apple";
-  #endif
-
-#elif defined(__ANDROID__)
-  config->target_os = "android";
-
-#elif defined(__linux__)
-  config->target_os = "linux";
-#elif defined(__aarch64__) || defined(_M_ARM64) 
-  config->target_os = "aarch64";
-
-#elif defined(_WIN64)
-  config->target_os = "windows64";
-#elif defined(_WIN32)
-  config->target_os = "windows";
-
-#elif defined(__FreeBSD__)
-  config->target_os = "freebsd";
-#elif defined(__NetBSD__)
-  config->target_os = "netbsd";
-#elif defined(__OpenBSD__)
-  config->target_os = "openbsd";
-#elif defined(__DragonFly__)
-  config->target_os = "dragonfly";
-
-#elif defined(__unix__) || defined(__unix)
-  config->target_os = "unix";
-
-#else
-  config->target_os = "unknown";
-#endif
+  config->target_os = detect_target_os();
 
   for (int i = 1; i < argc; i++) {
     const char *arg = argv[i];
