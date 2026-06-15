@@ -66,6 +66,7 @@ static const char *hover_for_symbol(Symbol *sym, const char *module_alias,
     switch (sym->type->type) {
     case AST_TYPE_FUNCTION: kw = "fn";     break;
     case AST_TYPE_STRUCT:   kw = "struct"; break;
+    case AST_TYPE_ENUM:     kw = "enum";   break;
     default:
       kw = sym->is_mutable ? "let" : "const";
       break;
@@ -90,13 +91,55 @@ static const char *hover_for_symbol(Symbol *sym, const char *module_alias,
   if (sym->is_public)   strncat(tags, "public ", tags_size - strlen(tags) - 1);
   if (sym->is_mutable)  strncat(tags, "mutable ", tags_size - strlen(tags) - 1);
 
+  // Build extra details for structs
+  char extra[2048];
+  extra[0] = '\0';
+
+  if (sym->type && sym->type->type == AST_TYPE_STRUCT) {
+    size_t mc = sym->type->type_data.struct_type.member_count;
+    if (mc > 0 && sym->type->type_data.struct_type.member_names) {
+      strncat(extra, "\n\n**Fields:**\n", sizeof(extra) - strlen(extra) - 1);
+      for (size_t i = 0; i < mc; i++) {
+        char field_line[256];
+        const char *field_type_str = sym->type->type_data.struct_type.member_types[i]
+          ? type_to_string(sym->type->type_data.struct_type.member_types[i], arena)
+          : "?";
+        snprintf(field_line, sizeof(field_line), "- `%s`: %s\n",
+                 sym->type->type_data.struct_type.member_names[i],
+                 field_type_str);
+        strncat(extra, field_line, sizeof(extra) - strlen(extra) - 1);
+      }
+    }
+  }
+
+  if (sym->type && sym->type->type == AST_TYPE_FUNCTION &&
+      sym->type->type_data.function.param_types) {
+    strncat(extra, "\n\n**Parameters:**\n", sizeof(extra) - strlen(extra) - 1);
+    AstNode *func_type = sym->type;
+    for (size_t i = 0; i < func_type->type_data.function.param_count; i++) {
+      char param_line[256];
+      const char *ptype = type_to_string(func_type->type_data.function.param_types[i], arena);
+      snprintf(param_line, sizeof(param_line), "- `%s`\n", ptype);
+      strncat(extra, param_line, sizeof(extra) - strlen(extra) - 1);
+    }
+    const char *ret = func_type->type_data.function.return_type
+      ? type_to_string(func_type->type_data.function.return_type, arena) : "void";
+    char ret_line[128];
+    snprintf(ret_line, sizeof(ret_line), "\n**Returns:** `%s`\n", ret);
+    strncat(extra, ret_line, sizeof(extra) - strlen(extra) - 1);
+  }
+
   // Final markdown
-  size_t buf_size = strlen(code) + strlen(tags) + 128;
+  size_t buf_size = strlen(code) + strlen(tags) + strlen(extra) + 128;
   char *result = arena_alloc(arena, buf_size, 1);
   if (!result) return NULL;
 
-  if (strlen(tags) > 0) {
+  if (strlen(tags) > 0 && strlen(extra) > 0) {
+    snprintf(result, buf_size, "```luma\n%s\n```\n*%s*\n%s", code, tags, extra);
+  } else if (strlen(tags) > 0) {
     snprintf(result, buf_size, "```luma\n%s\n```\n*%s*", code, tags);
+  } else if (strlen(extra) > 0) {
+    snprintf(result, buf_size, "```luma\n%s\n```\n%s", code, extra);
   } else {
     snprintf(result, buf_size, "```luma\n%s\n```", code);
   }
@@ -355,12 +398,55 @@ LSPLocation *lsp_definition(LSPDocument *doc, LSPPosition position,
   Symbol *symbol = lsp_symbol_at_position(doc, position);
   if (!symbol) return NULL;
 
+  // Try to find the token for this symbol in the document's tokens
+  // to provide an accurate definition location
   LSPLocation *loc = arena_alloc(arena, sizeof(LSPLocation), alignof(LSPLocation));
   loc->uri = doc->uri;
-  loc->range.start.line = position.line;
+  loc->range.start.line = 0;
   loc->range.start.character = 0;
-  loc->range.end.line = position.line;
-  loc->range.end.character = 100;
+  loc->range.end.line = 0;
+  loc->range.end.character = 0;
+
+  if (!symbol->name || !doc->tokens) return loc;
+
+  size_t name_len = strlen(symbol->name);
+
+  // Scan all tokens to find where this symbol is DECLARED (first occurrence)
+  // We look for the first token that matches the symbol name and is in a
+  // declaration context (followed by ':' for variable, '->' for function/type)
+  for (size_t i = 0; i < doc->token_count; i++) {
+    Token *tok = &doc->tokens[i];
+    if (tok->type_ == TOK_IDENTIFIER &&
+        tok->length == (int)name_len &&
+        strncmp(tok->value, symbol->name, name_len) == 0) {
+
+      // Check if next significant token indicates a declaration
+      for (size_t j = i + 1; j < doc->token_count && j < i + 5; j++) {
+        Token *next = &doc->tokens[j];
+        if (next->type_ == TOK_COLON || next->type_ == TOK_RIGHT_ARROW || next->type_ == TOK_EQUAL) {
+          loc->range.start.line = (int)tok->line - 1;
+          loc->range.start.character = (int)tok->col - 1;
+          loc->range.end.line = (int)tok->line - 1;
+          loc->range.end.character = (int)tok->col + (int)tok->length - 1;
+          return loc;
+        }
+      }
+    }
+  }
+
+  // Fallback: first occurrence of the name
+  for (size_t i = 0; i < doc->token_count; i++) {
+    Token *tok = &doc->tokens[i];
+    if (tok->type_ == TOK_IDENTIFIER &&
+        tok->length == (int)name_len &&
+        strncmp(tok->value, symbol->name, name_len) == 0) {
+      loc->range.start.line = (int)tok->line - 1;
+      loc->range.start.character = (int)tok->col - 1;
+      loc->range.end.line = (int)tok->line - 1;
+      loc->range.end.character = (int)tok->col + (int)tok->length - 1;
+      return loc;
+    }
+  }
 
   return loc;
 }
@@ -380,89 +466,100 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
     const char *label;
     const char *snippet;
     const char *detail;
+    const char *filter;
   } keywords[] = {
       {"const fn", "const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}",
-       "Function declaration"},
+       "Function declaration", "const fn"},
       {"pub const fn",
        "pub const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}",
-       "Public function"},
+       "Public function", "pub const fn"},
       {"const fn<T>",
        "const ${1:name} = fn<${2:T}>(${3:params}) ${4:Type} {\n\t$0\n}",
-       "Generic function"},
+       "Generic function", "const fn <"},
       {"pub const fn<T>",
        "pub const ${1:name} = fn<${2:T}>(${3:params}) ${4:Type} {\n\t$0\n}",
-       "Public generic function"},
+       "Public generic function", "pub const fn <"},
       {"const struct",
        "const ${1:Name} -> struct {\n\t${2:field}: ${3:Type}$0,\n};",
-       "Struct definition"},
+       "Struct definition", "const struct"},
       {"const struct<T>",
        "const ${1:Name} -> struct<${2:T}> {\n\t${3:field}: ${4:Type}$0,\n};",
-       "Generic struct"},
+       "Generic struct", "const struct <"},
       {"const enum", "const ${1:Name} -> enum {\n\t${2:Variant}$0,\n};",
-       "Enum definition"},
+       "Enum definition", "const enum"},
       {"const var", "const ${1:name}: ${2:Type} = ${3:value};$0",
-       "Top-level constant"},
-      {"if", "if (${1:condition}) {\n\t$0\n}", "If statement"},
+       "Top-level constant", "const"},
+      {"if", "if (${1:condition}) {\n\t$0\n}", "If statement", "if"},
       {"if else", "if (${1:condition}) {\n\t${2}\n} else {\n\t$0\n}",
-       "If-else statement"},
-      {"elif", "elif (${1:condition}) {\n\t$0\n}", "Elif clause"},
-      {"loop", "loop {\n\t$0\n}", "Infinite loop"},
-      {"loop while", "loop (${1:condition}) {\n\t$0\n}", "While-style loop"},
-      {"loop for",
-       "loop [${1:i}: int = 0](${1:i} < ${2:10}) : (++${1:i}) {\n\t$0\n}",
-       "For-style loop"},
-      {"loop for multi",
-       "loop [${1:i}: int = 0, ${2:j}: int = 0](${1:i} < ${3:10}) : (++${1:i}) "
-       "{\n\t$0\n}",
-       "Multi-variable for loop"},
+       "If-else statement", "if else"},
+      {"elif", "elif (${1:condition}) {\n\t$0\n}", "Elif clause", "elif"},
       {"switch", "switch (${1:value}) {\n\t${2:case} -> ${3:result};$0\n}",
-       "Switch statement"},
+       "Switch statement", "switch"},
       {"switch default",
        "switch (${1:value}) {\n\t${2:case} -> ${3:result};\n\t_ -> "
        "${4:default};$0\n}",
-       "Switch with default case"},
+       "Switch with default case", "switch default"},
+      {"loop", "loop {\n\t$0\n}", "Infinite loop", "loop"},
+      {"loop while", "loop (${1:condition}) {\n\t$0\n}", "While-style loop", "loop"},
+      {"loop for",
+       "loop [${1:i}: int = 0](${1:i} < ${2:10}) : (++${1:i}) {\n\t$0\n}",
+       "For-style loop", "loop for"},
+      {"loop for multi",
+       "loop [${1:i}: int = 0, ${2:j}: int = 0](${1:i} < ${3:10}) : (++${1:i}) "
+       "{\n\t$0\n}",
+       "Multi-variable for loop", "loop for"},
+      {"defer", "defer ${1:statement};$0",
+       "Defer statement", "defer"},
+      {"defer block", "defer {\n\t${1:cleanup()};$0\n}", "Defer block", "defer"},
       {"let", "let ${1:name}: ${2:Type} = ${3:value};$0",
-       "Variable declaration"},
-      {"defer block", "defer {\n\t${1:cleanup()};$0\n}", "Defer block"},
-      {"@module", "@module \"${1:name}\"$0", "Module declaration"},
-      {"@use", "@use \"${1:module}\" as ${2:alias}$0", "Import module"},
-      {"return", "return ${1:value};$0", "Return statement"},
-      {"break", "break;$0", "Break statement"},
-      {"continue", "continue;$0", "Continue statement"},
+       "Variable declaration", "let"},
+      {"return", "return ${1:value};$0", "Return statement", "return"},
+      {"break", "break;$0", "Break statement", "break"},
+      {"continue", "continue;$0", "Continue statement", "continue"},
       {"main", "const main -> fn () int {\n\t$0\n\treturn 0;\n};",
-       "Main function"},
-      {"outputln", "outputln(${1:message});$0", "Output with newline"},
-      {"output", "output(${1:message});$0", "Output without newline"},
-      {"input", "input<${1:Type}>(\"${2:prompt}\")$0", "Read typed input"},
-      {"system", "system(\"${1:command}\");$0", "Execute system command"},
-      {"cast", "cast<${1:Type}>(${2:value})$0", "Type cast"},
-      {"sizeof", "sizeof<${1:Type}>$0", "Size of type"},
-      {"alloc", "cast<${1:*Type}>(alloc(${2:size} * sizeof<${3:Type}>))$0",
-       "Allocate memory"},
+       "Main function", "main"},
+      {"outputln", "outputln(${1:message});$0", "Output with newline", "outputln"},
+      {"output", "output(${1:message});$0", "Output without newline", "output"},
+      {"input", "input<${1:Type}>(\"${2:prompt}\")$0", "Read typed input", "input"},
+      {"system", "system(\"${1:command}\");$0", "Execute system command", "system"},
+      {"cast", "cast<${1:Type}>(${2:value})$0", "Type cast", "cast"},
+      {"sizeof", "sizeof<${1:Type}>$0", "Size of type", "sizeof"},
+      {"alloc", "cast<${1:*Type}>(alloc(${2:size}))$0",
+       "Allocate memory", "alloc"},
       {"alloc defer",
-       "let ${1:ptr}: ${2:*Type} = cast<${2:*Type}>(alloc(${3:size} * "
-       "sizeof<${4:Type}>));\ndefer free(${1:ptr});$0",
-       "Allocate with defer cleanup"},
+       "let ${1:ptr}: ${2:*Type} = cast<${2:*Type}>(alloc(${3:size}));\n"
+       "defer free(${1:ptr});$0",
+       "Allocate with defer cleanup", "alloc"},
+      {"@module", "@module \"${1:name}\"$0", "Module declaration", "@module"},
+      {"@use", "@use \"${1:module}\" as ${2:alias}$0", "Import module", "@use"},
+      {"@os", "@os {\n\t\"${1:linux}\" -> {\n\t\t$0\n\t}\n}", "Platform directive", "@os"},
+      {"@link", "@link(\"${1:lib.so}\")$0", "Link shared library", "@link"},
       {"struct method", "${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}",
-       "Struct method"},
+       "Struct method", "fn"},
       {"struct pub", "pub:\n\t${1:field}: ${2:Type},$0",
-       "Public struct fields"},
+       "Public struct fields", "pub"},
       {"struct priv", "priv:\n\t${1:field}: ${2:Type},$0",
-       "Private struct fields"},
-      {"array", "[${1:Type}; ${2:size}]$0", "Array type"},
+       "Private struct fields", "priv"},
+      {"array", "[${1:Type}; ${2:size}]$0", "Array type", "["},
       {"array init", "let ${1:arr}: [${2:Type}; ${3:size}] = [${4:values}];$0",
-       "Array initialization"},
-      {"pointer", "*${1:Type}$0", "Pointer type"},
-      {"address of", "&${1:variable}$0", "Address-of operator"},
-      {"dereference", "*${1:pointer}$0", "Dereference pointer"},
+       "Array initialization", "["},
+      {"pointer", "*${1:Type}$0", "Pointer type", "*"},
+      {"address of", "&${1:variable}$0", "Address-of operator", "&"},
+      {"dereference", "*${1:pointer}$0", "Dereference pointer", "*"},
       {"#returns_ownership",
        "#returns_ownership\nconst ${1:name} -> fn (${2:params}) ${3:*Type} "
        "{\n\t$0\n}",
-       "Function returns owned pointer"},
+       "Function returns owned pointer", "#returns_ownership"},
       {"#takes_ownership",
        "#takes_ownership\nconst ${1:name} -> fn (${2:ptr}: ${3:*Type}) void "
        "{\n\t$0\n}",
-       "Function takes ownership"},
+       "Function takes ownership", "#takes_ownership"},
+      {"#lib_import",
+       "#lib_import(\"${1:lib}.so\")\npub const ${2:name} -> fn (${3:params}) ${4:Type};",
+       "Per-function library import (POSIX)", "#lib_import"},
+      {"#dll_import",
+       "#dll_import(\"${1:dll}.dll\", callconv: \"stdcall\")\npub const ${2:name} -> fn (${3:params}) ${4:Type};",
+       "Per-function DLL import (Windows)", "#dll_import"},
   };
 
   for (size_t i = 0; i < sizeof(keywords) / sizeof(keywords[0]); i++) {
@@ -475,8 +572,31 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
       item->format = LSP_INSERT_FORMAT_SNIPPET;
       item->detail = arena_strdup(arena, keywords[i].detail);
       item->documentation = NULL;
-      item->sort_text = NULL;
-      item->filter_text = NULL;
+      // Snippets get low sort priority — show after symbols
+      item->sort_text = arena_strdup(arena, "z");
+      // Set filter text so "fn" matches "const fn", "struct fn" etc.
+      item->filter_text = keywords[i].filter ? arena_strdup(arena, keywords[i].filter) : NULL;
+    }
+  }
+
+  // Keyword completions (true/false/null) as keyword type
+  static const char *keyword_items[][3] = {
+    {"true", "true", "Boolean literal"},
+    {"false", "false", "Boolean literal"},
+    {"null", "null", "Null pointer literal"},
+  };
+  for (size_t i = 0; i < 3; i++) {
+    LSPCompletionItem *item =
+        (LSPCompletionItem *)growable_array_push(&completions);
+    if (item) {
+      item->label = arena_strdup(arena, keyword_items[i][0]);
+      item->kind = LSP_COMPLETION_KEYWORD;
+      item->insert_text = arena_strdup(arena, keyword_items[i][1]);
+      item->format = LSP_INSERT_FORMAT_PLAIN_TEXT;
+      item->detail = arena_strdup(arena, keyword_items[i][2]);
+      item->documentation = NULL;
+      item->sort_text = arena_strdup(arena, "a");
+      item->filter_text = arena_strdup(arena, keyword_items[i][0]);
     }
   }
 
@@ -532,7 +652,7 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
             size_t snippet_size = strlen(sym->name) + 16;
             char *snippet = arena_alloc(arena, snippet_size, 1);
             if (snippet) {
-              snprintf(snippet, snippet_size, "%s()$0", sym->name);
+              snprintf(snippet, snippet_size, "%s($0)", sym->name);
               item->insert_text = snippet;
               item->format = LSP_INSERT_FORMAT_SNIPPET;
             } else {
@@ -554,7 +674,7 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
           snprintf(sort, sizeof(sort), "%d", sc_depth);
           item->sort_text = arena_strdup(arena, sort);
           item->documentation = NULL;
-          item->filter_text = NULL;
+          item->filter_text = arena_strdup(arena, sym->name);
         }
       }
 
@@ -635,7 +755,7 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
           item->detail = type_to_string(sym->type, arena);
           item->documentation = NULL;
           item->sort_text = arena_strdup(arena, "9");
-          item->filter_text = NULL;
+          item->filter_text = arena_strdup(arena, sym->name);
         }
       }
     }
@@ -643,4 +763,326 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
 
   *completion_count = completions.count;
   return (LSPCompletionItem *)completions.data;
+}
+
+LSPCompletionItem *lsp_completion_resolve(LSPCompletionItem *item,
+                                          ArenaAllocator *arena) {
+  (void)arena;
+  if (!item) return NULL;
+  return item;
+}
+
+LSPSignatureInfo *lsp_signature_help(LSPDocument *doc, LSPPosition position,
+                                     size_t *signature_count,
+                                     ArenaAllocator *arena) {
+  if (!doc || !signature_count) return NULL;
+
+  // Find the token at the cursor
+  Token *tok = find_token_at(doc, position);
+  if (!tok) return NULL;
+
+  // Scan backwards for the function call opening paren
+  int target_line = position.line;
+  int target_col = position.character;
+
+  // Look for an identifier before '(' — simplest approach:
+  // find the nearest '(' before cursor on the same line,
+  // then check if there's an identifier before it
+  const char *content = doc->content;
+  if (!content) return NULL;
+
+  // Convert position to offset in content
+  int line = 0, col = 0;
+  const char *p = content;
+  while (*p && line < target_line) {
+    if (*p == '\n') { line++; col = 0; }
+    else { col++; }
+    p++;
+  }
+  // p now points to the start of the target line
+  const char *line_start = p;
+  // advance to target column
+  while (*p && col < target_col) {
+    if (*p == '\n') break;
+    col++;
+    p++;
+  }
+
+  // Scan backwards from cursor to find '(' and then function name
+  const char *scan = p;
+  while (scan > line_start) {
+    scan--;
+    if (*scan == '(') {
+      // Found '(' — now look for identifier before it
+      const char *name_scan = scan - 1;
+      // Skip whitespace
+      while (name_scan >= line_start && (*name_scan == ' ' || *name_scan == '\t'))
+        name_scan--;
+      // Find end of identifier
+      const char *id_end = name_scan + 1;
+      while (name_scan >= line_start &&
+             ((*name_scan >= 'a' && *name_scan <= 'z') ||
+              (*name_scan >= 'A' && *name_scan <= 'Z') ||
+              *name_scan == '_' ||
+              (*name_scan >= '0' && *name_scan <= '9')))
+        name_scan--;
+      const char *id_start = name_scan + 1;
+      size_t id_len = (size_t)(id_end - id_start);
+
+      if (id_len > 0 && id_len < 256) {
+        char fn_name[256];
+        memcpy(fn_name, id_start, id_len);
+        fn_name[id_len] = '\0';
+
+        // Count how many commas are inside the parens (= active parameter)
+        size_t active_param = 0;
+        const char *cp = scan + 1;
+        int depth = 1;
+        while (*cp && depth > 0 && cp < p) {
+          if (*cp == '(') depth++;
+          else if (*cp == ')') depth--;
+          else if (*cp == ',' && depth == 1) active_param++;
+          cp++;
+        }
+
+        // Look up the function in the scope
+        if (doc->scope) {
+          Symbol *fn_sym = scope_lookup(doc->scope, fn_name);
+          if (fn_sym && fn_sym->type && fn_sym->type->type == AST_TYPE_FUNCTION) {
+            AstNode *func = fn_sym->type;
+            LSPSignatureInfo *sig = arena_alloc(arena, sizeof(LSPSignatureInfo), alignof(LSPSignatureInfo));
+            if (!sig) return NULL;
+
+            // Build the label: fn_name(param1, param2, ...) -> return_type
+            size_t label_size = 1024;
+            char *label = arena_alloc(arena, label_size, 1);
+            if (!label) return NULL;
+            snprintf(label, label_size, "%s(", fn_name);
+
+            size_t param_count = func->type_data.function.param_count;
+            for (size_t i = 0; i < param_count; i++) {
+              if (i > 0) strncat(label, ", ", label_size - strlen(label) - 1);
+              const char *ptype = func->type_data.function.param_types[i]
+                ? type_to_string(func->type_data.function.param_types[i], arena)
+                : "?";
+              char param_str[64];
+              snprintf(param_str, sizeof(param_str), "p%zu: %s", i + 1, ptype);
+              strncat(label, param_str, label_size - strlen(label) - 1);
+            }
+
+            const char *ret = func->type_data.function.return_type
+              ? type_to_string(func->type_data.function.return_type, arena)
+              : "void";
+            char ret_str[64];
+            snprintf(ret_str, sizeof(ret_str), ") %s", ret);
+            strncat(label, ret_str, label_size - strlen(label) - 1);
+
+            sig->label = label;
+            sig->documentation = NULL;
+            sig->active_parameter = active_param < param_count ? active_param : 0;
+
+            // Build parameter info
+            if (param_count > 0) {
+              sig->parameters = arena_alloc(arena, param_count * sizeof(LSPParameterInfo), alignof(LSPParameterInfo));
+              sig->parameter_count = param_count;
+              for (size_t i = 0; i < param_count; i++) {
+                const char *ptype = func->type_data.function.param_types[i]
+                  ? type_to_string(func->type_data.function.param_types[i], arena)
+                  : "?";
+                char param_label[64];
+                snprintf(param_label, sizeof(param_label), "p%zu: %s", i + 1, ptype);
+                char param_doc[128];
+                snprintf(param_doc, sizeof(param_doc), "Parameter %zu: %s", i + 1, ptype);
+                sig->parameters[i].label = arena_strdup(arena, param_label);
+                sig->parameters[i].documentation = arena_strdup(arena, param_doc);
+              }
+            } else {
+              sig->parameters = NULL;
+              sig->parameter_count = 0;
+            }
+
+            *signature_count = 1;
+            return sig;
+          }
+        }
+      }
+      break;
+    }
+    if (*scan == '\n' || *scan == ';' || *scan == '{' || *scan == '}') break;
+  }
+
+  *signature_count = 0;
+  return NULL;
+}
+
+LSPCodeAction *lsp_code_action(LSPDocument *doc, LSPPosition position,
+                               size_t *action_count, ArenaAllocator *arena) {
+  if (!doc || !action_count) return NULL;
+
+  // Provide basic code actions based on diagnostics at the position
+  Token *tok = find_token_at(doc, position);
+  if (!tok || !token_is_name_like(tok)) {
+    *action_count = 0;
+    return NULL;
+  }
+
+  // Check for common issues at the cursor position
+  GrowableArray actions;
+  growable_array_init(&actions, arena, 4, sizeof(LSPCodeAction));
+
+  size_t name_len = tok->length;
+  char *name = arena_alloc(arena, name_len + 1, 1);
+  if (name) {
+    memcpy(name, tok->value, name_len);
+    name[name_len] = '\0';
+
+    // Check if user typed something that looks like it should be public
+    if (doc->scope) {
+      Symbol *sym = scope_lookup(doc->scope, name);
+      if (sym && !sym->is_public && doc->import_count > 0) {
+        LSPCodeAction *action =
+            (LSPCodeAction *)growable_array_push(&actions);
+        if (action) {
+          action->title = arena_strdup(arena, "Make 'pub'");
+          action->kind = "quickfix";
+          action->command = NULL;
+          action->edit_title = NULL;
+          action->edit_text = NULL;
+          action->edit_uri = NULL;
+        }
+      }
+    }
+  }
+
+  *action_count = actions.count;
+  return (LSPCodeAction *)actions.data;
+}
+
+LSPDocumentHighlight *lsp_document_highlight(LSPDocument *doc,
+                                             LSPPosition position,
+                                             size_t *highlight_count,
+                                             ArenaAllocator *arena) {
+  if (!doc || !highlight_count || !doc->tokens) return NULL;
+
+  // Find the token at the cursor
+  Token *tok = find_token_at(doc, position);
+  if (!tok || !token_is_name_like(tok) || !tok->value || tok->length == 0) {
+    *highlight_count = 0;
+    return NULL;
+  }
+
+  // Extract the name
+  size_t name_len = tok->length;
+  char *name = arena_alloc(arena, name_len + 1, 1);
+  if (!name) { *highlight_count = 0; return NULL; }
+  memcpy(name, tok->value, name_len);
+  name[name_len] = '\0';
+
+  // Count all matching identifiers
+  size_t count = 0;
+  for (size_t i = 0; i < doc->token_count; i++) {
+    Token *t = &doc->tokens[i];
+    if (t->type_ == TOK_IDENTIFIER && t->length == (int)name_len &&
+        strncmp(t->value, name, name_len) == 0) {
+      count++;
+    }
+  }
+
+  if (count == 0) { *highlight_count = 0; return NULL; }
+
+  LSPDocumentHighlight *highlights =
+      arena_alloc(arena, count * sizeof(LSPDocumentHighlight),
+                  alignof(LSPDocumentHighlight));
+  if (!highlights) { *highlight_count = 0; return NULL; }
+
+  size_t idx = 0;
+  for (size_t i = 0; i < doc->token_count && idx < count; i++) {
+    Token *t = &doc->tokens[i];
+    if (t->type_ == TOK_IDENTIFIER && t->length == (int)name_len &&
+        strncmp(t->value, name, name_len) == 0) {
+      highlights[idx].range.start.line = (int)t->line - 1;
+      highlights[idx].range.start.character = (int)t->col - 1;
+      highlights[idx].range.end.line = (int)t->line - 1;
+      highlights[idx].range.end.character = (int)t->col + (int)t->length - 1;
+      highlights[idx].kind = LSP_HIGHLIGHT_TEXT;
+      idx++;
+    }
+  }
+
+  *highlight_count = idx;
+  return highlights;
+}
+
+const char *lsp_rename(LSPDocument *doc, LSPPosition position,
+                       const char *new_name, ArenaAllocator *arena) {
+  if (!doc || !new_name || !doc->tokens) return NULL;
+
+  Token *tok = find_token_at(doc, position);
+  if (!tok || !token_is_name_like(tok) || !tok->value || tok->length == 0)
+    return NULL;
+
+  // Extract old name
+  size_t name_len = tok->length;
+  char *old_name = arena_alloc(arena, name_len + 1, 1);
+  if (!old_name) return NULL;
+  memcpy(old_name, tok->value, name_len);
+  old_name[name_len] = '\0';
+
+  // Build edit entries for each occurrence of the old name
+  // Output format: "\"uri\":[{edit1},{edit2},...]"
+  size_t buf_size = 65536;
+  char *result = arena_alloc(arena, buf_size, 1);
+  if (!result) return NULL;
+  result[0] = '\0';
+
+  // Count matches first
+  size_t match_count = 0;
+  for (size_t i = 0; i < doc->token_count; i++) {
+    Token *t = &doc->tokens[i];
+    if (t->type_ == TOK_IDENTIFIER && t->length == (int)name_len &&
+        strncmp(t->value, old_name, name_len) == 0) {
+      match_count++;
+    }
+  }
+
+  if (match_count == 0) return NULL;
+
+  // Build edits for this document
+  char edits_section[65536];
+  size_t off = 0;
+  off += snprintf(edits_section + off, sizeof(edits_section) - off,
+                  "\"%s\":[", doc->uri);
+
+  bool first = true;
+  for (size_t i = 0; i < doc->token_count; i++) {
+    Token *t = &doc->tokens[i];
+    if (t->type_ == TOK_IDENTIFIER && t->length == (int)name_len &&
+        strncmp(t->value, old_name, name_len) == 0) {
+      if (!first)
+        off += snprintf(edits_section + off, sizeof(edits_section) - off, ",");
+      first = false;
+
+      char escaped_new[256];
+      size_t esc_idx = 0;
+      for (const char *s = new_name; *s && esc_idx < sizeof(escaped_new) - 1; s++) {
+        if (*s == '"' || *s == '\\') {
+          escaped_new[esc_idx++] = '\\';
+        }
+        escaped_new[esc_idx++] = *s;
+      }
+      escaped_new[esc_idx] = '\0';
+
+      off += snprintf(edits_section + off, sizeof(edits_section) - off,
+                      "{\"range\":{"
+                      "\"start\":{\"line\":%d,\"character\":%d},"
+                      "\"end\":{\"line\":%d,\"character\":%d}"
+                      "},\"newText\":\"%s\"}",
+                      (int)t->line - 1, (int)t->col - 1,
+                      (int)t->line - 1, (int)t->col + (int)t->length - 1,
+                      escaped_new);
+    }
+  }
+  off += snprintf(edits_section + off, sizeof(edits_section) - off, "]");
+
+  return arena_strdup(arena, edits_section);
 }

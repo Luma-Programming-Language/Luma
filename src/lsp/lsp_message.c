@@ -93,9 +93,18 @@ void lsp_handle_message(LSPServer *server, const char *message) {
           "\"textDocumentSync\":1,"
           "\"hoverProvider\":true,"
           "\"definitionProvider\":true,"
-          "\"completionProvider\":{\"triggerCharacters\":[\".\",\":\"]},"
+          "\"completionProvider\":{"
+          "\"triggerCharacters\":[\".\",\":\",\"(\",\",\",\" \"],"
+          "\"resolveProvider\":true"
+          "},"
+          "\"signatureHelpProvider\":{"
+          "\"triggerCharacters\":[\"(\",\",\"]"
+          "},"
+          "\"codeActionProvider\":true,"
+          "\"renameProvider\":true,"
+          "\"documentHighlightProvider\":true,"
           "\"documentSymbolProvider\":true,"
-          /* --- ADD THIS BLOCK --- */
+          "\"documentFormattingProvider\":true,"
           "\"semanticTokensProvider\":{"
           "\"legend\":{"
           "\"tokenTypes\":["
@@ -114,7 +123,6 @@ void lsp_handle_message(LSPServer *server, const char *message) {
           "\"full\":true,"
           "\"range\":false"
           "}"
-          /* ---------------------- */
           "},"
           "\"serverInfo\":{\"name\":\"Luma LSP\",\"version\":\"0.2.0\"}"
           "}";
@@ -319,6 +327,197 @@ void lsp_handle_message(LSPServer *server, const char *message) {
 
     lsp_send_response(request_id, result);
     free(result);
+    break;
+  }
+
+  case LSP_METHOD_TEXT_DOCUMENT_SIGNATURE_HELP: {
+    fprintf(stderr, "[LSP] Handling signatureHelp\n");
+    const char *uri = extract_string(message, "uri", &temp_arena);
+    LSPPosition position = extract_position(message);
+
+    if (!uri) {
+      lsp_send_response(request_id, "null");
+      break;
+    }
+
+    LSPDocument *doc = lsp_document_find(server, uri);
+    if (!doc) {
+      lsp_send_response(request_id, "null");
+      break;
+    }
+
+    size_t sig_count = 0;
+    LSPSignatureInfo *sigs =
+        lsp_signature_help(doc, position, &sig_count, &temp_arena);
+
+    if (!sigs || sig_count == 0) {
+      lsp_send_response(request_id, "null");
+      break;
+    }
+
+    size_t result_size = 8192;
+    char *result = (char *)malloc(result_size);
+    if (!result) {
+      lsp_send_response(request_id, "null");
+      break;
+    }
+
+    serialize_signature_help(sigs, result, result_size);
+    lsp_send_response(request_id, result);
+    free(result);
+    break;
+  }
+
+  case LSP_METHOD_TEXT_DOCUMENT_CODE_ACTION: {
+    fprintf(stderr, "[LSP] Handling codeAction\n");
+    const char *uri = extract_string(message, "uri", &temp_arena);
+    LSPPosition position = extract_position(message);
+
+    if (!uri) {
+      lsp_send_response(request_id, "{\"actions\":[]}");
+      break;
+    }
+
+    LSPDocument *doc = lsp_document_find(server, uri);
+    if (!doc) {
+      lsp_send_response(request_id, "{\"actions\":[]}");
+      break;
+    }
+
+    size_t action_count = 0;
+    LSPCodeAction *actions =
+        lsp_code_action(doc, position, &action_count, &temp_arena);
+
+    if (!actions || action_count == 0) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    size_t result_size = action_count * 512 + 64;
+    char *result = (char *)malloc(result_size);
+    if (!result) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    serialize_code_actions(actions, action_count, result, result_size);
+    lsp_send_response(request_id, result);
+    free(result);
+    break;
+  }
+
+  case LSP_METHOD_TEXT_DOCUMENT_RENAME: {
+    fprintf(stderr, "[LSP] Handling rename\n");
+    const char *uri = extract_string(message, "uri", &temp_arena);
+    LSPPosition position = extract_position(message);
+    const char *new_name = extract_string(message, "newName", &temp_arena);
+
+    if (!uri || !new_name) {
+      lsp_send_error(request_id, -32602, "Invalid params for rename");
+      break;
+    }
+
+    LSPDocument *doc = lsp_document_find(server, uri);
+    if (!doc) {
+      lsp_send_response(request_id, "null");
+      break;
+    }
+
+    const char *edit_json = lsp_rename(doc, position, new_name, &temp_arena);
+    if (edit_json) {
+      size_t result_size = strlen(edit_json) + 64;
+      char *result = (char *)malloc(result_size);
+      if (result) {
+        snprintf(result, result_size, "{\"changes\":{%s}}", edit_json);
+        lsp_send_response(request_id, result);
+        free(result);
+      } else {
+        lsp_send_response(request_id, "null");
+      }
+    } else {
+      lsp_send_response(request_id, "null");
+    }
+    break;
+  }
+
+  case LSP_METHOD_TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT: {
+    fprintf(stderr, "[LSP] Handling documentHighlight\n");
+    const char *uri = extract_string(message, "uri", &temp_arena);
+    LSPPosition position = extract_position(message);
+
+    if (!uri) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    LSPDocument *doc = lsp_document_find(server, uri);
+    if (!doc) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    size_t hl_count = 0;
+    LSPDocumentHighlight *highlights =
+        lsp_document_highlight(doc, position, &hl_count, &temp_arena);
+
+    if (!highlights || hl_count == 0) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    size_t result_size = hl_count * 128 + 16;
+    char *result = (char *)malloc(result_size);
+    if (!result) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    serialize_document_highlights(highlights, hl_count, result, result_size);
+    lsp_send_response(request_id, result);
+    free(result);
+    break;
+  }
+
+  case LSP_METHOD_TEXT_DOCUMENT_COMPLETION_ITEM_RESOLVE: {
+    fprintf(stderr, "[LSP] Handling completionItem/resolve\n");
+    // For now, return the item as-is (no async resolution needed)
+    // Extract the label and return it
+    const char *label = extract_string(message, "label", &temp_arena);
+    if (label) {
+      size_t result_size = strlen(label) + 64;
+      char *result = (char *)malloc(result_size);
+      if (result) {
+        snprintf(result, result_size,
+                 "{\"label\":\"%s\"}", label);
+        lsp_send_response(request_id, result);
+        free(result);
+      } else {
+        lsp_send_response(request_id, "null");
+      }
+    } else {
+      lsp_send_response(request_id, "null");
+    }
+    break;
+  }
+
+  case LSP_METHOD_TEXT_DOCUMENT_FORMATTING: {
+    fprintf(stderr, "[LSP] Handling formatting\n");
+    const char *uri = extract_string(message, "uri", &temp_arena);
+
+    if (!uri) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    LSPDocument *doc = lsp_document_find(server, uri);
+    if (!doc || !doc->content) {
+      lsp_send_response(request_id, "[]");
+      break;
+    }
+
+    // Use the built-in formatter on the document content
+    // Return empty edits for now - formatter is invoked separately
+    lsp_send_response(request_id, "[]");
     break;
   }
 

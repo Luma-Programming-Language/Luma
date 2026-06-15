@@ -209,22 +209,34 @@ LSPMethod lsp_parse_method(const char *json) {
           method_value);
 
   // Longest match first to avoid partial matches
+  if (strncmp(method_value, "textDocument/documentHighlight", 30) == 0)
+    return LSP_METHOD_TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT;
   if (strncmp(method_value, "textDocument/documentSymbol", 27) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_DOCUMENT_SYMBOL;
   if (strncmp(method_value, "textDocument/semanticTokens", 27) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_SEMANTIC_TOKENS;
+  if (strncmp(method_value, "textDocument/signatureHelp", 26) == 0)
+    return LSP_METHOD_TEXT_DOCUMENT_SIGNATURE_HELP;
   if (strncmp(method_value, "textDocument/completion", 23) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_COMPLETION;
   if (strncmp(method_value, "textDocument/definition", 23) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_DEFINITION;
   if (strncmp(method_value, "textDocument/didChange", 22) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_DID_CHANGE;
+  if (strncmp(method_value, "textDocument/formatting", 23) == 0)
+    return LSP_METHOD_TEXT_DOCUMENT_FORMATTING;
   if (strncmp(method_value, "textDocument/didClose", 21) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_DID_CLOSE;
   if (strncmp(method_value, "textDocument/didOpen", 20) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_DID_OPEN;
+  if (strncmp(method_value, "textDocument/rename", 19) == 0)
+    return LSP_METHOD_TEXT_DOCUMENT_RENAME;
+  if (strncmp(method_value, "textDocument/codeAction", 22) == 0)
+    return LSP_METHOD_TEXT_DOCUMENT_CODE_ACTION;
   if (strncmp(method_value, "textDocument/hover", 18) == 0)
     return LSP_METHOD_TEXT_DOCUMENT_HOVER;
+  if (strncmp(method_value, "completionItem/resolve", 22) == 0)
+    return LSP_METHOD_TEXT_DOCUMENT_COMPLETION_ITEM_RESOLVE;
 
   // "initialized" must be checked before "initialize"
   if (strncmp(method_value, "initialized", 11) == 0)
@@ -387,8 +399,86 @@ void serialize_completion_items(LSPCompletionItem *items, size_t count,
                          ",\"sortText\":\"%s\"", item->sort_text);
     }
 
+    if (item->filter_text) {
+      offset += snprintf(output + offset, output_size - offset,
+                         ",\"filterText\":\"%s\"", item->filter_text);
+    }
+
     offset += snprintf(output + offset, output_size - offset, "}");
   }
 
   snprintf(output + offset, output_size - offset, "]}");
+}
+
+void serialize_signature_help(LSPSignatureInfo *sig, char *output,
+                              size_t output_size) {
+  // Output: {"signatures":[{"label":"...","parameters":[...]}],"activeSignature":0,"activeParameter":N}
+  size_t off = 0;
+  off += snprintf(output + off, output_size - off,
+                  "{\"signatures\":[{\"label\":\"");
+  // Escape the label
+  for (const char *s = sig->label; *s && off < output_size - 10; s++) {
+    if (*s == '"') { output[off++] = '\\'; output[off++] = '"'; }
+    else if (*s == '\\') { output[off++] = '\\'; output[off++] = '\\'; }
+    else if (*s == '\n') { output[off++] = '\\'; output[off++] = 'n'; }
+    else { output[off++] = *s; }
+  }
+  output[off] = '\0';
+
+  off += snprintf(output + off, output_size - off, "\"");
+
+  // Parameters
+  if (sig->parameters && sig->parameter_count > 0) {
+    off += snprintf(output + off, output_size - off, ",\"parameters\":[");
+    for (size_t i = 0; i < sig->parameter_count && off < output_size - 10; i++) {
+      if (i > 0) off += snprintf(output + off, output_size - off, ",");
+      off += snprintf(output + off, output_size - off,
+                      "{\"label\":\"%s\"}",
+                      sig->parameters[i].label ? sig->parameters[i].label : "");
+    }
+    off += snprintf(output + off, output_size - off, "]");
+  }
+
+  off += snprintf(output + off, output_size - off, "}]");
+  off += snprintf(output + off, output_size - off,
+                  ",\"activeSignature\":0,\"activeParameter\":%zu}",
+                  sig->active_parameter);
+}
+
+void serialize_code_actions(LSPCodeAction *actions, size_t count,
+                            char *output, size_t output_size) {
+  size_t off = 0;
+  off += snprintf(output + off, output_size - off, "[");
+  for (size_t i = 0; i < count && off < output_size - 4; i++) {
+    if (i > 0) off += snprintf(output + off, output_size - off, ",");
+    off += snprintf(output + off, output_size - off,
+                    "{\"title\":\"%s\"",
+                    actions[i].title ? actions[i].title : "");
+    if (actions[i].kind) {
+      off += snprintf(output + off, output_size - off,
+                      ",\"kind\":\"%s\"", actions[i].kind);
+    }
+    off += snprintf(output + off, output_size - off, "}");
+  }
+  off += snprintf(output + off, output_size - off, "]");
+}
+
+void serialize_document_highlights(LSPDocumentHighlight *highlights,
+                                   size_t count, char *output,
+                                   size_t output_size) {
+  size_t off = 0;
+  off += snprintf(output + off, output_size - off, "[");
+  for (size_t i = 0; i < count && off < output_size - 4; i++) {
+    if (i > 0) off += snprintf(output + off, output_size - off, ",");
+    off += snprintf(
+        output + off, output_size - off,
+        "{\"range\":{\"start\":{\"line\":%d,\"character\":%d},"
+        "\"end\":{\"line\":%d,\"character\":%d}},\"kind\":%d}",
+        highlights[i].range.start.line,
+        highlights[i].range.start.character,
+        highlights[i].range.end.line,
+        highlights[i].range.end.character,
+        highlights[i].kind);
+  }
+  snprintf(output + off, output_size - off, "]");
 }

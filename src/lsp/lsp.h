@@ -31,6 +31,12 @@ typedef enum {
   LSP_METHOD_TEXT_DOCUMENT_COMPLETION,
   LSP_METHOD_TEXT_DOCUMENT_DOCUMENT_SYMBOL,
   LSP_METHOD_TEXT_DOCUMENT_SEMANTIC_TOKENS,
+  LSP_METHOD_TEXT_DOCUMENT_SIGNATURE_HELP,
+  LSP_METHOD_TEXT_DOCUMENT_CODE_ACTION,
+  LSP_METHOD_TEXT_DOCUMENT_RENAME,
+  LSP_METHOD_TEXT_DOCUMENT_DOCUMENT_HIGHLIGHT,
+  LSP_METHOD_TEXT_DOCUMENT_COMPLETION_ITEM_RESOLVE,
+  LSP_METHOD_TEXT_DOCUMENT_FORMATTING,
   LSP_METHOD_UNKNOWN
 } LSPMethod;
 
@@ -105,6 +111,58 @@ typedef struct LSPDocumentSymbol {
   struct LSPDocumentSymbol **children;
   size_t child_count;
 } LSPDocumentSymbol;
+
+// ============================================================================
+// SIGNATURE HELP
+// ============================================================================
+
+typedef struct {
+  const char *label;
+  const char *documentation;
+} LSPParameterInfo;
+
+typedef struct {
+  const char *label;
+  LSPParameterInfo *parameters;
+  size_t parameter_count;
+  size_t active_parameter;
+  const char *documentation;
+} LSPSignatureInfo;
+
+typedef struct {
+  LSPSignatureInfo *signatures;
+  size_t signature_count;
+  size_t active_signature;
+  LSPParameterInfo *active_parameter;
+} LPSignatureHelp;
+
+// ============================================================================
+// CODE ACTION
+// ============================================================================
+
+typedef struct {
+  const char *title;
+  const char *kind;
+  const char *command;
+  const char *edit_title;
+  const char *edit_text;
+  const char *edit_uri;
+} LSPCodeAction;
+
+// ============================================================================
+// DOCUMENT HIGHLIGHT
+// ============================================================================
+
+typedef enum {
+  LSP_HIGHLIGHT_TEXT = 1,
+  LSP_HIGHLIGHT_READ = 2,
+  LSP_HIGHLIGHT_WRITE = 3
+} LSPDocumentHighlightKind;
+
+typedef struct {
+  LSPRange range;
+  LSPDocumentHighlightKind kind;
+} LSPDocumentHighlight;
 
 // ============================================================================
 // COMPLETION
@@ -282,12 +340,25 @@ LSPLocation *lsp_definition(LSPDocument *doc, LSPPosition position,
 LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
                                   size_t *completion_count,
                                   ArenaAllocator *arena);
+LSPCompletionItem *lsp_completion_resolve(LSPCompletionItem *item,
+                                          ArenaAllocator *arena);
+LSPSignatureInfo *lsp_signature_help(LSPDocument *doc, LSPPosition position,
+                                     size_t *signature_count,
+                                     ArenaAllocator *arena);
+LSPCodeAction *lsp_code_action(LSPDocument *doc, LSPPosition position,
+                               size_t *action_count, ArenaAllocator *arena);
+LSPDocumentHighlight *lsp_document_highlight(LSPDocument *doc,
+                                             LSPPosition position,
+                                             size_t *highlight_count,
+                                             ArenaAllocator *arena);
+const char *lsp_rename(LSPDocument *doc, LSPPosition position,
+                       const char *new_name, ArenaAllocator *arena);
 LSPDocumentSymbol **lsp_document_symbols(LSPDocument *doc, size_t *symbol_count,
                                          ArenaAllocator *arena);
 LSPDiagnostic *lsp_diagnostics(LSPDocument *doc, size_t *diagnostic_count,
                                ArenaAllocator *arena);
 LSPDiagnostic *convert_errors_to_diagnostics(size_t *diagnostic_count,
-                                             ArenaAllocator *arena);
+                                              ArenaAllocator *arena);
 
 // ============================================================================
 // JSON-RPC PROTOCOL
@@ -309,6 +380,15 @@ void serialize_diagnostics_to_json(const char *uri, LSPDiagnostic *diagnostics,
                                    size_t output_size);
 void serialize_completion_items(LSPCompletionItem *items, size_t count,
                                 char *output, size_t output_size);
+void serialize_signature_help(LSPSignatureInfo *sig, char *output,
+                              size_t output_size);
+void serialize_code_actions(LSPCodeAction *actions, size_t count,
+                            char *output, size_t output_size);
+void serialize_document_highlights(LSPDocumentHighlight *highlights,
+                                   size_t count, char *output,
+                                   size_t output_size);
+const char *serialize_rename_result(const char *edit_json,
+                                    ArenaAllocator *arena);
 
 // ============================================================================
 // UTILITY FUNCTIONS
