@@ -1,4 +1,5 @@
 #include "lsp.h"
+#include <stdio.h>
 #include <string.h>
 
 static const char *json_escape_hover(const char *src, ArenaAllocator *arena) {
@@ -28,10 +29,12 @@ static Token *find_token_at(LSPDocument *doc, LSPPosition pos) {
   for (size_t i = 0; i < doc->token_count; i++) {
     Token *tok = &doc->tokens[i];
     int tok_line = (int)tok->line - 1;
-    int tok_col  = (int)tok->col - (int)tok->length + 1;  // 0-based start
-    int tok_end  = tok_col + (int)tok->length;             // unchanged
+    int tok_col  = (int)tok->col - (int)tok->length + 1;
+    int tok_end  = tok_col + (int)tok->length;
     if (tok_line == pos.line &&
         tok_col <= pos.character && pos.character < tok_end) {
+      fprintf(stderr, "[LSP] find_token_at: found tok='%.*s' at 0b(%d,%d-%d) for req(%d,%d)\n",
+              tok->length, tok->value, tok_line, tok_col, tok_end, pos.line, pos.character);
       return tok;
     }
   }
@@ -390,64 +393,150 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
   return NULL;
 }
 
-LSPLocation *lsp_definition(LSPDocument *doc, LSPPosition position,
-                            ArenaAllocator *arena) {
-  if (!doc) return NULL;
-
-  Symbol *symbol = lsp_symbol_at_position(doc, position);
-  if (!symbol) return NULL;
-
-  // Try to find the token for this symbol in the document's tokens
-  // to provide an accurate definition location
-  LSPLocation *loc = arena_alloc(arena, sizeof(LSPLocation), alignof(LSPLocation));
-  loc->uri = doc->uri;
-  loc->range.start.line = 0;
-  loc->range.start.character = 0;
-  loc->range.end.line = 0;
-  loc->range.end.character = 0;
-
-  if (!symbol->name || !doc->tokens) return loc;
-
-  size_t name_len = strlen(symbol->name);
-
-  // Scan all tokens to find where this symbol is DECLARED (first occurrence)
-  // We look for the first token that matches the symbol name and is in a
-  // declaration context (followed by ':' for variable, '->' for function/type)
-  for (size_t i = 0; i < doc->token_count; i++) {
-    Token *tok = &doc->tokens[i];
-    if (tok->type_ == TOK_IDENTIFIER &&
-        tok->length == (int)name_len &&
-        strncmp(tok->value, symbol->name, name_len) == 0) {
-
-      // Check if next significant token indicates a declaration
-      for (size_t j = i + 1; j < doc->token_count && j < i + 5; j++) {
-        Token *next = &doc->tokens[j];
+// Search tokens for a definition of `name`, return location or NULL.
+static LSPLocation *find_definition_in_tokens(Token *tokens, size_t token_count,
+                                               const char *name, size_t name_len,
+                                               const char *uri,
+                                               ArenaAllocator *arena) {
+  // Declaration scan (followed by :, ->, or =)
+  for (size_t i = 0; i < token_count; i++) {
+    Token *t = &tokens[i];
+    if (t->type_ == TOK_IDENTIFIER &&
+        t->length == (int)name_len &&
+        strncmp(t->value, name, name_len) == 0) {
+      for (size_t j = i + 1; j < token_count && j < i + 5; j++) {
+        Token *next = &tokens[j];
         if (next->type_ == TOK_COLON || next->type_ == TOK_RIGHT_ARROW || next->type_ == TOK_EQUAL) {
-          loc->range.start.line = (int)tok->line - 1;
-          loc->range.start.character = (int)tok->col - 1;
-          loc->range.end.line = (int)tok->line - 1;
-          loc->range.end.character = (int)tok->col + (int)tok->length - 1;
+          LSPLocation *loc = arena_alloc(arena, sizeof(LSPLocation), alignof(LSPLocation));
+          loc->uri = uri;
+          loc->range.start.line = (int)t->line - 1;
+          loc->range.start.character = (int)t->col - (int)t->length + 1;
+          loc->range.end.line = (int)t->line - 1;
+          loc->range.end.character = (int)t->col + 1;
           return loc;
         }
       }
     }
   }
-
-  // Fallback: first occurrence of the name
-  for (size_t i = 0; i < doc->token_count; i++) {
-    Token *tok = &doc->tokens[i];
-    if (tok->type_ == TOK_IDENTIFIER &&
-        tok->length == (int)name_len &&
-        strncmp(tok->value, symbol->name, name_len) == 0) {
-      loc->range.start.line = (int)tok->line - 1;
-      loc->range.start.character = (int)tok->col - 1;
-      loc->range.end.line = (int)tok->line - 1;
-      loc->range.end.character = (int)tok->col + (int)tok->length - 1;
+  // Fallback: first occurrence
+  for (size_t i = 0; i < token_count; i++) {
+    Token *t = &tokens[i];
+    if (t->type_ == TOK_IDENTIFIER &&
+        t->length == (int)name_len &&
+        strncmp(t->value, name, name_len) == 0) {
+      LSPLocation *loc = arena_alloc(arena, sizeof(LSPLocation), alignof(LSPLocation));
+      loc->uri = uri;
+      loc->range.start.line = (int)t->line - 1;
+      loc->range.start.character = (int)t->col - (int)t->length + 1;
+      loc->range.end.line = (int)t->line - 1;
+      loc->range.end.character = (int)t->col + 1;
       return loc;
     }
   }
+  return NULL;
+}
 
-  return loc;
+LSPLocation *lsp_definition(LSPDocument *doc, LSPServer *server,
+                            LSPPosition position,
+                            ArenaAllocator *arena) {
+  if (!doc) return NULL;
+
+  fprintf(stderr, "[LSP] lsp_definition: req line=%d col=%d\n",
+          position.line, position.character);
+
+  Token *tok = find_token_at(doc, position);
+  if (!tok || !token_is_name_like(tok) || !tok->value || tok->length == 0) {
+    fprintf(stderr, "[LSP] lsp_definition: no token at (%d,%d)\n",
+            position.line, position.character);
+    return NULL;
+  }
+
+  if (!doc->tokens) return NULL;
+
+  size_t name_len = tok->length;
+  char name_buf[256];
+  if (name_len >= sizeof(name_buf)) name_len = sizeof(name_buf) - 1;
+  memcpy(name_buf, tok->value, name_len);
+  name_buf[name_len] = '\0';
+
+  fprintf(stderr, "[LSP] lsp_definition: token='%s'\n", name_buf);
+
+  // Find token index to look backwards for alias::name pattern
+  int tok_index = -1;
+  for (size_t i = 0; i < doc->token_count; i++) {
+    if (&doc->tokens[i] == tok) { tok_index = (int)i; break; }
+  }
+
+  if (tok_index >= 2 &&
+      doc->tokens[tok_index - 1].type_ == TOK_RESOLVE &&
+      doc->tokens[tok_index - 2].type_ == TOK_IDENTIFIER) {
+    Token *alias_tok = &doc->tokens[tok_index - 2];
+    size_t alias_len = alias_tok->length;
+    char alias_buf[256];
+    if (alias_len >= sizeof(alias_buf)) alias_len = sizeof(alias_buf) - 1;
+    memcpy(alias_buf, alias_tok->value, alias_len);
+    alias_buf[alias_len] = '\0';
+    fprintf(stderr, "[LSP] lsp_definition: import alias='%s' name='%s'\n",
+            alias_buf, name_buf);
+
+    for (size_t i = 0; i < doc->import_count; i++) {
+      ImportedModule *imp = &doc->imports[i];
+      const char *imp_alias = imp->alias ? imp->alias : imp->module_path;
+      if (imp_alias && strcmp(imp_alias, alias_buf) == 0) {
+        fprintf(stderr, "[LSP] lsp_definition: found import '%s'\n",
+                imp->module_path);
+        const char *module_uri = lookup_module(server, imp->module_path);
+        if (!module_uri) {
+          fprintf(stderr, "[LSP] lsp_definition: can't resolve module\n");
+          return NULL;
+        }
+
+        // Try open doc first
+        LSPDocument *mod_doc = lsp_document_find(server, module_uri);
+        if (mod_doc && mod_doc->tokens) {
+          fprintf(stderr, "[LSP] lsp_definition: searching open doc %s\n",
+                  module_uri);
+          return find_definition_in_tokens(
+              mod_doc->tokens, mod_doc->token_count,
+              name_buf, name_len, mod_doc->uri, arena);
+        }
+
+        // Lex the file
+        const char *file_path = lsp_uri_to_path(module_uri, arena);
+        if (!file_path) return NULL;
+        FILE *f = fopen(file_path, "r");
+        if (!f) return NULL;
+        fseek(f, 0, SEEK_END);
+        long fsize = ftell(f);
+        fseek(f, 0, SEEK_SET);
+        char *content = arena_alloc(arena, fsize + 1, 1);
+        if (!content) { fclose(f); return NULL; }
+        fread(content, 1, fsize, f);
+        content[fsize] = '\0';
+        fclose(f);
+        fprintf(stderr, "[LSP] lsp_definition: lexing %s (%ld bytes)\n",
+                file_path, fsize);
+
+        Lexer lexer;
+        init_lexer(&lexer, content, arena);
+        GrowableArray mod_tokens;
+        growable_array_init(&mod_tokens, arena, 256, sizeof(Token));
+        Token t;
+        while ((t = next_token(&lexer)).type_ != TOK_EOF) {
+          Token *slot = (Token *)growable_array_push(&mod_tokens);
+          if (slot) *slot = t;
+        }
+        return find_definition_in_tokens(
+            (Token *)mod_tokens.data, mod_tokens.count,
+            name_buf, name_len, module_uri, arena);
+      }
+    }
+  }
+
+  // Simple identifier — search current document
+  fprintf(stderr, "[LSP] lsp_definition: searching current doc\n");
+  return find_definition_in_tokens(doc->tokens, doc->token_count,
+                                   name_buf, name_len, doc->uri, arena);
 }
 
 LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,

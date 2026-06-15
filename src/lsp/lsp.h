@@ -335,7 +335,8 @@ void lsp_check_pending_analysis(LSPServer *server);
 
 const char *lsp_hover(LSPDocument *doc, LSPPosition position,
                       ArenaAllocator *arena);
-LSPLocation *lsp_definition(LSPDocument *doc, LSPPosition position,
+LSPLocation *lsp_definition(LSPDocument *doc, LSPServer *server,
+                            LSPPosition position,
                             ArenaAllocator *arena);
 LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
                                   size_t *completion_count,

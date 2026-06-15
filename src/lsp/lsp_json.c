@@ -362,7 +362,8 @@ void serialize_diagnostics_to_json(const char *uri, LSPDiagnostic *diagnostics,
         diag->source ? diag->source : "luma");
   }
 
-  snprintf(output + offset, output_size - offset, "]}");
+  if (offset < output_size)
+    snprintf(output + offset, output_size - offset, "]}");
 }
 
 void serialize_completion_items(LSPCompletionItem *items, size_t count,
@@ -407,7 +408,8 @@ void serialize_completion_items(LSPCompletionItem *items, size_t count,
     offset += snprintf(output + offset, output_size - offset, "}");
   }
 
-  snprintf(output + offset, output_size - offset, "]}");
+  if (offset < output_size)
+    snprintf(output + offset, output_size - offset, "]}");
 }
 
 void serialize_signature_help(LSPSignatureInfo *sig, char *output,
@@ -428,7 +430,7 @@ void serialize_signature_help(LSPSignatureInfo *sig, char *output,
   off += snprintf(output + off, output_size - off, "\"");
 
   // Parameters
-  if (sig->parameters && sig->parameter_count > 0) {
+  if (off < output_size && sig->parameters && sig->parameter_count > 0) {
     off += snprintf(output + off, output_size - off, ",\"parameters\":[");
     for (size_t i = 0; i < sig->parameter_count && off < output_size - 10; i++) {
       if (i > 0) off += snprintf(output + off, output_size - off, ",");
@@ -436,13 +438,16 @@ void serialize_signature_help(LSPSignatureInfo *sig, char *output,
                       "{\"label\":\"%s\"}",
                       sig->parameters[i].label ? sig->parameters[i].label : "");
     }
-    off += snprintf(output + off, output_size - off, "]");
+    if (off < output_size)
+      off += snprintf(output + off, output_size - off, "]");
   }
 
-  off += snprintf(output + off, output_size - off, "}]");
-  off += snprintf(output + off, output_size - off,
-                  ",\"activeSignature\":0,\"activeParameter\":%zu}",
-                  sig->active_parameter);
+  if (off < output_size)
+    off += snprintf(output + off, output_size - off, "}]");
+  if (off < output_size)
+    off += snprintf(output + off, output_size - off,
+                    ",\"activeSignature\":0,\"activeParameter\":%zu}",
+                    sig->active_parameter);
 }
 
 void serialize_code_actions(LSPCodeAction *actions, size_t count,
@@ -460,7 +465,9 @@ void serialize_code_actions(LSPCodeAction *actions, size_t count,
     }
     off += snprintf(output + off, output_size - off, "}");
   }
-  off += snprintf(output + off, output_size - off, "]");
+  if (off < output_size)
+  if (off < output_size)
+    snprintf(output + off, output_size - off, "]");
 }
 
 void serialize_document_highlights(LSPDocumentHighlight *highlights,

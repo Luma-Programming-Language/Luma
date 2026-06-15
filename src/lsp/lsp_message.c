@@ -257,7 +257,7 @@ void lsp_handle_message(LSPServer *server, const char *message) {
     if (uri) {
       LSPDocument *doc = lsp_document_find(server, uri);
       if (doc) {
-        LSPLocation *loc = lsp_definition(doc, position, &temp_arena);
+        LSPLocation *loc = lsp_definition(doc, server, position, &temp_arena);
         if (loc) {
           size_t uri_len = loc->uri ? strlen(loc->uri) : 0;
           size_t result_size = uri_len + 256;
@@ -496,45 +496,47 @@ void lsp_handle_message(LSPServer *server, const char *message) {
       if (!result) { lsp_send_response(request_id, "null"); break; }
 
       size_t off = 0;
-      off += snprintf(result + off, result_size - off,
-                      "{\"label\":\"%s\"", label);
+      if (off < result_size)
+        off += snprintf(result + off, result_size - off,
+                        "{\"label\":\"%s\"", label);
 
-      if (kind >= 1)
+      if (kind >= 1 && off < result_size)
         off += snprintf(result + off, result_size - off,
                         ",\"kind\":%d", kind);
 
-      if (detail) {
+      if (detail && off < result_size) {
         char escaped[512];
         json_escape(escaped, sizeof(escaped), detail);
         off += snprintf(result + off, result_size - off,
                         ",\"detail\":\"%s\"", escaped);
       }
 
-      if (insert_text) {
+      if (insert_text && off < result_size) {
         char escaped[2048];
         json_escape(escaped, sizeof(escaped), insert_text);
         off += snprintf(result + off, result_size - off,
                         ",\"insertText\":\"%s\"", escaped);
-        if (insert_fmt >= 1)
+        if (insert_fmt >= 1 && off < result_size)
           off += snprintf(result + off, result_size - off,
                           ",\"insertTextFormat\":%d", insert_fmt);
       }
 
-      if (sort_text) {
+      if (sort_text && off < result_size) {
         char escaped[64];
         json_escape(escaped, sizeof(escaped), sort_text);
         off += snprintf(result + off, result_size - off,
                         ",\"sortText\":\"%s\"", escaped);
       }
 
-      if (filter_text) {
+      if (filter_text && off < result_size) {
         char escaped[256];
         json_escape(escaped, sizeof(escaped), filter_text);
         off += snprintf(result + off, result_size - off,
                         ",\"filterText\":\"%s\"", escaped);
       }
 
-      off += snprintf(result + off, result_size - off, "}");
+      if (off < result_size)
+        off += snprintf(result + off, result_size - off, "}");
       lsp_send_response(request_id, result);
       free(result);
     } else {

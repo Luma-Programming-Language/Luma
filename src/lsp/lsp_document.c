@@ -53,6 +53,13 @@ bool lsp_document_update(LSPServer *server, const char *uri,
   doc->version = version;
   doc->needs_reanalysis = true;
 
+  // Invalidate stale analysis data — tokens/ast/scope reference old arena memory
+  doc->tokens = NULL;
+  doc->token_count = 0;
+  doc->ast = NULL;
+  doc->diagnostics = NULL;
+  doc->diagnostic_count = 0;
+
   return true;
 }
 
@@ -177,18 +184,7 @@ bool lsp_document_analyze(LSPDocument *doc, LSPServer *server,
   if (!doc || !doc->needs_reanalysis)
     return true;
 
-  // Save import scopes BEFORE destroying arena
-  Scope **saved_scopes = NULL;
-  size_t saved_import_count = doc->import_count;
-  if (saved_import_count > 0 && doc->imports) {
-    saved_scopes = arena_alloc(
-        server->arena, saved_import_count * sizeof(Scope *), alignof(Scope *));
-    for (size_t i = 0; i < saved_import_count; i++) {
-      saved_scopes[i] = doc->imports[i].scope;
-    }
-  }
-
-  // Save the last successful scope
+  // Save the last successful scope (allocated in server->arena, survives arena_destroy)
   Scope *last_successful_scope = doc->scope;
 
   arena_destroy(doc->arena);
@@ -208,13 +204,6 @@ bool lsp_document_analyze(LSPDocument *doc, LSPServer *server,
   fprintf(stderr, "[LSP] Analyzing document: %s\n", file_path);
 
   extract_imports(doc, doc->arena);
-
-  // Restore saved scopes
-  if (saved_scopes && doc->import_count == saved_import_count) {
-    for (size_t i = 0; i < doc->import_count; i++) {
-      doc->imports[i].scope = saved_scopes[i];
-    }
-  }
 
   Lexer lexer;
   init_lexer(&lexer, doc->content, doc->arena);
@@ -377,10 +366,14 @@ Token *lsp_token_at_position(LSPDocument *doc, LSPPosition position) {
 
   for (size_t i = 0; i < doc->token_count; i++) {
     Token *tok = &doc->tokens[i];
-    if ((int)tok->line == position.line) {
-      size_t token_end_col = tok->col + tok->length;
-      if ((int)tok->col <= position.character &&
-          position.character < (int)token_end_col) {
+    if ((int)tok->line - 1 == position.line) {
+      int start = (int)tok->col - (int)tok->length + 1;
+      int end = start + (int)tok->length;
+      if (start <= position.character && position.character < end) {
+        fprintf(stderr, "[LSP] lsp_token_at_position: found tok='%.*s' line=%d(1b) col=%d len=%d -> 0b start=%d end=%d for pos(%d,%d)\n",
+                tok->length, tok->value,
+                tok->line, tok->col, tok->length,
+                start, end, position.line, position.character);
         return tok;
       }
     }
@@ -390,12 +383,17 @@ Token *lsp_token_at_position(LSPDocument *doc, LSPPosition position) {
 }
 
 Symbol *lsp_symbol_at_position(LSPDocument *doc, LSPPosition position) {
-  if (!doc || !doc->scope)
+  if (!doc || !doc->scope) {
+    fprintf(stderr, "[LSP] lsp_symbol_at_position: no doc or scope\n");
     return NULL;
+  }
 
   Token *token = lsp_token_at_position(doc, position);
-  if (!token || token->type_ != TOK_IDENTIFIER || !token->value || token->length == 0)
+  if (!token || token->type_ != TOK_IDENTIFIER || !token->value || token->length == 0) {
+    fprintf(stderr, "[LSP] lsp_symbol_at_position: no token at (%d,%d)\n",
+            position.line, position.character);
     return NULL;
+  }
 
   size_t buf_size = token->length + 1;
   char *name = arena_alloc(doc->arena, buf_size, 1);
@@ -403,5 +401,8 @@ Symbol *lsp_symbol_at_position(LSPDocument *doc, LSPPosition position) {
   memcpy(name, token->value, token->length);
   name[token->length] = '\0';
 
-  return scope_lookup(doc->scope, name);
+  Symbol *sym = scope_lookup(doc->scope, name);
+  fprintf(stderr, "[LSP] lsp_symbol_at_position: token='%s' -> sym=%p\n",
+          name, (void*)sym);
+  return sym;
 }
