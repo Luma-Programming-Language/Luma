@@ -1,6 +1,7 @@
 @module "main"
 
 @use "std_math" as math
+@use "std_libc" as libc
 @use "std_memory" as mem
 @use "std_string" as string
 @use "std_termfx" as fx
@@ -151,9 +152,9 @@ pub const main -> fn () int {
     );
 
     // Rotate cube
-    A = (A + 0.05) % math::TWO_PI;
-    B = (B + 0.05) % math::TWO_PI;
-    C = (C + 0.01) % math::TWO_PI;
+    A = libc::fmod(A + 0.05, math::TWO_PI);
+    B = libc::fmod(B + 0.05, math::TWO_PI);
+    C = libc::fmod(C + 0.01, math::TWO_PI);
 
     // Increment frame count
     ++frame_count;
