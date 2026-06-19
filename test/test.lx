@@ -3,18 +3,18 @@
 @use "std_args" as ARGS
 
 pub const main -> fn (argc: int, argv: **byte) int {
-    let args: Args = ARGS::init_args(argc, argv);
+    // let args: Args = ARGS::init_args(argc, argv);
 
-    if (args.contains("--help") == 0) {
-        output("Usage: program [options]\n");
-        return 0;
-    }
+    // if (args.contains("--help") == 0) {
+    //    output("Usage: program [options]\n");
+    //    return 0;
+    // }
     
-    let filename: *byte = args.get(1);
-    output(sizeof<filename>, "\n");
+    // let filename: *byte = args.get(1);
+    // output(sizeof<filename>, "\n");
 
-    let size: int = 10;
-    let arr: [int; size];
+    // let size: int = 10;
+    // let arr: [int; size];
 
     return 0;
 }

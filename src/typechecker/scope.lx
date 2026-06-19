@@ -1,0 +1,189 @@
+@module "tc_scope"
+
+@use "std_vector" as VEC
+@use "std_string" as STR
+
+@use "tc_core" as CORE
+@use "ast"     as AST
+
+// ─── Vector allocation helper ─────────────────────────────────────────────────
+// Vectors are heap-allocated and referenced by pointer so that structs holding
+// them (Scope, StaticMemoryAnalyzer) contain only pointers/scalars — see the note
+// in core.lx about sizeof miscomputation for embedded structs.
+
+const SCOPE_VEC_CAPACITY: int = 64;
+
+#returns_ownership
+const new_vector -> fn (elem_size: int) *Vector {
+  let v: *Vector = cast<*Vector>(alloc(sizeof<Vector>));
+  v.data         = cast<*void>(alloc(SCOPE_VEC_CAPACITY * elem_size));
+  v.capacity     = SCOPE_VEC_CAPACITY;
+  v.size         = 0;
+  v.element_size = elem_size;
+  return v;
+}
+
+// ─── Scope Construction ───────────────────────────────────────────────────────
+
+#returns_ownership
+pub const scope_init -> fn (name: *byte, check_mem: bool) *Scope {
+  let s: *Scope = cast<*Scope>(alloc(sizeof<Scope>));
+
+  s.parent            = cast<*Scope>(0);
+  s.symbols           = new_vector(sizeof<Symbol>);
+  s.scope_name        = name;
+  s.depth             = 0;
+  s.is_function_scope = false;
+  s.associated_node   = cast<*AstNode>(0);
+  s.is_module_scope   = false;
+  s.module_name       = cast<*byte>(0);
+  s.imported_modules  = new_vector(sizeof<ModuleImport>);
+  s.returns_ownership = false;
+  s.takes_ownership   = false;
+  s.deferred_frees    = new_vector(sizeof<*byte>);
+  s.check_mem         = check_mem;
+
+  let analyzer: *StaticMemoryAnalyzer = cast<*StaticMemoryAnalyzer>(alloc(sizeof<StaticMemoryAnalyzer>));
+  analyzer.allocations          = new_vector(sizeof<StaticAllocation>);
+  analyzer.skip_memory_tracking = false;
+  s.memory_analyzer = analyzer;
+
+  return s;
+}
+
+#returns_ownership
+pub const scope_create_child -> fn (parent: *Scope, name: *byte) *Scope {
+  let s: *Scope = cast<*Scope>(alloc(sizeof<Scope>));
+
+  s.parent            = parent;
+  s.symbols           = new_vector(sizeof<Symbol>);
+  s.scope_name        = name;
+  s.depth             = parent.depth + 1;
+  s.is_function_scope = false;
+  s.associated_node   = cast<*AstNode>(0);
+  s.is_module_scope   = false;
+  s.module_name       = cast<*byte>(0);
+  s.imported_modules  = new_vector(sizeof<ModuleImport>);
+  s.returns_ownership = parent.returns_ownership;
+  s.takes_ownership   = parent.takes_ownership;
+  s.deferred_frees    = new_vector(sizeof<*byte>);
+  s.check_mem         = parent.check_mem;
+  s.memory_analyzer   = parent.memory_analyzer;  // shared across the module
+
+  return s;
+}
+
+// ─── Module Helpers ───────────────────────────────────────────────────────────
+
+pub const find_containing_module -> fn (scope: *Scope) *Scope {
+  let s: *Scope = scope;
+  loop (s != cast<*Scope>(0)) {
+    if (s.is_module_scope) return s;
+    s = s.parent;
+  }
+  return cast<*Scope>(0);
+}
+
+pub const get_enclosing_function -> fn (scope: *Scope) *Scope {
+  let s: *Scope = scope;
+  loop (s != cast<*Scope>(0)) {
+    if (s.is_function_scope) return s;
+    s = s.parent;
+  }
+  return cast<*Scope>(0);
+}
+
+pub const add_module_import -> fn (scope: *Scope, module_name: *byte, alias: *byte, module_scope: *Scope) void {
+  let imp: ModuleImport = ModuleImport {
+    module_name:  module_name,
+    alias:        alias,
+    module_scope: module_scope,
+  };
+  let v: *Vector = scope.imported_modules;
+  v.push_back(cast<*void>(&imp));
+}
+
+pub const find_module_import -> fn (scope: *Scope, alias: *byte) *ModuleImport {
+  let s: *Scope = scope;
+  loop (s != cast<*Scope>(0)) {
+    let v: *Vector = s.imported_modules;
+    let count: int = v.size;
+    loop [i: int = 0](i < count) : (++i) {
+      let imp: *ModuleImport = cast<*ModuleImport>(v.get(i));
+      if (STR::strcmp(imp.alias, alias) == 0) return imp;
+    }
+    s = s.parent;
+  }
+  return cast<*ModuleImport>(0);
+}
+
+// ─── Symbol Management ────────────────────────────────────────────────────────
+
+pub const scope_lookup_current -> fn (scope: *Scope, name: *byte) *Symbol {
+  let v: *Vector = scope.symbols;
+  let count: int = v.size;
+  loop [i: int = 0](i < count) : (++i) {
+    let sym: *Symbol = cast<*Symbol>(v.get(i));
+    if (STR::strcmp(sym.name, name) == 0) return sym;
+  }
+  return cast<*Symbol>(0);
+}
+
+// Returns true if the symbol was added, false if a duplicate already exists in
+// this scope (used to allow prototype -> implementation without error).
+pub const scope_add_symbol_full -> fn (scope: *Scope, name: *byte, type: *AstNode,
+                                       is_public: bool, is_mutable: bool,
+                                       returns_ownership: bool, takes_ownership: bool) bool {
+  if (scope_lookup_current(scope, name) != cast<*Symbol>(0)) return false;
+
+  let sym: Symbol = Symbol {
+    name:              name,
+    type:              type,
+    is_public:         is_public,
+    is_mutable:        is_mutable,
+    scope_depth:       scope.depth,
+    returns_ownership: returns_ownership,
+    takes_ownership:   takes_ownership,
+  };
+  let v: *Vector = scope.symbols;
+  v.push_back(cast<*void>(&sym));
+  return true;
+}
+
+pub const scope_add_symbol -> fn (scope: *Scope, name: *byte, type: *AstNode,
+                                  is_public: bool, is_mutable: bool) bool {
+  return scope_add_symbol_full(scope, name, type, is_public, is_mutable, false, false);
+}
+
+// Walks the scope chain, then searches imported modules (public symbols only).
+pub const scope_lookup -> fn (scope: *Scope, name: *byte) *Symbol {
+  let own_module: *Scope = find_containing_module(scope);
+
+  let s: *Scope = scope;
+  loop (s != cast<*Scope>(0)) {
+    let found: *Symbol = scope_lookup_current(s, name);
+    if (found != cast<*Symbol>(0)) return found;
+
+    // Search modules imported at this scope level.
+    let v: *Vector = s.imported_modules;
+    let count: int = v.size;
+    loop [i: int = 0](i < count) : (++i) {
+      let imp: *ModuleImport = cast<*ModuleImport>(v.get(i));
+      let mscope: *Scope = imp.module_scope;
+      if (mscope != cast<*Scope>(0)) {
+        let m: *Symbol = scope_lookup_current(mscope, name);
+        if (m != cast<*Symbol>(0)) {
+          if (m.is_public || mscope == own_module) return m;
+        }
+      }
+    }
+    s = s.parent;
+  }
+  return cast<*Symbol>(0);
+}
+
+// Look a symbol up directly inside a specific module scope (for ALIAS::name).
+pub const scope_lookup_in_module -> fn (module_scope: *Scope, name: *byte) *Symbol {
+  if (module_scope == cast<*Scope>(0)) return cast<*Symbol>(0);
+  return scope_lookup_current(module_scope, name);
+}

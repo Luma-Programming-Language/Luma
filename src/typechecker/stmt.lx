@@ -1,1 +1,363 @@
 @module "tc_stmt"
+
+@use "std_string" as STR
+
+@use "tc_core"  as CORE
+@use "tc_type"  as TYPE
+@use "tc_scope" as SCOPE
+@use "tc_expr"  as EXPR
+@use "tc_error" as ERR
+@use "ast"      as AST
+@use "ast_type" as TAST
+
+// ─── Forward declarations ─────────────────────────────────────────────────────
+
+pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool;
+pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool;
+
+const handle_var_decl    -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_func_decl   -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_enum_decl   -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_if          -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_loop        -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_switch      -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_return      -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_block       -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_defer       -> fn (stmt: *AstNode, scope: *Scope) bool;
+
+// ─── Dispatcher ───────────────────────────────────────────────────────────────
+
+pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool {
+  if (stmt == cast<*AstNode>(0)) return true;
+
+  let k: int = stmt.kind;
+
+  if (k == AST::NodeType::STMT_VAR_DECL)   return handle_var_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_CONST_DECL) return handle_var_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_FUNCTION)   return handle_func_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_STRUCT)     return handle_struct_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_ENUM)       return handle_enum_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_IF)         return handle_if(stmt, scope);
+  if (k == AST::NodeType::STMT_LOOP)       return handle_loop(stmt, scope);
+  if (k == AST::NodeType::STMT_SWITCH)     return handle_switch(stmt, scope);
+  if (k == AST::NodeType::STMT_RETURN)     return handle_return(stmt, scope);
+  if (k == AST::NodeType::STMT_BLOCK)      return handle_block(stmt, scope);
+  if (k == AST::NodeType::STMT_DEFER)      return handle_defer(stmt, scope);
+
+  if (k == AST::NodeType::STMT_BREAK_CONTINUE) return true;
+
+  if (k == AST::NodeType::STMT_EXPRESSION) {
+    let n: *ExprStmtNode = cast<*ExprStmtNode>(stmt);
+    EXPR::typecheck_expression(n.expression, scope, cast<*AstNode>(0));
+    return true;
+  }
+
+  // Preprocessor nodes are handled by the orchestrator; ignore here.
+  return true;
+}
+
+// ─── Pre-registration (forward pass) ──────────────────────────────────────────
+// Registers top-level declarations into a scope WITHOUT checking bodies, so that
+// mutual references resolve regardless of declaration order.
+
+pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool {
+  if (stmt == cast<*AstNode>(0)) return true;
+  let k: int = stmt.kind;
+
+  if (k == AST::NodeType::STMT_FUNCTION) {
+    let fd: *FuncDeclNode = cast<*FuncDeclNode>(stmt);
+    let ftype: *AstNode = TAST::make_func_type(fd.param_types, fd.param_count,
+                                               fd.return_type, stmt.line, stmt.col);
+    SCOPE::scope_add_symbol_full(scope, fd.name, ftype,
+                                 fd.is_public == 1, false,
+                                 fd.returns_ownership == 1, fd.takes_ownership == 1);
+    return true;
+  }
+
+  if (k == AST::NodeType::STMT_ENUM)   return handle_enum_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_STRUCT) return handle_struct_decl(stmt, scope);
+
+  return true;
+}
+
+// ─── Variable / Constant Declarations ─────────────────────────────────────────
+
+const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let n: *VarDeclNode = cast<*VarDeclNode>(stmt);
+  let declared: *AstNode = n.var_type;
+  let init: *AstNode = n.initializer;
+
+  let inferred: *AstNode = cast<*AstNode>(0);
+  if (init != cast<*AstNode>(0)) {
+    inferred = EXPR::typecheck_expression(init, scope, declared);
+  }
+
+  if (declared == cast<*AstNode>(0) && init == cast<*AstNode>(0)) {
+    ERR::tc_error(stmt, "Type Error", "variable declaration needs a type or an initializer");
+    return false;
+  }
+
+  let final_type: *AstNode = declared;
+  if (final_type == cast<*AstNode>(0)) final_type = inferred;
+
+  let ok: bool = true;
+  if (declared != cast<*AstNode>(0) && inferred != cast<*AstNode>(0)) {
+    if (TYPE::types_match(inferred, declared) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
+      ERR::tc_error(stmt, "Type Error", "initializer type does not match declared type");
+      ok = false;
+    }
+  }
+
+  let mutable: bool = (n.is_mutable == 1);
+  if (stmt.kind == AST::NodeType::STMT_CONST_DECL) mutable = false;
+
+  SCOPE::scope_add_symbol(scope, n.name, final_type, n.is_public == 1, mutable);
+  return ok;
+}
+
+// ─── Function Declarations ────────────────────────────────────────────────────
+
+const handle_func_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let fd: *FuncDeclNode = cast<*FuncDeclNode>(stmt);
+
+  // Register the function symbol in the enclosing scope (idempotent).
+  let ftype: *AstNode = TAST::make_func_type(fd.param_types, fd.param_count,
+                                             fd.return_type, stmt.line, stmt.col);
+  SCOPE::scope_add_symbol_full(scope, fd.name, ftype,
+                               fd.is_public == 1, false,
+                               fd.returns_ownership == 1, fd.takes_ownership == 1);
+
+  // Imported / forward-declared functions have no body to check.
+  if (fd.forward_declared == 1) return true;
+  if (fd.dll_import == 1)       return true;
+  if (fd.lib_import == 1)       return true;
+  if (fd.body == cast<*AstNode>(0)) return true;
+
+  // Create the function scope and register parameters as mutable locals.
+  let fscope: *Scope = SCOPE::scope_create_child(scope, "function");
+  fscope.is_function_scope = true;
+  fscope.associated_node   = stmt;
+  fscope.returns_ownership = (fd.returns_ownership == 1);
+  fscope.takes_ownership   = (fd.takes_ownership == 1);
+
+  let pc: int = fd.param_count;
+  loop [i: int = 0](i < pc) : (++i) {
+    SCOPE::scope_add_symbol(fscope, fd.param_names[i], fd.param_types[i], false, true);
+  }
+
+  return typecheck_statement(fd.body, fscope);
+}
+
+// ─── Struct Declarations ──────────────────────────────────────────────────────
+
+const register_field -> fn (struct_name: *byte, member: *AstNode, scope: *Scope) void {
+  if (member == cast<*AstNode>(0)) return;
+  if (member.kind != AST::NodeType::STMT_FIELD_DECL) return;
+
+  let f: *FieldDeclNode = cast<*FieldDeclNode>(member);
+  let qname: *byte = EXPR::qualify(struct_name, f.name);
+
+  if (f.function != cast<*AstNode>(0)) {
+    // Method: register its function type under StructName.method
+    let fn_node: *FuncDeclNode = cast<*FuncDeclNode>(f.function);
+    let mtype: *AstNode = TAST::make_func_type(fn_node.param_types, fn_node.param_count,
+                                               fn_node.return_type, member.line, member.col);
+    SCOPE::scope_add_symbol_full(scope, qname, mtype, f.is_public == 1, false,
+                                 fn_node.returns_ownership == 1, fn_node.takes_ownership == 1);
+    return;
+  }
+
+  // Data field: register StructName.field -> field type
+  SCOPE::scope_add_symbol(scope, qname, f.type_node, f.is_public == 1, true);
+}
+
+const handle_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let sd: *StructDeclNode = cast<*StructDeclNode>(stmt);
+
+  // Register the struct name as a nominal type.
+  let stype: *AstNode = TYPE::make_named_type(sd.name);
+  SCOPE::scope_add_symbol(scope, sd.name, stype, sd.is_public == 1, false);
+
+  let pubc: int = sd.public_count;
+  loop [i: int = 0](i < pubc) : (++i) {
+    register_field(sd.name, sd.public_members[i], scope);
+  }
+  let privc: int = sd.private_count;
+  loop [i: int = 0](i < privc) : (++i) {
+    register_field(sd.name, sd.private_members[i], scope);
+  }
+
+  // Typecheck method bodies (with an implicit self parameter).
+  loop [i: int = 0](i < pubc) : (++i) {
+    let m: *AstNode = sd.public_members[i];
+    if (m != cast<*AstNode>(0) && m.kind == AST::NodeType::STMT_FIELD_DECL) {
+      let f: *FieldDeclNode = cast<*FieldDeclNode>(m);
+      if (f.function != cast<*AstNode>(0)) {
+        let mscope: *Scope = SCOPE::scope_create_child(scope, "method");
+        SCOPE::scope_add_symbol(mscope, "self", TYPE::make_pointer_to(stype), false, true);
+        handle_func_decl(f.function, mscope);
+      }
+    }
+  }
+  return true;
+}
+
+// ─── Enum Declarations ────────────────────────────────────────────────────────
+
+const handle_enum_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let ed: *EnumDeclNode = cast<*EnumDeclNode>(stmt);
+
+  let etype: *AstNode = TYPE::make_named_type(ed.name);
+  SCOPE::scope_add_symbol(scope, ed.name, etype, ed.is_public == 1, false);
+
+  let mc: int = ed.member_count;
+  loop [i: int = 0](i < mc) : (++i) {
+    let qname: *byte = EXPR::qualify(ed.name, ed.members[i]);
+    let mtype: *AstNode = TYPE::make_named_type(ed.name);
+    SCOPE::scope_add_symbol(scope, qname, mtype, ed.is_public == 1, false);
+  }
+  return true;
+}
+
+// ─── If / Elif / Else ─────────────────────────────────────────────────────────
+
+const check_condition -> fn (cond: *AstNode, scope: *Scope) void {
+  if (cond == cast<*AstNode>(0)) return;
+  let ct: *AstNode = EXPR::typecheck_expression(cond, scope, cast<*AstNode>(0));
+  if (ct != cast<*AstNode>(0)) {
+    if (TYPE::is_bool_type(ct) == false && TYPE::is_numeric_type(ct) == false) {
+      ERR::tc_error(cond, "Type Error", "condition must be a boolean expression");
+    }
+  }
+}
+
+const handle_if -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let n: *IfStmtNode = cast<*IfStmtNode>(stmt);
+
+  check_condition(n.condition, scope);
+
+  let then_scope: *Scope = SCOPE::scope_create_child(scope, "then_branch");
+  typecheck_statement(n.then_stmt, then_scope);
+
+  let ec: int = n.elif_count;
+  loop [i: int = 0](i < ec) : (++i) {
+    let elif_scope: *Scope = SCOPE::scope_create_child(scope, "elif_branch");
+    typecheck_statement(n.elif_stmts[i], elif_scope);
+  }
+
+  if (n.else_stmt != cast<*AstNode>(0)) {
+    let else_scope: *Scope = SCOPE::scope_create_child(scope, "else_branch");
+    typecheck_statement(n.else_stmt, else_scope);
+  }
+  return true;
+}
+
+// ─── Loops ────────────────────────────────────────────────────────────────────
+
+const handle_loop -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let n: *LoopStmtNode = cast<*LoopStmtNode>(stmt);
+  let loop_scope: *Scope = SCOPE::scope_create_child(scope, "loop");
+
+  // For-loop initializers live in the loop scope.
+  let ic: int = n.init_count;
+  loop [i: int = 0](i < ic) : (++i) {
+    typecheck_statement(n.initializer[i], loop_scope);
+  }
+
+  if (n.condition != cast<*AstNode>(0))
+    check_condition(n.condition, loop_scope);
+
+  if (n.optional != cast<*AstNode>(0))
+    EXPR::typecheck_expression(n.optional, loop_scope, cast<*AstNode>(0));
+
+  return typecheck_statement(n.body, loop_scope);
+}
+
+// ─── Switch ───────────────────────────────────────────────────────────────────
+
+const handle_switch -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let n: *SwitchNode = cast<*SwitchNode>(stmt);
+  let cond_type: *AstNode = EXPR::typecheck_expression(n.condition, scope, cast<*AstNode>(0));
+
+  let cc: int = n.case_count;
+  loop [i: int = 0](i < cc) : (++i) {
+    let case_node: *AstNode = n.cases[i];
+    if (case_node != cast<*AstNode>(0)) {
+      let cn: *CaseNode = cast<*CaseNode>(case_node);
+      let vc: int = cn.value_count;
+      loop [j: int = 0](j < vc) : (++j) {
+        EXPR::typecheck_expression(cn.values[j], scope, cond_type);
+      }
+      let case_scope: *Scope = SCOPE::scope_create_child(scope, "case");
+      typecheck_statement(cn.body, case_scope);
+    }
+  }
+
+  if (n.default_case != cast<*AstNode>(0)) {
+    let dn: *DefaultNode = cast<*DefaultNode>(n.default_case);
+    let def_scope: *Scope = SCOPE::scope_create_child(scope, "default");
+    typecheck_statement(dn.body, def_scope);
+  }
+  return true;
+}
+
+// ─── Return ───────────────────────────────────────────────────────────────────
+
+const handle_return -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let n: *ReturnStmtNode = cast<*ReturnStmtNode>(stmt);
+
+  let fscope: *Scope = SCOPE::get_enclosing_function(scope);
+  let expected: *AstNode = cast<*AstNode>(0);
+  if (fscope != cast<*Scope>(0)) {
+    let assoc: *AstNode = fscope.associated_node;
+    if (assoc != cast<*AstNode>(0)) {
+      let fd: *FuncDeclNode = cast<*FuncDeclNode>(assoc);
+      expected = fd.return_type;
+    }
+  }
+
+  if (n.value == cast<*AstNode>(0)) {
+    if (expected != cast<*AstNode>(0) && TYPE::is_void_type(expected) == false) {
+      ERR::tc_error(stmt, "Type Error", "non-void function must return a value");
+      return false;
+    }
+    return true;
+  }
+
+  let vt: *AstNode = EXPR::typecheck_expression(n.value, scope, expected);
+  if (expected != cast<*AstNode>(0) && vt != cast<*AstNode>(0)) {
+    if (TYPE::is_void_type(expected)) {
+      ERR::tc_error(stmt, "Type Error", "void function cannot return a value");
+      return false;
+    }
+    if (TYPE::types_match(vt, expected) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
+      ERR::tc_error(stmt, "Type Error", "returned value does not match the function return type");
+      return false;
+    }
+  }
+  return true;
+}
+
+// ─── Block ────────────────────────────────────────────────────────────────────
+
+const handle_block -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let n: *BlockNode = cast<*BlockNode>(stmt);
+  let block_scope: *Scope = SCOPE::scope_create_child(scope, "block");
+
+  let ok: bool = true;
+  let sc: int = n.stmt_count;
+  loop [i: int = 0](i < sc) : (++i) {
+    let r: bool = typecheck_statement(n.statements[i], block_scope);
+    if (r == false) ok = false;
+  }
+  return ok;
+}
+
+// ─── Defer ────────────────────────────────────────────────────────────────────
+
+const handle_defer -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let n: *DeferNode = cast<*DeferNode>(stmt);
+  // Use the same scope so deferred frees attribute to the enclosing function.
+  return typecheck_statement(n.statement, scope);
+}

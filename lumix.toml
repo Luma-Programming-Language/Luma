@@ -12,7 +12,7 @@ paths = [
 ]
 
 [build]
-flags = "-O2"
+flags = "-O2 --no-sanitize"
 
 [run]
 args = "test/test.lx -l std/args.lx -name test"

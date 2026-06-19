@@ -1,0 +1,102 @@
+@module "tc_core"
+
+@use "std_vector" as VEC
+@use "constants"  as CONST
+@use "ast"        as AST
+
+// ─── Type Match Result ────────────────────────────────────────────────────────
+
+pub const TypeMatchResult -> enum {
+  TYPE_MATCH_NONE,
+  TYPE_MATCH_COMPATIBLE,
+  TYPE_MATCH_EXACT,
+};
+
+// ─── Type Error ───────────────────────────────────────────────────────────────
+
+pub const TypeError -> struct {
+  message: *byte,
+  line:    int,
+  col:     int,
+  context: *byte,
+};
+
+// ─── Static Allocation ───────────────────────────────────────────────────────
+
+pub const StaticAllocation -> struct {
+  line:                 int,
+  col:                  int,
+  variable_name:        *byte,
+  original_variable:    *byte,
+  has_matching_free:    bool,
+  free_count:           int,
+  conditional_free:     int,
+  use_after_free_count: int,
+  aliases:              Vector,
+  reported:             bool,
+  address_taken:        bool,
+  function_name:        *byte,
+  file_path:            *byte,
+};
+
+// ─── Static Memory Analyzer ──────────────────────────────────────────────────
+
+// NOTE: Vectors are referenced by pointer, never embedded by value. The bootstrap
+// compiler under-computes sizeof<T> for structs that embed another struct, so a
+// heap `alloc(sizeof<T>)` of such a struct overflows. Keeping only pointers and
+// scalars here makes sizeof correct.
+pub const StaticMemoryAnalyzer -> struct {
+  allocations:          *Vector,
+  skip_memory_tracking: bool,
+};
+
+// ─── Symbol ──────────────────────────────────────────────────────────────────
+
+pub const Symbol -> struct {
+  name:              *byte,
+  type:              *AstNode,
+  is_public:         bool,
+  is_mutable:        bool,
+  scope_depth:       int,
+  returns_ownership: bool,
+  takes_ownership:   bool,
+};
+
+// ─── Scope ───────────────────────────────────────────────────────────────────
+
+pub const Scope -> struct {
+  parent:            *Scope,
+  symbols:           *Vector,     // Vector of Symbol
+  scope_name:        *byte,
+  depth:             int,
+  is_function_scope: bool,
+  associated_node:   *AstNode,
+
+  is_module_scope:   bool,
+  module_name:       *byte,
+  imported_modules:  *Vector,     // Vector of ModuleImport
+
+  returns_ownership: bool,
+  takes_ownership:   bool,
+
+  memory_analyzer:   *StaticMemoryAnalyzer,
+  deferred_frees:    *Vector,     // Vector of *byte (var names)
+
+  check_mem:         bool,
+};
+
+// ─── Module Import ───────────────────────────────────────────────────────────
+
+pub const ModuleImport -> struct {
+  module_name:  *byte,
+  alias:        *byte,
+  module_scope: *Scope,
+};
+
+// ─── Module Dependency ───────────────────────────────────────────────────────
+
+pub const ModuleDependency -> struct {
+  module_name:  *byte,
+  dependencies: Vector,
+  processed:    bool,
+};

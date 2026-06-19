@@ -1,1 +1,369 @@
 @module "tc_type"
+
+@use "std_string" as STR
+@use "std_memory" as MEM
+
+@use "tc_core"  as CORE
+@use "ast"      as AST
+@use "ast_type" as TAST
+
+// ─── Type Node Accessors ──────────────────────────────────────────────────────
+
+pub const type_is_kind -> fn (t: *AstNode, kind: int) bool {
+  if (t == cast<*AstNode>(0)) return false;
+  return t.kind == kind;
+}
+
+pub const basic_name -> fn (t: *AstNode) *byte {
+  let n: *BasicTypeNode = cast<*BasicTypeNode>(t);
+  return n.name;
+}
+
+// ─── Type Introspection ───────────────────────────────────────────────────────
+
+pub const is_builtin_name -> fn (name: *byte) bool {
+  if (STR::strcmp(name, "int")    == 0) return true;
+  if (STR::strcmp(name, "uint")   == 0) return true;
+  if (STR::strcmp(name, "float")  == 0) return true;
+  if (STR::strcmp(name, "double") == 0) return true;
+  if (STR::strcmp(name, "bool")   == 0) return true;
+  if (STR::strcmp(name, "void")   == 0) return true;
+  if (STR::strcmp(name, "byte")   == 0) return true;
+  return false;
+}
+
+pub const is_basic_named -> fn (t: *AstNode, name: *byte) bool {
+  if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
+  return STR::strcmp(basic_name(t), name) == 0;
+}
+
+pub const is_numeric_type -> fn (t: *AstNode) bool {
+  if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
+  let n: *byte = basic_name(t);
+  if (STR::strcmp(n, "int")    == 0) return true;
+  if (STR::strcmp(n, "uint")   == 0) return true;
+  if (STR::strcmp(n, "float")  == 0) return true;
+  if (STR::strcmp(n, "double") == 0) return true;
+  if (STR::strcmp(n, "byte")   == 0) return true;
+  return false;
+}
+
+pub const is_integer_type -> fn (t: *AstNode) bool {
+  if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
+  let n: *byte = basic_name(t);
+  if (STR::strcmp(n, "int")  == 0) return true;
+  if (STR::strcmp(n, "uint") == 0) return true;
+  if (STR::strcmp(n, "byte") == 0) return true;
+  return false;
+}
+
+pub const is_pointer_type -> fn (t: *AstNode) bool {
+  return type_is_kind(t, AST::NodeType::TYPE_POINTER);
+}
+
+pub const is_array_type -> fn (t: *AstNode) bool {
+  return type_is_kind(t, AST::NodeType::TYPE_ARRAY);
+}
+
+pub const is_function_type -> fn (t: *AstNode) bool {
+  return type_is_kind(t, AST::NodeType::TYPE_FUNCTION);
+}
+
+pub const is_void_type -> fn (t: *AstNode) bool {
+  return is_basic_named(t, "void");
+}
+
+pub const is_bool_type -> fn (t: *AstNode) bool {
+  return is_basic_named(t, "bool");
+}
+
+// A non-builtin basic type name denotes a struct or enum (nominal type).
+pub const is_nominal_type -> fn (t: *AstNode) bool {
+  if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
+  if (is_builtin_name(basic_name(t)) == true) return false;
+  return true;
+}
+
+pub const is_pointer_to_function_type -> fn (t: *AstNode) bool {
+  if (is_pointer_type(t) == false) return false;
+  let p: *PointerTypeNode = cast<*PointerTypeNode>(t);
+  return is_function_type(p.pointee_type);
+}
+
+// ─── Type Construction Helpers ────────────────────────────────────────────────
+// Inferred types are allocated fresh; they are owned by the typechecker pass and
+// intentionally outlive individual checks (freed at process exit).
+
+#returns_ownership
+pub const make_int_type -> fn () *AstNode {
+  return TAST::make_basic_type("int", 0, 0);
+}
+
+#returns_ownership
+pub const make_bool_type -> fn () *AstNode {
+  return TAST::make_basic_type("bool", 0, 0);
+}
+
+#returns_ownership
+pub const make_void_type -> fn () *AstNode {
+  return TAST::make_basic_type("void", 0, 0);
+}
+
+#returns_ownership
+pub const make_byte_type -> fn () *AstNode {
+  return TAST::make_basic_type("byte", 0, 0);
+}
+
+#returns_ownership
+pub const make_named_type -> fn (name: *byte) *AstNode {
+  return TAST::make_basic_type(name, 0, 0);
+}
+
+// `*byte` — the representation of a string literal.
+#returns_ownership
+pub const make_string_type -> fn () *AstNode {
+  return TAST::make_pointer_type(make_byte_type(), 0, 0);
+}
+
+// `*void` — the representation of the null literal.
+#returns_ownership
+pub const make_voidptr_type -> fn () *AstNode {
+  return TAST::make_pointer_type(make_void_type(), 0, 0);
+}
+
+#returns_ownership
+pub const make_pointer_to -> fn (pointee: *AstNode) *AstNode {
+  return TAST::make_pointer_type(pointee, 0, 0);
+}
+
+// Numeric promotion rank: double > float > int/uint > byte.
+pub const numeric_rank -> fn (t: *AstNode) int {
+  if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return -1;
+  let n: *byte = basic_name(t);
+  if (STR::strcmp(n, "double") == 0) return 3;
+  if (STR::strcmp(n, "float")  == 0) return 2;
+  if (STR::strcmp(n, "int")    == 0) return 1;
+  if (STR::strcmp(n, "uint")   == 0) return 1;
+  if (STR::strcmp(n, "byte")   == 0) return 0;
+  return -1;
+}
+
+// ─── Type Matching ────────────────────────────────────────────────────────────
+
+pub const types_match -> fn (a: *AstNode, b: *AstNode) int;
+
+const match_basic -> fn (a: *AstNode, b: *AstNode) int {
+  let an: *byte = basic_name(a);
+  let bn: *byte = basic_name(b);
+
+  if (STR::strcmp(an, bn) == 0) return CORE::TypeMatchResult::TYPE_MATCH_EXACT;
+
+  // float <-> double
+  let a_fp: bool = (STR::strcmp(an, "float") == 0 || STR::strcmp(an, "double") == 0);
+  let b_fp: bool = (STR::strcmp(bn, "float") == 0 || STR::strcmp(bn, "double") == 0);
+  if (a_fp && b_fp) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+
+  // int <-> uint
+  let a_int: bool = (STR::strcmp(an, "int") == 0 || STR::strcmp(an, "uint") == 0);
+  let b_int: bool = (STR::strcmp(bn, "int") == 0 || STR::strcmp(bn, "uint") == 0);
+  if (a_int && b_int) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+
+  // enum (non-builtin nominal) <-> int
+  if (is_builtin_name(an) == false && b_int) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+  if (is_builtin_name(bn) == false && a_int) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+
+  return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+}
+
+const match_pointer -> fn (a: *AstNode, b: *AstNode) int {
+  let pa: *PointerTypeNode = cast<*PointerTypeNode>(a);
+  let pb: *PointerTypeNode = cast<*PointerTypeNode>(b);
+
+  // void* is compatible with any pointer.
+  if (is_void_type(pa.pointee_type) || is_void_type(pb.pointee_type))
+    return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+
+  return types_match(pa.pointee_type, pb.pointee_type);
+}
+
+const match_array -> fn (a: *AstNode, b: *AstNode) int {
+  let aa: *ArrayTypeNode = cast<*ArrayTypeNode>(a);
+  let ab: *ArrayTypeNode = cast<*ArrayTypeNode>(b);
+
+  let elem: int = types_match(aa.element_type, ab.element_type);
+  if (elem == CORE::TypeMatchResult::TYPE_MATCH_NONE)
+    return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+
+  let a_size: *AstNode = aa.size;
+  let b_size: *AstNode = ab.size;
+
+  // Unsized arrays are compatible with any same-element array.
+  if (a_size == cast<*AstNode>(0) || b_size == cast<*AstNode>(0))
+    return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+
+  // Both sized: compare literal sizes if available.
+  if (a_size.kind == AST::NodeType::EXPR_LITERAL &&
+      b_size.kind == AST::NodeType::EXPR_LITERAL) {
+    let la: *LiteralNode = cast<*LiteralNode>(a_size);
+    let lb: *LiteralNode = cast<*LiteralNode>(b_size);
+    if (la.lit_type == AST::LiteralType::LITERAL_INT &&
+        lb.lit_type == AST::LiteralType::LITERAL_INT) {
+      if (la.int_val == lb.int_val) return elem;
+      return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+    }
+  }
+  return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+}
+
+const match_array_pointer -> fn (arr: *AstNode, ptr: *AstNode) int {
+  let a: *ArrayTypeNode   = cast<*ArrayTypeNode>(arr);
+  let p: *PointerTypeNode = cast<*PointerTypeNode>(ptr);
+  if (is_void_type(p.pointee_type)) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+  let m: int = types_match(a.element_type, p.pointee_type);
+  if (m == CORE::TypeMatchResult::TYPE_MATCH_NONE)
+    return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+  return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
+}
+
+const match_function -> fn (a: *AstNode, b: *AstNode) int {
+  let fa: *FuncTypeNode = cast<*FuncTypeNode>(a);
+  let fb: *FuncTypeNode = cast<*FuncTypeNode>(b);
+
+  if (fa.param_count != fb.param_count) return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+
+  if (types_match(fa.return_type, fb.return_type) == CORE::TypeMatchResult::TYPE_MATCH_NONE)
+    return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+
+  loop [i: int = 0](i < fa.param_count) : (++i) {
+    if (types_match(fa.param_types[i], fb.param_types[i]) == CORE::TypeMatchResult::TYPE_MATCH_NONE)
+      return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+  }
+  return CORE::TypeMatchResult::TYPE_MATCH_EXACT;
+}
+
+pub const types_match -> fn (a: *AstNode, b: *AstNode) int {
+  if (a == cast<*AstNode>(0) || b == cast<*AstNode>(0))
+    return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+
+  if (a == b) return CORE::TypeMatchResult::TYPE_MATCH_EXACT;
+
+  if (a.category != AST::NodeCategory::Node_Category_TYPE ||
+      b.category != AST::NodeCategory::Node_Category_TYPE)
+    return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+
+  // Array <-> Pointer decay (either direction)
+  if (is_array_type(a) && is_pointer_type(b)) return match_array_pointer(a, b);
+  if (is_pointer_type(a) && is_array_type(b)) return match_array_pointer(b, a);
+
+  // Function <-> pointer-to-function
+  if (is_function_type(a) && is_pointer_to_function_type(b)) {
+    let pb: *PointerTypeNode = cast<*PointerTypeNode>(b);
+    return match_function(a, pb.pointee_type);
+  }
+  if (is_pointer_to_function_type(a) && is_function_type(b)) {
+    let pa: *PointerTypeNode = cast<*PointerTypeNode>(a);
+    return match_function(pa.pointee_type, b);
+  }
+
+  if (a.kind != b.kind) return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+
+  switch (a.kind) {
+    AST::NodeType::TYPE_BASIC    -> return match_basic(a, b);
+    AST::NodeType::TYPE_POINTER  -> return match_pointer(a, b);
+    AST::NodeType::TYPE_ARRAY    -> return match_array(a, b);
+    AST::NodeType::TYPE_FUNCTION -> return match_function(a, b);
+    _ -> return CORE::TypeMatchResult::TYPE_MATCH_NONE;
+  }
+}
+
+// ─── Cast Validity ────────────────────────────────────────────────────────────
+
+pub const is_cast_valid -> fn (from: *AstNode, to: *AstNode) bool {
+  if (from == cast<*AstNode>(0) || to == cast<*AstNode>(0)) return false;
+
+  if (types_match(from, to) != CORE::TypeMatchResult::TYPE_MATCH_NONE) return true;
+
+  // Anything -> void (discard)
+  if (is_void_type(to)) return true;
+  // void -> anything is not allowed.
+  if (is_void_type(from)) return false;
+
+  let from_num: bool = is_numeric_type(from) || is_bool_type(from) || is_nominal_type(from);
+  let to_num:   bool = is_numeric_type(to)   || is_bool_type(to)   || is_nominal_type(to);
+
+  // numeric/enum/bool -> numeric/enum/bool
+  if (from_num && to_num) return true;
+
+  // pointer <-> pointer
+  if (is_pointer_type(from) && is_pointer_type(to)) return true;
+
+  // pointer <-> numeric (systems idiom)
+  if (is_pointer_type(from) && to_num) return true;
+  if (from_num && is_pointer_type(to)) return true;
+
+  // function <-> pointer
+  if (is_function_type(from) && is_pointer_type(to)) return true;
+  if (is_pointer_type(from) && is_function_type(to)) return true;
+
+  return false;
+}
+
+// ─── Type Pretty Printing ─────────────────────────────────────────────────────
+
+const append_str -> fn (buf: *byte, pos: int, s: *byte) int {
+  let len: int = STR::strlen(s);
+  MEM::memcpy(cast<*void>(cast<int>(buf) + pos), cast<*void>(s), len);
+  return pos + len;
+}
+
+#returns_ownership
+pub const type_to_string -> fn (t: *AstNode) *byte;
+
+const type_to_string_into -> fn (t: *AstNode, buf: *byte, pos: int) int {
+  if (t == cast<*AstNode>(0)) return append_str(buf, pos, "<null>");
+
+  switch (t.kind) {
+    AST::NodeType::TYPE_BASIC -> {
+      return append_str(buf, pos, basic_name(t));
+    }
+    AST::NodeType::TYPE_POINTER -> {
+      let p: *PointerTypeNode = cast<*PointerTypeNode>(t);
+      let np: int = append_str(buf, pos, "*");
+      return type_to_string_into(p.pointee_type, buf, np);
+    }
+    AST::NodeType::TYPE_ARRAY -> {
+      let a: *ArrayTypeNode = cast<*ArrayTypeNode>(t);
+      let np: int = append_str(buf, pos, "[");
+      np = type_to_string_into(a.element_type, buf, np);
+      return append_str(buf, np, "]");
+    }
+    AST::NodeType::TYPE_FUNCTION -> {
+      let f: *FuncTypeNode = cast<*FuncTypeNode>(t);
+      let np: int = append_str(buf, pos, "fn(");
+      loop [i: int = 0](i < f.param_count) : (++i) {
+        if (i > 0) np = append_str(buf, np, ", ");
+        np = type_to_string_into(f.param_types[i], buf, np);
+      }
+      np = append_str(buf, np, ") ");
+      return type_to_string_into(f.return_type, buf, np);
+    }
+    AST::NodeType::TYPE_RESOLUTION -> {
+      let r: *ResolutionNode = cast<*ResolutionNode>(t);
+      let np: int = pos;
+      loop [i: int = 0](i < r.part_count) : (++i) {
+        if (i > 0) np = append_str(buf, np, "::");
+        np = append_str(buf, np, r.parts[i]);
+      }
+      return np;
+    }
+    _ -> return append_str(buf, pos, "<type>");
+  }
+}
+
+#returns_ownership
+pub const type_to_string -> fn (t: *AstNode) *byte {
+  let buf: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
+  let pos: int = type_to_string_into(t, buf, 0);
+  buf[pos] = '\0';
+  return buf;
+}
