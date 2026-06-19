@@ -631,14 +631,19 @@ Token next_token(Lexer *lx) {
 
   // Strings
   if (c == '"') {
-    while (!is_at_end(lx) && peek(lx, 0) != '"') {
-      advance(lx);
-    }
-    if (!is_at_end(lx)) {
-      advance(lx); // Skip closing quote
-    }
-    int len = (int)(lx->current - start - 2);
-    return MAKE_TOKEN(TOK_STRING, start + 1, lx, len, wh_count);
+      while (!is_at_end(lx) && peek(lx, 0) != '"') {
+          if (peek(lx, 0) == '\\' && !is_at_end(lx)) {
+              advance(lx); // skip backslash
+              advance(lx); // skip escaped character (could be '"', 'n', etc.)
+          } else {
+              advance(lx);
+          }
+      }
+      if (!is_at_end(lx)) {
+          advance(lx); // skip closing quote
+      }
+      int len = (int)(lx->current - start - 2);
+      return MAKE_TOKEN(TOK_STRING, start + 1, lx, len, wh_count);
   }
 
   // Try to match two-character symbol
