@@ -28,8 +28,6 @@ jobs:
             container: fedora:latest
           - name: macOS
             os: macos-latest
-          - name: Windows
-            os: windows-latest
 
     steps:
       - name: Install Fedora dependencies
@@ -69,16 +67,6 @@ jobs:
         run: |
           brew install llvm@20
           echo "$(brew --prefix llvm@20)/bin" >> $GITHUB_PATH
-
-      - name: Install LLVM (Windows)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $llvm_version = "20.1.8"
-          $installer = "LLVM-${llvm_version}-win64.exe"
-          $url = "https://github.com/llvm/llvm-project/releases/download/llvmorg-${llvm_version}/${installer}"
-          curl -L -o $installer $url
-          Start-Process -Wait -FilePath ".\$installer" -ArgumentList "/S"
 
       - name: Configure (release)
         run: meson setup build/ --buildtype=release
