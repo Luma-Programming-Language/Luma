@@ -124,11 +124,12 @@ jobs:
 
           idx=0
           while true; do
-            cur=$(sed -n "$((idx+1))p" "$DEPS"); [ -z "$cur" ] && break
+            cur=$(sed -n "$((idx+1))p" "$DEPS")
+            if [ -z "$cur" ]; then break; fi
             ldd "$cur" 2>/dev/null | grep -E '=> /' | sed 's/.*=> //; s/ (.*//' | while read -r p; do
-              is_base "$(basename "$p")" && continue
+              if is_base "$(basename "$p")"; then continue; fi
               grep -qF "$p" "$DEPS" || echo "$p" >> "$DEPS"
-            done
+            done || true
             idx=$((idx+1))
           done
 
