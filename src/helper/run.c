@@ -245,7 +245,6 @@ void collect_link_flags(CodeGenContext *ctx, char *lib_flags,
   }
 }
 
-
 bool link_object_files(const char *output_dir, const char *executable_name,
                        int opt_level, bool is_debug, CodeGenContext *ctx) {
   if (!ensure_directory_exists(output_dir)) {
@@ -262,25 +261,31 @@ bool link_object_files(const char *output_dir, const char *executable_name,
   char lib_flags[1024] = {0};
   collect_link_flags(ctx, lib_flags, sizeof(lib_flags));
 
+  // Resolve linker: $CC > clang > cc
+  const char *linker = getenv("CC");
+  if (!linker || linker[0] == '\0') {
+    linker = (system("clang --version > /dev/null 2>&1") == 0) ? "clang" : "cc";
+  }
+
   char command[4096];
   const char *debug_flags = is_debug ? " -g" : "";
 
 #if defined(__APPLE__)
   if (opt_level > 0) {
-    snprintf(command, sizeof(command), "cc%s -O%d %s/*.o -o %s -lSystem%s",
-             debug_flags, opt_level, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s -O%d %s/*.o -o %s -lSystem%s",
+             linker, debug_flags, opt_level, output_dir, executable_name, lib_flags);
   } else {
-    snprintf(command, sizeof(command), "cc%s %s/*.o -o %s -lSystem%s",
-             debug_flags, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s %s/*.o -o %s -lSystem%s",
+             linker, debug_flags, output_dir, executable_name, lib_flags);
   }
 
 #else
   if (opt_level > 0) {
-    snprintf(command, sizeof(command), "cc%s -O%d -pie %s/*.o -o %s%s",
-             debug_flags, opt_level, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s -O%d -pie %s/*.o -o %s%s",
+             linker, debug_flags, opt_level, output_dir, executable_name, lib_flags);
   } else {
-    snprintf(command, sizeof(command), "cc%s -pie %s/*.o -o %s%s",
-             debug_flags, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s -pie %s/*.o -o %s%s",
+             linker, debug_flags, output_dir, executable_name, lib_flags);
   }
 #endif
 
@@ -289,27 +294,9 @@ bool link_object_files(const char *output_dir, const char *executable_name,
   if (result != 0) {
     fprintf(stderr, "Primary linking failed with exit code %d\n", result);
 
-#if !defined(__APPLE__)
-    printf("Trying fallback linker...\n");
-
-    if (opt_level > 0) {
-      snprintf(command, sizeof(command),
-               "gcc%s -O%d -no-pie %s/*.o -o %s%s",
-               debug_flags, opt_level, output_dir, executable_name, lib_flags);
-    } else {
-      snprintf(command, sizeof(command), "gcc%s -no-pie %s/*.o -o %s%s",
-               debug_flags, output_dir, executable_name, lib_flags);
-    }
-
-    result = system(command);
-
-    if (result != 0) {
-      fprintf(stderr, "Fallback linking failed with exit code %d\n", result);
-      return false;
-    }
-#else
+    // No more gcc fallback — if CC/clang failed, report and bail.
+    fprintf(stderr, "Linking failed. Set CC= to specify an alternative linker.\n");
     return false;
-#endif
   }
 
   return true;
