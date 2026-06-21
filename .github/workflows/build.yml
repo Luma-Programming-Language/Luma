@@ -12,6 +12,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     container: ${{ matrix.container || null }}
 
+    permissions:
+      contents: read
+      packages: write       # push the rolling image to GHCR
+      id-token: write        # build provenance attestation
+
     strategy:
       fail-fast: false
       matrix:
@@ -89,3 +94,68 @@ jobs:
 
       - name: Smoke test
         run: ./build/luma --help || true
+
+      # ── Publish a rolling GHCR image from main (Linux only) ────────────────
+      # Runs only after the build + smoke test pass, only on pushes to main.
+      # The playground pulls ghcr.io/<owner>/luma:latest to track main.
+      - name: Package runtime (bundle LLVM deps + std)
+        if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          sudo apt-get install -y patchelf
+          rm -rf staging && mkdir -p staging
+          cp build/luma staging/
+
+          # Bundle libLLVM and its transitive deps next to the binary, with an
+          # $ORIGIN rpath, so the image needs only base glibc/libstdc++.
+          LLVM_SO=$(ldd build/luma | grep -i LLVM | sed 's/.*=> //; s/ (.*//' | head -1)
+          if [ -n "$LLVM_SO" ]; then
+            DEPS=$(mktemp); echo "$LLVM_SO" > "$DEPS"; idx=0
+            while true; do
+              cur=$(sed -n "$((idx+1))p" "$DEPS" 2>/dev/null); [ -z "$cur" ] && break
+              while IFS= read -r dep; do
+                p=$(echo "$dep" | sed 's/.*=> //; s/ (.*//'); n=$(basename "$p")
+                case "$n" in
+                  libc.so.6|libm.so.6|libstdc++.so.6|libgcc_s.so.1|ld-linux-*|linux-vdso.so.*) continue ;;
+                esac
+                grep -qF "$p" "$DEPS" || echo "$p" >> "$DEPS"
+              done < <(ldd "$cur" 2>/dev/null | grep -E '=> /')
+              idx=$((idx+1))
+            done
+            while IFS= read -r dep; do cp -L "$dep" "staging/$(basename "$dep")"; done < "$DEPS"
+            while IFS= read -r dep; do
+              b=$(basename "$dep"); [ -f "staging/$b" ] && patchelf --set-rpath '$ORIGIN' "staging/$b" || true
+            done < "$DEPS"
+            patchelf --set-rpath '$ORIGIN' staging/luma || true
+            rm "$DEPS"
+          fi
+
+          mkdir -p staging/std && cp -r std/* staging/std/
+
+      - name: Set up Docker Buildx
+        if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute lowercase image name
+        if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/luma" >> "$GITHUB_ENV"
+
+      - name: Build and push rolling image
+        if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: docker/runtime.Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:sha-${{ github.sha }}
+          provenance: mode=max
+          sbom: true
