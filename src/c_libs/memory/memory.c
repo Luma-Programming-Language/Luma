@@ -570,7 +570,13 @@ bool growable_array_init(GrowableArray *arr, ArenaAllocator *arena,
  */
 void *growable_array_push(GrowableArray *arr) {
   if (arr->count >= arr->capacity) {
+    if (arr->capacity > SIZE_MAX / 2) {
+      return NULL;
+    }
     size_t new_capacity = arr->capacity * 2;
+    if (arr->item_size != 0 && new_capacity > SIZE_MAX / arr->item_size) {
+      return NULL;
+    }
     size_t alignment = (arr->item_size == sizeof(void *)) ? alignof(void *)
                        : (arr->item_size >= alignof(max_align_t))
                            ? alignof(max_align_t)
