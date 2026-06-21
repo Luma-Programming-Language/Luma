@@ -16,6 +16,7 @@ RUN apt-get update \
 # Install the compiler + bundled libs + stdlib under one dir so $ORIGIN resolves.
 COPY staging/ /usr/local/lib/luma/
 RUN ln -sf /usr/local/lib/luma/luma /usr/local/bin/luma \
+    && ldd /usr/local/lib/luma/luma \
     # Fail the build if any shared lib is unresolved.
     && ! ldd /usr/local/lib/luma/luma | grep -q 'not found'
 

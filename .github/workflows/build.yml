@@ -98,38 +98,55 @@ jobs:
       # ── Publish a rolling GHCR image from main (Linux only) ────────────────
       # Runs only after the build + smoke test pass, only on pushes to main.
       # The playground pulls ghcr.io/<owner>/luma:latest to track main.
-      - name: Package runtime (bundle LLVM deps + std)
+      - name: Package runtime (bundle shared-lib deps + std)
         if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
+          set -euo pipefail
           sudo apt-get install -y patchelf
           rm -rf staging && mkdir -p staging
           cp build/luma staging/
 
-          # Bundle libLLVM and its transitive deps next to the binary, with an
-          # $ORIGIN rpath, so the image needs only base glibc/libstdc++.
-          LLVM_SO=$(ldd build/luma | grep -i LLVM | sed 's/.*=> //; s/ (.*//' | head -1)
-          if [ -n "$LLVM_SO" ]; then
-            DEPS=$(mktemp); echo "$LLVM_SO" > "$DEPS"; idx=0
-            while true; do
-              cur=$(sed -n "$((idx+1))p" "$DEPS" 2>/dev/null); [ -z "$cur" ] && break
-              while IFS= read -r dep; do
-                p=$(echo "$dep" | sed 's/.*=> //; s/ (.*//'); n=$(basename "$p")
-                case "$n" in
-                  libc.so.6|libm.so.6|libstdc++.so.6|libgcc_s.so.1|ld-linux-*|linux-vdso.so.*) continue ;;
-                esac
-                grep -qF "$p" "$DEPS" || echo "$p" >> "$DEPS"
-              done < <(ldd "$cur" 2>/dev/null | grep -E '=> /')
-              idx=$((idx+1))
+          # Libs the runtime base image (debian-slim + libstdc++6) already provides.
+          is_base() {
+            case "$1" in
+              libc.so.6|libm.so.6|libdl.so.2|libpthread.so.0|librt.so.1|libresolv.so.2|\
+              libstdc++.so.6|libgcc_s.so.1|ld-linux-*|linux-vdso.so.*) return 0 ;;
+              *) return 1 ;;
+            esac
+          }
+
+          # Bundle the FULL transitive closure of luma's shared-lib deps (libLLVM,
+          # libtinfo, libz, libzstd, libxml2, ...) next to the binary with an
+          # $ORIGIN rpath, so the image only needs the base libs above.
+          DEPS=$(mktemp)
+          ldd build/luma | grep -E '=> /' | sed 's/.*=> //; s/ (.*//' \
+            | while read -r p; do is_base "$(basename "$p")" || echo "$p"; done | sort -u > "$DEPS"
+
+          idx=0
+          while true; do
+            cur=$(sed -n "$((idx+1))p" "$DEPS"); [ -z "$cur" ] && break
+            ldd "$cur" 2>/dev/null | grep -E '=> /' | sed 's/.*=> //; s/ (.*//' | while read -r p; do
+              is_base "$(basename "$p")" && continue
+              grep -qF "$p" "$DEPS" || echo "$p" >> "$DEPS"
             done
-            while IFS= read -r dep; do cp -L "$dep" "staging/$(basename "$dep")"; done < "$DEPS"
-            while IFS= read -r dep; do
-              b=$(basename "$dep"); [ -f "staging/$b" ] && patchelf --set-rpath '$ORIGIN' "staging/$b" || true
-            done < "$DEPS"
-            patchelf --set-rpath '$ORIGIN' staging/luma || true
-            rm "$DEPS"
-          fi
+            idx=$((idx+1))
+          done
+
+          while IFS= read -r dep; do cp -L "$dep" "staging/$(basename "$dep")"; done < "$DEPS"
+          while IFS= read -r dep; do
+            b=$(basename "$dep"); [ -f "staging/$b" ] && patchelf --set-rpath '$ORIGIN' "staging/$b" || true
+          done < "$DEPS"
+          patchelf --set-rpath '$ORIGIN' staging/luma
+          rm "$DEPS"
 
           mkdir -p staging/std && cp -r std/* staging/std/
+
+          # Verify the bundle resolves with only $ORIGIN (cwd == $ORIGIN here).
+          echo "=== ldd staging/luma ==="
+          ( cd staging && ldd ./luma || true )
+          if ( cd staging && ldd ./luma 2>&1 | grep -q 'not found' ); then
+            echo "ERROR: unresolved libraries in bundle (see above)"; exit 1
+          fi
 
       - name: Set up Docker Buildx
         if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
