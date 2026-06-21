@@ -161,9 +161,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Compute lowercase image name
+      - name: Compute image name + matching runtime base
         if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/luma" >> "$GITHUB_ENV"
+        run: |
+          echo "IMAGE=ghcr.io/$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')/luma" >> "$GITHUB_ENV"
+          # Runtime base must match the runner's glibc/libstdc++, so derive it
+          # from the runner's own Ubuntu version (e.g. ubuntu:24.04).
+          echo "RUNTIME_BASE=ubuntu:$(. /etc/os-release && echo "$VERSION_ID")" >> "$GITHUB_ENV"
 
       - name: Build and push rolling image
         if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -172,6 +176,8 @@ jobs:
           context: .
           file: docker/runtime.Dockerfile
           push: true
+          build-args: |
+            RUNTIME_BASE=${{ env.RUNTIME_BASE }}
           tags: |
             ${{ env.IMAGE }}:latest
             ${{ env.IMAGE }}:sha-${{ github.sha }}

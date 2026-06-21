@@ -6,7 +6,13 @@
 #   staging/luma        the compiler binary
 #   staging/*.so        bundled libLLVM + transitive deps ($ORIGIN rpath)
 #   staging/std/        the standard library
-FROM debian:bookworm-slim
+#
+# IMPORTANT: this base must match the glibc/libstdc++ of the runner that built
+# `luma` (currently ubuntu-latest = Ubuntu 24.04). The binary requires GLIBC_2.38
+# / GLIBCXX_3.4.32, which an older base (e.g. debian:bookworm) does not provide.
+# If the build runner's Ubuntu version changes, bump this to match.
+ARG RUNTIME_BASE=ubuntu:24.04
+FROM ${RUNTIME_BASE}
 
 # Base runtime libs the bundle intentionally does NOT vendor.
 RUN apt-get update \
