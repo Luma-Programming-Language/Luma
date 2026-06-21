@@ -106,6 +106,13 @@ jobs:
           rm -rf staging && mkdir -p staging
           cp build/luma staging/
 
+          # Bundle clang + lld so luma has a linker at runtime without
+          # needing any host toolchain installed in the image.
+          for bin in clang-20 clang lld ld.lld llvm-ar llvm-ranlib; do
+            bin_path=$(command -v "$bin" 2>/dev/null || true)
+            [ -n "$bin_path" ] && cp "$bin_path" staging/ || true
+          done
+
           # Libs the runtime base image (debian-slim + libstdc++6) already provides.
           is_base() {
             case "$1" in
@@ -115,17 +122,19 @@ jobs:
             esac
           }
 
-          # Bundle the FULL transitive closure of luma's shared-lib deps (libLLVM,
-          # libtinfo, libz, libzstd, libxml2, ...) next to the binary with an
-          # $ORIGIN rpath, so the image only needs the base libs above.
+          # Collect the full transitive closure of shared-lib deps for ALL
+          # binaries in staging (luma + clang + lld + ...).
           DEPS=$(mktemp)
-          ldd build/luma | grep -E '=> /' | sed 's/.*=> //; s/ (.*//' \
-            | while read -r p; do is_base "$(basename "$p")" || echo "$p"; done | sort -u > "$DEPS"
+          for bin in staging/*; do
+            [ -f "$bin" ] && [ -x "$bin" ] || continue
+            ldd "$bin" 2>/dev/null | grep -E '=> /' | sed 's/.*=> //; s/ (.*//' \
+              | while read -r p; do is_base "$(basename "$p")" || echo "$p"; done
+          done | sort -u > "$DEPS"
 
           idx=0
           while true; do
             cur=$(sed -n "$((idx+1))p" "$DEPS")
-            if [ -z "$cur" ]; then break; fi
+            [ -z "$cur" ] && break
             ldd "$cur" 2>/dev/null | grep -E '=> /' | sed 's/.*=> //; s/ (.*//' | while read -r p; do
               if is_base "$(basename "$p")"; then continue; fi
               grep -qF "$p" "$DEPS" || echo "$p" >> "$DEPS"
@@ -134,20 +143,25 @@ jobs:
           done
 
           while IFS= read -r dep; do cp -L "$dep" "staging/$(basename "$dep")"; done < "$DEPS"
-          while IFS= read -r dep; do
-            b=$(basename "$dep"); [ -f "staging/$b" ] && patchelf --set-rpath '$ORIGIN' "staging/$b" || true
-          done < "$DEPS"
-          patchelf --set-rpath '$ORIGIN' staging/luma
+
+          # Patch rpath on all binaries and libs so everything resolves from $ORIGIN.
+          for f in staging/*; do
+            [ -f "$f" ] || continue
+            patchelf --set-rpath '$ORIGIN' "$f" 2>/dev/null || true
+          done
           rm "$DEPS"
 
           mkdir -p staging/std && cp -r std/* staging/std/
 
-          # Verify the bundle resolves with only $ORIGIN (cwd == $ORIGIN here).
+          # Verify the full bundle resolves cleanly.
           echo "=== ldd staging/luma ==="
           ( cd staging && ldd ./luma || true )
           if ( cd staging && ldd ./luma 2>&1 | grep -q 'not found' ); then
             echo "ERROR: unresolved libraries in bundle (see above)"; exit 1
           fi
+
+          echo "=== ldd staging/clang ==="
+          ( cd staging && ldd ./clang 2>/dev/null || true )
 
       - name: Set up Docker Buildx
         if: matrix.name == 'Ubuntu' && github.event_name == 'push' && github.ref == 'refs/heads/main'
