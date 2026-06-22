@@ -2,7 +2,11 @@ ARG RUNTIME_BASE=ubuntu:24.04
 FROM ${RUNTIME_BASE}
 
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends libstdc++6 ca-certificates \
+    && apt-get install -y --no-install-recommends \
+        libstdc++6 \
+        ca-certificates \
+        gcc \
+        libc6-dev \
     && rm -rf /var/lib/apt/lists/*
 
 COPY staging/ /usr/local/lib/luma/
