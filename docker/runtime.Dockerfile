@@ -9,6 +9,7 @@ COPY staging/ /usr/local/lib/luma/
 RUN ln -sf /usr/local/lib/luma/luma /usr/local/bin/luma \
     && ln -sf /usr/local/lib/luma/clang /usr/local/bin/clang \
     && ln -sf /usr/local/lib/luma/clang /usr/local/bin/cc \
+    && ln -sf /usr/local/lib/luma/ld.lld /usr/local/bin/ld \
     && ldd /usr/local/lib/luma/luma \
     && ! ldd /usr/local/lib/luma/luma | grep -q 'not found'
 
