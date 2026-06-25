@@ -1,4 +1,4 @@
- @module "string"
+ @module "std_string"
 
 //! Managed string type with heap-allocated, growable buffer.
 //!
