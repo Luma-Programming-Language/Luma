@@ -1,6 +1,6 @@
 @module "tc_expr"
 
-@use "std_string" as STR
+@use "std_cstring" as STR
 @use "std_memory" as MEM
 
 @use "tc_core"  as CORE

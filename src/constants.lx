@@ -1,6 +1,6 @@
 @module "constants"
 
-@use "std_string" as STRING
+@use "std_cstring" as STRING
 @use "std_vector" as VEC
 
 pub const Luma_Compiler_version: *byte = "v0.1.0";

@@ -1,6 +1,6 @@
 @module "tc_stmt"
 
-@use "std_string" as STR
+@use "std_cstring" as STR
 
 @use "tc_core"  as CORE
 @use "tc_type"  as TYPE

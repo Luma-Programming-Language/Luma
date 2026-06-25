@@ -1,6 +1,6 @@
 @module "lexer_tokens"
 
-@use "std_string" as STRING
+@use "std_cstring" as STRING
 
 pub const LumaTokenType -> enum {
   TOK_EOF,          /**< End of file/input */

@@ -1,6 +1,6 @@
 @module "parse_stmt"
 
-@use "std_string" as STRING
+@use "std_cstring" as STRING
 @use "std_memory" as MEM
 @use "std_vector" as VEC
 

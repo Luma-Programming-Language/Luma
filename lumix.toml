@@ -15,4 +15,5 @@ paths = [
 flags = "-O2 --no-sanitize"
 
 [run]
-args = "test/test.lx -l std/args.lx -name test"
+// args = "test/test.lx -l std/args.lx -name test"
+args = "test/test.lx -name test"

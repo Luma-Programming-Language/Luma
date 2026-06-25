@@ -1,7 +1,7 @@
 @module "tc"
 
 @use "std_vector"   as VEC
-@use "std_string"   as STR
+@use "std_cstring"   as STR
 
 @use "constants"    as CONST
 @use "ast"          as AST

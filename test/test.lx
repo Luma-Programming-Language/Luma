@@ -4,7 +4,9 @@
 
 pub const main -> fn (argc: int, argv: **byte) int {
     // let args: Args = ARGS::init_args(argc, argv);
-
+    let x: int = 0;
+    let y: float = 0.9;
+    x = y;
     // if (args.contains("--help") == 0) {
     //    output("Usage: program [options]\n");
     //    return 0;

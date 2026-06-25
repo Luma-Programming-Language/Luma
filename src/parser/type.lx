@@ -1,6 +1,6 @@
 @module "parser_type"
 
-@use "std_string" as STRING
+@use "std_cstring" as STRING
 @use "std_vector" as VEC
 
 @use "lexer_tokens" as TOK

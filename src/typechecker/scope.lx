@@ -1,7 +1,7 @@
 @module "tc_scope"
 
 @use "std_vector" as VEC
-@use "std_string" as STR
+@use "std_cstring" as STR
 
 @use "tc_core" as CORE
 @use "ast"     as AST
