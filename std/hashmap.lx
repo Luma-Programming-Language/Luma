@@ -1,0 +1,134 @@
+@module "std_hashmap"
+
+const INT16_MAX: int = 32767;
+
+const _strlen -> fn (s: *byte) int {
+  let length: int = 0;
+  loop (s[length] != cast<byte>(0)) : (++length) {}
+  return length;
+}
+
+pub const _strcmp -> fn (s1: *byte, s2: *byte) int {
+  let ls1: int = _strlen(s1);
+  let ls2: int = _strlen(s2);
+
+  if (ls1 != ls2) { return -1; }
+
+  loop[i: int = 0](i < ls1) : (++i) {
+    if (s1[i] != s2[i]) { return 1; }
+  }
+
+  return 0;
+}
+
+const Node -> struct {
+  key:   *byte,
+  value: *byte,
+
+  next: *Node,
+
+  set_node -> fn (key: *byte, value: *byte) void {
+    self.key   = key;
+    self.value = value;
+    self.next  = cast<*Node>(0);
+    return;
+  }
+};
+
+pub const HashMap -> struct {
+  capacity:    int,
+  num_of_elem: int,
+
+  arr: **Node,
+  
+  hash -> fn (key: *byte) int {
+    let bucket_idx: int  = 0;
+    let sum: int         = 0;
+    let factor: int      = 31;
+
+    let key_len: int = _strlen(key);
+    loop [i: int = 0](i < key_len) : (++i) {
+      sum = ((sum % self.capacity) + 
+              (cast<int>(key[i]) * factor) % self.capacity);
+      factor = ((factor % INT16_MAX) * (31 % INT16_MAX)) % INT16_MAX;
+    }
+
+    bucket_idx = sum;
+    return bucket_idx;
+  },
+
+  #returns_ownership
+  insert -> fn (key: *byte, value: *byte) void {
+    let index: int = self.hash(key);
+    let new_node: *Node = cast<*Node>(alloc(sizeof<Node>));
+    
+    new_node.set_node(key, value);
+
+    if (self.arr[index] == cast<*Node>(0)) {
+      self.arr[index] = new_node;
+    } else {
+      new_node.next   = self.arr[index];
+      self.arr[index] = new_node;
+    }
+  },
+  
+  #takes_ownership
+  delete -> fn (key: *byte) void {
+    let index: int = self.hash(key);
+
+    let prev: *Node = cast<*Node>(0);
+    let curr: *Node = self.arr[index];
+
+    loop (curr != cast<*Node>(0)) {
+      if (_strcmp(key, curr.key) == 0) {
+        if (curr == self.arr[index]) {
+          self.arr[index] = curr.next;
+        } else {
+          prev.next = curr.next;
+        }
+      }
+
+      free(curr);
+      break;
+    }
+
+    prev = curr;
+    curr = curr.next;
+  },
+
+  search -> fn (key: *byte) *byte {
+    let index: int = self.hash(key);
+
+    let head: *Node = self.arr[index];
+
+    loop (head != cast<*Node>(0)) {
+      if (_strcmp(head.key, key) == 0) {
+        return head.value;
+      }
+    }
+
+    return "Error: No data found at index";
+  }
+};
+
+#returns_ownership
+pub const init_hashmap -> fn () *HashMap {
+  let tmp: *HashMap = cast<*HashMap>(alloc(sizeof<HashMap>));
+  
+  tmp.capacity    = 100;
+  tmp.num_of_elem = 0;
+
+  tmp.arr = cast<**Node>(alloc(sizeof<*Node> * tmp.capacity));
+
+  return tmp;
+}
+
+#takes_ownership
+pub const free_hashmap -> fn (ptr: *HashMap) void {
+  loop [i: int = 0](i < ptr.capacity) : (++i) {
+    free(ptr.arr[i]);
+  } 
+
+  free(ptr.arr);
+  free(ptr);
+}

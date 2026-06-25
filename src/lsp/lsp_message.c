@@ -37,6 +37,12 @@ static void analyze_and_publish(LSPServer *server, LSPDocument *doc,
     free(params);
   }
 
+  // After analysis completes, tokens are freshly populated.
+  // Tell the client to re-request semantic tokens — it previously got
+  // {"data":[]} because didChange cleared the token array before the
+  // debounced analysis had run.
+  lsp_send_request("workspace/semanticTokens/refresh", "null");
+
   g_pending_analysis = false;
 }
 

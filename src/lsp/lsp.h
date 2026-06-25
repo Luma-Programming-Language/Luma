@@ -367,6 +367,7 @@ LSPDiagnostic *convert_errors_to_diagnostics(size_t *diagnostic_count,
 
 LSPMethod lsp_parse_method(const char *json);
 void lsp_send_response(int id, const char *result);
+void lsp_send_request(const char *method, const char *params);
 void lsp_send_notification(const char *method, const char *params);
 void lsp_send_error(int id, int code, const char *message);
 

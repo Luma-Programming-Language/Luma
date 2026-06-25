@@ -270,6 +270,25 @@ void lsp_send_response(int id, const char *result) {
   free(json_msg);
 }
 
+static int g_request_id = 0;
+
+void lsp_send_request(const char *method, const char *params) {
+  size_t params_len = params ? strlen(params) : 2;
+  size_t buf_size = strlen(method) + params_len + 64;
+  char *json_msg = (char *)malloc(buf_size);
+  if (!json_msg)
+    return;
+
+  int id = __sync_fetch_and_add(&g_request_id, 1);
+  int msg_len = snprintf(json_msg, buf_size,
+                         "{\"jsonrpc\":\"2.0\",\"id\":%d,\"method\":\"%s\",\"params\":%s}",
+                         id, method, params ? params : "{}");
+
+  printf("Content-Length: %d\r\n\r\n%s", msg_len, json_msg);
+  fflush(stdout);
+  free(json_msg);
+}
+
 void lsp_send_notification(const char *method, const char *params) {
   size_t params_len = params ? strlen(params) : 2;
   size_t buf_size = strlen(method) + params_len + 64;

@@ -1,0 +1,51 @@
+const Entity -> struct {
+    id: int,
+    x: float,
+    y: float,
+
+    static default(id: int, x: double, y: double) -> Entity {
+        return Entity {
+            id: id,
+            x: x,
+            y: y
+        };
+    },
+
+    move(dx: float, dy: float) {
+        self.x += dx;
+        self.y += dy;
+    },
+
+    print_position() = output("(", self.x, ", ", self.y, ")\n");
+};
+
+const Player -> struct {
+    ...Entity,
+
+    name: *byte,
+    health: int,
+
+    static create(name: *byte) -> Player {
+        return Player {
+            ...Entity::default(1, 0.0, 0.0),
+            name: name,
+            health: 100
+        };
+    },
+
+    take_damage(amount: int) = self.health -= amount;
+};
+
+const main() -> int {
+    let player: Player = Player::create("Connor");
+
+    player.move(10.0, 5.0);
+    player.print_position();
+
+    player.take_damage(25);
+
+    output(player.name, "\n");
+    output(player.health, "\n");
+
+    return 0;
+}

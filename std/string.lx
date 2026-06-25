@@ -1,627 +1,494 @@
-//! String manipulation and conversion utilities
+ @module "string"
+
+//! Managed string type with heap-allocated, growable buffer.
 //!
-//! This module provides functions for working with null-terminated C-style strings,
-//! including concatenation, comparison, conversion, and character classification.
-//! All strings are represented as pointers to byte arrays (`*byte`) and must be
-//! null-terminated.
+//! This module provides the `String` struct and associated constructor/destructor
+//! functions for working with dynamically-sized strings. It is completely
+//! self-contained with no external dependencies — all internal helpers are
+//! private to this module.
 //!
-//! This module is completely self-contained with no external dependencies.
+//! # Design
+//! `String` wraps a null-terminated `*byte` buffer and tracks both the current
+//! length and allocated capacity separately, allowing growth without reallocation
+//! on every append. The buffer is always null-terminated so `c_str()` can hand
+//! a raw pointer to any API that expects one.
 //!
 //! # Memory Management
-//! Functions that create new strings (prefixed with `from_` or returning `#returns_ownership`)
-//! allocate memory that the caller must free. Use `defer { free(str); }` to ensure cleanup.
+//! Any function annotated `#returns_ownership` allocates memory the caller is
+//! responsible for freeing. The canonical cleanup is:
+//!   `defer { string_free(&s); }`
+//! Do not call `free()` on the `String` directly — use `string_free` so the
+//! inner buffer is released correctly.
 
-@module "std_string"
+// ============= Private Helpers =============
+// These are internal utilities used by String methods.
+// They are not exported and callers should not rely on them.
 
-// ============= Local System Call for putbyte =============
-
-const SYS_WRITE: int = 1;
-const STDOUT: int = 1;
-
-const local_write -> fn (fd: int, buf: *void, count: int) int {
-    return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
-}
-
-pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte; 
-
-// ============= Core String Types =============
-
-/// String slice with pointer and length
-pub const Slice -> struct {
-    ptr: *byte, 
-    len: int,
-
-    slice_end -> fn () *byte { 
-        return cast<*byte>(cast<int>(self.ptr) + self.len); 
-    },
-
-    null_terminated_slice -> fn (s: *byte) Slice {
-        let len: int = 0;
-        let cursor: *byte = s;
-
-        loop (cursor != cast<*byte>(0) && *cursor != '\0')
-            : (cursor = cast<*byte>(cast<int>(cursor) + 1)) {
-            len++;
-        }
-
-        return Slice { ptr: s, len: len };
-    }
-};
-
-/// String with slice and capacity
-pub const String -> struct {
-    slice: Slice, 
-    cap: int,
-
-    #returns_ownership
-    concat_strs -> fn (start: *Slice, len: int) String {
-        let end: *Slice = cast<*Slice>(cast<int>(start) + len * sizeof<Slice>);
-        let total_len: int = 0;
-
-        loop [cursor: *Slice = start](cursor != end)
-            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
-            total_len = total_len + cursor.len;
-        }
-
-        let ptr: *byte = cast<*byte>(alloc(total_len + 1));
-        let out_cursor: *byte = ptr;
-
-        loop [cursor: *Slice = start](cursor != end)
-            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
-
-            let slice_end: *byte = cursor.slice_end();
-
-            loop [slice_cursor: *byte = cursor.ptr](slice_cursor != slice_end)
-                : (slice_cursor = cast<*byte>(cast<int>(slice_cursor) + 1)) {
-                *out_cursor = *slice_cursor;
-                out_cursor = cast<*byte>(cast<int>(out_cursor) + 1);
-            }
-        }
-        *out_cursor = '\0';
-
-        return String { slice: Slice { ptr: ptr, len: total_len }, cap: total_len };
-    },
-
-    as_slice -> fn () Slice { return self.slice; }
-};
-
-#takes_ownership
-pub const free_string -> fn (s: *String) void {
-    free(s.slice.ptr);
-}
-
-/// Returns the length of a null-terminated string
-///
-/// Counts characters until the null terminator is found.
-///
-/// # Parameters
-/// * `s` - String to measure
-///
-/// # Returns
-/// Number of characters before null terminator
-///
-/// # Example
-/// ```luma
-/// let len: int = string::strlen("Hello");
-/// // len will be 5
-/// ```
-pub const strlen -> fn (s: *byte) int {
+/// Returns the number of bytes before the null terminator.
+/// Returns 0 if `s` is null.
+const local_strlen -> fn (s: *byte) int {
+  if (s == cast<*byte>(0)) return 0;
   let length: int = 0;
-  loop (s[length] != cast<byte>(0)) : (++length) {}
+  loop (s[length] != '\0') : (++length) {}
   return length;
 }
 
-/// Converts a single byte to a string
-///
-/// Creates a 2-byte string containing the character and a null terminator.
-///
-/// # Parameters
-/// * `c` - Character to convert
-///
-/// # Returns
-/// Newly allocated string containing the character
-///
-/// # Example
-/// ```luma
-/// let str: *byte = string::from_byte('A');
-/// defer { free(str); }
-/// output(str); // Prints "A"
-/// ```
-#returns_ownership 
-pub const from_byte -> fn (c: byte) *byte {
-  let s: *byte = cast<*byte>(alloc(2 * sizeof<byte>));
-  s[0] = c;
-  s[1] = cast<byte>(0);
-  return s;
-}
-
-/// Converts an integer to a string
-///
-/// Handles both positive and negative integers. For zero, returns "0".
-///
-/// # Parameters
-/// * `n` - Integer to convert
-///
-/// # Returns
-/// Newly allocated string representation of the integer
-///
-/// # Example
-/// ```luma
-/// let str: *byte = string::from_int(-42);
-/// defer { free(str); }
-/// output(str); // Prints "-42"
-/// ```
-#returns_ownership
-pub const from_int -> fn (n: int) *byte {
-  if (n == 0) {
-    return from_byte(cast<byte>('0'));
-  }
-
-  let negative: int = 0;
-  if (n < 0) {
-    negative = 1;
-    n = -n;
-  }
-
-  let buffer: [byte; 20]; // enough for 64-bit int
+/// Copies a null-terminated string from `src` into `dest`.
+/// Both pointers must be non-null. `dest` must have enough capacity.
+const local_copy -> fn (dest: *byte, src: *byte) void {
+  if (dest == cast<*byte>(0) || src == cast<*byte>(0)) return;
   let i: int = 0;
-
-  loop (n != 0) {
-    let digit: int = n % 10;
-    buffer[i] = cast<byte>(digit + cast<int>('0'));
-    n = n / 10;
-    i = i + 1;
+  loop (src[i] != '\0') : (++i) {
+    dest[i] = src[i];
   }
-
-  if (negative == 1) {
-    buffer[i] = '-';
-    i = i + 1;
-  }
-
-  // Reverse the string
-  let s: *byte = cast<*byte>(alloc((i + 1) * sizeof<byte>));
-  loop [j: int = 0](j < i) : (j = j + 1) {
-    s[j] = buffer[i - j - 1];
-  }
-  s[i] = cast<byte>(0); // null terminator
-
-  return s;
+  dest[i] = '\0';
 }
 
-/// Converts a float to a string with specified precision
-///
-/// Separates integer and fractional parts, then combines them with
-/// a decimal point. Precision determines number of decimal places.
-///
-/// # Parameters
-/// * `f` - Float value to convert
-/// * `precision` - Number of decimal places to include
-///
-/// # Returns
-/// Newly allocated string representation of the float
-///
-/// # Example
-/// ```luma
-/// let str: *byte = string::from_float(3.14159, 2);
-/// defer { free(str); }
-/// output(str); // Prints "3.14"
-/// ```
-#returns_ownership
-pub const from_float -> fn (f: float, precision: int) *byte {
-  let int_part: int = cast<int>(f);
-  let frac_part: float = f - cast<float>(int_part);
-  
-  let int_str: *byte = from_int(int_part);
-  defer { free(int_str); }
-  
-  let frac_str: *byte = cast<*byte>(alloc((precision + 2) * sizeof<byte>)); // +1 for '.' +1 for null
-  frac_str[0] = '.';
-  
-  loop [i: int = 1](i <= precision) : (++i) {
-    frac_part = frac_part * 10.0;
-    let digit: int = cast<int>(frac_part);
-    frac_str[i] = cast<byte>(digit + cast<int>('0'));
-    frac_part = frac_part - cast<float>(digit);
-  }
-  
-  frac_str[precision + 1] = cast<byte>(0); // null terminator
-  
-  let result_len: int = strlen(int_str) + strlen(frac_str) + 1;
-  let result: *byte = cast<*byte>(alloc(result_len * sizeof<byte>));
-  
-  cat(result, int_str, frac_str);
-  
-  return result;
-}
-
-/// Converts integer to string into a provided buffer
-///
-/// Writes the string representation directly into the provided buffer
-/// instead of allocating new memory.
-///
-/// # Parameters
-/// * `num` - Integer to convert
-/// * `buf` - Buffer to write string into
-/// * `buf_size` - Size of buffer in bytes
-///
-/// # Example
-/// ```luma
-/// let buffer: [byte; 32];
-/// string::int_to_str(12345, &buffer[0], 32);
-/// output(&buffer[0]); // Prints "12345"
-/// ```
-pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
-  let idx: int = 0;
-  let temp: int = num;
-  
-  if (temp == 0) {
-    buf[0] = '0';
-    buf[1] = '\0';
-    return;
-  }
-  
-  loop (temp > 0 && idx < buf_size - 1) {
-    buf[idx] = cast<byte>((temp % 10) + 48);
-    temp = temp / 10;
-    idx = idx + 1;
-  }
-  
-  // Reverse the digits
-  let j: int = 0;
-  loop (j < idx / 2) {
-    let tmp: byte = buf[j];
-    buf[j] = buf[idx - 1 - j];
-    buf[idx - 1 - j] = tmp;
-    j = j + 1;
-  }
-  
-  buf[idx] = '\0';
-}
-
-// ============= String Comparison =============
-
-/// Compares two strings for equality
-///
-/// First checks if lengths differ, then compares contents byte by byte.
-///
-/// # Parameters
-/// * `s1` - First string
-/// * `s2` - Second string
-///
-/// # Returns
-/// * `0` if strings are equal
-/// * `-1` if lengths differ
-/// * `1` if contents differ but lengths match
-///
-/// # Example
-/// ```luma
-/// if (string::strcmp("hello", "hello") == 0) {
-///     output("Strings are equal\n");
-/// }
-/// ```
-pub const strcmp -> fn (s1: *byte, s2: *byte) int {
-  let ls1: int = strlen(s1);
-  let ls2: int = strlen(s2);
-
-  if (ls1 != ls2) { return -1; }
-
-  loop[i: int = 0](i < ls1) : (++i) {
-    if (s1[i] != s2[i]) { return 1; }
-  }
-
-  return 0;
-}
-
-pub const strncmp -> fn (s1: *byte, s2: *byte, n: int) int {
+/// Copies exactly `n` bytes from `src` to `dest`. No null terminator is added.
+/// Caller must ensure `dest` has at least `n` bytes of capacity.
+const local_memcpy -> fn (dest: *byte, src: *byte, n: int) void {
   loop [i: int = 0](i < n) : (++i) {
-    if (s1[i] != s2[i]) { return 1; }
-    if (s1[i] == cast<byte>(0) || s2[i] == cast<byte>(0)) { break; }
+    dest[i] = src[i];
   }
-
-  return 0;
 }
 
-/// Searches for a character in a string
-///
-/// Returns the first occurrence of the character, or null byte if not found.
-///
-/// # Parameters
-/// * `s` - String to search
-/// * `c` - Character to find (as int)
-///
-/// # Returns
-/// The matching character if found, null byte otherwise
-///
-/// # Example
-/// ```luma
-/// let ch: byte = string::s_byte("Hello", cast<int>('l'));
-/// if (ch != cast<byte>(0)) {
-///     output("Found 'l'\n");
-/// }
-/// ```
-pub const s_byte -> fn (s: *byte, c: int) byte{
-  loop [i: int = 0](s[i] != cast<byte>(0)) : (++i) {
-    if (s[i] == cast<byte>(c)) {
-      return s[i];
+/// Lexicographically compares two null-terminated strings.
+/// Returns 0 if equal, positive if s1 > s2, negative if s1 < s2.
+const local_strcmp -> fn (s1: *byte, s2: *byte) int {
+  let i: int = 0;
+  loop (s1[i] != '\0' && s2[i] != '\0') : (++i) {
+    if (s1[i] != s2[i]) {
+      return cast<int>(s1[i]) - cast<int>(s2[i]);
     }
   }
-
-  return cast<byte>(0);
+  return cast<int>(s1[i]) - cast<int>(s2[i]);
 }
 
-/// Copies a string from source to destination
-///
-/// Copies characters including the null terminator.
-///
-/// # Parameters
-/// * `dest` - Destination buffer (must be large enough)
-/// * `src` - Source string
-///
-/// # Returns
-/// Destination pointer
-///
-/// # Example
-/// ```luma
-/// let buffer: [byte; 100];
-/// string::copy(&buffer[0], "Hello");
-/// ```
-pub const copy -> fn (dest: *byte, src: *byte) *byte {
-  let i: int = 0;
-  loop((dest[i] = src[i]) != cast<byte>(0)) : (++i) {}
-  return dest;
-}
+// ============= String Struct =============
 
-/// Copies at most n bytes of a string
+/// A heap-allocated, growable string.
 ///
-/// Stops at null terminator or after n characters, whichever comes first.
+/// Fields:
+///   `data` — null-terminated byte buffer
+///   `len`  — number of characters, excluding the null terminator
+///   `cap`  — total allocated bytes, including the null terminator slot
 ///
-/// # Parameters
-/// * `dest` - Destination buffer
-/// * `src` - Source string
-/// * `n` - Maximum bytes to copy
-///
-/// # Returns
-/// Destination pointer
-///
-/// # Example
-/// ```luma
-/// let buffer: [byte; 10];
-/// string::n_copy(&buffer[0], "Hello World", 5); // Copies "Hello"
-/// ```
-pub const n_copy -> fn (dest: *byte, src: *byte, n: int) *byte {
-  let i: int = 0;
-  loop(i < n && src[i] != cast<byte>(0)) : (++i) {
-    dest[i] = src[i]; 
-  }
-  return dest;
-}
+/// Always construct via `string_new`, `string_from`, or `string_with_capacity`.
+/// Never set `data` manually — the struct assumes it owns the buffer.
+pub const String -> struct {
+  data: *byte,   // null-terminated buffer
+  len: int,      // length excluding '\0'
+  cap: int,      // capacity including '\0'
 
-/// Concatenates two strings into a destination buffer
-///
-/// Writes s1 followed by s2 into dest, with null terminator.
-///
-/// # Parameters
-/// * `dest` - Destination buffer (must be large enough)
-/// * `s1` - First string
-/// * `s2` - Second string
-///
-/// # Returns
-/// Destination pointer
-///
-/// # Example
-/// ```luma
-/// let buffer: [byte; 100];
-/// string::cat(&buffer[0], "Hello ", "World");
-/// output(&buffer[0]); // Prints "Hello World"
-/// ```
-pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
-  let ls1: int = strlen(s1);
-  let lt: int = ls1 + strlen(s2) + 1;
+  // ---- Query ----
 
-  loop [i: int = 0](i < lt) : (++i) {
-    if (i < ls1) {
-      dest[i] = s1[i];
+  /// Returns true if the string contains no characters.
+  empty -> fn () bool { return (self.len == 0); },
+
+  /// Returns the raw null-terminated pointer. Safe to pass to C-style APIs.
+  c_str -> fn () *byte { return self.data; },
+
+  /// Returns the number of characters (excluding null terminator).
+  length -> fn () int { return self.len; },
+
+  /// Returns the total allocated capacity (including null terminator slot).
+  capacity -> fn () int { return self.cap; },
+
+  // ---- Access ----
+
+  /// Returns the byte at `index`, or '\0' if the index is out of bounds.
+  at -> fn (index: int) byte {
+    if (index < 0 || index >= self.len) return '\0';
+    return self.data[index];
+  },
+
+  // ---- Comparison ----
+
+  /// Returns true if this string's contents equal the null-terminated `other`.
+  /// Returns false if either pointer is null.
+  equals -> fn (other: *byte) bool {
+    if (self.data == cast<*byte>(0) || other == cast<*byte>(0)) return cast<bool>(0);
+    return local_strcmp(self.data, other) == 0;
+  },
+
+  /// Returns true if this string equals another `String`.
+  /// Returns false if `other` is null.
+  equals_str -> fn (other: *String) bool {
+    if (other == cast<*String>(0)) return cast<bool>(0);
+    return self.equals(other.data);
+  },
+
+  // ---- Modification ----
+
+  /// Clears the string content without freeing or reallocating the buffer.
+  /// After this call `len` is 0 and `data[0]` is '\0'.
+  clear -> fn () void {
+    if (self.data != cast<*byte>(0)) {
+      self.data[0] = '\0';
+      self.len = 0;
+    }
+  },
+
+  /// Ensures the buffer has at least `new_cap` bytes of capacity.
+  /// Reallocates and copies existing content if needed.
+  /// No-op if `new_cap` is already satisfied.
+  #returns_ownership
+  reserve -> fn (new_cap: int) void {
+    if (new_cap <= self.cap) return;
+    
+    let new_data: *byte = cast<*byte>(alloc(new_cap));
+    if (self.data != cast<*byte>(0)) {
+      local_memcpy(new_data, self.data, self.len);
+      new_data[self.len] = '\0';
+      free(self.data);
     } else {
-      dest[i] = s2[i - ls1];
+      new_data[0] = '\0';
     }
-  }
+    
+    self.data = new_data;
+    self.cap = new_cap;
+  },
 
-  // null terminator
-  dest[lt - 1] = cast<byte>(0);
+  /// Appends a null-terminated `*byte` string to the end of this string.
+  /// Grows the buffer with a doubling strategy if needed.
+  /// No-op if `s` is null or empty.
+  #returns_ownership
+  append -> fn (s: *byte) void {
+    if (s == cast<*byte>(0)) return;
+    
+    let add_len: int = local_strlen(s);
+    if (add_len == 0) return;
+    
+    let required: int = self.len + add_len + 1;
+    if (required > self.cap) {
+      let new_cap: int = self.cap * 2;
+      if (new_cap < required) new_cap = required;
+      self.reserve(new_cap);
+    }
+    
+    loop [i: int = 0](i < add_len) : (++i) {
+      self.data[self.len + i] = s[i];
+    }
+    self.len = self.len + add_len;
+    self.data[self.len] = '\0';
+  },
 
-  return dest;
-}
+  /// Appends the contents of another `String` to this one.
+  /// No-op if `other` is null.
+  #returns_ownership
+  append_str -> fn (other: *String) void {
+    if (other == cast<*String>(0)) return;
+    self.append(other.data);
+  },
 
-/// Outputs a single character to the terminal
-///
-/// Handles special characters with proper shell escaping using system commands.
-/// Special handling for newline, tab, quotes, backslash, etc.
-///
-/// # Parameters
-/// * `c` - Character to output
-///
-/// # Returns
-/// The character as an int
-///
-/// # Example
-/// ```luma
-/// string::putbyte('A');
-/// string::putbyte('\n');
-/// ```
-pub const putbyte -> fn(c: byte) int {
-  // allocate buffer for command + escaped byte (32 bytes is enough)
-  let cmd: *byte = cast<*byte>(alloc(32 * sizeof<byte>));
-  defer { free(cmd); }
+  /// Appends a single byte character to this string.
+  /// Grows the buffer if needed.
+  #returns_ownership
+  append_char -> fn (c: byte) void {
+    let required: int = self.len + 2;
+    if (required > self.cap) {
+      self.reserve(self.cap * 2);
+    }
+    
+    self.data[self.len] = c;
+    self.len = self.len + 1;
+    self.data[self.len] = '\0';
+  },
 
-  // build command inline
-  // Use integer values instead of character literals with escapes
-  let byte_val: int = cast<int>(c);
-  
-  switch(byte_val) {
-      10 -> { system("echo"); }                                        // '\n'
-      9  -> { system("printf '\\t'"); }                                // '\t'
-      37 -> cat(cmd, cast<*byte>("printf '\\%'"),  cast<*byte>(""));   // '%'
-      92 -> cat(cmd, cast<*byte>("printf '\\\\'"), cast<*byte>(""));   // '\\'
-      39 -> cat(cmd, cast<*byte>("printf '\\\''"), cast<*byte>(""));   // '\''
-      34 -> cat(cmd, cast<*byte>("printf '\\'"), cast<*byte>(""));     // '"'
-      36 -> cat(cmd, cast<*byte>("printf '\\$'"),  cast<*byte>(""));   // '$'
-      96 -> cat(cmd, cast<*byte>("printf '\\`'"),  cast<*byte>(""));   // '`'
-      _  -> {
-          let s: *byte = from_byte(c);
-          defer { free(s); }
-          cat(cmd, cast<*byte>("printf '%s' "), s);
+  /// Inserts a null-terminated `*byte` string at the beginning of this string.
+  /// Grows the buffer with a doubling strategy if needed.
+  /// No-op if `s` is null or empty.
+  #returns_ownership
+  prepend -> fn (s: *byte) void {
+    if (s == cast<*byte>(0)) return;
+    
+    let add_len: int = local_strlen(s);
+    if (add_len == 0) return;
+    
+    let required: int = self.len + add_len + 1;
+    if (required > self.cap) {
+      let new_cap: int = self.cap * 2;
+      if (new_cap < required) new_cap = required;
+      
+      // Allocate fresh buffer: copy prefix then existing content
+      let new_data: *byte = cast<*byte>(alloc(new_cap));
+      local_memcpy(new_data, s, add_len);
+      if (self.data != cast<*byte>(0)) {
+        local_memcpy(cast<*byte>(cast<int>(new_data) + add_len), 
+                     self.data, self.len);
+        free(self.data);
       }
-  }
-
-  if (byte_val != 10 && byte_val != 9) { system(cmd); }
-  
-  return cast<int>(c);
-}
-
-/// Checks if a character is a digit (0-9)
-///
-/// # Parameters
-/// * `ch` - Character to test
-///
-/// # Returns
-/// true if character is '0' through '9', false otherwise
-///
-/// # Example
-/// ```luma
-/// if (string::is_digit('5')) {
-///     output("It's a digit!\n");
-/// }
-/// ```
-pub const is_digit -> fn (ch: byte) bool {
-  return (ch >= '0' && ch <= '9');
-}
-
-/// Checks if a character is alphabetic or underscore
-///
-/// Accepts uppercase letters (A-Z), lowercase letters (a-z),
-/// underscore (_), and at sign (@).
-///
-/// # Parameters
-/// * `ch` - Character to test
-///
-/// # Returns
-/// true if alphabetic or underscore/at, false otherwise
-///
-/// # Example
-/// ```luma
-/// if (string::is_alpha('_')) {
-///     output("Valid identifier character\n");
-/// }
-/// ```
-pub const is_alpha -> fn (ch: byte) bool {
-  return ((ch >= 'A' && ch <= 'Z') || (ch >= 'a' && ch <= 'z') || ch == '_' || ch == '@');
-}
-
-/// Checks if a character is alphanumeric
-///
-/// Returns true if character is a letter, digit, underscore, or at sign.
-///
-/// # Parameters
-/// * `ch` - Character to test
-///
-/// # Returns
-/// true if alphanumeric, false otherwise
-///
-/// # Example
-/// ```luma
-/// if (string::is_alnum('A')) {
-///     output("Valid identifier character\n");
-/// }
-/// ```
-pub const is_alnum -> fn (ch: byte) bool {
-  return (is_alpha(ch) || is_digit(ch));
-}
-
-/// Converts ASCII string to integer
-///
-/// Parses digits from the string until a non-digit character is encountered.
-/// Does not handle negative numbers or leading whitespace.
-///
-/// # Parameters
-/// * `value` - String to parse
-///
-/// # Returns
-/// Parsed integer value
-///
-/// # Example
-/// ```luma
-/// let num: int = string::atio("12345");
-/// // num will be 12345
-/// ```
-pub const atio -> fn (value: *byte) int {
-  let num: int = 0;
-  loop [i: int = 0](value[i] != '\0') : (++i) { 
-    if (cast<int>(value[i]) >= 48 && cast<int>(value[i]) <= 57) { 
-      num = num * 10 + (cast<int>(value[i]) - 48); 
-    } else { 
-      break; 
+      new_data[add_len + self.len] = '\0';
+      
+      self.data = new_data;
+      self.cap = new_cap;
+      self.len = self.len + add_len;
+    } else {
+      // Buffer has room: shift existing content right, then copy prefix in
+      loop [i: int = self.len](i >= 0) : (--i) {
+        self.data[i + add_len] = self.data[i];
+      }
+      loop [i: int = 0](i < add_len) : (++i) {
+        self.data[i] = s[i];
+      }
+      self.len = self.len + add_len;
     }
-  }
-  return num;
+  },
+
+  // ---- Slicing ----
+
+  /// Returns a newly allocated `String` containing bytes `[start, end)`.
+  /// Clamps `start` to 0 and `end` to `len` if out of range.
+  /// Returns an empty null String `{ data: null, len: 0, cap: 0 }` if the
+  /// range is empty or inverted. Caller must free the result.
+  #returns_ownership
+  substring -> fn (start: int, end: int) String {
+    if (start < 0) start = 0;
+    if (end > self.len) end = self.len;
+    if (start >= end) return String { data: cast<*byte>(0), len: 0, cap: 0 };
+    
+    let substr_len: int = end - start;
+    let buf: *byte = cast<*byte>(alloc(substr_len + 1));
+    
+    loop [i: int = 0](i < substr_len) : (++i) {
+      buf[i] = self.data[start + i];
+    }
+    buf[substr_len] = '\0';
+    
+    return String { data: buf, len: substr_len, cap: substr_len + 1 };
+  },
+
+  // ---- Search ----
+
+  /// Returns the index of the first occurrence of byte `c`, or -1 if not found.
+  find_char -> fn (c: byte) int {
+    loop [i: int = 0](i < self.len) : (++i) {
+      if (self.data[i] == c) return i;
+    }
+    return -1;
+  },
+
+  /// Returns true if byte `c` appears anywhere in the string.
+  contains_char -> fn (c: byte) bool {
+    return self.find_char(c) != -1;
+  },
+
+  /// Returns true if this string starts with the null-terminated `prefix`.
+  /// Returns false if `prefix` is null or longer than the string.
+  starts_with -> fn (prefix: *byte) bool {
+    if (prefix == cast<*byte>(0)) return cast<bool>(0);
+    let prefix_len: int = local_strlen(prefix);
+    if (prefix_len > self.len) return cast<bool>(0);
+    
+    loop [i: int = 0](i < prefix_len) : (++i) {
+      if (self.data[i] != prefix[i]) return cast<bool>(0);
+    }
+    return cast<bool>(1);
+  },
+
+  /// Returns true if this string ends with the null-terminated `suffix`.
+  /// Returns false if `suffix` is null or longer than the string.
+  ends_with -> fn (suffix: *byte) bool {
+    if (suffix == cast<*byte>(0)) return cast<bool>(0);
+    let suffix_len: int = local_strlen(suffix);
+    if (suffix_len > self.len) return cast<bool>(0);
+    
+    let start: int = self.len - suffix_len;
+    loop [i: int = 0](i < suffix_len) : (++i) {
+      if (self.data[start + i] != suffix[i]) return cast<bool>(0);
+    }
+    return cast<bool>(1);
+  },
+
+  /// Returns the index of the first occurrence of the null-terminated substring,
+  /// or -1 if not found. Returns 0 if `substr` is empty. Returns -1 if null.
+  find -> fn (substr: *byte) int {
+    if (substr == cast<*byte>(0)) return -1;
+    let substr_len: int = local_strlen(substr);
+    if (substr_len == 0) return 0;
+    if (substr_len > self.len) return -1;
+    
+    let end: int = self.len - substr_len;
+    loop [i: int = 0](i <= end) : (++i) {
+      let match: bool = cast<bool>(1);
+      loop [j: int = 0](j < substr_len) : (++j) {
+        if (self.data[i + j] != substr[j]) {
+          match = cast<bool>(0);
+          break;
+        }
+      }
+      if (match) return i;
+    }
+    return -1;
+  },
+
+  /// Returns true if the null-terminated `substr` appears anywhere in the string.
+  contains -> fn (substr: *byte) bool {
+    return self.find(substr) != -1;
+  },
+
+  // ---- Whitespace ----
+
+  /// Removes leading whitespace (space, tab, newline, carriage return) in place.
+  /// Shifts remaining content to the front of the buffer; does not reallocate.
+  #returns_ownership
+  trim_start -> fn () void {
+    if (self.len == 0) return;
+    
+    let start: int = 0;
+    loop (start < self.len && (self.data[start] == ' '  || 
+                               self.data[start] == '\t' || 
+                               self.data[start] == '\n' || 
+                               self.data[start] == '\r')) : (++start) {}
+    
+    if (start == 0) return;
+    
+    let new_len: int = self.len - start;
+    loop [i: int = 0](i < new_len) : (++i) {
+      self.data[i] = self.data[start + i];
+    }
+    self.data[new_len] = '\0';
+    self.len = new_len;
+  },
+
+  /// Removes trailing whitespace (space, tab, newline, carriage return) in place.
+  /// Writes null terminators as it walks backward; does not reallocate.
+  #returns_ownership
+  trim_end -> fn () void {
+    loop (self.len > 0 && (self.data[self.len - 1] == ' '  || 
+                           self.data[self.len - 1] == '\t' || 
+                           self.data[self.len - 1] == '\n' || 
+                           self.data[self.len - 1] == '\r')) : (self.len = self.len - 1) {
+      self.data[self.len - 1] = '\0';
+    }
+  },
+
+  /// Removes both leading and trailing whitespace in place.
+  /// Equivalent to calling `trim_start()` then `trim_end()`.
+  #returns_ownership
+  trim -> fn () void {
+    self.trim_start();
+    self.trim_end();
+  },
+
+  // ---- Case ----
+
+  /// Converts all ASCII lowercase letters (a-z) to uppercase in place.
+  #returns_ownership
+  to_upper -> fn () void {
+    loop [i: int = 0](i < self.len) : (++i) {
+      if (self.data[i] >= 'a' && self.data[i] <= 'z') {
+        self.data[i] = cast<byte>(cast<int>(self.data[i]) - 32);
+      }
+    }
+  },
+
+  /// Converts all ASCII uppercase letters (A-Z) to lowercase in place.
+  #returns_ownership
+  to_lower -> fn () void {
+    loop [i: int = 0](i < self.len) : (++i) {
+      if (self.data[i] >= 'A' && self.data[i] <= 'Z') {
+        self.data[i] = cast<byte>(cast<int>(self.data[i]) + 32);
+      }
+    }
+  },
+};
+
+// ============= Constructors =============
+
+/// Creates a new empty `String` with an initial capacity of 16 bytes.
+/// Caller must free with `string_free`.
+#returns_ownership
+pub const string_new -> fn () String {
+  let buf: *byte = cast<*byte>(alloc(16));
+  buf[0] = '\0';
+  return String { data: buf, len: 0, cap: 16 };
 }
 
-/// Adds two large integers represented as strings
-///
-/// Performs arbitrary-precision addition digit by digit with carry propagation.
-/// Both input strings must contain only digits.
-///
-/// # Parameters
-/// * `num1` - First number as string
-/// * `num2` - Second number as string
-///
-/// # Returns
-/// Sum as newly allocated string
+/// Creates a `String` by copying a null-terminated `*byte` string.
+/// If `s` is null, returns an empty string via `string_new`.
+/// Caller must free with `string_free`.
+#returns_ownership
+pub const string_from -> fn (s: *byte) String {
+  if (s == cast<*byte>(0)) return string_new();
+  
+  let len: int = local_strlen(s);
+  let buf: *byte = cast<*byte>(alloc(len + 1));
+  
+  loop [i: int = 0](i < len) : (++i) {
+    buf[i] = s[i];
+  }
+  buf[len] = '\0';
+
+  return String { data: buf, len: len, cap: len + 1 };
+}
+
+/// Creates an empty `String` pre-allocated to at least `cap` bytes.
+/// Useful when the final size is known in advance to avoid reallocations.
+/// Minimum capacity is 16 if `cap` < 1. Caller must free with `string_free`.
+#returns_ownership
+pub const string_with_capacity -> fn (cap: int) String {
+  if (cap < 1) cap = 16;
+  let buf: *byte = cast<*byte>(alloc(cap));
+  buf[0] = '\0';
+  return String { data: buf, len: 0, cap: cap };
+}
+
+/// Creates a deep copy of an existing `String`.
+/// If `s` is null, returns an empty string via `string_new`.
+/// Caller must free the returned string with `string_free`.
+#returns_ownership
+pub const string_clone -> fn (s: *String) String {
+  if (s == cast<*String>(0)) return string_new();
+  return string_from(s.data);
+}
+
+// ============= Conversion =============
+
+/// Converts a non-negative integer to a `String`.
+/// Uses a fixed 12-byte stack buffer for digit extraction then copies to heap.
+/// Only handles non-negative values — negative input produces incorrect output.
+/// Caller must free with `string_free`.
 ///
 /// # Example
-/// ```luma
-/// let result: *byte = string::string_add("999", "1");
-/// defer { free(result); }
-/// output(result); // Prints "1000"
+/// ```
+/// let s: String = int_to_str(42);
+/// defer { string_free(&s); }
 /// ```
 #returns_ownership
-pub const string_add -> fn (num1: *byte, num2: *byte) *byte {
-  let len1: int = strlen(num1);
-  let len2: int = strlen(num2);
-  let max_len: int = 0;
-  if (len1 > len2) max_len = len1; else max_len = len2;
-  
-  // Result can be at most max_len + 1 digits
-  let result: *byte = cast<*byte>(alloc(max_len + 2));
-  let carry: int = 0;
-  let result_idx: int = 0;
-  
-  let i1: int = len1 - 1;
-  let i2: int = len2 - 1;
-  
-  // Add digits from right to left
-  loop (i1 >= 0 || i2 >= 0 || carry > 0) {
-    let digit1: int = 0;
-    let digit2: int = 0;
+pub const int_to_str -> fn (n: int) String {
+    // Stack buffer: max 10 digits for a 32-bit int + 2 guard bytes
+    let tmp: [byte; 12];
+    let i: int = 10;
+    tmp[11] = cast<byte>(0);
+    tmp[i]  = cast<byte>(0);
 
-    if (i1 >= 0) digit1 = (cast<int>(num1[i1]) - 48); else digit1 = 0;
-    if (i2 >= 0) digit2 = (cast<int>(num2[i2]) - 48); else digit2 = 0;
-
-    
-    let sum: int = digit1 + digit2 + carry;
-    carry = sum / 10;
-    result[result_idx++] = cast<byte>((sum % 10) + 48);
-    
-    i1--;
-    i2--;
-  }
-  
-  // Reverse the result
-  loop [i: int = 0](i < result_idx / 2) : (++i) {
-    let temp: byte = result[i];
-    result[i] = result[result_idx - 1 - i];
-    result[result_idx - 1 - i] = temp;
-  }
-  
-  result[result_idx] = '\0';
-  return result;
+    if (n == 0) {
+        tmp[9] = cast<byte>('0');
+        i = 9;
+    } else {
+        loop (n > 0) {
+            i = i - 1;
+            tmp[i] = cast<byte>((n % 10) + 48);
+            n = n / 10;
+        }
+    }
+    return string_from(&tmp[i]);
 }
+
+// ============= Destructor =============
+
+/// Frees the internal buffer of a `String` and zeroes its fields.
+/// Safe to call on a null pointer (no-op). After this call the `String`
+/// must not be used — its `data` pointer is set to null.
+#takes_ownership
+pub const string_free -> fn (s: *String) void {
+  if (s == cast<*String>(0)) return;
+  if (s.data != cast<*byte>(0)) {
+    free(s.data);
+    s.data = cast<*byte>(0);
+  }
+  s.len = 0;
+  s.cap = 0;
+}
+

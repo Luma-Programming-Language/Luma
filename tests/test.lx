@@ -1,19 +1,25 @@
 @module "main"
 
-#returns_ownership
-const add -> fn (x: int, y: int) *int {
-    let result: *int = cast<*int>(alloc(sizeof<int>));
-    *result = x + y;
-    return result;
-}
+@use "std_hashmap" as map
 
 pub const main -> fn () int {
-    const x: fn (int, int) *int = &add;
-
-    let res: *int = x(10, 10);
-    defer { free(res); } 
+    let hash_map: *HashMap = map::init_hashmap();
+    defer { map::free_hashmap(hash_map); }
     
-    output(*res, "\n");
+    hash_map.insert("GFG",    "GeekforGeeks");
+    hash_map.insert("Connor", "Luma");
+    hash_map.insert("Luma",   "Low level language");
+    hash_map.insert("eight",  "camel");
+    hash_map.insert("emarled","poster");
+    hash_map.insert("coffee", "torch");
+    hash_map.insert("lego",   "dress");
+    
+    output(hash_map.search("Connor"), "\n");
+
+    hash_map.delete("eight");
+
+    output(hash_map.search("eight"), "\n");
 
     return 0;
 }
+
