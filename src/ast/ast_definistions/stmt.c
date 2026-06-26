@@ -35,9 +35,9 @@ AstNode *create_func_decl_stmt(ArenaAllocator *arena, const char *name,
                                const char *doc_comment, char **param_names,
                                AstNode **param_types, size_t param_count,
                                AstNode *return_type, bool is_public,
-                               bool returns_ownership, bool takes_ownership,
-                               bool forward_declared, AstNode *body,
-                               size_t line, size_t column) {
+                               bool is_static, bool returns_ownership,
+                               bool takes_ownership, bool forward_declared,
+                               AstNode *body, size_t line, size_t column) {
   AstNode *node = create_stmt_node(arena, AST_STMT_FUNCTION, line, column);
   node->stmt.func_decl.name = name;
   node->stmt.func_decl.doc_comment = (char *)doc_comment;
@@ -46,6 +46,7 @@ AstNode *create_func_decl_stmt(ArenaAllocator *arena, const char *name,
   node->stmt.func_decl.param_count = param_count;
   node->stmt.func_decl.return_type = return_type;
   node->stmt.func_decl.is_public = is_public;
+  node->stmt.func_decl.is_static = is_static;
   node->stmt.func_decl.returns_ownership = returns_ownership;
   node->stmt.func_decl.takes_ownership = takes_ownership;
   node->stmt.func_decl.forward_declared = forward_declared;
@@ -72,15 +73,26 @@ AstNode *create_struct_decl_stmt(ArenaAllocator *arena, const char *name,
 
 AstNode *create_field_decl_stmt(ArenaAllocator *arena, const char *name,
                                 const char *doc_comment, AstNode *type,
-                                AstNode *function, bool is_public, size_t line,
-                                size_t column) {
+                                AstNode *function, bool is_public,
+                                bool is_static, size_t line, size_t column) {
   AstNode *node = create_stmt_node(arena, AST_STMT_FIELD_DECL, line, column);
   node->stmt.field_decl.name = name;
   node->stmt.field_decl.doc_comment = (char *)doc_comment;
   node->stmt.field_decl.type = type;
   node->stmt.field_decl.function = function;
   node->stmt.field_decl.is_public = is_public;
+  node->stmt.field_decl.is_static = is_static;
   return node;
+}
+
+AstNode *create_spread_decl_stmt(ArenaAllocator *arena, AstNode *type,
+                                 bool via_pointer, bool is_public,
+                                 size_t line, size_t column) {
+    AstNode *node = create_stmt_node(arena, AST_STMT_SPREAD_DECL, line, column);
+    node->stmt.spread_decl.type       = type;
+    node->stmt.spread_decl.via_pointer = via_pointer;
+    node->stmt.spread_decl.is_public  = is_public;
+    return node;
 }
 
 AstNode *create_enum_decl_stmt(ArenaAllocator *arena, const char *name,

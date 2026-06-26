@@ -28,20 +28,20 @@
 
 /** @internal Symbol to token type mapping */
 static const SymbolEntry symbols[] = {
-    {"%", TOK_MODL},        {"(", TOK_LPAREN},      {")", TOK_RPAREN},
-    {"{", TOK_LBRACE},      {"}", TOK_RBRACE},      {"[", TOK_LBRACKET},
-    {"]", TOK_RBRACKET},    {"..", TOK_RANGE},      {";", TOK_SEMICOLON},
-    {",", TOK_COMMA},       {".", TOK_DOT},         {"->", TOK_RIGHT_ARROW},
-    {"<-", TOK_LEFT_ARROW}, {"==", TOK_EQEQ},       {"!=", TOK_NEQ},
-    {"<=", TOK_LE},         {">=", TOK_GE},         {"&&", TOK_AND},
-    {"||", TOK_OR},         {"=", TOK_EQUAL},       {"+", TOK_PLUS},
-    {"-", TOK_MINUS},       {"*", TOK_STAR},        {"/", TOK_SLASH},
-    {"<", TOK_LT},          {">", TOK_GT},          {"&", TOK_AMP},
-    {"|", TOK_PIPE},        {"^", TOK_CARET},       {"~", TOK_TILDE},
-    {"!", TOK_BANG},        {"?", TOK_QUESTION},    {"::", TOK_RESOLVE},
-    {":", TOK_COLON},       {"_", TOK_SYMBOL},      {"++", TOK_PLUSPLUS},
-    {"--", TOK_MINUSMINUS}, {"<<", TOK_SHIFT_LEFT}, {">>", TOK_SHIFT_RIGHT},
-    {"@", TOK_AT},
+    {"%", TOK_MODL},         {"(", TOK_LPAREN},      {")", TOK_RPAREN},
+    {"{", TOK_LBRACE},       {"}", TOK_RBRACE},      {"[", TOK_LBRACKET},
+    {"]", TOK_RBRACKET},     {";", TOK_SEMICOLON},   {",", TOK_COMMA},
+    {"->", TOK_RIGHT_ARROW}, {"<-", TOK_LEFT_ARROW}, {"==", TOK_EQEQ},
+    {"!=", TOK_NEQ},         {"<=", TOK_LE},         {">=", TOK_GE},
+    {"&&", TOK_AND},         {"||", TOK_OR},         {"=", TOK_EQUAL},
+    {"+", TOK_PLUS},         {"-", TOK_MINUS},       {"*", TOK_STAR},
+    {"/", TOK_SLASH},        {"<", TOK_LT},          {">", TOK_GT},
+    {"&", TOK_AMP},          {"|", TOK_PIPE},        {"^", TOK_CARET},
+    {"~", TOK_TILDE},        {"!", TOK_BANG},        {"?", TOK_QUESTION},
+    {"::", TOK_RESOLVE},     {":", TOK_COLON},       {"_", TOK_SYMBOL},
+    {"++", TOK_PLUSPLUS},    {"--", TOK_MINUSMINUS}, {"<<", TOK_SHIFT_LEFT},
+    {">>", TOK_SHIFT_RIGHT}, {"@", TOK_AT},          {"...", TOK_ELLIPSIS},
+    {"..", TOK_RANGE},       {".", TOK_DOT},
 };
 
 /** @internal Keyword text to token type mapping */
@@ -76,10 +76,10 @@ static const KeywordEntry keywords[] = {
     {"impl", TOK_IMPL},
     {"input", TOK_INPUT},
     {"system", TOK_SYSTEM},
+    {"static", TOK_STATIC},
 
     {"void", TOK_VOID},
     {"byte", TOK_CHAR},
-    {"str", TOK_STRINGT},
     {"int", TOK_INT},
     {"float", TOK_FLOAT},
     {"double", TOK_DOUBLE},
@@ -367,7 +367,7 @@ Token next_token(Lexer *lx) {
   if (is_at_end(lx)) {
     return MAKE_TOKEN(TOK_EOF, lx->current, lx, 0, wh_count);
   }
-  
+
   // This is a /// doc comment
   if (peek(lx, 0) == '/' && peek(lx, 1) == '/' && peek(lx, 2) == '/') {
     advance(lx); // first /
@@ -631,19 +631,30 @@ Token next_token(Lexer *lx) {
 
   // Strings
   if (c == '"') {
-      while (!is_at_end(lx) && peek(lx, 0) != '"') {
-          if (peek(lx, 0) == '\\' && !is_at_end(lx)) {
-              advance(lx); // skip backslash
-              advance(lx); // skip escaped character (could be '"', 'n', etc.)
-          } else {
-              advance(lx);
-          }
+    while (!is_at_end(lx) && peek(lx, 0) != '"') {
+      if (peek(lx, 0) == '\\' && !is_at_end(lx)) {
+        advance(lx); // skip backslash
+        advance(lx); // skip escaped character (could be '"', 'n', etc.)
+      } else {
+        advance(lx);
       }
-      if (!is_at_end(lx)) {
-          advance(lx); // skip closing quote
-      }
-      int len = (int)(lx->current - start - 2);
-      return MAKE_TOKEN(TOK_STRING, start + 1, lx, len, wh_count);
+    }
+    if (!is_at_end(lx)) {
+      advance(lx); // skip closing quote
+    }
+    int len = (int)(lx->current - start - 2);
+    return MAKE_TOKEN(TOK_STRING, start + 1, lx, len, wh_count);
+  }
+
+  // Try to match three-character symbol
+  if (!is_at_end(lx)) {
+    char three[4] = {start[0], peek(lx, 0), peek(lx, 1), '\0'};
+    LumaTokenType ttype = lookup_symbol(three, 3);
+    if (ttype != TOK_SYMBOL) {
+      advance(lx);
+      advance(lx);
+      return MAKE_TOKEN(ttype, start, lx, 3, wh_count);
+    }
   }
 
   // Try to match two-character symbol

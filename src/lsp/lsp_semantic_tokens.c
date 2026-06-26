@@ -187,6 +187,7 @@ static TokenClass classify_token(LSPDocument *doc, size_t tok_idx) {
   case TOK_CONST:
   case TOK_PUBLIC:
   case TOK_PRIVATE:
+  case TOK_STATIC:
   case TOK_IMPL:
     return (TokenClass){ST_KEYWORD, SM_STATIC};
 

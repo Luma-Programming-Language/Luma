@@ -141,7 +141,7 @@
         },
         {
           "name": "storage.modifier.luma",
-          "match": "\\b(pub|priv|public|private)\\b"
+          "match": "\\b(pub|priv|public|private|static)\\b"
         }
       ]
     },

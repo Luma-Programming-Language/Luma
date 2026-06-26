@@ -46,6 +46,7 @@ typedef enum {
   AST_EXPR_SYSTEM, // System Statement
   AST_EXPR_SYSCALL,
   AST_EXPR_STRUCT,
+  AST_EXPR_SPREAD,
 
   // Statement nodes
   AST_PROGRAM,             // Program root node
@@ -63,6 +64,7 @@ typedef enum {
   AST_STMT_ENUM,           // Enum declarations
   AST_STMT_STRUCT,         // Struct declarations
   AST_STMT_FIELD_DECL,     // Field declarations (for structs)
+  AST_STMT_SPREAD_DECL,
   AST_STMT_DEFER,          // Defer statements
   AST_STMT_SWITCH,         // Switch statement
   AST_STMT_IMPL,           // impl statement
@@ -320,6 +322,11 @@ struct AstNode {
           AstNode **field_value; // Array of field values (expressions)
           size_t field_count;    // Number of fields
         } struct_expr;
+
+        // Spread expression (...expr in struct literals)
+        struct {
+          AstNode *expr; // The expression being spread
+        } spread;
       };
     } expr;
 
@@ -364,7 +371,14 @@ struct AstNode {
           AstNode *type;
           AstNode *function;
           bool is_public;
+          bool is_static;
         } field_decl;
+
+        struct {
+          AstNode *type;
+          bool via_pointer;
+          bool is_public;
+        } spread_decl;
 
         // Enumeration declaration
         struct {
@@ -384,6 +398,7 @@ struct AstNode {
           size_t param_count;
           AstNode *return_type;
           bool is_public;
+          bool is_static;
           AstNode *body;
           bool returns_ownership;
           bool takes_ownership;
@@ -616,6 +631,8 @@ AstNode *create_sizeof_expr(ArenaAllocator *arena, Expr *object, bool is_type,
 Expr *create_struct_expr(ArenaAllocator *arena, char *name, char **field_names,
                          AstNode **field_values, size_t field_count, int line,
                          int col);
+Expr *create_spread_expr(ArenaAllocator *arena, Expr *expr, size_t line,
+                         size_t col);
 
 // Statement creation functions (UPDATED with doc_comment parameters)
 AstNode *create_program_node(ArenaAllocator *arena, AstNode **statements,
@@ -630,9 +647,9 @@ AstNode *create_func_decl_stmt(ArenaAllocator *arena, const char *name,
                                const char *doc_comment, char **param_names,
                                AstNode **param_types, size_t param_count,
                                AstNode *return_type, bool is_public,
-                               bool returns_ownership, bool takes_ownership,
-                               bool forward_declared, AstNode *body,
-                               size_t line, size_t column);
+                               bool is_static, bool returns_ownership,
+                               bool takes_ownership, bool forward_declared,
+                               AstNode *body, size_t line, size_t column);
 AstNode *create_struct_decl_stmt(ArenaAllocator *arena, const char *name,
                                  const char *doc_comment,
                                  AstNode **public_members, size_t public_count,
@@ -641,8 +658,12 @@ AstNode *create_struct_decl_stmt(ArenaAllocator *arena, const char *name,
                                  size_t line, size_t column);
 AstNode *create_field_decl_stmt(ArenaAllocator *arena, const char *name,
                                 const char *doc_comment, AstNode *type,
-                                AstNode *function, bool is_public, size_t line,
-                                size_t column);
+                                AstNode *function, bool is_public,
+                                bool is_static, size_t line, size_t column);
+
+AstNode *create_spread_decl_stmt(ArenaAllocator *arena, AstNode *type,
+                                 bool via_pointer, bool is_public,
+                                 size_t line, size_t column);
 AstNode *create_enum_decl_stmt(ArenaAllocator *arena, const char *name,
                                const char *doc_comment, char **members,
                                size_t member_count, bool is_public, size_t line,

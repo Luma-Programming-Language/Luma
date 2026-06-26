@@ -205,9 +205,6 @@ Type *tnud(Parser *parser) {
   case TOK_BOOL:
     p_advance(parser);
     return create_basic_type(parser->arena, "bool", line, col);
-  case TOK_STRINGT:
-    p_advance(parser);
-    return create_basic_type(parser->arena, "str", line, col);
   case TOK_VOID:
     p_advance(parser);
     return create_basic_type(parser->arena, "void", line, col);

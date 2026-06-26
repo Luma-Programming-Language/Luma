@@ -321,6 +321,45 @@ Expr *struct_expr(Parser *parser) {
 
   // Parse field initializers: field_name: value, ...
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RBRACE) {
+    // Handle spread: ...expr
+    if (p_current(parser).type_ == TOK_ELLIPSIS) {
+      int spread_line = p_current(parser).line;
+      int spread_col = p_current(parser).col;
+      p_advance(parser); // ...
+
+      Expr *spread_value = parse_expr(parser, BP_LOWEST);
+      if (!spread_value) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected expression after '...' in struct literal",
+                     spread_line, spread_col, 0);
+        return NULL;
+      }
+
+      Expr *spread = create_spread_expr(parser->arena, spread_value,
+                                        spread_line, spread_col);
+
+      char **name_slot = (char **)growable_array_push(&field_names);
+      Expr **value_slot = (Expr **)growable_array_push(&field_values);
+      if (!name_slot || !value_slot) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Internal error: out of memory growing struct field arrays",
+                     spread_line, spread_col, 0);
+        return NULL;
+      }
+      *name_slot = NULL; // NULL name marks a spread entry
+      *value_slot = spread;
+
+      if (p_current(parser).type_ == TOK_COMMA) {
+        p_advance(parser);
+      } else if (p_current(parser).type_ != TOK_RBRACE) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected ',' or '}' after spread",
+                     spread_line, spread_col, 0);
+        return NULL;
+      }
+      continue;
+    }
+
     // Parse field name
     if (p_current(parser).type_ != TOK_IDENTIFIER) {
       parser_error(parser, "SyntaxError", parser->file_path,
@@ -433,6 +472,45 @@ Expr *named_struct_expr(Parser *parser, Expr *left, BindingPower bp) {
 
   // Parse field initializers: field_name: value, ...
   while (p_has_tokens(parser) && p_current(parser).type_ != TOK_RBRACE) {
+    // Handle spread: ...expr
+    if (p_current(parser).type_ == TOK_ELLIPSIS) {
+      int spread_line = p_current(parser).line;
+      int spread_col = p_current(parser).col;
+      p_advance(parser); // ...
+
+      Expr *spread_value = parse_expr(parser, BP_LOWEST);
+      if (!spread_value) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected expression after '...' in struct literal",
+                     spread_line, spread_col, 0);
+        return NULL;
+      }
+
+      Expr *spread = create_spread_expr(parser->arena, spread_value,
+                                        spread_line, spread_col);
+
+      char **name_slot = (char **)growable_array_push(&field_names);
+      Expr **value_slot = (Expr **)growable_array_push(&field_values);
+      if (!name_slot || !value_slot) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Internal error: out of memory growing struct field arrays",
+                     spread_line, spread_col, 0);
+        return NULL;
+      }
+      *name_slot = NULL; // NULL name marks a spread entry
+      *value_slot = spread;
+
+      if (p_current(parser).type_ == TOK_COMMA) {
+        p_advance(parser);
+      } else if (p_current(parser).type_ != TOK_RBRACE) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected ',' or '}' after spread",
+                     spread_line, spread_col, 0);
+        return NULL;
+      }
+      continue;
+    }
+
     // Parse field name
     if (p_current(parser).type_ != TOK_IDENTIFIER) {
       parser_error(parser, "SyntaxError", parser->file_path,

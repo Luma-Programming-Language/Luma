@@ -367,8 +367,46 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
         return NULL;
       }
 
+      // First try module lookup
       func_symbol = lookup_qualified_symbol(scope, base_name, member_name);
       func_name = member_name;
+
+      // Try static method: "base::member"
+      if (!func_symbol) {
+        size_t static_ql =
+            strlen(base_name) + strlen("::") + strlen(member_name) + 1;
+        char *static_qn = arena_alloc(arena, static_ql, 1);
+        snprintf(static_qn, static_ql, "%s::%s", base_name, member_name);
+        func_symbol = scope_lookup(scope, static_qn);
+      }
+
+      // Try non-static method (accessible via :: but should error):
+      // "base.member"
+      if (!func_symbol) {
+        size_t dot_ql = strlen(base_name) + strlen(member_name) + 2;
+        char *dot_qn = arena_alloc(arena, dot_ql, 1);
+        snprintf(dot_qn, dot_ql, "%s.%s", base_name, member_name);
+        Symbol *dot_sym = scope_lookup(scope, dot_qn);
+        if (dot_sym && dot_sym->type &&
+            dot_sym->type->type == AST_TYPE_FUNCTION) {
+          // Check if this is a non-static struct method
+          Symbol *base_sym = scope_lookup(scope, base_name);
+          if (base_sym && base_sym->type &&
+              base_sym->type->type == AST_TYPE_STRUCT) {
+            AstNode *mtype =
+                get_struct_member_type(base_sym->type, member_name);
+            if (mtype && mtype->type == AST_TYPE_FUNCTION) {
+              tc_error(expr, "Compile-time Call Error",
+                       "Method '%s' is not static, call it on an instance",
+                       member_name);
+              return NULL;
+            }
+          }
+          // It's a callable (function-typed) enum member or module symbol
+          func_symbol = dot_sym;
+        }
+      }
+
       if (!func_symbol) {
         tc_error(expr, "Compile-time Call Error",
                  "No compile-time callable '%s::%s' found", base_name,
@@ -529,8 +567,43 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
                    member_name, base_type->type_data.struct_type.name);
           return NULL;
         } else {
+          // Check for privately inherited method
+          const char *sc_name = base_type->type_data.struct_type.name;
+          size_t iql = strlen(sc_name) + strlen(".") + strlen(member_name) + 1;
+          char *iqn = arena_alloc(arena, iql, 1);
+          snprintf(iqn, iql, "%s.%s", sc_name, member_name);
+          Symbol *isym = scope_lookup(scope, iqn);
+          if (isym && isym->type && isym->type->type == AST_TYPE_FUNCTION) {
+            Symbol *self_sym = scope_lookup(scope, "self");
+            if (self_sym && self_sym->type &&
+                self_sym->type->type == AST_TYPE_POINTER) {
+              AstNode *pointee = self_sym->type->type_data.pointer.pointee_type;
+              if (pointee && pointee->type == AST_TYPE_STRUCT &&
+                  strcmp(pointee->type_data.struct_type.name, sc_name) == 0) {
+                func_symbol = isym;
+                func_name = member_name;
+                is_method_call = true;
+                // Prepend self argument
+                size_t nac = arg_count + 1;
+                AstNode **na = arena_alloc(
+                    arena, nac * sizeof(AstNode *), alignof(AstNode *));
+                na[0] = base_expr;
+                for (size_t j = 0; j < arg_count; j++)
+                  na[j + 1] = arguments[j];
+                arguments = na;
+                arg_count = nac;
+                goto process_call;
+              }
+            }
+            tc_error_help(expr, "Runtime Call Error",
+                          "This method is privately inherited and cannot "
+                          "be called externally",
+                          "Method '%s' is privately inherited by struct '%s'",
+                          member_name, sc_name);
+            return NULL;
+          }
           tc_error(expr, "Runtime Call Error", "Struct '%s' has no member '%s'",
-                   base_type->type_data.struct_type.name, member_name);
+                   sc_name, member_name);
           return NULL;
         }
       } else {
@@ -545,6 +618,7 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
     return NULL;
   }
 
+  process_call:
   if (!func_symbol) {
     tc_error(expr, "Call Error", "Undefined function '%s'",
              func_name ? func_name : "unknown");
@@ -664,9 +738,9 @@ AstNode *typecheck_call_expr(AstNode *expr, Scope *scope,
       } else {
         // Original generic message for non-function mismatches
         tc_error_help(expr, "Call Error",
-                      "Argument %zu to function '%s' has wrong type.",
-                      "Expected '%s', got '%s'", i + 1,
-                      func_name ? func_name : "function",
+                      "The argument type does not match the expected parameter type",
+                      "Argument %zu to function '%s': expected '%s', got '%s'",
+                      i + 1, func_name ? func_name : "function",
                       type_to_string(param_types[i], arena),
                       type_to_string(arg_type, arena));
       }
@@ -917,17 +991,16 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
         return NULL;
       }
 
-      // IMPORTANT: Now that we have base_name, we need to look up the qualified
-      // symbol Build the qualified name: base_name.member_name
-      size_t qualified_len = strlen(base_name) + strlen(member_name) + 2;
-      char *qualified_name = arena_alloc(arena, qualified_len, 1);
-      snprintf(qualified_name, qualified_len, "%s.%s", base_name, member_name);
+      // Look up the qualified symbol (e.g., "EnumType.MEMBER")
+      // First try "base.member" (enum members, non-static methods)
+      size_t dot_qualified_len = strlen(base_name) + strlen(member_name) + 2;
+      char *dot_qualified_name = arena_alloc(arena, dot_qualified_len, 1);
+      snprintf(dot_qualified_name, dot_qualified_len, "%s.%s", base_name,
+               member_name);
 
-      // Look up this qualified symbol (e.g., "ExprKind.EXPR_NUMBER")
-      Symbol *member_symbol = scope_lookup(scope, qualified_name);
+      Symbol *member_symbol = scope_lookup(scope, dot_qualified_name);
 
       if (!member_symbol) {
-        // Try looking in imported modules
         Scope *current = scope;
         while (current && !member_symbol) {
           for (size_t i = 0; i < current->imported_modules.count; i++) {
@@ -936,7 +1009,7 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
                                  i * sizeof(ModuleImport));
 
             member_symbol = scope_lookup_current_only_with_visibility(
-                import->module_scope, qualified_name, scope);
+                import->module_scope, dot_qualified_name, scope);
 
             if (member_symbol) {
               break;
@@ -947,7 +1020,31 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
       }
 
       if (member_symbol) {
+        if (member_symbol->type &&
+            member_symbol->type->type == AST_TYPE_FUNCTION &&
+            base_type && base_type->type == AST_TYPE_STRUCT) {
+          AstNode *mtype = get_struct_member_type(base_type, member_name);
+          if (mtype && mtype->type == AST_TYPE_FUNCTION) {
+            tc_error(expr, "Compile-time Access Error",
+                     "Method '%s' is not static, call it on an instance",
+                     member_name);
+            return NULL;
+          }
+        }
         return member_symbol->type;
+      }
+
+      // Try "base::member" for static methods
+      size_t static_qualified_len =
+          strlen(base_name) + strlen("::") + strlen(member_name) + 1;
+      char *static_qualified_name =
+          arena_alloc(arena, static_qualified_len, 1);
+      snprintf(static_qualified_name, static_qualified_len, "%s::%s",
+               base_name, member_name);
+
+      Symbol *static_symbol = scope_lookup(scope, static_qualified_name);
+      if (static_symbol) {
+        return static_symbol->type;
       }
 
       tc_error(expr, "Compile-time Access Error",
@@ -964,12 +1061,16 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
 
     // Now we have base_name and member_name - look up the qualified symbol
     // Try enum-style lookup (EnumName::Member or Module::Type)
-    size_t qualified_len = strlen(base_name) + strlen(member_name) + 2;
-    char *qualified_name = arena_alloc(arena, qualified_len, 1);
-    snprintf(qualified_name, qualified_len, "%s.%s", base_name, member_name);
+    // For structs, this also finds non-static methods (StructName.methodName)
+    // Non-static methods found via :: should error — use dot access instead
 
-    // Look up the qualified symbol with visibility rules
-    Symbol *member_symbol = scope_lookup(scope, qualified_name);
+    // First try "base_name.member_name" (non-static methods, enum members)
+    size_t dot_qualified_len = strlen(base_name) + strlen(member_name) + 2;
+    char *dot_qualified_name = arena_alloc(arena, dot_qualified_len, 1);
+    snprintf(dot_qualified_name, dot_qualified_len, "%s.%s", base_name,
+             member_name);
+
+    Symbol *member_symbol = scope_lookup(scope, dot_qualified_name);
 
     if (!member_symbol) {
       // Try looking in imported modules explicitly
@@ -980,9 +1081,8 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
               (ModuleImport *)((char *)current->imported_modules.data +
                                i * sizeof(ModuleImport));
 
-          // Look in the imported module's scope
           member_symbol = scope_lookup_current_only_with_visibility(
-              import->module_scope, qualified_name, scope);
+              import->module_scope, dot_qualified_name, scope);
 
           if (member_symbol) {
             break;
@@ -993,7 +1093,39 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
     }
 
     if (member_symbol) {
+      // If we found a non-static method via :: access, that's an error
+      // (non-static methods must be called via dot on an instance)
+      if (member_symbol->type &&
+          member_symbol->type->type == AST_TYPE_FUNCTION) {
+        // Check if this is a non-static struct method
+        // (rather than an enum member or module symbol)
+        if (base_type && base_type->type == AST_TYPE_STRUCT) {
+          AstNode *member_type =
+              get_struct_member_type(base_type, member_name);
+          if (member_type && member_type->type == AST_TYPE_FUNCTION) {
+            // This is a non-static method accessed via ::
+            tc_error(expr, "Compile-time Access Error",
+                     "Method '%s' is not static, call it on an instance",
+                     member_name);
+            return NULL;
+          }
+        }
+      }
+      // Enum members and other compile-time symbols are fine
       return member_symbol->type;
+    }
+
+    // Try "base_name::member_name" for static methods
+    size_t static_qualified_len =
+        strlen(base_name) + strlen("::") + strlen(member_name) + 1;
+    char *static_qualified_name =
+        arena_alloc(arena, static_qualified_len, 1);
+    snprintf(static_qualified_name, static_qualified_len, "%s::%s", base_name,
+             member_name);
+
+    Symbol *static_symbol = scope_lookup(scope, static_qualified_name);
+    if (static_symbol) {
+      return static_symbol->type;
     }
 
     // Error handling - symbol not found
@@ -1122,9 +1254,50 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
         return member_type;
       }
 
-      // Member doesn't exist
-      tc_error(expr, "Runtime Access Error", "Struct '%s' has no member '%s'",
-               base_type->type_data.struct_type.name, member_name);
+      // Check for privately inherited method (registered as "Struct.method")
+      const char *struct_name_c = base_type->type_data.struct_type.name;
+      size_t inh_ql = strlen(struct_name_c) + strlen(".") + strlen(member_name) + 1;
+      char *inh_qn = arena_alloc(arena, inh_ql, 1);
+      snprintf(inh_qn, inh_ql, "%s.%s", struct_name_c, member_name);
+      Symbol *inh_sym = scope_lookup(scope, inh_qn);
+      if (inh_sym && inh_sym->type && inh_sym->type->type == AST_TYPE_FUNCTION) {
+        // Check if we're inside a method of this struct (private inheritance)
+        Symbol *self_sym = scope_lookup(scope, "self");
+        if (self_sym && self_sym->type &&
+            self_sym->type->type == AST_TYPE_POINTER) {
+          AstNode *pointee = self_sym->type->type_data.pointer.pointee_type;
+          if (pointee && pointee->type == AST_TYPE_STRUCT &&
+              strcmp(pointee->type_data.struct_type.name, struct_name_c) == 0) {
+            return inh_sym->type;
+          }
+        }
+        // External access to privately inherited method
+        tc_error_help(expr, "Runtime Access Error",
+                      "This method is privately inherited and cannot be called "
+                      "externally",
+                      "Method '%s' is privately inherited by struct '%s' and "
+                      "cannot be called from outside",
+                      member_name, struct_name_c);
+        return NULL;
+      }
+
+      // Member doesn't exist — check if it's a static method (hint)
+      size_t hint_len = strlen(struct_name_c) + strlen("::") +
+                        strlen(member_name) + 1;
+      char *hint_qualified = arena_alloc(arena, hint_len, 1);
+      snprintf(hint_qualified, hint_len, "%s::%s", struct_name_c, member_name);
+      Symbol *hint_symbol = scope_lookup(scope, hint_qualified);
+
+      if (hint_symbol) {
+        tc_error_help(expr, "Runtime Access Error",
+                      "Use '::' to call static methods",
+                      "Member '%s' is a static method on struct '%s' — use "
+                      "'%s::%s' instead",
+                      member_name, struct_name_c, struct_name_c, member_name);
+      } else {
+        tc_error(expr, "Runtime Access Error",
+                 "Struct '%s' has no member '%s'", struct_name_c, member_name);
+      }
       return NULL;
 
     } else {
@@ -1661,19 +1834,6 @@ AstNode *typecheck_struct_expr_internal(AstNode *expr, Scope *scope,
   AstNode **field_values = expr->expr.struct_expr.field_value;
   size_t field_count = expr->expr.struct_expr.field_count;
 
-  // Check for duplicate field names in the initializer
-  for (size_t i = 0; i < field_count; i++) {
-    for (size_t j = i + 1; j < field_count; j++) {
-      if (strcmp(field_names[i], field_names[j]) == 0) {
-        tc_error_help(expr, "Duplicate Field",
-                      "Each field can only be initialized once",
-                      "Field '%s' appears multiple times in struct initializer",
-                      field_names[i]);
-        return NULL;
-      }
-    }
-  }
-
   if (struct_name) {
     // Named struct initialization: Point { x: 10, y: 20 }
 
@@ -1700,10 +1860,137 @@ AstNode *typecheck_struct_expr_internal(AstNode *expr, Scope *scope,
       return NULL;
     }
 
-    // Validate each initialized field
+    // Track already-resolved field names to handle spreads and overrides
+    GrowableArray resolved_fields;
+    growable_array_init(&resolved_fields, arena, field_count, sizeof(char *));
+
+    // Validate each initialized field (including spreads)
     for (size_t i = 0; i < field_count; i++) {
       const char *field_name = field_names[i];
       AstNode *field_value = field_values[i];
+
+      // Handle spread expression: ...expr
+      if (!field_name) {
+        if (!field_value || field_value->type != AST_EXPR_SPREAD) {
+          tc_error(expr, "Invalid Field",
+                   "Invalid field entry in struct literal");
+          return NULL;
+        }
+
+        // Typecheck the spread's inner expression
+        AstNode *spread_source =
+            typecheck_expression(field_value->expr.spread.expr, scope, arena);
+        if (!spread_source) {
+          tc_error(expr, "Spread Error",
+                   "Failed to evaluate spread expression");
+          return NULL;
+        }
+
+        // Resolve to struct type if needed
+        AstNode *source_struct = spread_source;
+        if (source_struct->type == AST_TYPE_BASIC) {
+          Symbol *src_sym =
+              scope_lookup(scope, source_struct->type_data.basic.name);
+          if (src_sym && src_sym->type &&
+              src_sym->type->type == AST_TYPE_STRUCT) {
+            source_struct = src_sym->type;
+          }
+        } else if (source_struct->type == AST_TYPE_POINTER) {
+          AstNode *pointee = source_struct->type_data.pointer.pointee_type;
+          if (pointee && pointee->type == AST_TYPE_BASIC) {
+            Symbol *src_sym = scope_lookup(scope, pointee->type_data.basic.name);
+            if (src_sym && src_sym->type &&
+                src_sym->type->type == AST_TYPE_STRUCT) {
+              source_struct = src_sym->type;
+            }
+          } else if (pointee && pointee->type == AST_TYPE_STRUCT) {
+            source_struct = pointee;
+          }
+        }
+
+        if (!source_struct || source_struct->type != AST_TYPE_STRUCT) {
+          tc_error(expr, "Spread Error",
+                   "Spread expression must evaluate to a struct type");
+          return NULL;
+        }
+
+        // Verify the spread type is compatible with the target struct
+        TypeMatchResult compat =
+            types_match(struct_type, source_struct);
+        if (compat == TYPE_MATCH_NONE) {
+          tc_error_help(expr, "Spread Error",
+                        "The spread expression must resolve to a compatible "
+                        "struct type",
+                        "Spread expression resolves to '%s', but the literal "
+                        "is for struct '%s'",
+                        type_to_string(source_struct, arena), struct_name);
+          return NULL;
+        }
+
+        // Flatten fields from the source struct
+        // Fields already in resolved_fields are overrides — skip them
+        for (size_t j = 0;
+             j < source_struct->type_data.struct_type.member_count; j++) {
+          const char *src_fname =
+              source_struct->type_data.struct_type.member_names[j];
+          AstNode *src_ftype =
+              source_struct->type_data.struct_type.member_types[j];
+
+          // Skip methods
+          if (src_ftype && src_ftype->type == AST_TYPE_FUNCTION)
+            continue;
+
+          // Check if field exists in target struct
+          AstNode *target_ftype =
+              get_struct_member_type(struct_type, src_fname);
+          if (!target_ftype) {
+            tc_error_help(
+                expr, "Spread Error",
+                "Field brought in by spread does not exist in target struct",
+                "Struct '%s' has no field '%s' brought in by spread from '%s'",
+                struct_name, src_fname,
+                source_struct->type_data.struct_type.name);
+            return NULL;
+          }
+
+          if (target_ftype && target_ftype->type == AST_TYPE_FUNCTION)
+            continue;
+
+          // Check if field is already set (override from earlier explicit field)
+          bool already_set = false;
+          for (size_t k = 0; k < resolved_fields.count; k++) {
+            char **existing =
+                (char **)((char *)resolved_fields.data + k * sizeof(char *));
+            if (strcmp(*existing, src_fname) == 0) {
+              already_set = true;
+              break;
+            }
+          }
+          if (already_set)
+            continue;
+
+          // Mark as resolved
+          char **slot = (char **)growable_array_push(&resolved_fields);
+          *slot = (char *)src_fname;
+        }
+        continue;
+      }
+
+      // Regular field — check duplicate against resolved fields
+      bool already_resolved = false;
+      for (size_t j = 0; j < resolved_fields.count; j++) {
+        char **existing =
+            (char **)((char *)resolved_fields.data + j * sizeof(char *));
+        if (strcmp(*existing, field_name) == 0) {
+          already_resolved = true;
+          break;
+        }
+      }
+
+      if (!already_resolved) {
+        char **slot = (char **)growable_array_push(&resolved_fields);
+        *slot = (char *)field_name;
+      }
 
       // Check if the field exists in the struct definition
       AstNode *expected_field_type =
@@ -1746,8 +2033,7 @@ AstNode *typecheck_struct_expr_internal(AstNode *expr, Scope *scope,
       }
     }
 
-    // CRITICAL FIX: Return a basic type that references the struct name
-    // This matches how struct types are used in variable declarations
+    // Return a basic type that references the struct name
     return create_basic_type(arena, struct_name, expr->line, expr->column);
 
   } else {
@@ -1777,10 +2063,126 @@ AstNode *typecheck_struct_expr_internal(AstNode *expr, Scope *scope,
 
       // If we successfully resolved to a struct type, validate against it
       if (target_struct_type && target_struct_type->type == AST_TYPE_STRUCT) {
+        // Track resolved field names for spread handling
+        GrowableArray resolved_fields;
+        growable_array_init(&resolved_fields, arena, field_count, sizeof(char *));
+
         // Validate each field in the anonymous struct
         for (size_t i = 0; i < field_count; i++) {
           const char *field_name = field_names[i];
           AstNode *field_value = field_values[i];
+
+          // Handle spread expression: ...expr
+          if (!field_name) {
+            if (!field_value || field_value->type != AST_EXPR_SPREAD) {
+              tc_error(expr, "Invalid Field",
+                       "Invalid field entry in struct literal");
+              return NULL;
+            }
+
+            AstNode *spread_source =
+                typecheck_expression(field_value->expr.spread.expr, scope, arena);
+            if (!spread_source) {
+              tc_error(expr, "Spread Error",
+                       "Failed to evaluate spread expression");
+              return NULL;
+            }
+
+            AstNode *source_struct = spread_source;
+            if (source_struct->type == AST_TYPE_BASIC) {
+              Symbol *src_sym =
+                  scope_lookup(scope, source_struct->type_data.basic.name);
+              if (src_sym && src_sym->type &&
+                  src_sym->type->type == AST_TYPE_STRUCT) {
+                source_struct = src_sym->type;
+              }
+            } else if (source_struct->type == AST_TYPE_POINTER) {
+              AstNode *pointee = source_struct->type_data.pointer.pointee_type;
+              if (pointee && pointee->type == AST_TYPE_BASIC) {
+                Symbol *src_sym = scope_lookup(scope, pointee->type_data.basic.name);
+                if (src_sym && src_sym->type &&
+                    src_sym->type->type == AST_TYPE_STRUCT) {
+                  source_struct = src_sym->type;
+                }
+              } else if (pointee && pointee->type == AST_TYPE_STRUCT) {
+                source_struct = pointee;
+              }
+            }
+
+            if (!source_struct || source_struct->type != AST_TYPE_STRUCT) {
+              tc_error(expr, "Spread Error",
+                       "Spread expression must evaluate to a struct type");
+              return NULL;
+            }
+
+            TypeMatchResult compat =
+                types_match(target_struct_type, source_struct);
+            if (compat == TYPE_MATCH_NONE) {
+              tc_error_help(expr, "Spread Error",
+                            "Spread expression must resolve to a compatible struct type",
+                            "Spread expression resolves to '%s', but expected struct '%s'",
+                            type_to_string(source_struct, arena),
+                            target_struct_name ? target_struct_name : "?");
+              return NULL;
+            }
+
+            for (size_t j = 0;
+                 j < source_struct->type_data.struct_type.member_count; j++) {
+              const char *src_fname =
+                  source_struct->type_data.struct_type.member_names[j];
+              AstNode *src_ftype =
+                  source_struct->type_data.struct_type.member_types[j];
+
+              if (src_ftype && src_ftype->type == AST_TYPE_FUNCTION)
+                continue;
+
+              AstNode *target_ftype =
+                  get_struct_member_type(target_struct_type, src_fname);
+              if (!target_ftype) {
+                tc_error_help(expr, "Spread Error",
+                              "Field brought in by spread does not exist in target struct",
+                              "Struct '%s' has no field '%s' brought in by spread",
+                              target_struct_name ? target_struct_name : "?",
+                              src_fname);
+                return NULL;
+              }
+
+              if (target_ftype && target_ftype->type == AST_TYPE_FUNCTION)
+                continue;
+
+              bool already_set = false;
+              for (size_t k = 0; k < resolved_fields.count; k++) {
+                char **existing =
+                    (char **)((char *)resolved_fields.data + k * sizeof(char *));
+                if (strcmp(*existing, src_fname) == 0) {
+                  already_set = true;
+                  break;
+                }
+              }
+              if (already_set)
+                continue;
+
+              char **slot = (char **)growable_array_push(&resolved_fields);
+              *slot = (char *)src_fname;
+            }
+            continue;
+          }
+
+          // Regular field
+          bool already_resolved = false;
+          for (size_t j = 0; j < resolved_fields.count; j++) {
+            char **existing =
+                (char **)((char *)resolved_fields.data + j * sizeof(char *));
+            if (strcmp(*existing, field_name) == 0) {
+              already_resolved = true;
+              break;
+            }
+          }
+
+          if (!already_resolved) {
+            char **slot = (char **)growable_array_push(&resolved_fields);
+            *slot = (char *)field_name;
+          }
 
           // Check if the field exists in the expected struct
           AstNode *expected_field_type =
@@ -1835,27 +2237,124 @@ AstNode *typecheck_struct_expr_internal(AstNode *expr, Scope *scope,
     }
 
     // No expected type or couldn't resolve - create true anonymous struct
-    // Type check all field values
-    AstNode **field_types =
-        arena_alloc(arena, field_count * sizeof(AstNode *), alignof(AstNode *));
-    if (!field_types) {
-      tc_error(expr, "Memory Error",
-               "Failed to allocate memory for field types");
-      return NULL;
-    }
+    // First pass: resolve all fields (handling spreads and explicit fields)
+    GrowableArray anon_names;
+    growable_array_init(&anon_names, arena, field_count, sizeof(const char *));
+    GrowableArray anon_types;
+    growable_array_init(&anon_types, arena, field_count, sizeof(AstNode *));
 
     for (size_t i = 0; i < field_count; i++) {
+      const char *field_name = field_names[i];
       AstNode *field_value = field_values[i];
+
+      if (!field_name) {
+        // Spread expression
+        if (!field_value || field_value->type != AST_EXPR_SPREAD) {
+          tc_error(expr, "Invalid Field",
+                   "Invalid field entry in struct literal");
+          return NULL;
+        }
+
+        AstNode *spread_source =
+            typecheck_expression(field_value->expr.spread.expr, scope, arena);
+        if (!spread_source) {
+          tc_error(expr, "Spread Error",
+                   "Failed to evaluate spread expression");
+          return NULL;
+        }
+
+        // Resolve to struct type
+        AstNode *source_struct = spread_source;
+        if (source_struct->type == AST_TYPE_BASIC) {
+          Symbol *src_sym =
+              scope_lookup(scope, source_struct->type_data.basic.name);
+          if (src_sym && src_sym->type &&
+              src_sym->type->type == AST_TYPE_STRUCT) {
+            source_struct = src_sym->type;
+          }
+        } else if (source_struct->type == AST_TYPE_POINTER) {
+          AstNode *pointee = source_struct->type_data.pointer.pointee_type;
+          if (pointee && pointee->type == AST_TYPE_BASIC) {
+            Symbol *src_sym =
+                scope_lookup(scope, pointee->type_data.basic.name);
+            if (src_sym && src_sym->type &&
+                src_sym->type->type == AST_TYPE_STRUCT) {
+              source_struct = src_sym->type;
+            }
+          } else if (pointee && pointee->type == AST_TYPE_STRUCT) {
+            source_struct = pointee;
+          }
+        }
+
+        if (!source_struct || source_struct->type != AST_TYPE_STRUCT) {
+          tc_error(expr, "Spread Error",
+                   "Spread expression must evaluate to a struct type");
+          return NULL;
+        }
+
+        // Flatten non-method fields from source struct
+        for (size_t j = 0;
+             j < source_struct->type_data.struct_type.member_count; j++) {
+          const char *src_fname =
+              source_struct->type_data.struct_type.member_names[j];
+          AstNode *src_ftype =
+              source_struct->type_data.struct_type.member_types[j];
+
+          if (src_ftype && src_ftype->type == AST_TYPE_FUNCTION)
+            continue;
+
+          // Check for duplicate against already-resolved fields
+          bool already_set = false;
+          for (size_t k = 0; k < anon_names.count; k++) {
+            const char **existing =
+                (const char **)((char *)anon_names.data + k * sizeof(const char *));
+            if (strcmp(*existing, src_fname) == 0) {
+              already_set = true;
+              break;
+            }
+          }
+          if (already_set)
+            continue;
+
+          const char **name_slot =
+              (const char **)growable_array_push(&anon_names);
+          *name_slot = src_fname;
+          AstNode **type_slot =
+              (AstNode **)growable_array_push(&anon_types);
+          *type_slot = src_ftype;
+        }
+        continue;
+      }
+
+      // Regular field - check for duplicate
+      bool already_set = false;
+      for (size_t j = 0; j < anon_names.count; j++) {
+        const char **existing =
+            (const char **)((char *)anon_names.data + j * sizeof(const char *));
+        if (strcmp(*existing, field_name) == 0) {
+          already_set = true;
+          break;
+        }
+      }
 
       AstNode *field_type = typecheck_expression(field_value, scope, arena);
       if (!field_type) {
         tc_error(expr, "Type Error",
                  "Failed to determine type of value for field '%s'",
-                 field_names[i]);
+                 field_name);
         return NULL;
       }
 
-      field_types[i] = field_type;
+      if (already_set) {
+        continue;
+      }
+
+      const char **name_slot =
+          (const char **)growable_array_push(&anon_names);
+      *name_slot = field_name;
+      AstNode **type_slot =
+          (AstNode **)growable_array_push(&anon_types);
+      *type_slot = field_type;
     }
 
     // Create an anonymous struct type with the inferred field types
@@ -1865,7 +2364,8 @@ AstNode *typecheck_struct_expr_internal(AstNode *expr, Scope *scope,
              expr->column);
 
     AstNode *anon_struct_type = create_struct_type(
-        arena, anon_name, field_types, (const char **)field_names, field_count,
+        arena, anon_name, (AstNode **)anon_types.data,
+        (const char **)anon_names.data, anon_names.count,
         expr->line, expr->column);
 
     if (!anon_struct_type) {

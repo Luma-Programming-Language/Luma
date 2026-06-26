@@ -4,13 +4,10 @@
 static StructInfo *infer_struct_type_from_context(CodeGenContext *ctx,
                                                   char **field_names,
                                                   size_t field_count) {
-  // Try to find a struct that has all these field names
   for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-    if (info->field_count != field_count) {
+    if (info->field_count != field_count)
       continue;
-    }
 
-    // Check if all field names match (order-independent)
     bool all_match = true;
     for (size_t i = 0; i < field_count; i++) {
       bool found = false;
@@ -20,57 +17,16 @@ static StructInfo *infer_struct_type_from_context(CodeGenContext *ctx,
           break;
         }
       }
-      if (!found) {
-        all_match = false;
-        break;
-      }
+      if (!found) { all_match = false; break; }
     }
-
-    if (all_match) {
-      return info;
-    }
+    if (all_match) return info;
   }
-
   return NULL;
 }
 
-// Helper function to map user-provided field order to struct definition order
-static bool map_field_order(StructInfo *struct_info, char **provided_names,
-                            AstNode **provided_values, size_t provided_count,
-                            LLVMValueRef *ordered_values) {
-
-  // Check that all provided fields exist in struct
-  for (size_t i = 0; i < provided_count; i++) {
-    int field_idx = get_field_index(struct_info, provided_names[i]);
-    if (field_idx < 0) {
-      fprintf(stderr, "Error: Field '%s' not found in struct '%s'\n",
-              provided_names[i], struct_info->name);
-      return false;
-    }
-  }
-
-  // Map provided values to struct field order
-  for (size_t i = 0; i < struct_info->field_count; i++) {
-    bool found = false;
-
-    for (size_t j = 0; j < provided_count; j++) {
-      if (strcmp(struct_info->field_names[i], provided_names[j]) == 0) {
-        ordered_values[i] =
-            (LLVMValueRef)provided_values[j]; // Store AST node temporarily
-        found = true;
-        break;
-      }
-    }
-
-    if (!found) {
-      fprintf(stderr,
-              "Error: Missing field '%s' in struct initialization for '%s'\n",
-              struct_info->field_names[i], struct_info->name);
-      return false;
-    }
-  }
-
-  return true;
+// Check if a field value is a spread expression (field_name is NULL and value is AST_EXPR_SPREAD)
+static bool is_spread_entry(char *field_name, AstNode *field_value) {
+  return !field_name && field_value && field_value->type == AST_EXPR_SPREAD;
 }
 
 LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
@@ -86,143 +42,158 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
 
   StructInfo *struct_info = NULL;
 
-  // Case 1: Explicit struct type (Point { x: 20, y: 40 })
   if (struct_name) {
     struct_info = find_struct_type(ctx, struct_name);
     if (!struct_info) {
       fprintf(stderr, "Error: Struct type '%s' not found\n", struct_name);
       return NULL;
     }
-  }
-  // Case 2: Inferred struct type ({ x: 50, y: 10 })
-  else {
+  } else {
     struct_info = infer_struct_type_from_context(ctx, field_names, field_count);
     if (!struct_info) {
-      fprintf(stderr, "Error: Could not infer struct type from field names. ");
-      fprintf(stderr, "Provided fields: ");
-      for (size_t i = 0; i < field_count; i++) {
-        fprintf(stderr, "%s%s", field_names[i],
-                i < field_count - 1 ? ", " : "\n");
-      }
+      fprintf(stderr, "Error: Could not infer struct type from field names.\n");
       return NULL;
     }
   }
 
-  // Verify field count matches
-  if (field_count != struct_info->field_count) {
-    fprintf(stderr, "Error: Struct '%s' expects %zu fields, got %zu\n",
-            struct_info->name, struct_info->field_count, field_count);
-    return NULL;
-  }
-
-  // Allocate array for ordered field values (in struct definition order)
-  LLVMValueRef *ordered_ast_nodes = (LLVMValueRef *)arena_alloc(
-      ctx->arena, sizeof(LLVMValueRef) * field_count, alignof(LLVMValueRef));
-
-  // Map user-provided field order to struct definition order
-  if (!map_field_order(struct_info, field_names, field_values, field_count,
-                       ordered_ast_nodes)) {
-    return NULL;
-  }
-
-  // Now generate code for each field value in the correct order
+  // First pass: evaluate all named field values and collect spread sources
   LLVMValueRef *llvm_field_values = (LLVMValueRef *)arena_alloc(
-      ctx->arena, sizeof(LLVMValueRef) * field_count, alignof(LLVMValueRef));
+      ctx->arena, sizeof(LLVMValueRef) * struct_info->field_count, alignof(LLVMValueRef));
+
+  // Initialize all to NULL (not yet set)
+  for (size_t i = 0; i < struct_info->field_count; i++)
+    llvm_field_values[i] = NULL;
 
   bool all_constant = true;
 
+  // Process each entry in the struct literal
   for (size_t i = 0; i < field_count; i++) {
-    // Generate the field value expression
-    AstNode *field_value_node = (AstNode *)ordered_ast_nodes[i];
-    llvm_field_values[i] = codegen_expr(ctx, field_value_node);
-
-    if (!llvm_field_values[i]) {
-      fprintf(stderr,
-              "Error: Failed to generate value for field '%s' in struct '%s'\n",
-              struct_info->field_names[i], struct_info->name);
-      return NULL;
-    }
-
-    // Check type compatibility
-    LLVMTypeRef expected_type = struct_info->field_types[i];
-    LLVMTypeRef actual_type = LLVMTypeOf(llvm_field_values[i]);
-
-    if (expected_type != actual_type) {
-      // Try type conversion
-      LLVMTypeKind expected_kind = LLVMGetTypeKind(expected_type);
-      LLVMTypeKind actual_kind = LLVMGetTypeKind(actual_type);
-
-      // Integer conversions
-      if (expected_kind == LLVMIntegerTypeKind &&
-          actual_kind == LLVMIntegerTypeKind) {
-        unsigned expected_bits = LLVMGetIntTypeWidth(expected_type);
-        unsigned actual_bits = LLVMGetIntTypeWidth(actual_type);
-
-        if (expected_bits > actual_bits) {
-          llvm_field_values[i] = LLVMBuildSExt(
-              ctx->builder, llvm_field_values[i], expected_type, "sext_field");
-        } else if (expected_bits < actual_bits) {
-          llvm_field_values[i] = LLVMBuildTrunc(
-              ctx->builder, llvm_field_values[i], expected_type, "trunc_field");
-        }
-      }
-      // Float conversions
-      else if (expected_kind == LLVMDoubleTypeKind &&
-               actual_kind == LLVMFloatTypeKind) {
-        llvm_field_values[i] = LLVMBuildFPExt(
-            ctx->builder, llvm_field_values[i], expected_type, "fpext_field");
-      } else if (expected_kind == LLVMFloatTypeKind &&
-                 actual_kind == LLVMDoubleTypeKind) {
-        llvm_field_values[i] = LLVMBuildFPTrunc(
-            ctx->builder, llvm_field_values[i], expected_type, "fptrunc_field");
-      }
-      // Int to float
-      else if ((expected_kind == LLVMFloatTypeKind ||
-                expected_kind == LLVMDoubleTypeKind) &&
-               actual_kind == LLVMIntegerTypeKind) {
-        llvm_field_values[i] = LLVMBuildSIToFP(
-            ctx->builder, llvm_field_values[i], expected_type, "sitofp_field");
-      }
-      // Float to int
-      else if (expected_kind == LLVMIntegerTypeKind &&
-               (actual_kind == LLVMFloatTypeKind ||
-                actual_kind == LLVMDoubleTypeKind)) {
-        llvm_field_values[i] = LLVMBuildFPToSI(
-            ctx->builder, llvm_field_values[i], expected_type, "fptosi_field");
-      } else {
-        fprintf(stderr, "Error: Type mismatch for field '%s' in struct '%s'\n",
-                struct_info->field_names[i], struct_info->name);
-        fprintf(stderr, "  Expected type kind: %d, got type kind: %d\n",
-                expected_kind, actual_kind);
+    if (is_spread_entry(field_names[i], field_values[i])) {
+      // Spread expression: ...expr
+      // Evaluate the spread expression
+      LLVMValueRef spread_val = codegen_expr(ctx, field_values[i]->expr.spread.expr);
+      if (!spread_val) {
+        fprintf(stderr, "Error: Failed to evaluate spread expression in struct literal\n");
         return NULL;
       }
-    }
 
-    // Check if all values are constants
-    if (all_constant && !LLVMIsConstant(llvm_field_values[i])) {
-      all_constant = false;
+      // Determine the source struct type
+      LLVMTypeRef spread_type = LLVMTypeOf(spread_val);
+      StructInfo *source_info = NULL;
+      for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+        if (info->llvm_type == spread_type) {
+          source_info = info;
+          break;
+        }
+      }
+      if (!source_info) {
+        const char *tn = LLVMGetStructName(spread_type);
+        if (tn) source_info = find_struct_type(ctx, tn);
+      }
+      if (!source_info) {
+        fprintf(stderr, "Error: Cannot determine struct type for spread\n");
+        return NULL;
+      }
+
+      // Alloca the spread value so we can GEP into it
+      LLVMValueRef spread_alloca = alloca_and_store(ctx, spread_type, spread_val, "spread_tmp");
+
+      // Copy each field from source to target by name
+      for (size_t j = 0; j < source_info->field_count; j++) {
+        int target_idx = get_field_index(struct_info, source_info->field_names[j]);
+        if (target_idx < 0) {
+          fprintf(stderr, "Error: Field '%s' from spread doesn't exist in target\n",
+                  source_info->field_names[j]);
+          return NULL;
+        }
+        // Only set if not already provided (named fields override spread)
+        if (!llvm_field_values[target_idx]) {
+          LLVMValueRef src_field_ptr = LLVMBuildStructGEP2(
+              ctx->builder, source_info->llvm_type, spread_alloca, j, "spread_field_ptr");
+          LLVMValueRef src_val = LLVMBuildLoad2(
+              ctx->builder, source_info->field_types[j], src_field_ptr, "spread_field_val");
+          llvm_field_values[target_idx] = src_val;
+          if (all_constant && !LLVMIsConstant(src_val))
+            all_constant = false;
+        }
+      }
+
+      if (all_constant && !LLVMIsConstant(spread_val))
+        all_constant = false;
+    } else {
+      // Named field: field_name: value
+      int field_idx = get_field_index(struct_info, field_names[i]);
+      if (field_idx < 0) {
+        fprintf(stderr, "Error: Field '%s' not found in struct '%s'\n",
+                field_names[i], struct_info->name);
+        return NULL;
+      }
+
+      LLVMValueRef val = codegen_expr(ctx, field_values[i]);
+      if (!val) {
+        fprintf(stderr, "Error: Failed to generate value for field '%s'\n",
+                field_names[i]);
+        return NULL;
+      }
+
+      // Type conversion if needed
+      LLVMTypeRef expected_type = struct_info->field_types[field_idx];
+      LLVMTypeRef actual_type = LLVMTypeOf(val);
+      if (expected_type != actual_type) {
+        LLVMTypeKind expected_kind = LLVMGetTypeKind(expected_type);
+        LLVMTypeKind actual_kind = LLVMGetTypeKind(actual_type);
+
+        if (expected_kind == LLVMIntegerTypeKind && actual_kind == LLVMIntegerTypeKind) {
+          unsigned eb = LLVMGetIntTypeWidth(expected_type);
+          unsigned ab = LLVMGetIntTypeWidth(actual_type);
+          if (eb > ab)
+            val = LLVMBuildSExt(ctx->builder, val, expected_type, "sext_field");
+          else if (eb < ab)
+            val = LLVMBuildTrunc(ctx->builder, val, expected_type, "trunc_field");
+        } else if (expected_kind == LLVMDoubleTypeKind && actual_kind == LLVMFloatTypeKind)
+          val = LLVMBuildFPExt(ctx->builder, val, expected_type, "fpext_field");
+        else if (expected_kind == LLVMFloatTypeKind && actual_kind == LLVMDoubleTypeKind)
+          val = LLVMBuildFPTrunc(ctx->builder, val, expected_type, "fptrunc_field");
+        else if ((expected_kind == LLVMFloatTypeKind || expected_kind == LLVMDoubleTypeKind) &&
+                  actual_kind == LLVMIntegerTypeKind)
+          val = LLVMBuildSIToFP(ctx->builder, val, expected_type, "sitofp_field");
+        else if (expected_kind == LLVMIntegerTypeKind &&
+                  (actual_kind == LLVMFloatTypeKind || actual_kind == LLVMDoubleTypeKind))
+          val = LLVMBuildFPToSI(ctx->builder, val, expected_type, "fptosi_field");
+        else {
+          fprintf(stderr, "Error: Type mismatch for field '%s' in struct '%s'\n",
+                  field_names[i], struct_info->name);
+          return NULL;
+        }
+      }
+
+      llvm_field_values[field_idx] = val;
+      if (all_constant && !LLVMIsConstant(val))
+        all_constant = false;
+    }
+  }
+
+  // Check that all fields are filled
+  for (size_t i = 0; i < struct_info->field_count; i++) {
+    if (!llvm_field_values[i]) {
+      fprintf(stderr, "Error: Missing field '%s' in struct initialization for '%s'\n",
+              struct_info->field_names[i], struct_info->name);
+      return NULL;
     }
   }
 
   // Create the struct value
   if (all_constant) {
-    // Create constant struct
     return LLVMConstNamedStruct(struct_info->llvm_type, llvm_field_values,
-                                field_count);
+                                struct_info->field_count);
   } else {
-    // Create runtime struct
     LLVMValueRef struct_alloca =
         LLVMBuildAlloca(ctx->builder, struct_info->llvm_type, "struct_literal");
-
-    // Store each field value
-    for (size_t i = 0; i < field_count; i++) {
+    for (size_t i = 0; i < struct_info->field_count; i++) {
       LLVMValueRef field_ptr = LLVMBuildStructGEP2(
           ctx->builder, struct_info->llvm_type, struct_alloca, i, "field_ptr");
       LLVMBuildStore(ctx->builder, llvm_field_values[i], field_ptr);
     }
-
-    // Load and return the complete struct
-    return LLVMBuildLoad2(ctx->builder, struct_info->llvm_type, struct_alloca,
-                          "struct_val");
+    return LLVMBuildLoad2(ctx->builder, struct_info->llvm_type, struct_alloca, "struct_val");
   }
 }

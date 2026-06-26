@@ -221,3 +221,10 @@ Expr *create_struct_expr(ArenaAllocator *arena, char *name, char **field_names,
   node->expr.struct_expr.field_count = field_count;
   return node;
 }
+
+Expr *create_spread_expr(ArenaAllocator *arena, Expr *expr, size_t line,
+                         size_t col) {
+  AstNode *node = create_expr(arena, AST_EXPR_SPREAD, line, col);
+  node->expr.spread.expr = expr;
+  return node;
+}

@@ -262,33 +262,45 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     const char *member_name = callee->expr.member.member;
     AstNode *object = callee->expr.member.object;
 
-    LLVMValueRef object_value = codegen_expr(ctx, object);
-    if (!object_value) {
-      fprintf(stderr, "Error: Failed to evaluate object for method call\n");
-      return NULL;
-    }
-
-    LLVMTypeRef object_type = LLVMTypeOf(object_value);
-    LLVMTypeKind object_kind = LLVMGetTypeKind(object_type);
+    // Check if the object is a struct type name (not a runtime value)
+    bool object_is_type = false;
     StructInfo *struct_info = NULL;
 
-    if (object_kind == LLVMPointerTypeKind) {
-      if (object->type == AST_EXPR_IDENTIFIER) {
-        LLVM_Symbol *sym = find_symbol(ctx, object->expr.identifier.name);
-        if (sym && sym->element_type) {
-          for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-            if (info->llvm_type == sym->element_type) {
+    if (object->type == AST_EXPR_IDENTIFIER) {
+      const char *type_name = object->expr.identifier.name;
+      struct_info = find_struct_type(ctx, type_name);
+      if (struct_info) {
+        object_is_type = true;
+      }
+    }
+
+    if (!struct_info) {
+      LLVMValueRef object_value = codegen_expr(ctx, object);
+      if (object_value) {
+        LLVMTypeRef object_type = LLVMTypeOf(object_value);
+        LLVMTypeKind object_kind = LLVMGetTypeKind(object_type);
+
+        if (object_kind == LLVMPointerTypeKind) {
+          if (object->type == AST_EXPR_IDENTIFIER) {
+            LLVM_Symbol *sym = find_symbol(ctx, object->expr.identifier.name);
+            if (sym && sym->element_type) {
+              for (StructInfo *info = ctx->struct_types; info;
+                   info = info->next) {
+                if (info->llvm_type == sym->element_type) {
+                  struct_info = info;
+                  break;
+                }
+              }
+            }
+          }
+        } else if (object_kind == LLVMStructTypeKind) {
+          for (StructInfo *info = ctx->struct_types; info;
+               info = info->next) {
+            if (info->llvm_type == object_type) {
               struct_info = info;
               break;
             }
           }
-        }
-      }
-    } else if (object_kind == LLVMStructTypeKind) {
-      for (StructInfo *info = ctx->struct_types; info; info = info->next) {
-        if (info->llvm_type == object_type) {
-          struct_info = info;
-          break;
         }
       }
     }
@@ -326,6 +338,14 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     }
 
     if (!method_func) {
+      // Try symbol table lookup (handles inherited methods via "Child.method")
+      LLVM_Symbol *inh_sym = find_symbol_in_module(
+          ctx->current_module, qualified_method_name);
+      if (inh_sym && inh_sym->is_function) {
+        method_func = inh_sym->value;
+      }
+    }
+    if (!method_func) {
       fprintf(stderr,
               "Error: Method '%s' (qualified: %s) not found in any module\n",
               member_name, qualified_method_name);
@@ -337,6 +357,26 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     args = (LLVMValueRef *)arena_alloc(
         ctx->arena, sizeof(LLVMValueRef) * arg_count, alignof(LLVMValueRef));
     for (size_t i = 0; i < arg_count; i++) {
+      if (i == 0 && object_is_type) {
+        if (ctx->current_function &&
+            LLVMCountParams(ctx->current_function) > 0) {
+          LLVMValueRef self_param = LLVMGetParam(ctx->current_function, 0);
+          LLVMTypeRef func_type = LLVMGlobalGetValueType(method_func);
+          LLVMTypeRef *param_types =
+              (LLVMTypeRef *)arena_alloc(
+                  ctx->arena,
+                  sizeof(LLVMTypeRef) * LLVMCountParamTypes(func_type),
+                  alignof(LLVMTypeRef));
+          LLVMGetParamTypes(func_type, param_types);
+          if (LLVMTypeOf(self_param) != param_types[0]) {
+            args[0] = LLVMBuildBitCast(ctx->builder, self_param,
+                                       param_types[0], "self.cast");
+          } else {
+            args[0] = self_param;
+          }
+          continue;
+        }
+      }
       args[i] = codegen_expr(ctx, node->expr.call.args[i]);
       if (!args[i]) {
         fprintf(stderr,
@@ -389,6 +429,30 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
   if (!return_type) {
     fprintf(stderr, "Error: Failed to get return type\n");
     return NULL;
+  }
+
+  // Convert arguments to match function parameter types
+  size_t param_count = LLVMCountParamTypes(func_type);
+  if (param_count > 0 && param_count == arg_count) {
+    LLVMTypeRef *param_types = (LLVMTypeRef *)arena_alloc(
+        ctx->arena, sizeof(LLVMTypeRef) * param_count, alignof(LLVMTypeRef));
+    LLVMGetParamTypes(func_type, param_types);
+    for (size_t i = 0; i < arg_count; i++) {
+      LLVMTypeRef arg_type = LLVMTypeOf(args[i]);
+      if (arg_type != param_types[i]) {
+        LLVMValueRef converted = convert_value_to_type(ctx, args[i], arg_type,
+                                                       param_types[i]);
+        if (converted) {
+          args[i] = converted;
+        } else {
+          fprintf(stderr,
+                  "Warning: Cannot convert arg %zu type (kind %d) to param "
+                  "type (kind %d)\n",
+                  i, (int)LLVMGetTypeKind(arg_type),
+                  (int)LLVMGetTypeKind(param_types[i]));
+        }
+      }
+    }
   }
 
   if (LLVMGetTypeKind(return_type) == LLVMVoidTypeKind) {

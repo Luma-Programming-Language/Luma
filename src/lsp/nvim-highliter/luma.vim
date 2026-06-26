@@ -33,7 +33,7 @@ hi def lumaDirective guifg=#d3869b gui=bold
 " =====================
 " KEYWORDS
 " =====================
-syn keyword lumaKeyword const fn if elif else loop return let pub priv
+syn keyword lumaKeyword const fn if elif else loop return let pub priv static
 syn keyword lumaKeyword struct enum switch case defer break continue
 syn keyword lumaKeyword impl as
 hi def lumaKeyword guifg=#fb4934 gui=bold
@@ -65,7 +65,7 @@ hi def lumaStatement guifg=#83a598 gui=italic
 " =====================
 " MODIFIERS / VISIBILITY
 " =====================
-syn keyword lumaModifier const pub priv
+syn keyword lumaModifier const pub priv static
 hi def lumaModifier guifg=#d3869b gui=bold
 
 " =====================

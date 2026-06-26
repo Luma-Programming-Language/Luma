@@ -52,6 +52,8 @@ LLVMValueRef codegen_expr(CodeGenContext *ctx, AstNode *node) {
       return codegen_expr_struct_access(ctx, node);
   case AST_EXPR_STRUCT:
     return codegen_expr_struct_literal(ctx, node);
+  case AST_EXPR_SPREAD:
+    return codegen_expr(ctx, node->expr.spread.expr);
   default:
     fprintf(stderr, "Error: Unknown expression type: %d\n", node->type);
     return NULL;

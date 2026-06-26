@@ -77,6 +77,7 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
     return NULL;
   }
 
+  // Try dot-qualified name first (non-static methods, enum members)
   char qualified_name[256];
   snprintf(qualified_name, sizeof(qualified_name), "%s.%s", object_name,
            member);
@@ -94,8 +95,31 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
+  // Also try static-qualified name (::) for static methods
+  char static_qualified_name[256];
+  snprintf(static_qualified_name, sizeof(static_qualified_name), "%s::%s",
+           object_name, member);
+
+  LLVM_Symbol *static_sym =
+      find_symbol_in_module(ctx->current_module, static_qualified_name);
+  if (static_sym) {
+    if (static_sym->is_function) {
+      return static_sym->value;
+    }
+    return static_sym->value;
+  }
+
+  // Also try direct LLVM function name lookup for both dot and static qualified names
   LLVMModuleRef current_llvm_module =
       ctx->current_module ? ctx->current_module->module : ctx->module;
+
+  LLVMValueRef llvm_func = LLVMGetNamedFunction(current_llvm_module, qualified_name);
+  if (!llvm_func) {
+    llvm_func = LLVMGetNamedFunction(current_llvm_module, static_qualified_name);
+  }
+  if (llvm_func) {
+    return llvm_func;
+  }
 
   for (ModuleCompilationUnit *search_module = ctx->modules; search_module;
        search_module = search_module->next) {

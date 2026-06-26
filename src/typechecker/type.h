@@ -273,6 +273,11 @@ AstNode *get_struct_member_type(AstNode *struct_type, const char *member_name);
 bool struct_has_member(AstNode *struct_type, const char *member_name);
 
 bool typecheck_struct_decl(AstNode *node, Scope *scope, ArenaAllocator *arena);
+bool typecheck_spread_decl(AstNode *spread, Scope *scope,
+                           ArenaAllocator *arena, const char *child_name,
+                           GrowableArray *seen_names,
+                           AstNode ***member_types,
+                           const char ***member_names, size_t *member_count);
 
 bool typecheck_enum_decl(AstNode *node, Scope *scope, ArenaAllocator *arena);
 bool typecheck_return_decl(AstNode *node, Scope *scope, ArenaAllocator *arena);

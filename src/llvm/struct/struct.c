@@ -49,14 +49,27 @@ int get_field_index(StructInfo *struct_info, const char *field_name) {
   return -1;
 }
 
-// Check if field access is allowed (public field or same module)
+// Check if field access is allowed (public field, or access from within the struct)
 bool is_field_access_allowed(CodeGenContext *ctx, StructInfo *struct_info,
                              int field_index) {
-  (void)ctx; // For future module visibility checks
   if (field_index < 0 || field_index >= (int)struct_info->field_count) {
     return false;
   }
-  return struct_info->field_is_public[field_index];
+  if (struct_info->field_is_public[field_index]) {
+    return true;
+  }
+  // Allow private field access from within the struct's own methods
+  if (ctx->current_function) {
+    const char *func_name = LLVMGetValueName(ctx->current_function);
+    if (func_name) {
+      size_t name_len = strlen(struct_info->name);
+      if (strncmp(func_name, struct_info->name, name_len) == 0 &&
+          func_name[name_len] == '.') {
+        return true;
+      }
+    }
+  }
+  return false;
 }
 
 LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
@@ -68,13 +81,21 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
   size_t public_count = node->stmt.struct_decl.public_count;
   size_t private_count = node->stmt.struct_decl.private_count;
 
-  // Separate data fields from methods
+  // Count data fields from both FIELD_DECL and SPREAD_DECL
   size_t data_field_count = 0;
   for (size_t i = 0; i < public_count; i++) {
     AstNode *member = node->stmt.struct_decl.public_members[i];
     if (member->type == AST_STMT_FIELD_DECL &&
         !member->stmt.field_decl.function) {
       data_field_count++;
+    } else if (member->type == AST_STMT_SPREAD_DECL) {
+      // Include parent struct's data fields
+      AstNode *parent_type = member->stmt.spread_decl.type;
+      if (parent_type && parent_type->type == AST_TYPE_BASIC) {
+        StructInfo *parent = find_struct_type(ctx, parent_type->type_data.basic.name);
+        if (parent)
+          data_field_count += parent->field_count;
+      }
     }
   }
   for (size_t i = 0; i < private_count; i++) {
@@ -82,6 +103,13 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
     if (member->type == AST_STMT_FIELD_DECL &&
         !member->stmt.field_decl.function) {
       data_field_count++;
+    } else if (member->type == AST_STMT_SPREAD_DECL) {
+      AstNode *parent_type = member->stmt.spread_decl.type;
+      if (parent_type && parent_type->type == AST_TYPE_BASIC) {
+        StructInfo *parent = find_struct_type(ctx, parent_type->type_data.basic.name);
+        if (parent)
+          data_field_count += parent->field_count;
+      }
     }
   }
 
@@ -119,22 +147,63 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
 
   // Add to context IMMEDIATELY so it can be found during field type resolution
   add_struct_type(ctx, struct_info);
-  add_symbol(ctx, struct_name, NULL, struct_info->llvm_type, false);
 
-  // Process public data fields
+  // Process all data fields (spread first, then own fields)
   size_t field_index = 0;
+
+  // First pass: process spread_decl members (parent fields come first)
+  for (size_t i = 0; i < public_count; i++) {
+    AstNode *member = node->stmt.struct_decl.public_members[i];
+    if (member->type != AST_STMT_SPREAD_DECL)
+      continue;
+    AstNode *parent_type = member->stmt.spread_decl.type;
+    if (!parent_type || parent_type->type != AST_TYPE_BASIC)
+      continue;
+    StructInfo *parent = find_struct_type(ctx, parent_type->type_data.basic.name);
+    if (!parent) {
+      fprintf(stderr, "Error: Parent struct '%s' not found for spread in '%s'\n",
+              parent_type->type_data.basic.name, struct_name);
+      return NULL;
+    }
+    for (size_t j = 0; j < parent->field_count; j++) {
+      struct_info->field_names[field_index] = arena_strdup(ctx->arena, parent->field_names[j]);
+      struct_info->field_types[field_index] = parent->field_types[j];
+      struct_info->field_element_types[field_index] = parent->field_element_types[j];
+      struct_info->field_is_public[field_index] = member->stmt.spread_decl.is_public;
+      field_index++;
+    }
+  }
+  for (size_t i = 0; i < private_count; i++) {
+    AstNode *member = node->stmt.struct_decl.private_members[i];
+    if (member->type != AST_STMT_SPREAD_DECL)
+      continue;
+    AstNode *parent_type = member->stmt.spread_decl.type;
+    if (!parent_type || parent_type->type != AST_TYPE_BASIC)
+      continue;
+    StructInfo *parent = find_struct_type(ctx, parent_type->type_data.basic.name);
+    if (!parent) {
+      fprintf(stderr, "Error: Parent struct '%s' not found for spread in '%s'\n",
+              parent_type->type_data.basic.name, struct_name);
+      return NULL;
+    }
+    for (size_t j = 0; j < parent->field_count; j++) {
+      struct_info->field_names[field_index] = arena_strdup(ctx->arena, parent->field_names[j]);
+      struct_info->field_types[field_index] = parent->field_types[j];
+      struct_info->field_element_types[field_index] = parent->field_element_types[j];
+      struct_info->field_is_public[field_index] = member->stmt.spread_decl.is_public;
+      field_index++;
+    }
+  }
+
+  // Process public data fields (own fields)
   for (size_t i = 0; i < public_count; i++) {
     AstNode *member = node->stmt.struct_decl.public_members[i];
     if (member->type != AST_STMT_FIELD_DECL)
       continue;
-
-    // Skip methods for now, we'll process them after the struct type is created
     if (member->stmt.field_decl.function)
       continue;
 
     const char *field_name = member->stmt.field_decl.name;
-
-    // Check for duplicate field names
     for (size_t j = 0; j < field_index; j++) {
       if (strcmp(struct_info->field_names[j], field_name) == 0) {
         fprintf(stderr, "Error: Duplicate field name '%s' in struct %s\n",
@@ -142,35 +211,27 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
         return NULL;
       }
     }
-
-    struct_info->field_names[field_index] =
-        arena_strdup(ctx->arena, field_name);
-    struct_info->field_types[field_index] =
-        codegen_type(ctx, member->stmt.field_decl.type);
-    struct_info->field_element_types[field_index] =
-        extract_element_type_from_ast(ctx, member->stmt.field_decl.type);
+    struct_info->field_names[field_index] = arena_strdup(ctx->arena, field_name);
+    struct_info->field_types[field_index] = codegen_type(ctx, member->stmt.field_decl.type);
+    struct_info->field_element_types[field_index] = extract_element_type_from_ast(ctx, member->stmt.field_decl.type);
     struct_info->field_is_public[field_index] = true;
-
     if (!struct_info->field_types[field_index]) {
-      fprintf(stderr,
-              "Error: Failed to resolve type for field %s in struct %s\n",
+      fprintf(stderr, "Error: Failed to resolve type for field %s in struct %s\n",
               field_name, struct_name);
       return NULL;
     }
     field_index++;
   }
 
-  // Process private data fields
+  // Process private data fields (own fields)
   for (size_t i = 0; i < private_count; i++) {
     AstNode *member = node->stmt.struct_decl.private_members[i];
     if (member->type != AST_STMT_FIELD_DECL)
       continue;
-
     if (member->stmt.field_decl.function)
       continue;
 
     const char *field_name = member->stmt.field_decl.name;
-
     for (size_t j = 0; j < field_index; j++) {
       if (strcmp(struct_info->field_names[j], field_name) == 0) {
         fprintf(stderr, "Error: Duplicate field name '%s' in struct %s\n",
@@ -178,19 +239,12 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
         return NULL;
       }
     }
-
-    struct_info->field_names[field_index] =
-        arena_strdup(ctx->arena, field_name);
-    struct_info->field_types[field_index] =
-        codegen_type(ctx, member->stmt.field_decl.type);
-    struct_info->field_element_types[field_index] =
-        extract_element_type_from_ast(ctx, member->stmt.field_decl.type);
-    struct_info->field_is_public[field_index] =
-        member->stmt.field_decl.is_public;
-
+    struct_info->field_names[field_index] = arena_strdup(ctx->arena, field_name);
+    struct_info->field_types[field_index] = codegen_type(ctx, member->stmt.field_decl.type);
+    struct_info->field_element_types[field_index] = extract_element_type_from_ast(ctx, member->stmt.field_decl.type);
+    struct_info->field_is_public[field_index] = member->stmt.field_decl.is_public;
     if (!struct_info->field_types[field_index]) {
-      fprintf(stderr,
-              "Error: Failed to resolve type for field %s in struct %s\n",
+      fprintf(stderr, "Error: Failed to resolve type for field %s in struct %s\n",
               field_name, struct_name);
       return NULL;
     }
@@ -198,67 +252,85 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
   }
 
   // CRITICAL: Set the struct body AFTER all field types are resolved
-  // This completes the opaque struct declaration with its actual fields
   LLVMStructSetBody(struct_info->llvm_type, struct_info->field_types,
                     data_field_count, false);
 
-  // NOW process methods with access to the complete struct type
+  // Process own methods (both non-static and static)
   for (size_t i = 0; i < public_count; i++) {
     AstNode *member = node->stmt.struct_decl.public_members[i];
-    if (member->type != AST_STMT_FIELD_DECL)
-      continue;
-
-    // Only process methods
-    if (!member->stmt.field_decl.function)
-      continue;
-
-    AstNode *func_node = member->stmt.field_decl.function;
-    const char *method_name = member->stmt.field_decl.name;
-
-    // Generate the method with implicit 'self' parameter
-    if (!codegen_struct_method(ctx, func_node, struct_info, method_name,
-                               true)) {
-      fprintf(stderr, "Error: Failed to generate method '%s' for struct '%s'\n",
-              method_name, struct_name);
-      return NULL;
+    if (member->type == AST_STMT_FIELD_DECL && member->stmt.field_decl.function) {
+      AstNode *func_node = member->stmt.field_decl.function;
+      const char *method_name = member->stmt.field_decl.name;
+      codegen_struct_method(ctx, func_node, struct_info, method_name, true,
+                            member->stmt.field_decl.is_static);
     }
   }
-
-  // Process private methods
   for (size_t i = 0; i < private_count; i++) {
     AstNode *member = node->stmt.struct_decl.private_members[i];
-    if (member->type != AST_STMT_FIELD_DECL)
-      continue;
-
-    if (!member->stmt.field_decl.function)
-      continue;
-
-    AstNode *func_node = member->stmt.field_decl.function;
-    const char *method_name = member->stmt.field_decl.name;
-
-    if (!codegen_struct_method(ctx, func_node, struct_info, method_name,
-                               false)) {
-      fprintf(stderr,
-              "Error: Failed to generate private method '%s' for struct '%s'\n",
-              method_name, struct_name);
-      return NULL;
+    if (member->type == AST_STMT_FIELD_DECL && member->stmt.field_decl.function) {
+      AstNode *func_node = member->stmt.field_decl.function;
+      const char *method_name = member->stmt.field_decl.name;
+      codegen_struct_method(ctx, func_node, struct_info, method_name, false,
+                            member->stmt.field_decl.is_static);
     }
   }
 
-  // ===== CACHING MOVED TO HERE - AFTER EVERYTHING IS COMPLETE =====
-  // Cache the struct ONLY after:
-  // 1. Struct body is set with all fields
-  // 2. All methods have been generated successfully
-  // This ensures the cached struct is 100% complete and usable
+  // Register inherited method symbols from spread_decl parents
+  // This allows "Child.method" qualified lookup to find the parent's function
+  // by creating "Child.method" symbol entries pointing to "Parent.method" LLVM functions
+  for (size_t i = 0; i < public_count; i++) {
+    AstNode *member = node->stmt.struct_decl.public_members[i];
+    if (member->type != AST_STMT_SPREAD_DECL) continue;
+    AstNode *parent_type = member->stmt.spread_decl.type;
+    if (!parent_type || parent_type->type != AST_TYPE_BASIC) continue;
+
+    LLVM_Symbol *sym = ctx->current_module ? ctx->current_module->symbols : NULL;
+    size_t parent_name_len = strlen(parent_type->type_data.basic.name);
+    while (sym) {
+      if (strncmp(sym->name, parent_type->type_data.basic.name, parent_name_len) == 0 &&
+          sym->name[parent_name_len] == '.') {
+        const char *method_part = sym->name + parent_name_len + 1;
+        size_t child_qlen = strlen(struct_name) + 1 + strlen(method_part) + 1;
+        char *child_qname = arena_alloc(ctx->arena, child_qlen, 1);
+        snprintf(child_qname, child_qlen, "%s.%s", struct_name, method_part);
+        add_symbol_to_module(ctx->current_module, child_qname, sym->value,
+                             sym->type, sym->is_function);
+      }
+      sym = sym->next;
+    }
+  }
+  for (size_t i = 0; i < private_count; i++) {
+    AstNode *member = node->stmt.struct_decl.private_members[i];
+    if (member->type != AST_STMT_SPREAD_DECL) continue;
+    AstNode *parent_type = member->stmt.spread_decl.type;
+    if (!parent_type || parent_type->type != AST_TYPE_BASIC) continue;
+
+    LLVM_Symbol *sym = ctx->current_module ? ctx->current_module->symbols : NULL;
+    size_t parent_name_len = strlen(parent_type->type_data.basic.name);
+    while (sym) {
+      if (strncmp(sym->name, parent_type->type_data.basic.name, parent_name_len) == 0 &&
+          sym->name[parent_name_len] == '.') {
+        const char *method_part = sym->name + parent_name_len + 1;
+        size_t child_qlen = strlen(struct_name) + 1 + strlen(method_part) + 1;
+        char *child_qname = arena_alloc(ctx->arena, child_qlen, 1);
+        snprintf(child_qname, child_qlen, "%s.%s", struct_name, method_part);
+        add_symbol_to_module(ctx->current_module, child_qname, sym->value,
+                             sym->type, sym->is_function);
+      }
+      sym = sym->next;
+    }
+  }
+
+  // ===== CACHING =====
   cache_struct(struct_info->name, struct_info);
-  // ==============================
 
   return NULL;
 }
 
 LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
                                    StructInfo *struct_info,
-                                   const char *method_name, bool is_public) {
+                                   const char *method_name, bool is_public,
+                                   bool is_static) {
   if (!func_node || func_node->type != AST_STMT_FUNCTION) {
     fprintf(stderr, "Error: Invalid function node for method '%s'\n",
             method_name);
@@ -271,12 +343,11 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
   AstNode **original_param_type_nodes = func_node->stmt.func_decl.param_types;
   char **original_param_names = func_node->stmt.func_decl.param_names;
 
-  // CRITICAL: Methods need an implicit 'self' parameter as the FIRST parameter
-  // The typechecker injects 'self' when calling methods, so the method
-  // definition must match
-  size_t param_count = original_param_count + 1; // +1 for 'self'
+  // For non-static methods: implicit 'self' as first parameter
+  // For static methods: no 'self' parameter
+  size_t param_count = is_static ? original_param_count : original_param_count + 1;
 
-  // Allocate arrays for ALL parameters (including self)
+  // Allocate arrays for parameters
   LLVMTypeRef *llvm_param_types = (LLVMTypeRef *)arena_alloc(
       ctx->arena, sizeof(LLVMTypeRef) * param_count, alignof(LLVMTypeRef));
 
@@ -286,31 +357,35 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
   AstNode **param_type_nodes = (AstNode **)arena_alloc(
       ctx->arena, sizeof(AstNode *) * param_count, alignof(AstNode *));
 
-  // First parameter is 'self' - a pointer to the struct
-  llvm_param_types[0] = LLVMPointerType(struct_info->llvm_type, 0);
-  param_names[0] = "self";
-  param_type_nodes[0] =
-      NULL; // We'll handle this specially for element type extraction
+  size_t offset = 0;
+  if (!is_static) {
+    // First parameter is 'self' - a pointer to the struct
+    llvm_param_types[0] = LLVMPointerType(struct_info->llvm_type, 0);
+    param_names[0] = "self";
+    param_type_nodes[0] = NULL;
+    offset = 1;
+  }
 
-  // Copy the rest of the original parameters (shifted by 1)
+  // Copy the original parameters
   for (size_t i = 0; i < original_param_count; i++) {
-    llvm_param_types[i + 1] = codegen_type(ctx, original_param_type_nodes[i]);
-    if (!llvm_param_types[i + 1]) {
+    llvm_param_types[i + offset] = codegen_type(ctx, original_param_type_nodes[i]);
+    if (!llvm_param_types[i + offset]) {
       fprintf(stderr,
               "Error: Failed to resolve parameter type %zu for method '%s'\n",
               i, method_name);
       return NULL;
     }
-    param_names[i + 1] = original_param_names[i];
-    param_type_nodes[i + 1] = original_param_type_nodes[i];
+    param_names[i + offset] = original_param_names[i];
+    param_type_nodes[i + offset] = original_param_type_nodes[i];
   }
 
-  // CREATE QUALIFIED METHOD NAME: StructName.methodName
+  // CREATE QUALIFIED METHOD NAME: StructName.method or StructName::method
+  const char *sep = is_static ? "::" : ".";
   size_t qualified_name_len =
-      strlen(struct_info->name) + 1 + strlen(method_name) + 1;
+      strlen(struct_info->name) + strlen(sep) + strlen(method_name) + 1;
   char *qualified_method_name = arena_alloc(ctx->arena, qualified_name_len, 1);
-  snprintf(qualified_method_name, qualified_name_len, "%s.%s",
-           struct_info->name, method_name);
+  snprintf(qualified_method_name, qualified_name_len, "%s%s%s",
+           struct_info->name, sep, method_name);
 
   // Create function type
   LLVMTypeRef llvm_return_type = codegen_type(ctx, return_type_node);
@@ -343,6 +418,10 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
     LLVMSetLinkage(func, LLVMInternalLinkage);
   }
 
+  // Register the function in the symbol table under its qualified name
+  add_symbol_to_module(ctx->current_module, qualified_method_name, func,
+                       func_type, true);
+
   // CRITICAL: Save the old function context before starting method generation
   LLVMValueRef old_function = ctx->current_function;
 
@@ -354,33 +433,26 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
       LLVMAppendBasicBlockInContext(ctx->context, func, "entry");
   LLVMPositionBuilderAtEnd(ctx->builder, entry);
 
-  // Add all parameters to symbol table (including self at index 0)
+  // Add all parameters to symbol table
   for (size_t i = 0; i < param_count; i++) {
     LLVMValueRef param = LLVMGetParam(func, i);
     const char *param_name = param_names[i];
 
     LLVMSetValueName2(param, param_name, strlen(param_name));
 
-    // Allocate stack space and store parameter
     LLVMValueRef alloca =
         LLVMBuildAlloca(ctx->builder, llvm_param_types[i], param_name);
     LLVMBuildStore(ctx->builder, param, alloca);
 
-    // Extract element type for pointer parameters (needed for self which is
-    // *Person)
     LLVMTypeRef element_type = NULL;
 
-    // Special handling for 'self' parameter
-    if (i == 0) {
-      // 'self' is a pointer to the struct, so its element_type is the struct
-      // itself
+    if (!is_static && i == 0) {
+      // 'self' is a pointer to the struct
       element_type = struct_info->llvm_type;
     } else {
-      // For other parameters, extract from AST
       element_type = extract_element_type_from_ast(ctx, param_type_nodes[i]);
     }
 
-    // Add to symbol table with element type information
     add_symbol_with_element_type(ctx, param_name, alloca, llvm_param_types[i],
                                  element_type, false);
   }
@@ -530,16 +602,24 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     LLVMTypeRef actual_type = LLVMTypeOf(value);
 
     if (expected_type != actual_type) {
-      if (LLVMGetTypeKind(expected_type) == LLVMIntegerTypeKind &&
-          LLVMGetTypeKind(actual_type) == LLVMIntegerTypeKind) {
+      LLVMTypeKind expected_kind = LLVMGetTypeKind(expected_type);
+      LLVMTypeKind actual_kind = LLVMGetTypeKind(actual_type);
+
+      if (expected_kind == LLVMIntegerTypeKind &&
+          actual_kind == LLVMIntegerTypeKind) {
         unsigned expected_bits = LLVMGetIntTypeWidth(expected_type);
         unsigned actual_bits = LLVMGetIntTypeWidth(actual_type);
-
         if (expected_bits > actual_bits) {
           value = LLVMBuildSExt(ctx->builder, value, expected_type, "extend");
         } else if (expected_bits < actual_bits) {
           value = LLVMBuildTrunc(ctx->builder, value, expected_type, "trunc");
         }
+      } else if (expected_kind == LLVMFloatTypeKind &&
+                 actual_kind == LLVMDoubleTypeKind) {
+        value = LLVMBuildFPTrunc(ctx->builder, value, expected_type, "fptrunc");
+      } else if (expected_kind == LLVMDoubleTypeKind &&
+                 actual_kind == LLVMFloatTypeKind) {
+        value = LLVMBuildFPExt(ctx->builder, value, expected_type, "fpext");
       }
     }
 

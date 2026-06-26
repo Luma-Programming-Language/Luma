@@ -68,7 +68,8 @@ typedef enum {
   TOK_SWITCH,   /**< switch keyword */
   TOK_SYSTEM,   /**< system keyword */
   TOK_IMPL,     /**< implement keyword */
-  TOK_SYSCALL,
+  TOK_SYSCALL, 
+  TOK_STATIC, 
 
   // prepocessor directives
   TOK_MODULE, /**< @module */
@@ -122,6 +123,7 @@ typedef enum {
   TOK_RANGE,       /**< .. */
   TOK_RIGHT_ARROW, /**< -> */
   TOK_LEFT_ARROW,  /**< <- */
+  TOK_ELLIPSIS,    /**< ... */
   TOK_MODL,        /**< % */
   TOK_WHITESPACE,  /**< whitespace */
   TOK_COMMENT,     /**< comment */

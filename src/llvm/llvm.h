@@ -323,7 +323,8 @@ StructInfo *find_concrete_struct_for_base(
     const char     *field_name);
 LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
                                    StructInfo *struct_info,
-                                   const char *method_name, bool is_public);
+                                   const char *method_name, bool is_public,
+                                   bool is_static);
 
 // Struct literal/initializer support
 LLVMValueRef codegen_struct_literal(CodeGenContext *ctx,

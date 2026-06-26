@@ -370,6 +370,7 @@ const char *lsp_hover(LSPDocument *doc, LSPPosition position,
     {"let",      "```luma\nlet name: Type = value;\n```\nMutable variable binding"},
     {"const",    "```luma\nconst name -> fn (...) Type { ... }\n```\nImmutable binding"},
     {"pub",      "Mark a declaration as publicly exported"},
+    {"static",   "Declare a static method on a struct (callable via Type::method)"},
     {"fn",       "Function type or declaration"},
     {"struct",   "Struct type declaration"},
     {"enum",     "Enum type declaration"},
@@ -567,6 +568,9 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
       {"pub const fn<T>",
        "pub const ${1:name} = fn<${2:T}>(${3:params}) ${4:Type} {\n\t$0\n}",
        "Public generic function", "pub const fn <"},
+      {"static fn",
+       "static ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n},",
+       "Static struct method", "static fn"},
       {"const struct",
        "const ${1:Name} -> struct {\n\t${2:field}: ${3:Type}$0,\n};",
        "Struct definition", "const struct"},
@@ -667,13 +671,14 @@ LSPCompletionItem *lsp_completion(LSPDocument *doc, LSPPosition position,
     }
   }
 
-  // Keyword completions (true/false/null) as keyword type
+  // Keyword completions (true/false/null/static) as keyword type
   static const char *keyword_items[][3] = {
     {"true", "true", "Boolean literal"},
     {"false", "false", "Boolean literal"},
     {"null", "null", "Null pointer literal"},
+    {"static", "static", "Static method modifier"},
   };
-  for (size_t i = 0; i < 3; i++) {
+  for (size_t i = 0; i < 4; i++) {
     LSPCompletionItem *item =
         (LSPCompletionItem *)growable_array_push(&completions);
     if (item) {
