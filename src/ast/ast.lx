@@ -126,7 +126,7 @@ pub const AstNode -> struct {
 // ─── Preprocessor Nodes ──────────────────────────────────────────────────────
 
 pub const ModuleNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   name:        *byte,
   doc_comment: *byte,
   file_path:   *byte,
@@ -135,13 +135,13 @@ pub const ModuleNode -> struct {
 };
 
 pub const UseNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   module_name: *byte,
   alias:       *byte,
 };
 
 pub const OsNode -> struct {
-  base: AstNode,
+  ...AstNode,
   platforms: **byte,
   bodies: **AstNode,
   has_default: int,
@@ -149,7 +149,7 @@ pub const OsNode -> struct {
 };
 
 pub const LinkNode -> struct {
-  base: AstNode,
+  ...AstNode,
   lib_name: *byte,
 };
 
@@ -445,8 +445,6 @@ pub const ResolutionNode -> struct {
   parts:      **byte,
   part_count: int,
 };
-
-// ─── Free ────────────────────────────────────────────────────────────────────
 
 #takes_ownership
 pub const free_node -> fn (node: *AstNode) void {
