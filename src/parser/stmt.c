@@ -272,7 +272,7 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
 
   switch (p_current(parser).type_) {
   case TOK_FN: {
-    Stmt *fn = fn_stmt(parser, name, is_public, returns_ownership, takes_ownership, false);
+    Stmt *fn = fn_stmt(parser, name, is_public, false, returns_ownership, takes_ownership);
     if (p_current(parser).type_ == TOK_SEMICOLON)
       p_advance(parser);
     return fn;
@@ -642,7 +642,7 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
       parser->pending_doc_comment = field_doc;
       p_consume(parser, TOK_RIGHT_ARROW, "Expected '->' after field name");
       field_function = fn_stmt(parser, field_name, public_member,
-                               returns_ownership, takes_ownership, is_static);
+                               is_static, returns_ownership, takes_ownership);
     } else {
       // Data field
       p_consume(parser, TOK_COLON, "Expected ':' after field name");

@@ -833,10 +833,10 @@ AstNode *typecheck_index_expr(AstNode *expr, Scope *scope,
 
   if (expr->expr.index.object->type == AST_EXPR_IDENTIFIER) {
     StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-    if (analyzer && g_tokens && g_token_count > 0 && g_file_path) {
+    if (analyzer && g_tokens && g_token_count > 0 && g_file_path &&
+        scope->config && scope->config->check_mem) {
       const char *var_name = expr->expr.index.object->expr.identifier.name;
 
-      // NEW: Get current function name
       const char *func_name = NULL;
       Scope *func_scope = scope;
       while (func_scope && !func_scope->is_function_scope) {
@@ -850,7 +850,7 @@ AstNode *typecheck_index_expr(AstNode *expr, Scope *scope,
                                          expr->expr.index.object->line,
                                          expr->expr.index.object->column, arena,
                                          g_tokens, g_token_count, g_file_path,
-                                         func_name); // PASS FUNC NAME
+                                         func_name);
     }
   }
 
@@ -1150,7 +1150,8 @@ AstNode *typecheck_member_expr(AstNode *expr, Scope *scope,
     if (base_type->type == AST_TYPE_POINTER &&
         base_object->type == AST_EXPR_IDENTIFIER) {
       StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-      if (analyzer && g_tokens && g_token_count > 0 && g_file_path) {
+      if (analyzer && g_tokens && g_token_count > 0 && g_file_path &&
+          scope->config && scope->config->check_mem) {
         const char *var_name = base_object->expr.identifier.name;
         const char *func_name = NULL;
         Scope *func_scope = scope;
@@ -1313,10 +1314,10 @@ AstNode *typecheck_deref_expr(AstNode *expr, Scope *scope,
                               ArenaAllocator *arena) {
   if (expr->expr.deref.object->type == AST_EXPR_IDENTIFIER) {
     StaticMemoryAnalyzer *analyzer = get_static_analyzer(scope);
-    if (analyzer && g_tokens && g_token_count > 0 && g_file_path) {
+    if (analyzer && g_tokens && g_token_count > 0 && g_file_path &&
+        scope->config && scope->config->check_mem) {
       const char *var_name = expr->expr.deref.object->expr.identifier.name;
 
-      // Get current function name
       const char *func_name = NULL;
       Scope *func_scope = scope;
       while (func_scope && !func_scope->is_function_scope) {
@@ -1330,7 +1331,7 @@ AstNode *typecheck_deref_expr(AstNode *expr, Scope *scope,
                                          expr->expr.deref.object->line,
                                          expr->expr.deref.object->column, arena,
                                          g_tokens, g_token_count, g_file_path,
-                                         func_name); // ADD THIS PARAMETER
+                                         func_name);
     }
   }
 
