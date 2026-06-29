@@ -156,7 +156,7 @@ pub const LinkNode -> struct {
 // ─── Expression Nodes ────────────────────────────────────────────────────────
 
 pub const LiteralNode -> struct {
-  base:       AstNode,
+  ...AstNode,
   lit_type:   int,
   int_val:    int,
   float_val:  int,
@@ -166,100 +166,100 @@ pub const LiteralNode -> struct {
 };
 
 pub const IdentifierNode -> struct {
-  base: AstNode,
+  ...AstNode,
   name: *byte,
 };
 
 pub const BinaryNode -> struct {
-  base:  AstNode,
+  ...AstNode,
   op:    int,
   left:  *AstNode,
   right: *AstNode,
 };
 
 pub const UnaryNode -> struct {
-  base:    AstNode,
+  ...AstNode,
   op:      int,
   operand: *AstNode,
 };
 
 pub const CallNode -> struct {
-  base:      AstNode,
+  ...AstNode,
   callee:    *AstNode,
   args:      **AstNode,
   arg_count: int,
 };
 
 pub const AssignNode -> struct {
-  base:   AstNode,
+  ...AstNode,
   target: *AstNode,
   value:  *AstNode,
 };
 
 pub const TernaryNode -> struct {
-  base:      AstNode,
+  ...AstNode,
   condition: *AstNode,
   then_expr: *AstNode,
   else_expr: *AstNode,
 };
 
 pub const MemberNode -> struct {
-  base:           AstNode,
+  ...AstNode,
   is_compiletime: int,
   object:         *AstNode,
   member:         *byte,
 };
 
 pub const IndexNode -> struct {
-  base:   AstNode,
+  ...AstNode,
   object: *AstNode,
   index:  *AstNode,
 };
 
 pub const ArrayNode -> struct {
-  base:          AstNode,
+  ...AstNode,
   elements:      **AstNode,
   element_count: int,
   target_size:   int,
 };
 
 pub const CastNode -> struct {
-  base:      AstNode,
+  ...AstNode,
   type_node: *AstNode,
   castee:    *AstNode,
 };
 
 pub const AllocNode -> struct {
-  base: AstNode,
+  ...AstNode,
   size: *AstNode,
 };
 
 pub const FreeNode -> struct {
-  base: AstNode,
+  ...AstNode,
   ptr:  *AstNode,
 };
 
 pub const MemcpyNode -> struct {
-  base: AstNode,
+  ...AstNode,
   to:   *AstNode,
   from: *AstNode,
   size: *AstNode,
 };
 
 pub const SizeofNode -> struct {
-  base:    AstNode,
+  ...AstNode,
   object:  *AstNode,
   is_type: int,
 };
 
 pub const SyscallNode -> struct {
-  base:  AstNode,
+  ...AstNode,
   args:  **AstNode,
   count: int,
 };
 
 pub const StructExprNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   name:        *byte,
   field_names: **byte,
   field_vals:  **AstNode,
