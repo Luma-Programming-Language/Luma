@@ -1,0 +1,232 @@
+// ============================================================================
+// vec2.lx - 2D vector mathematics
+// ============================================================================
+
+//! 2D vector mathematics with common geometric operations.
+//!
+//! Provides a `Vec2` struct with methods for arithmetic, products,
+//! length/normalization, distance, interpolation, and geometry
+//! operations (angle, reflection, clamping).
+//!
+//! # Example
+//! ```luma
+//! let a: Vec2 = Vec2 { x: 3.0, y: 4.0 };
+//! let b: Vec2 = Vec2 { x: 1.0, y: 2.0 };
+//! let sum: Vec2 = a.add(b);
+//! let len: double = a.length();   // 5.0
+//! let dot: double = a.dot(b);     // 11.0
+//! ```
+
+@module "std_vec2"
+
+@use "std_libc" as libc
+
+/// A 2D vector with x and y components
+pub const Vec2 -> struct {
+    /// X component
+    x: double,
+    /// Y component
+    y: double,
+
+    /// Zero vector (0, 0)
+    zero -> fn () Vec2 {
+        return Vec2 { x: 0.0, y: 0.0 };
+    },
+
+    /// Unit vector (1, 1)
+    one -> fn () Vec2 {
+        return Vec2 { x: 1.0, y: 1.0 };
+    },
+
+    /// Right unit vector (1, 0)
+    right -> fn () Vec2 {
+        return Vec2 { x: 1.0, y: 0.0 };
+    },
+
+    /// Down unit vector (0, 1)
+    down -> fn () Vec2 {
+        return Vec2 { x: 0.0, y: 1.0 };
+    },
+
+    // --- Arithmetic ---
+
+    /// Add another vector component-wise
+    add -> fn (other: Vec2) Vec2 {
+        return Vec2 { x: self.x + other.x, y: self.y + other.y };
+    },
+
+    /// Subtract another vector component-wise
+    sub -> fn (other: Vec2) Vec2 {
+        return Vec2 { x: self.x - other.x, y: self.y - other.y };
+    },
+
+    /// Scale the vector by a scalar
+    scale -> fn (s: double) Vec2 {
+        return Vec2 { x: self.x * s, y: self.y * s };
+    },
+
+    /// Divide the vector by a scalar
+    div -> fn (s: double) Vec2 {
+        return Vec2 { x: self.x / s, y: self.y / s };
+    },
+
+    /// Negate the vector component-wise
+    negate -> fn () Vec2 {
+        return Vec2 { x: -self.x, y: -self.y };
+    },
+
+    // --- Products ---
+
+    /// Dot product with another vector
+    dot -> fn (other: Vec2) double {
+        return self.x * other.x + self.y * other.y;
+    },
+
+    /// 2D cross product (scalar result)
+    cross -> fn (other: Vec2) double {
+        return self.x * other.y - self.y * other.x;
+    },
+
+    // --- Length ---
+
+    /// Squared length (avoids sqrt)
+    length_sq -> fn () double {
+        return self.x * self.x + self.y * self.y;
+    },
+
+    /// Euclidean length
+    length -> fn () double {
+        return libc::sqrt(self.x * self.x + self.y * self.y);
+    },
+
+    // --- Normalisation ---
+
+    /// Return a unit-length vector (safe for zero vectors)
+    normalize -> fn () Vec2 {
+        let len: double = libc::sqrt(self.x * self.x + self.y * self.y);
+        if (len < 0.000001) {
+            return Vec2 { x: 0.0, y: 0.0 };
+        }
+        return Vec2 { x: self.x / len, y: self.y / len };
+    },
+
+    // --- Distance ---
+
+    /// Squared distance to another vector (avoids sqrt)
+    distance_sq -> fn (other: Vec2) double {
+        let dx: double = self.x - other.x;
+        let dy: double = self.y - other.y;
+        return dx * dx + dy * dy;
+    },
+
+    /// Euclidean distance to another vector
+    distance -> fn (other: Vec2) double {
+        let dx: double = self.x - other.x;
+        let dy: double = self.y - other.y;
+        return libc::sqrt(dx * dx + dy * dy);
+    },
+
+    // --- Interpolation ---
+
+    /// Linearly interpolate toward another vector
+    lerp -> fn (other: Vec2, t: double) Vec2 {
+        return Vec2 {
+            x: self.x + (other.x - self.x) * t,
+            y: self.y + (other.y - self.y) * t
+        };
+    },
+
+    // --- Geometry ---
+
+    /// Angle of the vector in radians (atan2)
+    angle -> fn () double {
+        return libc::atan2(self.y, self.x);
+    },
+
+    /// Perpendicular vector rotated 90° counter-clockwise
+    perpendicular -> fn () Vec2 {
+        return Vec2 { x: -self.y, y: self.x };
+    },
+
+    /// Reflect the vector off a surface with the given normal
+    reflect -> fn (normal: Vec2) Vec2 {
+        let d: double = self.x * normal.x + self.y * normal.y;
+        return Vec2 {
+            x: self.x - 2.0 * d * normal.x,
+            y: self.y - 2.0 * d * normal.y
+        };
+    },
+
+    // --- Utilities ---
+
+    /// Clamp the vector length to a maximum value
+    clamp_length -> fn (max: double) Vec2 {
+        let len_sq: double = self.x * self.x + self.y * self.y;
+        if (len_sq <= max * max) {
+            return Vec2 { x: self.x, y: self.y };
+        }
+        let len: double = libc::sqrt(len_sq);
+        return Vec2 { x: self.x / len * max, y: self.y / len * max };
+    },
+
+    /// Component-wise absolute values
+    abs -> fn () Vec2 {
+        return Vec2 { x: libc::fabs(self.x), y: libc::fabs(self.y) };
+    },
+
+    /// Component-wise minimum with another vector
+    min -> fn (other: Vec2) Vec2 {
+        let rx: double = self.x;
+        let ry: double = self.y;
+        if (other.x < rx) { rx = other.x; }
+        if (other.y < ry) { ry = other.y; }
+        return Vec2 { x: rx, y: ry };
+    },
+
+    /// Component-wise maximum with another vector
+    max -> fn (other: Vec2) Vec2 {
+        let rx: double = self.x;
+        let ry: double = self.y;
+        if (other.x > rx) { rx = other.x; }
+        if (other.y > ry) { ry = other.y; }
+        return Vec2 { x: rx, y: ry };
+    },
+
+    /// Check if the vector is the zero vector
+    is_zero -> fn () bool {
+        return self.x == 0.0 && self.y == 0.0;
+    },
+};
+
+/// Create a new Vec2 from x and y components
+///
+/// # Parameters
+/// * `x` - X component
+/// * `y` - Y component
+///
+/// # Returns
+/// A new Vec2
+///
+/// # Example
+/// ```luma
+/// let v: Vec2 = vec2::new_vec(3.0, 4.0);
+/// ```
+pub const new_vec -> fn (x: double, y: double) Vec2 {
+    return Vec2 { x: x, y: y };
+}
+
+/// Create a unit vector from an angle in radians
+///
+/// # Parameters
+/// * `angle` - Angle in radians
+///
+/// # Returns
+/// A unit vector pointing in the direction of the angle
+///
+/// # Example
+/// ```luma
+/// let v: Vec2 = vec2::from_angle(std_math::PI / 4.0); // (√2/2, √2/2)
+/// ```
+pub const from_angle -> fn (angle: double) Vec2 {
+    return Vec2 { x: libc::cos(angle), y: libc::sin(angle) };
+}

@@ -1,110 +1,197 @@
+// ============================================================================
+// libc.lx - Standard C library FFI bindings
+// ============================================================================
+
+//! Direct FFI bindings to libc standard library functions.
+//!
+//! Provides raw access to commonly used C standard library functions
+//! grouped by header: stdio.h, stdlib.h, time.h, string.h, and math.h.
+//! These are thin wrappers — see the corresponding C man pages for
+//! detailed documentation.
+//!
+//! PLATFORM: Linux x86_64 (glibc)
+//!
+//! # Example
+//! ```luma
+//! let msg: *byte = "hello, world\n";
+//! libc::printf("%s\n", msg);
+//! ```
+
 @module "std_libc"
 
 @link("libc.so.6")
 
 // ============================================================================
-// stdio.h
+// stdio.h - Standard input/output
 // ============================================================================
 
+/// Formatted print to stdout
 pub const printf  -> fn (fmt: *byte, val: *byte) int;
+/// Print string with trailing newline to stdout
 pub const puts    -> fn (s: *byte) int;
+/// Write a single character to stdout
 pub const putchar -> fn (c: int) int;
+/// Read a single character from stdin
 pub const getchar -> fn () int;
+/// Flush a file stream's output buffer
 pub const fflush  -> fn (stream: *void) int;
 
+/// Open a file for reading/writing
 pub const fopen   -> fn (path: *byte, mode: *byte) *void;
+/// Close an open file
 pub const fclose  -> fn (stream: *void) int;
+/// Read raw bytes from a file
 pub const fread   -> fn (ptr: *void, size: int, count: int, stream: *void) int;
+/// Write raw bytes to a file
 pub const fwrite  -> fn (ptr: *void, size: int, count: int, stream: *void) int;
+/// Read a line from a file
 pub const fgets   -> fn (buf: *byte, n: int, stream: *void) *byte;
+/// Write a string to a file
 pub const fputs   -> fn (s: *byte, stream: *void) int;
+/// Test for end-of-file on a stream
 pub const feof    -> fn (stream: *void) int;
+/// Test for error on a stream
 pub const ferror  -> fn (stream: *void) int;
+/// Set file position to the beginning
 pub const rewind  -> fn (stream: *void) void;
+/// Set file position indicator
 pub const fseek   -> fn (stream: *void, offset: int, whence: int) int;
+/// Get current file position
 pub const ftell   -> fn (stream: *void) int;
+/// Delete a file
 pub const remove  -> fn (path: *byte) int;
+/// Rename a file
 pub const rename  -> fn (old: *byte, new: *byte) int;
+/// Create a temporary binary file
 pub const tmpfile -> fn () *void;
 
 // ============================================================================
-// stdlib.h
+// stdlib.h - General utilities
 // ============================================================================
 
+/// Allocate memory
 pub const malloc   -> fn (size: int) *void;
+/// Allocate and zero-initialize memory
 pub const calloc   -> fn (count: int, size: int) *void;
+/// Resize an allocated memory block
 pub const realloc  -> fn (ptr: *void, size: int) *void;
+/// Free allocated memory
 pub const _free     -> fn (ptr: *void) void;
+/// Terminate the program with a status code
 pub const exit     -> fn (code: int) void;
+/// Terminate the program abnormally
 pub const abort    -> fn () void;
+/// Return the absolute value of an integer
 pub const abs      -> fn (n: int) int;
+/// Convert ASCII string to int
 pub const atoi     -> fn (s: *byte) int;
+/// Convert ASCII string to double
 pub const atof     -> fn (s: *byte) double;
+/// Convert ASCII string to long
 pub const atol     -> fn (s: *byte) int;
+/// Generate a pseudo-random integer
 pub const rand     -> fn () int;
+/// Seed the pseudo-random number generator
 pub const srand    -> fn (seed: int) void;
+/// Get an environment variable
 pub const getenv   -> fn (name: *byte) *byte;
+/// Execute a shell command
 pub const _system   -> fn (cmd: *byte) int;
+/// Sort an array using quicksort
 pub const qsort    -> fn (base: *void, count: int, size: int, cmp: *void) void;
+/// Binary search in a sorted array
 pub const bsearch  -> fn (key: *void, base: *void, count: int, size: int, cmp: *void) *void;
 
 // ============================================================================
-// time.h
+// time.h - Time and date
 // ============================================================================
 
+/// Get current calendar time
 pub const time    -> fn (t: *int) int;
+/// Get processor clock time
 pub const clock   -> fn () int;
+/// Compute difference between two times
 pub const difftime -> fn (t1: int, t0: int) double;
 
 // ============================================================================
-// string.h
+// string.h - String and memory operations
 // ============================================================================
 
+/// Get string length
 pub const strlen   -> fn (s: *byte) int;
+/// Copy a string (unsafe — may overflow)
 pub const strcpy   -> fn (dst: *byte, src: *byte) *byte;
+/// Copy a string with length limit
 pub const strncpy  -> fn (dst: *byte, src: *byte, n: int) *byte;
+/// Concatenate strings (unsafe — may overflow)
 pub const strcat   -> fn (dst: *byte, src: *byte) *byte;
+/// Concatenate strings with length limit
 pub const strncat  -> fn (dst: *byte, src: *byte, n: int) *byte;
+/// Compare two strings
 pub const strcmp   -> fn (a: *byte, b: *byte) int;
+/// Compare two strings with length limit
 pub const strncmp  -> fn (a: *byte, b: *byte, n: int) int;
+/// Find first occurrence of a character in a string
 pub const strchr   -> fn (s: *byte, c: int) *byte;
+/// Find last occurrence of a character in a string
 pub const strrchr  -> fn (s: *byte, c: int) *byte;
+/// Find a substring in a string
 pub const strstr   -> fn (haystack: *byte, needle: *byte) *byte;
+/// Split string into tokens
 pub const strtok   -> fn (s: *byte, delim: *byte) *byte;
+/// Fill memory with a constant byte
 pub const memset   -> fn (ptr: *void, val: int, n: int) *void;
+/// Copy memory (may overlap)
 pub const memcpy   -> fn (dst: *void, src: *void, n: int) *void;
+/// Copy memory (handles overlap)
 pub const memmove  -> fn (dst: *void, src: *void, n: int) *void;
+/// Compare memory regions
 pub const memcmp   -> fn (a: *void, b: *void, n: int) int;
 
 // ============================================================================
-// math.h  (also in libc.so.6 on modern glibc — no separate -lm needed)
+// math.h - Mathematical functions (libm)
 // ============================================================================
+// Also available in libc.so.6 on modern glibc — no separate -lm needed.
 
+/// Square root
 #lib_import("libm.so")
 pub const sqrt  -> fn (x: double) double;
+/// Power (base^exp)
 #lib_import("libm.so")
 pub const pow   -> fn (base: double, exp: double) double;
+/// Round down to nearest integer
 #lib_import("libm.so")
 pub const floor -> fn (x: double) double;
+/// Round up to nearest integer
 #lib_import("libm.so")
 pub const ceil  -> fn (x: double) double;
+/// Absolute value of a double
 #lib_import("libm.so")
 pub const fabs  -> fn (x: double) double;
+/// Floating-point remainder of x/y
 #lib_import("libm.so")
 pub const fmod  -> fn (x: double, y: double) double;
+/// Natural logarithm
 #lib_import("libm.so")
 pub const log   -> fn (x: double) double;
+/// Base-2 logarithm
 #lib_import("libm.so")
 pub const log2  -> fn (x: double) double;
+/// Base-10 logarithm
 #lib_import("libm.so")
 pub const log10 -> fn (x: double) double;
+/// Exponential (e^x)
 #lib_import("libm.so")
 pub const exp   -> fn (x: double) double;
+/// Sine of an angle (radians)
 #lib_import("libm.so")
 pub const sin   -> fn (x: double) double;
+/// Cosine of an angle (radians)
 #lib_import("libm.so")
 pub const cos   -> fn (x: double) double;
+/// Tangent of an angle (radians)
 #lib_import("libm.so")
 pub const tan   -> fn (x: double) double;
+/// Arc tangent (y/x) in radians
 #lib_import("libm.so") 
 pub const atan2 -> fn (y: double, x: double) double;

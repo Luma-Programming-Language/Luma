@@ -1,45 +1,67 @@
 @module "std_hashmap"
 
-//! Chained hashmap keyed by pointer identity.
-//!
-//! Keys are compared by address, not by the data they point to.
-//! Two pointers to identical content are treated as different keys.
-//! If you need value-equality keys (e.g. two "*byte" strings with the
-//! same content), intern the strings first so each unique value has
-//! exactly one address.
+const INT16_MAX: int = 32767;
+
+const _strlen -> fn (s: *byte) int {
+  let length: int = 0;
+  loop (s[length] != cast<byte>(0)) : (++length) {}
+  return length;
+}
+
+pub const _strcmp -> fn (s1: *byte, s2: *byte) int {
+  let ls1: int = _strlen(s1);
+  let ls2: int = _strlen(s2);
+
+  if (ls1 != ls2) { return -1; }
+
+  loop[i: int = 0](i < ls1) : (++i) {
+    if (s1[i] != s2[i]) { return 1; }
+  }
+
+  return 0;
+}
 
 const Node -> struct {
-  key:   *void,
-  value: *void,
-  next:  *Node,
+  key:   *byte,
+  value: *byte,
 
-  set_node -> fn (key: *void, value: *void) void {
+  next: *Node,
+
+  set_node -> fn (key: *byte, value: *byte) void {
     self.key   = key;
     self.value = value;
     self.next  = cast<*Node>(0);
+    return;
   }
 };
 
 pub const HashMap -> struct {
   capacity:    int,
   num_of_elem: int,
-  arr:         **Node,
 
-  /// Hashes by pointer address. Two pointers are the same key only if
-  /// they hold the same address.
-  hash -> fn (key: *void) int {
-    let addr: int = cast<int>(key);
-    return addr % self.capacity;
+  arr: **Node,
+  
+  hash -> fn (key: *byte) int {
+    let bucket_idx: int  = 0;
+    let sum: int         = 0;
+    let factor: int      = 31;
+
+    let key_len: int = _strlen(key);
+    loop [i: int = 0](i < key_len) : (++i) {
+      sum = ((sum % self.capacity) + 
+              (cast<int>(key[i]) * factor) % self.capacity);
+      factor = ((factor % INT16_MAX) * (31 % INT16_MAX)) % INT16_MAX;
+    }
+
+    bucket_idx = sum;
+    return bucket_idx;
   },
 
-  /// Inserts a new key-value pair. If the key already exists in the bucket
-  /// it is prepended as a second entry — call delete first if you want
-  /// update semantics.
   #returns_ownership
-  insert -> fn (key: *void, value: *void) void {
-    let index: int    = self.hash(key);
+  insert -> fn (key: *byte, value: *byte) void {
+    let index: int = self.hash(key);
     let new_node: *Node = cast<*Node>(alloc(sizeof<Node>));
-
+    
     new_node.set_node(key, value);
 
     if (self.arr[index] == cast<*Node>(0)) {
@@ -48,81 +70,65 @@ pub const HashMap -> struct {
       new_node.next   = self.arr[index];
       self.arr[index] = new_node;
     }
-
-    self.num_of_elem = self.num_of_elem + 1;
   },
+  
+  #takes_ownership
+  delete -> fn (key: *byte) void {
+    let index: int = self.hash(key);
 
-  /// Removes the first node whose key matches `key` (by address).
-  /// No-op if the key is not found.
-  delete -> fn (key: *void) void {
-    let index: int  = self.hash(key);
     let prev: *Node = cast<*Node>(0);
     let curr: *Node = self.arr[index];
 
     loop (curr != cast<*Node>(0)) {
-      if (curr.key == key) {
+      if (_strcmp(key, curr.key) == 0) {
         if (curr == self.arr[index]) {
           self.arr[index] = curr.next;
         } else {
           prev.next = curr.next;
         }
-        free(curr);
-        self.num_of_elem = self.num_of_elem - 1;
-        return;
       }
-      prev = curr;
-      curr = curr.next;
+
+      free(curr);
+      break;
     }
+
+    prev = curr;
+    curr = curr.next;
   },
 
-  /// Returns the value for `key`, or NULL if not found.
-  search -> fn (key: *void) *void {
-    let index: int   = self.hash(key);
-    let head: *Node  = self.arr[index];
+  search -> fn (key: *byte) *byte {
+    let index: int = self.hash(key);
+
+    let head: *Node = self.arr[index];
 
     loop (head != cast<*Node>(0)) {
-      if (head.key == key) {
+      if (_strcmp(head.key, key) == 0) {
         return head.value;
       }
-      head = head.next;
     }
 
-    return cast<*void>(0);
+    return "Error: No data found at index";
   }
 };
 
-/// Allocates and initialises a new HashMap with 100 buckets.
-/// Caller must free with free_hashmap.
 #returns_ownership
 pub const init_hashmap -> fn () *HashMap {
   let tmp: *HashMap = cast<*HashMap>(alloc(sizeof<HashMap>));
-
+  
   tmp.capacity    = 100;
   tmp.num_of_elem = 0;
-  tmp.arr = cast<**Node>(alloc(sizeof<*Node> * tmp.capacity));
 
-  // Zero the bucket array so every slot starts as a valid empty chain.
-  loop [i: int = 0](i < tmp.capacity) : (++i) {
-    tmp.arr[i] = cast<*Node>(0);
-  }
+  tmp.arr = cast<**Node>(alloc(sizeof<*Node> * tmp.capacity));
 
   return tmp;
 }
 
-/// Frees all nodes, the bucket array, and the HashMap itself.
-/// The pointer must not be used after this call.
 #takes_ownership
 pub const free_hashmap -> fn (ptr: *HashMap) void {
   loop [i: int = 0](i < ptr.capacity) : (++i) {
-    let node: *Node = ptr.arr[i];
-    loop (node != cast<*Node>(0)) {
-      let next: *Node = node.next;
-      free(node);
-      node = next;
-    }
-  }
+    free(ptr.arr[i]);
+  } 
 
   free(ptr.arr);
   free(ptr);
 }
-
