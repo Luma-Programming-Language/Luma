@@ -50,12 +50,11 @@ const register_module_body -> fn (mnode: *AstNode, ms: *Scope) void {
 
 const check_module_body -> fn (mnode: *AstNode, ms: *Scope) bool {
   let mod: *ModuleNode = cast<*ModuleNode>(mnode);
-  let body: **AstNode = mod.body;
   let bc: int = mod.body_count;
 
   let ok: bool = true;
   loop [i: int = 0](i < bc) : (++i) {
-    let bn: *AstNode = body[i];
+    let bn: *AstNode = mod.body[i];
     if (bn.category != AST::NodeCategory::Node_Category_PREPROCESSOR) {
       if (STMT::typecheck_statement(bn, ms) == false) ok = false;
     }

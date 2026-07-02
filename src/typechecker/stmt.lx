@@ -1,5 +1,6 @@
 @module "tc_stmt"
 
+@use "std_memory" as MEM
 @use "std_cstring" as STR
 
 @use "tc_core"  as CORE
@@ -104,7 +105,42 @@ const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   let ok: bool = true;
   if (declared != cast<*AstNode>(0) && inferred != cast<*AstNode>(0)) {
     if (TYPE::types_match(inferred, declared) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
-      ERR::tc_error(stmt, "Type Error", "initializer type does not match declared type");
+      let inferred_str: *byte = TYPE::type_to_string(inferred);
+      let declared_str: *byte = TYPE::type_to_string(declared);
+
+      let nlen: int = STR::strlen(n.name);
+      let ilen: int = STR::strlen(inferred_str);
+      let dlen: int = STR::strlen(declared_str);
+
+      let msg: *byte = cast<*byte>(alloc(256));
+      let pos: int = 0;
+
+      let s: *byte = "Cannot assign '";
+      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(s), STR::strlen(s));
+      pos = pos + STR::strlen(s);
+
+      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(inferred_str), ilen);
+      pos = pos + ilen;
+
+      s = "' to variable '";
+      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(s), STR::strlen(s));
+      pos = pos + STR::strlen(s);
+
+      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(n.name), nlen);
+      pos = pos + nlen;
+
+      s = "' of type '";
+      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(s), STR::strlen(s));
+      pos = pos + STR::strlen(s);
+
+      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(declared_str), dlen);
+      pos = pos + dlen;
+
+      msg[pos] = '\'';
+      pos = pos + 1;
+      msg[pos] = '\0';
+
+      ERR::tc_error_help(stmt, "Type Mismatch", msg, "Check that the initializer type matches the declared type");
       ok = false;
     }
   }
