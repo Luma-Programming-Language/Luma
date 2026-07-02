@@ -203,6 +203,33 @@ Stmt *link_stmt(Parser *parser) {
 
   p_consume(parser, TOK_RPAREN, "Expected ')' to close '@link'");
 
+  if (lib_name && lib_name[0] && lib_name[0] != '/' &&
+      !(lib_name[0] && lib_name[1] == ':') &&
+      (strchr(lib_name, '/') || strchr(lib_name, '\\') ||
+       strstr(lib_name, ".o") || strstr(lib_name, ".bin") ||
+       strstr(lib_name, ".dylib") || strstr(lib_name, ".dll") ||
+       strstr(lib_name, ".so"))) {
+    const char *src_path = parser->file_path;
+    const char *last_slash = strrchr(src_path, '/');
+
+#if defined(_WIN32)
+    const char *last_bs = strrchr(src_path, '\\');
+    if (!last_slash || (last_bs && last_bs > last_slash))
+      last_slash = last_bs;
+#endif
+
+    if (last_slash) {
+      size_t dir_len = last_slash - src_path + 1;
+      char *resolved =
+          arena_alloc(parser->arena, dir_len + strlen(lib_name) + 1, 1);
+      if (resolved) {
+        memcpy(resolved, src_path, dir_len);
+        strcpy(resolved + dir_len, lib_name);
+        lib_name = resolved;
+      }
+    }
+  }
+
   return create_link_node(parser->arena, lib_name, line, col);
 }
 
@@ -272,7 +299,8 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
 
   switch (p_current(parser).type_) {
   case TOK_FN: {
-    Stmt *fn = fn_stmt(parser, name, is_public, false, returns_ownership, takes_ownership);
+    Stmt *fn = fn_stmt(parser, name, is_public, false, returns_ownership,
+                       takes_ownership);
     if (p_current(parser).type_ == TOK_SEMICOLON)
       p_advance(parser);
     return fn;
@@ -310,8 +338,8 @@ Stmt *const_stmt(Parser *parser, bool is_public, bool returns_ownership,
  *
  * @see parse_type(), block_stmt(), create_func_decl_stmt()
  */
-Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
-              bool is_static, bool returns_ownership, bool takes_ownership) {
+Stmt *fn_stmt(Parser *parser, const char *name, bool is_public, bool is_static,
+              bool returns_ownership, bool takes_ownership) {
   char *doc_comment = parser->pending_doc_comment;
   parser->pending_doc_comment = NULL;
 
@@ -385,8 +413,8 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
               "Expected semicolon after function prototype");
     return create_func_decl_stmt(
         parser->arena, name, doc_comment, (char **)param_names.data,
-        (AstNode **)param_types.data, param_names.count, return_type, is_public, is_static,
-        returns_ownership, takes_ownership, true, NULL, line, col);
+        (AstNode **)param_types.data, param_names.count, return_type, is_public,
+        is_static, returns_ownership, takes_ownership, true, NULL, line, col);
   }
 
   if (p_current(parser).type_ == TOK_EQUAL) {
@@ -401,10 +429,11 @@ Stmt *fn_stmt(Parser *parser, const char *name, bool is_public,
     }
     bool is_void = return_type->type == AST_TYPE_BASIC &&
                    strcmp(return_type->type_data.basic.name, "void") == 0;
-    AstNode *body_stmt = is_void
-        ? create_expr_stmt(parser->arena, value, line, col)
-        : create_return_stmt(parser->arena, value, line, col);
-    AstNode **stmts = arena_alloc(parser->arena, sizeof(AstNode *), alignof(AstNode *));
+    AstNode *body_stmt =
+        is_void ? create_expr_stmt(parser->arena, value, line, col)
+                : create_return_stmt(parser->arena, value, line, col);
+    AstNode **stmts =
+        arena_alloc(parser->arena, sizeof(AstNode *), alignof(AstNode *));
     stmts[0] = body_stmt;
     AstNode *body = create_block_stmt(parser->arena, stmts, 1, line, col);
     return create_func_decl_stmt(
@@ -560,48 +589,48 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
     }
 
     if (tok == TOK_ELLIPSIS) {
-        int spread_line = p_current(parser).line;
-        int spread_col  = p_current(parser).col;
-        p_advance(parser); // ...
+      int spread_line = p_current(parser).line;
+      int spread_col = p_current(parser).col;
+      p_advance(parser); // ...
 
-        bool via_ptr = false;
-        if (p_current(parser).type_ == TOK_STAR) {
-          via_ptr = true;
-          p_advance(parser); // *
-        }
+      bool via_ptr = false;
+      if (p_current(parser).type_ == TOK_STAR) {
+        via_ptr = true;
+        p_advance(parser); // *
+      }
 
-        Type *spread_type = parse_type(parser);
-        if (!spread_type) {
-          parser_error(parser, "SyntaxError", parser->file_path, 
-                        "Expected type after '...'", spread_line, spread_col, 3);
-          return NULL;
-        }
+      Type *spread_type = parse_type(parser);
+      if (!spread_type) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected type after '...'", spread_line, spread_col, 3);
+        return NULL;
+      }
 
-        if (p_current(parser).type_ == TOK_COMMA) {
-            p_advance(parser);
-        } else if (p_current(parser).type_ != TOK_RBRACE) {
-            parser_error(parser, "SyntaxError", parser->file_path,
-                         "Expected ',' after spread declaration",
-                         spread_line, spread_col, 1);
-            return NULL;
-        }
+      if (p_current(parser).type_ == TOK_COMMA) {
+        p_advance(parser);
+      } else if (p_current(parser).type_ != TOK_RBRACE) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Expected ',' after spread declaration", spread_line,
+                     spread_col, 1);
+        return NULL;
+      }
 
-        AstNode *spread = create_spread_decl_stmt(
-            parser->arena, spread_type, via_ptr,
-            public_member, spread_line, spread_col);
+      AstNode *spread =
+          create_spread_decl_stmt(parser->arena, spread_type, via_ptr,
+                                  public_member, spread_line, spread_col);
 
-        AstNode **slot = public_member
-            ? (AstNode **)growable_array_push(&public_fields)
-            : (AstNode **)growable_array_push(&private_fields);
+      AstNode **slot = public_member
+                           ? (AstNode **)growable_array_push(&public_fields)
+                           : (AstNode **)growable_array_push(&private_fields);
 
-        if (!slot) {
-            parser_error(parser, "SyntaxError", parser->file_path,
-                         "Internal error: failed to add spread to struct",
-                         spread_line, spread_col, 0);
-            return NULL;
-        }
-        *slot = spread;
-        continue;
+      if (!slot) {
+        parser_error(parser, "SyntaxError", parser->file_path,
+                     "Internal error: failed to add spread to struct",
+                     spread_line, spread_col, 0);
+        return NULL;
+      }
+      *slot = spread;
+      continue;
     }
 
     consume_doc_comments(parser);
@@ -641,17 +670,18 @@ Stmt *struct_stmt(Parser *parser, const char *name, bool is_public) {
       // it
       parser->pending_doc_comment = field_doc;
       p_consume(parser, TOK_RIGHT_ARROW, "Expected '->' after field name");
-      field_function = fn_stmt(parser, field_name, public_member,
-                               is_static, returns_ownership, takes_ownership);
+      field_function = fn_stmt(parser, field_name, public_member, is_static,
+                               returns_ownership, takes_ownership);
     } else {
       // Data field
       p_consume(parser, TOK_COLON, "Expected ':' after field name");
       field_type = parse_type(parser);
 
       if (takes_ownership || returns_ownership || is_static) {
-        parser_error(parser, "Invalid Modifier", __FILE__,
-                     "Static and ownership modifiers are only valid for methods",
-                     field_line, field_col, 1);
+        parser_error(
+            parser, "Invalid Modifier", __FILE__,
+            "Static and ownership modifiers are only valid for methods",
+            field_line, field_col, 1);
         return NULL;
       }
     }

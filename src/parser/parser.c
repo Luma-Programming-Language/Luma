@@ -473,8 +473,6 @@ Stmt *parse_stmt(Parser *parser) {
   const char *dll_name = NULL;
   const char *dll_callconv = NULL;
 
-  // Check for attribute modifiers (#returns_ownership, #takes_ownership,
-  // #dll_import)
   while (p_current(parser).type_ == TOK_RETURNES_OWNERSHIP ||
          p_current(parser).type_ == TOK_TAKES_OWNERSHIP ||
          p_current(parser).type_ == TOK_DLL_IMPORT ||
@@ -559,6 +557,33 @@ Stmt *parse_stmt(Parser *parser) {
       p_advance(parser);
 
       p_consume(parser, TOK_RPAREN, "Expected ')' to close #lib_import");
+
+      if (lib_name && lib_name[0] && lib_name[0] != '/' &&
+          !(lib_name[0] && lib_name[1] == ':') &&
+          (strchr(lib_name, '/') || strchr(lib_name, '\\') ||
+           strstr(lib_name, ".o") || strstr(lib_name, ".bin") ||
+           strstr(lib_name, ".dylib") || strstr(lib_name, ".dll") ||
+           strstr(lib_name, ".so"))) {
+        const char *src_path = parser->file_path;
+        const char *last_slash = strrchr(src_path, '/');
+
+#if defined(_WIN32)
+        const char *last_bs = strrchr(src_path, '\\');
+        if (!last_slash || (last_bs && last_bs > last_slash))
+          last_slash = last_bs;
+#endif
+
+        if (last_slash) {
+          size_t dir_len = last_slash - src_path + 1;
+          char *resolved =
+              arena_alloc(parser->arena, dir_len + strlen(lib_name) + 1, 1);
+          if (resolved) {
+            memcpy(resolved, src_path, dir_len);
+            strcpy(resolved + dir_len, lib_name);
+            lib_name = resolved;
+          }
+        }
+      }
     }
   }
 
@@ -682,8 +707,8 @@ Type *parse_type(Parser *parser) {
   case TOK_STRINGT:
   case TOK_VOID:
   case TOK_CHAR:
-  case TOK_STAR:       // Pointer type
-  case TOK_LBRACKET:   // Array type
+  case TOK_STAR:     // Pointer type
+  case TOK_LBRACKET: // Array type
   case TOK_FN:
   case TOK_IDENTIFIER: // Could be simple type or namespace::Type
     return tnud(parser);

@@ -1,5 +1,7 @@
 @module "main"
 
+@link("linking/main.o")
+
 const Entity -> struct {
 priv:
     id: int,
@@ -44,6 +46,8 @@ const Player -> struct {
     move        -> fn (dx: float, dy: float) void = Entity.move(dx, dy);
 };
 
+const print -> fn () void;
+
 pub const main -> fn () int {
     let player: Player = Player::create("Connor");
 
@@ -54,6 +58,8 @@ pub const main -> fn () int {
     output(player.name, "\n");
     output(player.health, "\n");
     output("(", player.x, ", ", player.y, ")\n");
+
+    print();
 
     return 0;
 }

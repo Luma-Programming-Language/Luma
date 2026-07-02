@@ -209,7 +209,9 @@ bool ensure_parent_directory(const char *filepath) {
 }
 
 void collect_link_flags(CodeGenContext *ctx, char *lib_flags,
-                               size_t lib_flags_size) {
+                               size_t lib_flags_size,
+                               char *object_files,
+                               size_t object_files_size) {
   const char *seen[MAX_LINK_LIBS];
   size_t seen_count = 0;
 
@@ -234,13 +236,17 @@ void collect_link_flags(CodeGenContext *ctx, char *lib_flags,
       seen[seen_count++] = lib;
 
       char flag[256];
-      if (strstr(lib, ".so") || strstr(lib, ".dylib") || strstr(lib, ".a")) {
+      if (strchr(lib, '/') || strchr(lib, '\\') ||
+          strstr(lib, ".o") || strstr(lib, ".bin")) {
+        snprintf(flag, sizeof(flag), " %s", lib);
+        strncat(object_files, flag, object_files_size - strlen(object_files) - 1);
+      } else if (strstr(lib, ".so") || strstr(lib, ".dylib") || strstr(lib, ".a")) {
         snprintf(flag, sizeof(flag), " -l:%s", lib);
+        strncat(lib_flags, flag, lib_flags_size - strlen(lib_flags) - 1);
       } else {
         snprintf(flag, sizeof(flag), " -l%s", lib);
+        strncat(lib_flags, flag, lib_flags_size - strlen(lib_flags) - 1);
       }
-
-      strncat(lib_flags, flag, lib_flags_size - strlen(lib_flags) - 1);
     }
   }
 }
@@ -259,7 +265,9 @@ bool link_object_files(const char *output_dir, const char *executable_name,
   }
 
   char lib_flags[1024] = {0};
-  collect_link_flags(ctx, lib_flags, sizeof(lib_flags));
+  char object_files[1024] = {0};
+  collect_link_flags(ctx, lib_flags, sizeof(lib_flags),
+                     object_files, sizeof(object_files));
 
   // Resolve linker: $CC > clang > cc
   const char *linker = getenv("CC");
@@ -272,20 +280,20 @@ bool link_object_files(const char *output_dir, const char *executable_name,
 
 #if defined(__APPLE__)
   if (opt_level > 0) {
-    snprintf(command, sizeof(command), "%s%s -O%d %s/*.o -o %s -lSystem%s",
-             linker, debug_flags, opt_level, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s -O%d %s/*.o%s -o %s -lSystem%s",
+             linker, debug_flags, opt_level, output_dir, object_files, executable_name, lib_flags);
   } else {
-    snprintf(command, sizeof(command), "%s%s %s/*.o -o %s -lSystem%s",
-             linker, debug_flags, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s %s/*.o%s -o %s -lSystem%s",
+             linker, debug_flags, output_dir, object_files, executable_name, lib_flags);
   }
 
 #else
   if (opt_level > 0) {
-    snprintf(command, sizeof(command), "%s%s -O%d -pie %s/*.o -o %s%s",
-             linker, debug_flags, opt_level, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s -O%d -pie %s/*.o%s -o %s%s",
+             linker, debug_flags, opt_level, output_dir, object_files, executable_name, lib_flags);
   } else {
-    snprintf(command, sizeof(command), "%s%s -pie %s/*.o -o %s%s",
-             linker, debug_flags, output_dir, executable_name, lib_flags);
+    snprintf(command, sizeof(command), "%s%s -pie %s/*.o%s -o %s%s",
+             linker, debug_flags, output_dir, object_files, executable_name, lib_flags);
   }
 #endif
 
@@ -557,12 +565,14 @@ bool run_build(BuildConfig config, ArenaAllocator *allocator) {
 
   timer_stop(&timer);
 
-  if (timer.elapsed_ms < 1000.0) {
-    printf("Build succeeded! Written to '%s' (%.0fms)\n",
-           config.name ? config.name : "output", timer.elapsed_ms);
-  } else {
-    printf("Build succeeded! Written to '%s' (%.2fs)\n",
-           config.name ? config.name : "output", timer.elapsed_ms / 1000.0);
+  if (success) {
+    if (timer.elapsed_ms < 1000.0) {
+      printf("Build succeeded! Written to '%s' (%.0fms)\n",
+             config.name ? config.name : "output", timer.elapsed_ms);
+    } else {
+      printf("Build succeeded! Written to '%s' (%.2fs)\n",
+             config.name ? config.name : "output", timer.elapsed_ms / 1000.0);
+    }
   }
 
 cleanup:
