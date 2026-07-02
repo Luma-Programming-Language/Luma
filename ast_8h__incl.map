@@ -1,0 +1,20 @@
+<map id="src/ast/ast.h" name="src/ast/ast.h">
+<area shape="rect" id="Node000001" title="Abstract Syntax Tree definitions with documentation comment support." alt="" coords="169,5,271,31"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,225,88,251"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="200,33,168,52,131,79,94,113,64,153,53,182,49,211,44,211,48,181,59,151,90,110,128,75,165,48,197,28"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="365,225,440,251"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="256,28,298,48,339,77,365,109,383,145,395,181,402,211,396,213,389,182,378,147,360,111,336,81,295,52,253,33"/>
+<area shape="rect" id="Node000004" href="$memory_8h.html" title="Arena allocator and growable array utilities for fast memory management." alt="" coords="74,152,273,177"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="218,32,201,80,183,139,178,138,196,78,213,30"/>
+<area shape="rect" id="Node000007" href="$lexer_8h.html" title="Tokenizer (lexer) definitions and API for lexical analysis of source code." alt="" coords="211,79,325,104"/>
+<area shape="poly" id="edge8_Node000001_Node000007" title=" " alt="" coords="230,30,255,66,250,69,226,33"/>
+<area shape="poly" id="edge5_Node000004_Node000002" title=" " alt="" coords="154,180,81,221,78,216,152,175"/>
+<area shape="poly" id="edge6_Node000004_Node000003" title=" " alt="" coords="211,175,353,219,351,224,209,180"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="118,225,205,251"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="174,178,168,212,163,211,169,177"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="229,225,339,251"/>
+<area shape="poly" id="edge7_Node000004_Node000006" title=" " alt="" coords="193,175,256,215,253,220,190,180"/>
+<area shape="poly" id="edge9_Node000007_Node000004" title=" " alt="" coords="254,106,201,146,198,141,251,102"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="297,152,367,177"/>
+<area shape="poly" id="edge10_Node000007_Node000008" title=" " alt="" coords="281,103,315,140,311,144,277,106"/>
+</map>
