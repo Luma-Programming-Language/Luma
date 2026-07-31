@@ -27,8 +27,8 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
   // Handle chained compile-time access (Module::Type::member)
   if (object->type == AST_EXPR_MEMBER && object->expr.member.is_compiletime) {
     if (object->expr.member.object->type != AST_EXPR_IDENTIFIER) {
-      fprintf(stderr,
-              "Error: Expected identifier in chained compile-time access\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Expected identifier in chained compile-time access");
       return NULL;
     }
 
@@ -64,8 +64,8 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
       }
     }
 
-    fprintf(stderr, "Error: Enum member '%s::%s::%s' not found\n", module_name,
-            type_name, member);
+    cg_error(ctx, node, "Codegen Error", "Enum member '%s::%s::%s' not found",
+             module_name, type_name, member);
     return NULL;
   }
 
@@ -73,7 +73,8 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
   if (object->type == AST_EXPR_IDENTIFIER) {
     object_name = object->expr.identifier.name;
   } else {
-    fprintf(stderr, "Error: Expected identifier for compile-time access\n");
+    cg_error(ctx, node, "Codegen Error",
+             "Expected identifier for compile-time access");
     return NULL;
   }
 
@@ -187,8 +188,8 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  fprintf(stderr, "Error: No compile-time symbol '%s::%s' found\n", object_name,
-          member);
+  cg_error(ctx, node, "Codegen Error", "No compile-time symbol '%s::%s' found",
+           object_name, member);
   return NULL;
 }
 
@@ -247,7 +248,7 @@ bool validate_module_access(CodeGenContext *ctx, const char *prefix,
     return true;
   }
 
-  fprintf(stderr, "Error: Symbol '%s' not found\n", qualified_name);
+  cg_error(ctx, NULL, "Codegen Error", "Symbol '%s' not found", qualified_name);
   fprintf(stderr, "  Available symbols with prefix '%s':\n", prefix);
 
   char prefix_dot[258];

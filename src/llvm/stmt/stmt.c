@@ -134,8 +134,8 @@ LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
         if (LLVMIsConstant(init_val))
           LLVMSetInitializer(var_ref, init_val);
         else {
-          fprintf(stderr,
-                  "Error: Global variable initializer must be constant\n");
+          cg_error(ctx, node, "Codegen Error",
+                   "Global variable initializer must be constant");
           LLVMValueRef def = get_default_value(alloca_type);
           if (def)
             LLVMSetInitializer(var_ref, def);
@@ -178,10 +178,9 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
   for (size_t i = 0; i < node->stmt.func_decl.param_count; i++) {
     param_types[i] = codegen_type(ctx, node->stmt.func_decl.param_types[i]);
     if (!param_types[i]) {
-      fprintf(
-          stderr,
-          "Error: Failed to generate parameter type %zu for function '%s'\n", i,
-          func_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to generate parameter type %zu for function '%s'", i,
+               func_name);
       return NULL;
     }
   }
@@ -189,8 +188,8 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
   // Generate return type
   LLVMTypeRef return_type = codegen_type(ctx, node->stmt.func_decl.return_type);
   if (!return_type) {
-    fprintf(stderr, "Error: Failed to generate return type for function '%s'\n",
-            func_name);
+    cg_error(ctx, node, "Codegen Error",
+             "Failed to generate return type for function '%s'", func_name);
     return NULL;
   }
 
@@ -275,18 +274,16 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
     LLVMTypeRef existing_type = LLVMGlobalGetValueType(existing_function);
 
     if (LLVMGetReturnType(existing_type) != return_type) {
-      fprintf(stderr,
-              "Error: Function '%s' redeclared with different return type\n",
-              func_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Function '%s' redeclared with different return type", func_name);
       return NULL;
     }
 
     if (LLVMCountParamTypes(existing_type) !=
         node->stmt.func_decl.param_count) {
-      fprintf(
-          stderr,
-          "Error: Function '%s' redeclared with different parameter count\n",
-          func_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Function '%s' redeclared with different parameter count",
+               func_name);
       return NULL;
     }
 
@@ -297,10 +294,9 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
 
     for (size_t i = 0; i < node->stmt.func_decl.param_count; i++) {
       if (existing_param_types[i] != param_types[i]) {
-        fprintf(stderr,
-                "Error: Function '%s' redeclared with different parameter %zu "
-                "type\n",
-                func_name, i);
+        cg_error(ctx, node, "Codegen Error",
+                 "Function '%s' redeclared with different parameter %zu type",
+                 func_name, i);
         return NULL;
       }
     }
@@ -310,8 +306,8 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
     }
 
     if (LLVMCountBasicBlocks(existing_function) > 0) {
-      fprintf(stderr, "Error: Function '%s' already has an implementation\n",
-              func_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Function '%s' already has an implementation", func_name);
       return NULL;
     }
 
@@ -328,8 +324,8 @@ LLVMValueRef codegen_stmt_function(CodeGenContext *ctx, AstNode *node) {
         LLVMAddFunction(current_llvm_module, func_name, func_type);
 
     if (!function) {
-      fprintf(stderr, "Error: Failed to create LLVM function '%s'\n",
-              func_name);
+      cg_error(ctx, node, "Codegen Error", "Failed to create LLVM function '%s'",
+               func_name);
       return NULL;
     }
 
@@ -362,13 +358,14 @@ generate_body: {
                         : LLVMGetNamedFunction(current_llvm_module, func_name);
 
   if (!function) {
-    fprintf(stderr, "Error: Function reference lost for '%s'\n", func_name);
+    cg_error(ctx, node, "Codegen Error", "Function reference lost for '%s'",
+             func_name);
     return NULL;
   }
 
   if (!node->stmt.func_decl.body) {
-    fprintf(stderr, "Error: Function '%s' implementation missing body\n",
-            func_name);
+    cg_error(ctx, node, "Codegen Error",
+             "Function '%s' implementation missing body", func_name);
     return NULL;
   }
 
@@ -862,7 +859,8 @@ LLVMValueRef codegen_stmt_print(CodeGenContext *ctx, AstNode *node) {
 
     LLVMValueRef value = codegen_expr(ctx, expr);
     if (!value) {
-      fprintf(stderr, "Error: Failed to generate expression for printing\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to generate expression for printing");
       continue; // Skip this expression but continue with others
     }
 
@@ -964,13 +962,13 @@ LLVMValueRef codegen_stmt_break_continue(CodeGenContext *ctx, AstNode *node) {
     if (ctx->loop_continue_block) {
       LLVMBuildBr(ctx->builder, ctx->loop_continue_block);
     } else {
-      fprintf(stderr, "Error: 'continue' used outside of a loop\n");
+      cg_error(ctx, node, "Codegen Error", "'continue' used outside of a loop");
     }
   } else {
     if (ctx->loop_break_block) {
       LLVMBuildBr(ctx->builder, ctx->loop_break_block);
     } else {
-      fprintf(stderr, "Error: 'break' used outside of a loop\n");
+      cg_error(ctx, node, "Codegen Error", "'break' used outside of a loop");
     }
   }
   return NULL;
@@ -1089,10 +1087,9 @@ LLVMValueRef codegen_for_loop(CodeGenContext *ctx, AstNode *node) {
   // Generate initializers in current block
   for (size_t i = 0; i < node->stmt.loop_stmt.init_count; i++) {
     if (!codegen_stmt(ctx, node->stmt.loop_stmt.initializer[i])) {
-      fprintf(
-          stderr,
-          "Error: Failed to generate initializer for for loop at line %zu\n",
-          node->line);
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to generate initializer for for loop at line %zu",
+               node->line);
       // Restore old blocks
       ctx->loop_continue_block = old_continue;
       ctx->loop_break_block = old_break;
@@ -1168,7 +1165,7 @@ LLVMValueRef codegen_stmt_switch(CodeGenContext *ctx, AstNode *node) {
   LLVMValueRef switch_value =
       codegen_expr(ctx, node->stmt.switch_stmt.condition);
   if (!switch_value) {
-    fprintf(stderr, "Error: Failed to generate switch condition\n");
+    cg_error(ctx, node, "Codegen Error", "Failed to generate switch condition");
     return NULL;
   }
 
@@ -1218,7 +1215,8 @@ LLVMValueRef codegen_stmt_switch(CodeGenContext *ctx, AstNode *node) {
       if (case_const && LLVMIsConstant(case_const)) {
         LLVMAddCase(switch_inst, case_const, case_blocks[i]);
       } else {
-        fprintf(stderr, "Error: Case value must be a compile-time constant\n");
+        cg_error(ctx, case_stmt, "Codegen Error",
+                 "Case value must be a compile-time constant");
         free(case_blocks);
         return NULL;
       }
@@ -1278,7 +1276,8 @@ LLVMValueRef codegen_case_value(CodeGenContext *ctx, AstNode *case_value) {
       return LLVMConstInt(LLVMInt8TypeInContext(ctx->context),
                           case_value->expr.literal.value.char_val, false);
     default:
-      fprintf(stderr, "Error: Unsupported literal type in case value\n");
+      cg_error(ctx, case_value, "Codegen Error",
+               "Unsupported literal type in case value");
       return NULL;
     }
 
@@ -1287,7 +1286,8 @@ LLVMValueRef codegen_case_value(CodeGenContext *ctx, AstNode *case_value) {
     return codegen_enum_member_case(ctx, case_value);
 
   default:
-    fprintf(stderr, "Error: Case values must be compile-time constants\n");
+    cg_error(ctx, case_value, "Codegen Error",
+             "Case values must be compile-time constants");
     return NULL;
   }
 }
@@ -1311,8 +1311,9 @@ LLVMValueRef codegen_enum_member_case(CodeGenContext *ctx,
     //   member = EXPR_NUMBER
 
     if (object->expr.member.object->type != AST_EXPR_IDENTIFIER) {
-      fprintf(stderr, "Error: Expected identifier in chained compile-time "
-                      "access for case value\n");
+      cg_error(ctx, member_expr, "Codegen Error",
+               "Expected identifier in chained compile-time access for case "
+               "value");
       return NULL;
     }
 
@@ -1353,15 +1354,16 @@ LLVMValueRef codegen_enum_member_case(CodeGenContext *ctx,
       }
     }
 
-    fprintf(stderr,
-            "Error: Enum member '%s::%s::%s' not found for switch case\n",
-            module_name, type_name, member_name);
+    cg_error(ctx, member_expr, "Codegen Error",
+             "Enum member '%s::%s::%s' not found for switch case", module_name,
+             type_name, member_name);
     return NULL;
   }
 
   // Handle simple case: EnumType::Member
   if (object->type != AST_EXPR_IDENTIFIER) {
-    fprintf(stderr, "Error: Expected identifier for enum case value\n");
+    cg_error(ctx, member_expr, "Codegen Error",
+             "Expected identifier for enum case value");
     return NULL;
   }
 
@@ -1375,8 +1377,8 @@ LLVMValueRef codegen_enum_member_case(CodeGenContext *ctx,
   // Look up the enum member symbol
   LLVM_Symbol *enum_member = find_symbol(ctx, qualified_name);
   if (!enum_member) {
-    fprintf(stderr, "Error: Enum member '%s' not found for switch case\n",
-            qualified_name);
+    cg_error(ctx, member_expr, "Codegen Error",
+             "Enum member '%s' not found for switch case", qualified_name);
     return NULL;
   }
 
@@ -1384,7 +1386,8 @@ LLVMValueRef codegen_enum_member_case(CodeGenContext *ctx,
   if (is_enum_constant(enum_member)) {
     return LLVMGetInitializer(enum_member->value);
   } else {
-    fprintf(stderr, "Error: '%s' is not an enum constant\n", qualified_name);
+    cg_error(ctx, member_expr, "Codegen Error", "'%s' is not an enum constant",
+             qualified_name);
     return NULL;
   }
 }

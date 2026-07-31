@@ -31,7 +31,7 @@ static bool is_spread_entry(char *field_name, AstNode *field_value) {
 
 LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
   if (!node || node->type != AST_EXPR_STRUCT) {
-    fprintf(stderr, "Error: Expected struct expression node\n");
+    cg_error(ctx, node, "Codegen Error", "Expected struct expression node");
     return NULL;
   }
 
@@ -45,13 +45,15 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
   if (struct_name) {
     struct_info = find_struct_type(ctx, struct_name);
     if (!struct_info) {
-      fprintf(stderr, "Error: Struct type '%s' not found\n", struct_name);
+      cg_error(ctx, node, "Codegen Error", "Struct type '%s' not found",
+               struct_name);
       return NULL;
     }
   } else {
     struct_info = infer_struct_type_from_context(ctx, field_names, field_count);
     if (!struct_info) {
-      fprintf(stderr, "Error: Could not infer struct type from field names.\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Could not infer struct type from field names.");
       return NULL;
     }
   }
@@ -73,7 +75,8 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
       // Evaluate the spread expression
       LLVMValueRef spread_val = codegen_expr(ctx, field_values[i]->expr.spread.expr);
       if (!spread_val) {
-        fprintf(stderr, "Error: Failed to evaluate spread expression in struct literal\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Failed to evaluate spread expression in struct literal");
         return NULL;
       }
 
@@ -91,7 +94,8 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
         if (tn) source_info = find_struct_type(ctx, tn);
       }
       if (!source_info) {
-        fprintf(stderr, "Error: Cannot determine struct type for spread\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Cannot determine struct type for spread");
         return NULL;
       }
 
@@ -102,8 +106,9 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
       for (size_t j = 0; j < source_info->field_count; j++) {
         int target_idx = get_field_index(struct_info, source_info->field_names[j]);
         if (target_idx < 0) {
-          fprintf(stderr, "Error: Field '%s' from spread doesn't exist in target\n",
-                  source_info->field_names[j]);
+          cg_error(ctx, node, "Codegen Error",
+                   "Field '%s' from spread doesn't exist in target",
+                   source_info->field_names[j]);
           return NULL;
         }
         // Only set if not already provided (named fields override spread)
@@ -124,15 +129,15 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
       // Named field: field_name: value
       int field_idx = get_field_index(struct_info, field_names[i]);
       if (field_idx < 0) {
-        fprintf(stderr, "Error: Field '%s' not found in struct '%s'\n",
-                field_names[i], struct_info->name);
+        cg_error(ctx, node, "Codegen Error", "Field '%s' not found in struct '%s'",
+                 field_names[i], struct_info->name);
         return NULL;
       }
 
       LLVMValueRef val = codegen_expr(ctx, field_values[i]);
       if (!val) {
-        fprintf(stderr, "Error: Failed to generate value for field '%s'\n",
-                field_names[i]);
+        cg_error(ctx, node, "Codegen Error",
+                 "Failed to generate value for field '%s'", field_names[i]);
         return NULL;
       }
 
@@ -161,8 +166,9 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
                   (actual_kind == LLVMFloatTypeKind || actual_kind == LLVMDoubleTypeKind))
           val = LLVMBuildFPToSI(ctx->builder, val, expected_type, "fptosi_field");
         else {
-          fprintf(stderr, "Error: Type mismatch for field '%s' in struct '%s'\n",
-                  field_names[i], struct_info->name);
+          cg_error(ctx, node, "Codegen Error",
+                   "Type mismatch for field '%s' in struct '%s'",
+                   field_names[i], struct_info->name);
           return NULL;
         }
       }
@@ -176,8 +182,9 @@ LLVMValueRef codegen_expr_struct_literal(CodeGenContext *ctx, AstNode *node) {
   // Check that all fields are filled
   for (size_t i = 0; i < struct_info->field_count; i++) {
     if (!llvm_field_values[i]) {
-      fprintf(stderr, "Error: Missing field '%s' in struct initialization for '%s'\n",
-              struct_info->field_names[i], struct_info->name);
+      cg_error(ctx, node, "Codegen Error",
+               "Missing field '%s' in struct initialization for '%s'",
+               struct_info->field_names[i], struct_info->name);
       return NULL;
     }
   }

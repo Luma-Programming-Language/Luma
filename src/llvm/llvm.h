@@ -48,6 +48,11 @@ struct ModuleCompilationUnit {
   const char *link_libs[MAX_LINK_LIBS];
   size_t link_lib_count;
 
+  // Source context for error reporting
+  Token *tokens;
+  size_t token_count;
+  const char *file_path;
+
   LLVMDIBuilderRef dibuilder;
   LLVMMetadataRef compile_unit;
   LLVMMetadataRef file_metadata;
@@ -228,6 +233,13 @@ void set_debug_location(CodeGenContext *ctx, unsigned line, unsigned column);
 // =============================================================================
 // MODULE UTILITY FUNCTIONS
 // =============================================================================
+
+// Report a codegen error through the shared error system. If a node is
+// provided, the source location is taken from it; otherwise line 0 is used.
+void cg_error(CodeGenContext *ctx, AstNode *node, const char *error_type,
+              const char *format, ...);
+void cg_error_help(CodeGenContext *ctx, AstNode *node, const char *error_type,
+                   const char *help, const char *format, ...);
 
 // Check if module is the main module
 bool is_main_module(ModuleCompilationUnit *unit);

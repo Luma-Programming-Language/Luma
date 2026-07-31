@@ -232,8 +232,8 @@ static bool process_module_codegen_recursive(CodeGenContext *ctx,
   }
 
   if (!current_dep) {
-    fprintf(stderr, "Error: Module '%s' not found in dependency info\n",
-            module_name);
+    cg_error(ctx, NULL, "Codegen Error",
+             "Module '%s' not found in dependency info", module_name);
     return false;
   }
 
@@ -251,7 +251,8 @@ static bool process_module_codegen_recursive(CodeGenContext *ctx,
   AstNode *module = modules[current_idx];
   ModuleCompilationUnit *unit = find_module(ctx, module_name);
   if (!unit) {
-    fprintf(stderr, "Error: Module unit not found for '%s'\n", module_name);
+    cg_error(ctx, NULL, "Codegen Error", "Module unit not found for '%s'",
+             module_name);
     return false;
   }
 
@@ -292,12 +293,15 @@ LLVMValueRef codegen_stmt_program_multi_module(CodeGenContext *ctx,
 
       ModuleCompilationUnit *existing = find_module(ctx, module_name);
       if (existing) {
-        fprintf(stderr, "Error: Duplicate module definition: %s\n",
-                module_name);
+        cg_error(ctx, module_node, "Codegen Error",
+                 "Duplicate module definition: %s", module_name);
         return NULL;
       }
 
       ModuleCompilationUnit *unit = create_module_unit(ctx, module_name);
+      unit->tokens = module_node->preprocessor.module.tokens;
+      unit->token_count = module_node->preprocessor.module.token_count;
+      unit->file_path = module_node->preprocessor.module.file_path;
       set_current_module(ctx, unit);
       ctx->module = unit->module;
     }
@@ -312,7 +316,8 @@ LLVMValueRef codegen_stmt_program_multi_module(CodeGenContext *ctx,
       ModuleCompilationUnit *unit = find_module(ctx, module_name);
 
       if (!unit) {
-        fprintf(stderr, "Error: Module unit not found: %s\n", module_name);
+        cg_error(ctx, module_node, "Codegen Error", "Module unit not found: %s",
+                 module_name);
         return NULL;
       }
 
@@ -380,10 +385,9 @@ LLVMValueRef codegen_stmt_use(CodeGenContext *ctx, AstNode *node) {
 
   ModuleCompilationUnit *referenced_module = find_module(ctx, module_name);
   if (!referenced_module) {
-    fprintf(stderr, "Error: Cannot import module '%s' - module not found\n",
-            module_name);
-    fprintf(stderr,
-            "Note: Make sure the module is defined before it's imported\n");
+    cg_error_help(ctx, node, "Codegen Error",
+                  "Make sure the module is defined before it's imported",
+                  "Cannot import module '%s' - module not found", module_name);
     return NULL;
   }
 
@@ -439,9 +443,8 @@ LLVMValueRef codegen_stmt_os(CodeGenContext *ctx, AstNode *node) {
   // *current* scope, not a child scope — identical to the typechecker's
   // approach so that declarations remain visible at module level.
   if (matched_body->type != AST_STMT_BLOCK) {
-    fprintf(stderr,
-            "ERROR: codegen_stmt_os - @os arm body is not a block (type=%d)\n",
-            matched_body->type);
+    cg_error(ctx, matched_body, "Codegen Error",
+             "@os arm body is not a block (type=%d)", matched_body->type);
     return NULL;
   }
 
@@ -604,7 +607,7 @@ LLVMValueRef codegen_expr_member_access(CodeGenContext *ctx, AstNode *node) {
   const char *member = node->expr.member.member;
 
   if (object->type != AST_EXPR_IDENTIFIER) {
-    fprintf(stderr, "Error: Invalid member access syntax\n");
+    cg_error(ctx, node, "Codegen Error", "Invalid member access syntax");
     return NULL;
   }
 
@@ -627,10 +630,11 @@ LLVMValueRef codegen_expr_member_access(CodeGenContext *ctx, AstNode *node) {
 
   LLVM_Symbol *enum_type_sym = find_symbol(ctx, object_name);
   if (enum_type_sym && enum_type_sym->value == NULL) {
-    fprintf(stderr, "Error: Enum member '%s' not found in enum '%s'\n", member,
-            object_name);
+    cg_error(ctx, node, "Codegen Error", "Enum member '%s' not found in enum '%s'",
+             member, object_name);
   } else {
-    fprintf(stderr, "Error: Symbol '%s.%s' not found\n", object_name, member);
+    cg_error(ctx, node, "Codegen Error", "Symbol '%s.%s' not found", object_name,
+             member);
   }
 
   return NULL;

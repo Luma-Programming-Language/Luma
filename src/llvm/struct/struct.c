@@ -114,14 +114,15 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
   }
 
   if (data_field_count == 0) {
-    fprintf(stderr, "Error: Struct %s must have at least one data field\n",
-            struct_name);
+    cg_error(ctx, node, "Codegen Error",
+             "Struct %s must have at least one data field", struct_name);
     return NULL;
   }
 
   // Check if struct already exists
   if (find_struct_type(ctx, struct_name)) {
-    fprintf(stderr, "Error: Struct %s is already defined\n", struct_name);
+    cg_error(ctx, node, "Codegen Error", "Struct %s is already defined",
+             struct_name);
     return NULL;
   }
 
@@ -161,8 +162,9 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
       continue;
     StructInfo *parent = find_struct_type(ctx, parent_type->type_data.basic.name);
     if (!parent) {
-      fprintf(stderr, "Error: Parent struct '%s' not found for spread in '%s'\n",
-              parent_type->type_data.basic.name, struct_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Parent struct '%s' not found for spread in '%s'",
+               parent_type->type_data.basic.name, struct_name);
       return NULL;
     }
     for (size_t j = 0; j < parent->field_count; j++) {
@@ -182,8 +184,9 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
       continue;
     StructInfo *parent = find_struct_type(ctx, parent_type->type_data.basic.name);
     if (!parent) {
-      fprintf(stderr, "Error: Parent struct '%s' not found for spread in '%s'\n",
-              parent_type->type_data.basic.name, struct_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Parent struct '%s' not found for spread in '%s'",
+               parent_type->type_data.basic.name, struct_name);
       return NULL;
     }
     for (size_t j = 0; j < parent->field_count; j++) {
@@ -206,8 +209,9 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
     const char *field_name = member->stmt.field_decl.name;
     for (size_t j = 0; j < field_index; j++) {
       if (strcmp(struct_info->field_names[j], field_name) == 0) {
-        fprintf(stderr, "Error: Duplicate field name '%s' in struct %s\n",
-                field_name, struct_name);
+        cg_error(ctx, node, "Codegen Error",
+                 "Duplicate field name '%s' in struct %s", field_name,
+                 struct_name);
         return NULL;
       }
     }
@@ -216,8 +220,9 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
     struct_info->field_element_types[field_index] = extract_element_type_from_ast(ctx, member->stmt.field_decl.type);
     struct_info->field_is_public[field_index] = true;
     if (!struct_info->field_types[field_index]) {
-      fprintf(stderr, "Error: Failed to resolve type for field %s in struct %s\n",
-              field_name, struct_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to resolve type for field %s in struct %s", field_name,
+               struct_name);
       return NULL;
     }
     field_index++;
@@ -234,8 +239,9 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
     const char *field_name = member->stmt.field_decl.name;
     for (size_t j = 0; j < field_index; j++) {
       if (strcmp(struct_info->field_names[j], field_name) == 0) {
-        fprintf(stderr, "Error: Duplicate field name '%s' in struct %s\n",
-                field_name, struct_name);
+        cg_error(ctx, node, "Codegen Error",
+                 "Duplicate field name '%s' in struct %s", field_name,
+                 struct_name);
         return NULL;
       }
     }
@@ -244,8 +250,9 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
     struct_info->field_element_types[field_index] = extract_element_type_from_ast(ctx, member->stmt.field_decl.type);
     struct_info->field_is_public[field_index] = member->stmt.field_decl.is_public;
     if (!struct_info->field_types[field_index]) {
-      fprintf(stderr, "Error: Failed to resolve type for field %s in struct %s\n",
-              field_name, struct_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to resolve type for field %s in struct %s", field_name,
+               struct_name);
       return NULL;
     }
     field_index++;
@@ -332,8 +339,8 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
                                    const char *method_name, bool is_public,
                                    bool is_static) {
   if (!func_node || func_node->type != AST_STMT_FUNCTION) {
-    fprintf(stderr, "Error: Invalid function node for method '%s'\n",
-            method_name);
+    cg_error(ctx, func_node, "Codegen Error",
+             "Invalid function node for method '%s'", method_name);
     return NULL;
   }
 
@@ -370,9 +377,9 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
   for (size_t i = 0; i < original_param_count; i++) {
     llvm_param_types[i + offset] = codegen_type(ctx, original_param_type_nodes[i]);
     if (!llvm_param_types[i + offset]) {
-      fprintf(stderr,
-              "Error: Failed to resolve parameter type %zu for method '%s'\n",
-              i, method_name);
+      cg_error(ctx, func_node, "Codegen Error",
+               "Failed to resolve parameter type %zu for method '%s'", i,
+               method_name);
       return NULL;
     }
     param_names[i + offset] = original_param_names[i];
@@ -390,8 +397,8 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
   // Create function type
   LLVMTypeRef llvm_return_type = codegen_type(ctx, return_type_node);
   if (!llvm_return_type) {
-    fprintf(stderr, "Error: Failed to resolve return type for method '%s'\n",
-            method_name);
+    cg_error(ctx, func_node, "Codegen Error",
+             "Failed to resolve return type for method '%s'", method_name);
     return NULL;
   }
 
@@ -407,8 +414,9 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
       LLVMAddFunction(current_llvm_module, qualified_method_name, func_type);
 
   if (!func) {
-    fprintf(stderr, "Error: Failed to create LLVM function for method '%s'\n",
-            qualified_method_name);
+    cg_error(ctx, func_node, "Codegen Error",
+             "Failed to create LLVM function for method '%s'",
+             qualified_method_name);
     return NULL;
   }
   // Set linkage
@@ -472,8 +480,8 @@ LLVMValueRef codegen_struct_method(CodeGenContext *ctx, AstNode *func_node,
 
   // Verify the function
   if (LLVMVerifyFunction(func, LLVMReturnStatusAction)) {
-    fprintf(stderr, "Error: Function verification failed for method '%s'\n",
-            method_name);
+    cg_error(ctx, func_node, "Codegen Error",
+             "Function verification failed for method '%s'", method_name);
     LLVMDumpValue(func);
     // Restore context even on error
     ctx->current_function = old_function;
@@ -497,8 +505,9 @@ LLVMValueRef codegen_stmt_field(CodeGenContext *ctx, AstNode *node) {
   }
 
   // If we reach here, it means a field declaration was used outside a struct
-  fprintf(stderr, "Error: Field declaration '%s' must be inside a struct\n",
-          node->stmt.field_decl.name);
+  cg_error(ctx, node, "Codegen Error",
+           "Field declaration '%s' must be inside a struct",
+           node->stmt.field_decl.name);
   return NULL;
 }
 
@@ -526,8 +535,8 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     const char *var_name = object->expr.identifier.name;
     LLVM_Symbol *sym = find_symbol(ctx, var_name);
     if (!sym || sym->is_function) {
-      fprintf(stderr, "Error: Variable %s not found or is a function\n",
-              var_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Variable %s not found or is a function", var_name);
       return NULL;
     }
 
@@ -549,8 +558,8 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     }
 
     if (!struct_info) {
-      fprintf(stderr, "Error: Could not find struct for field '%s'\n",
-              field_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Could not find struct for field '%s'", field_name);
       return NULL;
     }
 
@@ -567,16 +576,16 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     }
 
     if (field_index < 0) {
-      fprintf(stderr,
-              "Error: Field '%s' not found in struct '%s' or any struct "
-              "embedding it\n",
-              field_name, struct_info->name);
+      cg_error(ctx, node, "Codegen Error",
+               "Field '%s' not found in struct '%s' or any struct embedding it",
+               field_name, struct_info->name);
       return NULL;
     }
 
     if (!is_field_access_allowed(ctx, struct_info, field_index)) {
-      fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
-              field_name, struct_info->name);
+      cg_error(ctx, node, "Codegen Error",
+               "Field '%s' in struct '%s' is private", field_name,
+               struct_info->name);
       return NULL;
     }
 
@@ -591,9 +600,8 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     } else if (sym_type == struct_info->llvm_type) {
       struct_ptr = sym->value;
     } else {
-      fprintf(stderr,
-              "Error: Variable '%s' is not a struct or pointer to struct\n",
-              var_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Variable '%s' is not a struct or pointer to struct", var_name);
       return NULL;
     }
 
@@ -631,7 +639,7 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
     return value;
   }
 
-  fprintf(stderr, "Error: Unsupported struct assignment pattern\n");
+  cg_error(ctx, node, "Codegen Error", "Unsupported struct assignment pattern");
   return NULL;
 }
 
@@ -642,7 +650,8 @@ LLVMTypeRef codegen_type_struct(CodeGenContext *ctx, const char *struct_name) {
     return struct_info->llvm_type;
   }
 
-  fprintf(stderr, "Error: Struct type '%s' not found\n", struct_name);
+  cg_error(ctx, NULL, "Codegen Error", "Struct type '%s' not found",
+           struct_name);
   return NULL;
 }
 
@@ -652,16 +661,16 @@ LLVMValueRef codegen_struct_literal(CodeGenContext *ctx,
                                     size_t field_count) {
   StructInfo *struct_info = find_struct_type(ctx, struct_name);
   if (!struct_info) {
-    fprintf(stderr, "Error: Struct type '%s' not found for literal\n",
-            struct_name);
+    cg_error(ctx, NULL, "Codegen Error", "Struct type '%s' not found for literal",
+             struct_name);
     return NULL;
   }
 
   if (field_count != struct_info->field_count) {
-    fprintf(stderr,
-            "Error: Struct literal field count mismatch for '%s': expected "
-            "%zu, got %zu\n",
-            struct_name, struct_info->field_count, field_count);
+    cg_error(ctx, NULL, "Codegen Error",
+             "Struct literal field count mismatch for '%s': expected %zu, got "
+             "%zu",
+             struct_name, struct_info->field_count, field_count);
     return NULL;
   }
 

@@ -37,12 +37,14 @@ const char *get_struct_name_from_type(CodeGenContext *ctx, LLVMTypeRef type) {
 LLVMValueRef create_struct_zero_initializer(CodeGenContext *ctx, const char *struct_name) {
     StructInfo *struct_info = find_struct_type(ctx, struct_name);
     if (!struct_info) {
-        fprintf(stderr, "Error: Struct type '%s' not found for zero initialization\n", struct_name);
+        cg_error(ctx, NULL, "Codegen Error",
+                 "Struct type '%s' not found for zero initialization", struct_name);
         return NULL;
     }
     
     if (!struct_info->llvm_type) {
-        fprintf(stderr, "Error: llvm_type for struct '%s' is NULL\n", struct_name);
+        cg_error(ctx, NULL, "Codegen Error",
+                 "llvm_type for struct '%s' is NULL", struct_name);
         return NULL;
     }
     
@@ -53,7 +55,7 @@ LLVMValueRef create_struct_zero_initializer(CodeGenContext *ctx, const char *str
 LLVMValueRef create_struct_copy(CodeGenContext *ctx, LLVMValueRef src_struct, 
                                StructInfo *struct_info) {
     if (!struct_info) {
-        fprintf(stderr, "Error: No struct info provided for copy\n");
+        cg_error(ctx, NULL, "Codegen Error", "No struct info provided for copy");
         return NULL;
     }
     
@@ -177,7 +179,8 @@ void debug_struct_layout(CodeGenContext *ctx, const char *struct_name) {
 LLVMValueRef compare_structs_equal(CodeGenContext *ctx, LLVMValueRef struct1, 
                                   LLVMValueRef struct2, StructInfo *struct_info) {
     if (!struct_info) {
-        fprintf(stderr, "Error: No struct info provided for comparison\n");
+        cg_error(ctx, NULL, "Codegen Error",
+                 "No struct info provided for comparison");
         return NULL;
     }
     
@@ -226,7 +229,8 @@ LLVMValueRef compare_structs_equal(CodeGenContext *ctx, LLVMValueRef struct1,
 LLVMValueRef initialize_struct_with_defaults(CodeGenContext *ctx, const char *struct_name) {
     StructInfo *struct_info = find_struct_type(ctx, struct_name);
     if (!struct_info) {
-        fprintf(stderr, "Error: Struct type '%s' not found for default initialization\n", struct_name);
+        cg_error(ctx, NULL, "Codegen Error",
+                 "Struct type '%s' not found for default initialization", struct_name);
         return NULL;
     }
     
@@ -237,7 +241,8 @@ LLVMValueRef initialize_struct_with_defaults(CodeGenContext *ctx, const char *st
     for (size_t i = 0; i < struct_info->field_count; i++) {
         LLVMValueRef default_value = get_default_value(struct_info->field_types[i]);
         if (!default_value) {
-            fprintf(stderr, "Error: Cannot create default value for field %zu\n", i);
+            cg_error(ctx, NULL, "Codegen Error",
+                     "Cannot create default value for field %zu", i);
             return NULL;
         }
         

@@ -122,6 +122,11 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
 
   bool success = generate_program_modules(ctx, root, output_dir);
 
+  if (error_has_errors()) {
+    cleanup_codegen_context(ctx);
+    return false;
+  }
+
   if (!success) {
     fprintf(stderr, "Failed to generate LLVM modules\n");
     cleanup_codegen_context(ctx);
@@ -557,6 +562,9 @@ bool run_build(BuildConfig config, ArenaAllocator *allocator) {
     }
     success = generate_llvm_code_modules(combined_program, config, allocator,
                                          &step, &timer);
+    if (!success) {
+      error_report();
+    }
   }
 
   // Stage 7: Finalizing

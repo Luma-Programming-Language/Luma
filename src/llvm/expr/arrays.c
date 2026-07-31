@@ -65,16 +65,16 @@ bool check_array_bounds_runtime(CodeGenContext *ctx, LLVMValueRef array_ptr,
     long long index_val = LLVMConstIntGetSExtValue(index);
 
     if (index_val < 0) {
-      fprintf(stderr, "Error: Negative array index %lld for array '%s'\n",
-              index_val, var_name ? var_name : "unknown");
+      cg_error(ctx, NULL, "Codegen Error",
+               "Negative array index %lld for array '%s'", index_val,
+               var_name ? var_name : "unknown");
       return false;
     }
 
     if (index_val >= (long long)array_length) {
-      fprintf(
-          stderr,
-          "Error: Array index %lld out of bounds for array '%s' of length %u\n",
-          index_val, var_name ? var_name : "unknown", array_length);
+      cg_error(ctx, NULL, "Codegen Error",
+               "Array index %lld out of bounds for array '%s' of length %u",
+               index_val, var_name ? var_name : "unknown", array_length);
       return false;
     }
   }
@@ -143,10 +143,10 @@ LLVMValueRef codegen_multidim_array_access(CodeGenContext *ctx,
           LLVMBuildGEP2(ctx->builder, LLVMInt8TypeInContext(ctx->context),
                         current_value, &index, 1, "ptr_index");
     } else {
-      fprintf(stderr,
-              "Error: Cannot index into non-array, non-pointer type at "
-              "dimension %zu\n",
-              i);
+      cg_error(ctx, NULL, "Codegen Error",
+               "Cannot index into non-array, non-pointer type at dimension "
+               "%zu",
+               i);
       return NULL;
     }
   }
@@ -198,7 +198,7 @@ void copy_array_elements(CodeGenContext *ctx, LLVMValueRef dest_array,
       src_element = convert_value_to_type(ctx, src_element, src_element_type,
                                           dest_element_type);
       if (!src_element) {
-        fprintf(stderr, "Error: Cannot convert array element type\n");
+        cg_error(ctx, NULL, "Codegen Error", "Cannot convert array element type");
         return;
       }
     }

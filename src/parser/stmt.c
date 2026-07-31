@@ -206,9 +206,7 @@ Stmt *link_stmt(Parser *parser) {
   if (lib_name && lib_name[0] && lib_name[0] != '/' &&
       !(lib_name[0] && lib_name[1] == ':') &&
       (strchr(lib_name, '/') || strchr(lib_name, '\\') ||
-       strstr(lib_name, ".o") || strstr(lib_name, ".bin") ||
-       strstr(lib_name, ".dylib") || strstr(lib_name, ".dll") ||
-       strstr(lib_name, ".so"))) {
+       strstr(lib_name, ".o") || strstr(lib_name, ".bin"))) {
     const char *src_path = parser->file_path;
     const char *last_slash = strrchr(src_path, '/');
 

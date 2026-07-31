@@ -195,3 +195,6 @@ pub const tan   -> fn (x: double) double;
 /// Arc tangent (y/x) in radians
 #lib_import("libm.so") 
 pub const atan2 -> fn (y: double, x: double) double;
+/// Tanh (hyperbolic tangent)
+#lib_import("libm.so")
+pub const tanh  -> fn (x: double) double;

@@ -1,4 +1,7 @@
 #include "../llvm.h"
+#include "../../c_libs/error/error.h"
+#include <stdarg.h>
+#include <stdlib.h>
 
 // Alloca + Store pattern
 LLVMValueRef alloca_and_store(CodeGenContext *ctx, LLVMTypeRef type,
@@ -70,4 +73,72 @@ LLVMValueRef build_global_string(CodeGenContext *ctx, const char *str,
   }
 
   return global_str;
+}
+
+static void cg_error_v(CodeGenContext *ctx, AstNode *node,
+                       const char *error_type, const char *help,
+                       const char *format, va_list args) {
+  const char *file_path = NULL;
+  Token *tokens = NULL;
+  int token_count = 0;
+
+  if (ctx && ctx->current_module) {
+    file_path = ctx->current_module->file_path;
+    tokens = ctx->current_module->tokens;
+    token_count = (int)ctx->current_module->token_count;
+  }
+
+  char stack_buffer[512];
+  char *message = stack_buffer;
+  char *message_heap = NULL;
+
+  if (ctx && ctx->arena) {
+    message = arena_alloc(ctx->arena, 512, alignof(char));
+    if (!message) {
+      message = stack_buffer;
+    }
+  }
+
+  vsnprintf(message, 512, format, args);
+
+  if (message == stack_buffer) {
+    message_heap = strdup(message);
+    message = message_heap;
+  }
+
+  ErrorInformation error = {0};
+  error.error_type = error_type;
+  error.file_path = file_path;
+  error.message = message;
+  error.help = help;
+  error.line = node ? (int)node->line : 0;
+  error.col = node ? (int)node->column : 0;
+  error.token_length = 1;
+
+  if (node && tokens && token_count > 0) {
+    error.line_text =
+        generate_line(ctx->arena, tokens, token_count, error.line);
+  }
+
+  error_add(error);
+
+  if (message_heap) {
+    free(message_heap);
+  }
+}
+
+void cg_error(CodeGenContext *ctx, AstNode *node, const char *error_type,
+              const char *format, ...) {
+  va_list args;
+  va_start(args, format);
+  cg_error_v(ctx, node, error_type, NULL, format, args);
+  va_end(args);
+}
+
+void cg_error_help(CodeGenContext *ctx, AstNode *node, const char *error_type,
+                   const char *help, const char *format, ...) {
+  va_list args;
+  va_start(args, format);
+  cg_error_v(ctx, node, error_type, help, format, args);
+  va_end(args);
 }

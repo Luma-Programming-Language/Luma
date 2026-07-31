@@ -122,8 +122,8 @@ LLVMValueRef codegen_expr_literal(CodeGenContext *ctx, AstNode *node) {
     return get_default_value(ctx->common_types.i8_ptr);
 
   default:
-    fprintf(stderr, "ERROR: Unknown literal type: %d\n",
-            node->expr.literal.lit_type);
+    cg_error(ctx, node, "Codegen Error", "Unknown literal type: %d",
+             node->expr.literal.lit_type);
     return NULL;
   }
 }
@@ -145,7 +145,7 @@ LLVMValueRef codegen_expr_identifier(CodeGenContext *ctx, AstNode *node) {
     }
   }
 
-  fprintf(stderr, "Error: Undefined symbol '%s'\n", name);
+  cg_error(ctx, node, "Codegen Error", "Undefined symbol '%s'", name);
   return NULL;
 }
 
@@ -169,17 +169,16 @@ LLVMValueRef codegen_expr_unary(CodeGenContext *ctx, AstNode *node) {
 
   case UNOP_NOT:
     if (is_float) {
-      fprintf(stderr,
-              "Error: Logical NOT not supported for floating point values\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Logical NOT not supported for floating point values");
       return NULL;
     }
     return LLVMBuildNot(ctx->builder, operand, "not");
 
   case UNOP_BIT_NOT:
     if (is_float) {
-      fprintf(
-          stderr,
-          "Error: Bitwise NOT (~) not supported for floating point values\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Bitwise NOT (~) not supported for floating point values");
       return NULL;
     }
     return LLVMBuildNot(ctx->builder, operand, "bitnot");
@@ -187,14 +186,15 @@ LLVMValueRef codegen_expr_unary(CodeGenContext *ctx, AstNode *node) {
   case UNOP_PRE_INC:
   case UNOP_POST_INC: {
     if (node->expr.unary.operand->type != AST_EXPR_IDENTIFIER) {
-      fprintf(stderr, "Error: Increment/decrement requires an lvalue\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Increment/decrement requires an lvalue");
       return NULL;
     }
 
     LLVM_Symbol *sym =
         find_symbol(ctx, node->expr.unary.operand->expr.identifier.name);
     if (!sym || sym->is_function) {
-      fprintf(stderr, "Error: Undefined variable for increment\n");
+      cg_error(ctx, node, "Codegen Error", "Undefined variable for increment");
       return NULL;
     }
 
@@ -218,14 +218,15 @@ LLVMValueRef codegen_expr_unary(CodeGenContext *ctx, AstNode *node) {
   case UNOP_PRE_DEC:
   case UNOP_POST_DEC: {
     if (node->expr.unary.operand->type != AST_EXPR_IDENTIFIER) {
-      fprintf(stderr, "Error: Increment/decrement requires an lvalue\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Increment/decrement requires an lvalue");
       return NULL;
     }
 
     LLVM_Symbol *sym =
         find_symbol(ctx, node->expr.unary.operand->expr.identifier.name);
     if (!sym || sym->is_function) {
-      fprintf(stderr, "Error: Undefined variable for decrement\n");
+      cg_error(ctx, node, "Codegen Error", "Undefined variable for decrement");
       return NULL;
     }
 
@@ -306,8 +307,8 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
     }
 
     if (!struct_info) {
-      fprintf(stderr, "Error: Cannot determine struct type for method '%s'\n",
-              member_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Cannot determine struct type for method '%s'", member_name);
       return NULL;
     }
 
@@ -346,9 +347,9 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
       }
     }
     if (!method_func) {
-      fprintf(stderr,
-              "Error: Method '%s' (qualified: %s) not found in any module\n",
-              member_name, qualified_method_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Method '%s' (qualified: %s) not found in any module",
+               member_name, qualified_method_name);
       return NULL;
     }
 
@@ -379,9 +380,9 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
       }
       args[i] = codegen_expr(ctx, node->expr.call.args[i]);
       if (!args[i]) {
-        fprintf(stderr,
-                "Error: Failed to generate argument %zu for method '%s'\n", i,
-                member_name);
+        cg_error(ctx, node, "Codegen Error",
+                 "Failed to generate argument %zu for method '%s'", i,
+                 member_name);
         return NULL;
       }
     }
@@ -404,7 +405,8 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
   }
 
   if (!callee_value) {
-    fprintf(stderr, "Error: callee_value is NULL in codegen_expr_call\n");
+    cg_error(ctx, node, "Codegen Error",
+             "callee_value is NULL in codegen_expr_call");
     return NULL;
   }
 
@@ -427,7 +429,7 @@ LLVMValueRef codegen_expr_call(CodeGenContext *ctx, AstNode *node) {
 
   LLVMTypeRef return_type = LLVMGetReturnType(func_type);
   if (!return_type) {
-    fprintf(stderr, "Error: Failed to get return type\n");
+    cg_error(ctx, node, "Codegen Error", "Failed to get return type");
     return NULL;
   }
 
@@ -522,8 +524,8 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
       LLVMBuildStore(ctx->builder, value, sym->value);
       return value;
     }
-    fprintf(stderr, "Error: Variable %s not found\n",
-            target->expr.identifier.name);
+    cg_error(ctx, node, "Codegen Error", "Variable %s not found",
+             target->expr.identifier.name);
     return NULL;
   }
 
@@ -562,8 +564,8 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
         if (sym && !sym->is_function) {
           array_ptr = sym->value;
         } else {
-          fprintf(stderr, "Error: Array variable %s not found for assignment\n",
-                  var_name);
+          cg_error(ctx, node, "Codegen Error",
+                   "Array variable %s not found for assignment", var_name);
           return NULL;
         }
       } else {
@@ -585,8 +587,8 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
       if (element_type != value_type) {
         value = convert_value_to_type(ctx, value, value_type, element_type);
         if (!value) {
-          fprintf(stderr,
-                  "Error: Cannot convert value to array element type\n");
+          cg_error(ctx, node, "Codegen Error",
+                   "Cannot convert value to array element type");
           return NULL;
         }
       }
@@ -624,12 +626,11 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
               target->expr.index.object->type == AST_EXPR_IDENTIFIER
                   ? target->expr.index.object->expr.identifier.name
                   : "pointer";
-          fprintf(
-              stderr,
-              "Error: Cannot assign scalar value to struct pointer element.\n"
-              "  Variable '%s' is a pointer to struct, not an array of "
-              "values.\n"
-              "  Did you mean to use a different pointer variable?\n",
+          cg_error(
+              ctx, node, "Codegen Error",
+              "Cannot assign scalar value to struct pointer element. "
+              "Variable '%s' is a pointer to struct, not an array of values. "
+              "Did you mean to use a different pointer variable?",
               var_name);
           return NULL;
         }
@@ -684,10 +685,10 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
           value_final = LLVMBuildSIToFP(ctx->builder, value, element_type,
                                         "int_to_float_for_store");
         } else {
-          fprintf(stderr,
-                  "Error: Cannot convert value type (kind %d) to pointer "
-                  "element type (kind %d)\n",
-                  LLVMGetTypeKind(value_type), LLVMGetTypeKind(element_type));
+          cg_error(ctx, node, "Codegen Error",
+                   "Cannot convert value type (kind %d) to pointer element "
+                   "type (kind %d)",
+                   LLVMGetTypeKind(value_type), LLVMGetTypeKind(element_type));
           return NULL;
         }
       }
@@ -698,19 +699,19 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
       return value;
 
     } else {
-      fprintf(stderr, "Error: Cannot assign to index of this type (kind: %d)\n",
-              object_kind);
+      cg_error(ctx, node, "Codegen Error",
+               "Cannot assign to index of this type (kind: %d)", object_kind);
       return NULL;
     }
   }
 
-  fprintf(stderr, "Error: Invalid assignment target\n");
+  cg_error(ctx, node, "Codegen Error", "Invalid assignment target");
   return NULL;
 }
 
 LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
   if (!node || node->type != AST_EXPR_ARRAY) {
-    fprintf(stderr, "Error: Expected array expression node\n");
+    cg_error(ctx, node, "Codegen Error", "Expected array expression node");
     return NULL;
   }
 
@@ -720,14 +721,14 @@ LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
       node->expr.array.target_size; // NEW: Get target size for padding
 
   if (element_count == 0) {
-    fprintf(stderr, "Error: Empty array literals not supported\n");
+    cg_error(ctx, node, "Codegen Error", "Empty array literals not supported");
     return NULL;
   }
 
   // Generate the first element to determine the array's element type
   LLVMValueRef first_element = codegen_expr(ctx, elements[0]);
   if (!first_element) {
-    fprintf(stderr, "Error: Failed to generate first array element\n");
+    cg_error(ctx, node, "Codegen Error", "Failed to generate first array element");
     return NULL;
   }
 
@@ -752,7 +753,8 @@ LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
   for (size_t i = 1; i < element_count; i++) {
     element_values[i] = codegen_expr(ctx, elements[i]);
     if (!element_values[i]) {
-      fprintf(stderr, "Error: Failed to generate array element %zu\n", i);
+      cg_error(ctx, node, "Codegen Error", "Failed to generate array element %zu",
+               i);
       return NULL;
     }
 
@@ -762,8 +764,8 @@ LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
       element_values[i] = convert_value_to_type(ctx, element_values[i],
                                                 current_type, element_type);
       if (!element_values[i]) {
-        fprintf(stderr,
-                "Error: Cannot convert element %zu to array element type\n", i);
+        cg_error(ctx, node, "Codegen Error",
+                 "Cannot convert element %zu to array element type", i);
         return NULL;
       }
     }
@@ -826,7 +828,7 @@ LLVMValueRef codegen_expr_array(CodeGenContext *ctx, AstNode *node) {
 
 LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
   if (!node || node->type != AST_EXPR_INDEX) {
-    fprintf(stderr, "Error: Expected index expression node\n");
+    cg_error(ctx, node, "Codegen Error", "Expected index expression node");
     return NULL;
   }
 
@@ -838,7 +840,8 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
     // Generate the member access to get the pointer
     LLVMValueRef pointer = codegen_expr_struct_access(ctx, member_expr);
     if (!pointer) {
-      fprintf(stderr, "Error: Failed to resolve member access for indexing\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to resolve member access for indexing");
       return NULL;
     }
 
@@ -853,8 +856,8 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
 
     // The member access should have returned a pointer
     if (pointer_kind != LLVMPointerTypeKind) {
-      fprintf(stderr, "Error: Member '%s' is not a pointer type for indexing\n",
-              field_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Member '%s' is not a pointer type for indexing", field_name);
       return NULL;
     }
 
@@ -919,8 +922,9 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
           int field_idx = get_field_index(current_struct, current_field_name);
 
           if (field_idx < 0) {
-            fprintf(stderr, "Error: Field '%s' not found in struct '%s'\n",
-                    current_field_name, current_struct->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' not found in struct '%s'",
+                     current_field_name, current_struct->name);
             break;
           }
 
@@ -980,10 +984,9 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
     }
 
     if (!element_type) {
-      fprintf(
-          stderr,
-          "Error: Could not determine pointer element type for indexing '%s'\n",
-          field_name);
+      cg_error(ctx, node, "Codegen Error",
+               "Could not determine pointer element type for indexing '%s'",
+               field_name);
       return NULL;
     }
 
@@ -999,14 +1002,14 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
   // Generate the object being indexed
   LLVMValueRef object = codegen_expr(ctx, node->expr.index.object);
   if (!object) {
-    fprintf(stderr, "Error: Failed to generate indexed object\n");
+    cg_error(ctx, node, "Codegen Error", "Failed to generate indexed object");
     return NULL;
   }
 
   // Generate the index expression
   LLVMValueRef index = codegen_expr(ctx, node->expr.index.index);
   if (!index) {
-    fprintf(stderr, "Error: Failed to generate index expression\n");
+    cg_error(ctx, node, "Codegen Error", "Failed to generate index expression");
     return NULL;
   }
 
@@ -1216,12 +1219,11 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
     // CRITICAL: Don't fall back to i8! This causes the bug.
     // If we can't determine the type, it's an error condition.
     if (!pointee_type) {
-      fprintf(
-          stderr,
-          "Error: Could not determine pointer element type for indexing '%s'\n",
-          node->expr.index.object->type == AST_EXPR_IDENTIFIER
-              ? node->expr.index.object->expr.identifier.name
-              : "expression");
+      cg_error(ctx, node, "Codegen Error",
+               "Could not determine pointer element type for indexing '%s'",
+               node->expr.index.object->type == AST_EXPR_IDENTIFIER
+                   ? node->expr.index.object->expr.identifier.name
+                   : "expression");
       return NULL;
     }
 
@@ -1236,8 +1238,8 @@ LLVMValueRef codegen_expr_index(CodeGenContext *ctx, AstNode *node) {
     return result;
 
   } else {
-    fprintf(stderr, "Error: Cannot index expression of type kind %d\n",
-            object_kind);
+    cg_error(ctx, node, "Codegen Error",
+             "Cannot index expression of type kind %d", object_kind);
     return NULL;
   }
 }
@@ -1330,7 +1332,7 @@ LLVMValueRef codegen_expr_cast(CodeGenContext *ctx, AstNode *node) {
 
 LLVMValueRef codegen_expr_input(CodeGenContext *ctx, AstNode *node) {
   if (!node || node->type != AST_EXPR_INPUT) {
-    fprintf(stderr, "Error: Expected input expression node\n");
+    cg_error(ctx, node, "Codegen Error", "Expected input expression node");
     return NULL;
   }
 
@@ -1340,7 +1342,8 @@ LLVMValueRef codegen_expr_input(CodeGenContext *ctx, AstNode *node) {
   // Get the target type for the input
   LLVMTypeRef target_type = codegen_type(ctx, node->expr.input.type);
   if (!target_type) {
-    fprintf(stderr, "Error: Failed to generate type for input expression\n");
+    cg_error(ctx, node, "Codegen Error",
+             "Failed to generate type for input expression");
     return NULL;
   }
 
@@ -1492,7 +1495,8 @@ LLVMValueRef codegen_expr_input(CodeGenContext *ctx, AstNode *node) {
     result = buffer_ptr;
 
   } else {
-    fprintf(stderr, "Error: Unsupported input type kind %d\n", type_kind);
+    cg_error(ctx, node, "Codegen Error", "Unsupported input type kind %d",
+             type_kind);
     return NULL;
   }
 
@@ -1501,14 +1505,14 @@ LLVMValueRef codegen_expr_input(CodeGenContext *ctx, AstNode *node) {
 
 LLVMValueRef codegen_expr_system(CodeGenContext *ctx, AstNode *node) {
   if (!node || node->type != AST_EXPR_SYSTEM) {
-    fprintf(stderr, "Error: Expected system expression node\n");
+    cg_error(ctx, node, "Codegen Error", "Expected system expression node");
     return NULL;
   }
 
   // Get the command expression
   LLVMValueRef command = codegen_expr(ctx, node->expr._system.command);
   if (!command) {
-    fprintf(stderr, "Error: Failed to generate system command\n");
+    cg_error(ctx, node, "Codegen Error", "Failed to generate system command");
     return NULL;
   }
 
@@ -1538,7 +1542,8 @@ LLVMValueRef codegen_expr_system(CodeGenContext *ctx, AstNode *node) {
   LLVMTypeKind command_kind = LLVMGetTypeKind(command_type);
 
   if (command_kind != LLVMPointerTypeKind) {
-    fprintf(stderr, "Error: System command must be a string (char*)\n");
+    cg_error(ctx, node, "Codegen Error",
+             "System command must be a string (char*)");
     return NULL;
   }
 
@@ -1560,7 +1565,7 @@ LLVMValueRef codegen_expr_system(CodeGenContext *ctx, AstNode *node) {
  */
 LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
   if (!node || node->type != AST_EXPR_SYSCALL) {
-    fprintf(stderr, "Error: Expected syscall expression node\n");
+    cg_error(ctx, node, "Codegen Error", "Expected syscall expression node");
     return NULL;
   }
 
@@ -1569,16 +1574,16 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
 
   // Syscall requires at least 1 argument (the syscall number)
   if (arg_count == 0) {
-    fprintf(
-        stderr,
-        "Error: syscall() requires at least one argument (syscall number)\n");
+    cg_error(ctx, node, "Codegen Error",
+             "syscall() requires at least one argument (syscall number)");
     return NULL;
   }
 
   // Maximum 7 arguments: syscall_num + 6 syscall args
   if (arg_count > 7) {
-    fprintf(stderr, "Error: syscall() supports maximum 7 arguments (syscall "
-                    "number + 6 parameters)\n");
+    cg_error(ctx, node, "Codegen Error",
+             "syscall() supports maximum 7 arguments (syscall number + 6 "
+             "parameters)");
     return NULL;
   }
 
@@ -1593,8 +1598,8 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
   for (size_t i = 0; i < arg_count; i++) {
     llvm_args[i] = codegen_expr(ctx, args[i]);
     if (!llvm_args[i]) {
-      fprintf(stderr, "Error: Failed to generate syscall argument %zu\n",
-              i + 1);
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to generate syscall argument %zu", i + 1);
       return NULL;
     }
 
@@ -1804,7 +1809,7 @@ LLVMValueRef codegen_expr_syscall(CodeGenContext *ctx, AstNode *node) {
     constraints = "={rax},{rax},{rdi},{rsi},{rdx},{r10},{r8},{r9}";
     break;
   default:
-    fprintf(stderr, "Error: Invalid syscall argument count\n");
+    cg_error(ctx, node, "Codegen Error", "Invalid syscall argument count");
     return NULL;
   }
 
@@ -1990,7 +1995,8 @@ LLVMValueRef codegen_expr_deref(CodeGenContext *ctx, AstNode *node) {
 
   // Ensure we have a pointer type
   if (LLVMGetTypeKind(ptr_type) != LLVMPointerTypeKind) {
-    fprintf(stderr, "Error: Attempting to dereference non-pointer type\n");
+    cg_error(ctx, node, "Codegen Error",
+             "Attempting to dereference non-pointer type");
     return NULL;
   }
 
@@ -2083,8 +2089,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
     if (sym) {
       return sym->value;
     }
-    fprintf(stderr, "Error: Cannot take address of '%s'\n",
-            target->expr.identifier.name);
+    cg_error(ctx, node, "Codegen Error", "Cannot take address of '%s'",
+             target->expr.identifier.name);
     return NULL;
   }
 
@@ -2117,8 +2123,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
       LLVMTypeRef element_type =
           resolve_pointer_element_type(ctx, target->expr.index.object);
       if (!element_type) {
-        fprintf(stderr,
-                "Error: Could not determine element type for pointer indexing\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Could not determine element type for pointer indexing");
         return NULL;
       }
 
@@ -2151,7 +2157,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
                            "array_element_addr");
     }
 
-    fprintf(stderr, "Error: Cannot index into non-array, non-pointer type\n");
+    cg_error(ctx, node, "Codegen Error",
+             "Cannot index into non-array, non-pointer type");
     return NULL;
   }
 
@@ -2163,7 +2170,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
     if (object->type == AST_EXPR_IDENTIFIER) {
       LLVM_Symbol *sym = find_symbol(ctx, object->expr.identifier.name);
       if (!sym || sym->is_function) {
-        fprintf(stderr, "Error: Variable not found for address-of member\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Variable not found for address-of member");
         return NULL;
       }
 
@@ -2191,8 +2199,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
       }
 
       if (!struct_info) {
-        fprintf(stderr, "Error: Could not find struct for field '%s'\n",
-                field_name);
+        cg_error(ctx, node, "Codegen Error",
+                 "Could not find struct for field '%s'", field_name);
         return NULL;
       }
 
@@ -2207,10 +2215,10 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
         }
       }
       if (field_index < 0) {
-        fprintf(stderr,
-                "Error: Field '%s' not found in struct '%s' or any struct "
-                "embedding it\n",
-                field_name, struct_info->name);
+        cg_error(ctx, node, "Codegen Error",
+                 "Field '%s' not found in struct '%s' or any struct embedding "
+                 "it",
+                 field_name, struct_info->name);
         return NULL;
       }
 
@@ -2230,8 +2238,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
                     "writes through this pointer may not persist\n");
     LLVMValueRef member_value = codegen_expr_struct_access(ctx, target);
     if (!member_value) {
-      fprintf(stderr,
-              "Error: Failed to evaluate member access for address-of\n");
+      cg_error(ctx, node, "Codegen Error",
+               "Failed to evaluate member access for address-of");
       return NULL;
     }
     LLVMTypeRef member_type = LLVMTypeOf(member_value);
@@ -2241,9 +2249,8 @@ LLVMValueRef codegen_expr_addr(CodeGenContext *ctx, AstNode *node) {
     return temp_storage;
   }
 
-  fprintf(
-      stderr,
-      "Error: Cannot take address of this expression type (node type: %d)\n",
-      target->type);
+  cg_error(ctx, node, "Codegen Error",
+           "Cannot take address of this expression type (node type: %d)",
+           target->type);
   return NULL;
 }

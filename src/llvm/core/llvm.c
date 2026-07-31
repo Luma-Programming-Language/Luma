@@ -224,7 +224,8 @@ static void *compile_module_worker(void *arg) {
 bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
   // Create output directory
   if (!create_output_directory(output_dir)) {
-    fprintf(stderr, "Failed to create output directory: %s\n", output_dir);
+    cg_error(ctx, NULL, "Codegen Error", "Failed to create output directory: %s",
+             output_dir);
     return false;
   }
 
@@ -235,7 +236,7 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
   }
 
   if (module_count == 0) {
-    fprintf(stderr, "No modules to compile\n");
+    cg_error(ctx, NULL, "Codegen Error", "No modules to compile");
     return false;
   }
 
@@ -277,8 +278,8 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
     for (i = batch_start; i < batch_end; i++) {
       if (pthread_create(&threads[i], NULL, compile_module_worker, &tasks[i]) !=
           0) {
-        fprintf(stderr, "Failed to create thread for module: %s\n",
-                tasks[i].module->module_name);
+        cg_error(ctx, NULL, "Codegen Error", "Failed to create thread for module: %s",
+                 tasks[i].module->module_name);
         tasks[i].success = false;
         overall_success = false;
       }
@@ -289,8 +290,8 @@ bool compile_modules_to_objects(CodeGenContext *ctx, const char *output_dir) {
       pthread_join(threads[i], NULL);
 
       if (!tasks[i].success) {
-        fprintf(stderr, "Failed to compile module: %s\n",
-                tasks[i].module->module_name);
+        cg_error(ctx, NULL, "Codegen Error", "Failed to compile module: %s",
+                 tasks[i].module->module_name);
         overall_success = false;
       }
     }
@@ -548,7 +549,7 @@ bool generate_assembly_file(CodeGenContext *ctx, const char *asm_filename,
 
   LLVMTargetMachineRef target_machine = create_target_machine(is_debug);
   if (!target_machine) {
-    fprintf(stderr, "Failed to create target machine\n");
+    cg_error(ctx, NULL, "Codegen Error", "Failed to create target machine");
     return false;
   }
 
@@ -560,7 +561,8 @@ bool generate_assembly_file(CodeGenContext *ctx, const char *asm_filename,
   if (LLVMTargetMachineEmitToFile(target_machine, ctx->current_module->module,
                                   (char *)asm_filename, LLVMAssemblyFile,
                                   &error)) {
-    fprintf(stderr, "Failed to emit assembly file: %s\n", error);
+    cg_error(ctx, NULL, "Codegen Error", "Failed to emit assembly file: %s",
+             error);
     LLVMDisposeMessage(error);
     success = false;
   }

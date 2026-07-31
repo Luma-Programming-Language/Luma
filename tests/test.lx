@@ -1,6 +1,6 @@
 @module "main"
 
-@link("linking/main.o")
+// @link("linking/main.o")
 
 const Entity -> struct {
 priv:

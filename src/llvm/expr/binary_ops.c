@@ -7,12 +7,12 @@ static LLVMValueRef codegen_arithmetic_op(CodeGenContext *ctx, BinaryOp op,
 static LLVMValueRef codegen_comparison_op(CodeGenContext *ctx, BinaryOp op,
                                           LLVMValueRef left, LLVMValueRef right,
                                           bool is_float);
-static LLVMValueRef codegen_logical_op(CodeGenContext *ctx, BinaryOp op,
-                                       LLVMValueRef left, LLVMValueRef right,
-                                       bool is_float);
-static LLVMValueRef codegen_bitwise_op(CodeGenContext *ctx, BinaryOp op,
-                                       LLVMValueRef left, LLVMValueRef right,
-                                       bool is_float);
+static LLVMValueRef codegen_logical_op(CodeGenContext *ctx, AstNode *node,
+                                       BinaryOp op, LLVMValueRef left,
+                                       LLVMValueRef right, bool is_float);
+static LLVMValueRef codegen_bitwise_op(CodeGenContext *ctx, AstNode *node,
+                                       BinaryOp op, LLVMValueRef left,
+                                       LLVMValueRef right, bool is_float);
 static void promote_operands(CodeGenContext *ctx, LLVMValueRef *left, LLVMValueRef *right,
                              LLVMTypeRef *left_type, LLVMTypeRef *right_type);
 
@@ -43,10 +43,10 @@ LLVMValueRef codegen_expr_binary(CodeGenContext *ctx, AstNode *node) {
         return codegen_comparison_op(ctx, op, left, right, is_float_op);
     }
     if (op == BINOP_AND || op == BINOP_OR) {
-        return codegen_logical_op(ctx, op, left, right, is_float_op);
+        return codegen_logical_op(ctx, node, op, left, right, is_float_op);
     }
     if (op >= BINOP_BIT_AND && op <= BINOP_SHR) {
-        return codegen_bitwise_op(ctx, op, left, right, is_float_op);
+        return codegen_bitwise_op(ctx, node, op, left, right, is_float_op);
     }
     if (op == BINOP_RANGE) {
         return create_range_struct(ctx, left, right);
@@ -162,11 +162,12 @@ static LLVMValueRef codegen_comparison_op(CodeGenContext *ctx, BinaryOp op,
 }
 
 // Logical operations: &&, ||
-static LLVMValueRef codegen_logical_op(CodeGenContext *ctx, BinaryOp op,
-                                       LLVMValueRef left, LLVMValueRef right,
-                                       bool is_float) {
+static LLVMValueRef codegen_logical_op(CodeGenContext *ctx, AstNode *node,
+                                       BinaryOp op, LLVMValueRef left,
+                                       LLVMValueRef right, bool is_float) {
     if (is_float) {
-        fprintf(stderr, "Error: Logical operations not supported for floating point\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Logical operations not supported for floating point");
         return NULL;
     }
 
@@ -181,11 +182,12 @@ static LLVMValueRef codegen_logical_op(CodeGenContext *ctx, BinaryOp op,
 }
 
 // Bitwise operations: &, |, ^, <<, >>
-static LLVMValueRef codegen_bitwise_op(CodeGenContext *ctx, BinaryOp op,
-                                       LLVMValueRef left, LLVMValueRef right,
-                                       bool is_float) {
+static LLVMValueRef codegen_bitwise_op(CodeGenContext *ctx, AstNode *node,
+                                       BinaryOp op, LLVMValueRef left,
+                                       LLVMValueRef right, bool is_float) {
     if (is_float) {
-        fprintf(stderr, "Error: Bitwise operations not supported for floating point\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Bitwise operations not supported for floating point");
         return NULL;
     }
 

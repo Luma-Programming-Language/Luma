@@ -55,7 +55,8 @@ LLVMValueRef codegen_expr(CodeGenContext *ctx, AstNode *node) {
   case AST_EXPR_SPREAD:
     return codegen_expr(ctx, node->expr.spread.expr);
   default:
-    fprintf(stderr, "Error: Unknown expression type: %d\n", node->type);
+    cg_error(ctx, node, "Codegen Error", "Unknown expression type: %d",
+             node->type);
     return NULL;
   }
 }
@@ -116,7 +117,8 @@ LLVMValueRef codegen_stmt(CodeGenContext *ctx, AstNode *node) {
   case AST_STMT_DEFAULT:
     return codegen_stmt_default(ctx, node);
   default:
-    fprintf(stderr, "Error: Unknown statement type: %d\n", node->type);
+    cg_error(ctx, node, "Codegen Error", "Unknown statement type: %d",
+             node->type);
     return NULL;
   }
 }
@@ -136,7 +138,7 @@ LLVMTypeRef codegen_type(CodeGenContext *ctx, AstNode *node) {
   case AST_TYPE_FUNCTION:
     return codegen_type_function(ctx, node);
   default:
-    fprintf(stderr, "Error: Unknown type: %d\n", node->type);
+    cg_error(ctx, node, "Codegen Error", "Unknown type: %d", node->type);
     return NULL;
   }
 }

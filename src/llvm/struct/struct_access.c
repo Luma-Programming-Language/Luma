@@ -48,7 +48,8 @@ LLVMValueRef codegen_expr_struct_access(CodeGenContext *ctx, AstNode *node) {
     case AST_EXPR_DEREF:
         return handle_deref_member(ctx, node);
     default:
-        fprintf(stderr, "Error: Unsupported struct access pattern (type: %d)\n", object->type);
+        cg_error(ctx, node, "Codegen Error",
+                 "Unsupported struct access pattern (type: %d)", object->type);
         return NULL;
     }
 }
@@ -96,7 +97,8 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
 
     LLVM_Symbol *sym = find_symbol(ctx, var_name);
     if (!sym || sym->is_function) {
-        fprintf(stderr, "Error: Variable %s not found or is a function\n", var_name);
+        cg_error(ctx, node, "Codegen Error",
+                 "Variable %s not found or is a function", var_name);
         return NULL;
     }
 
@@ -137,7 +139,8 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
     }
 
     if (!struct_info) {
-        fprintf(stderr, "Error: Could not find struct with field '%s'\n", field_name);
+        cg_error(ctx, node, "Codegen Error",
+                 "Could not find struct with field '%s'", field_name);
         return NULL;
     }
 
@@ -150,8 +153,9 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
         field_type = cached->field_type;
 
         if (!cached->is_public) {
-            fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' in struct '%s' is private", field_name,
+                     struct_info->name);
             return NULL;
         }
     } else {
@@ -168,16 +172,17 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
         }
 
         if (field_index < 0) {
-            fprintf(stderr,
-                    "Error: Field '%s' not found in struct '%s' or any struct "
-                    "embedding it\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' not found in struct '%s' or any struct "
+                     "embedding it",
+                     field_name, struct_info->name);
             return NULL;
         }
 
         if (!is_field_access_allowed(ctx, struct_info, field_index)) {
-            fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' in struct '%s' is private", field_name,
+                     struct_info->name);
             return NULL;
         }
 
@@ -219,7 +224,7 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
     // Recursively resolve base
     LLVMValueRef base_value = codegen_expr_struct_access(ctx, node->expr.member.object);
     if (!base_value) {
-        fprintf(stderr, "Error: Failed to resolve chained member access\n");
+        cg_error(ctx, node, "Codegen Error", "Failed to resolve chained member access");
         return NULL;
     }
 
@@ -254,12 +259,13 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
             if (type_name) struct_info = find_struct_type(ctx, type_name);
         }
     } else {
-        fprintf(stderr, "Error: Chained access does not produce struct (kind: %d)\n", base_kind);
+        cg_error(ctx, node, "Codegen Error",
+                 "Chained access does not produce struct (kind: %d)", base_kind);
         return NULL;
     }
 
     if (!struct_info || !struct_ptr) {
-        fprintf(stderr, "Error: Could not resolve chained member access\n");
+        cg_error(ctx, node, "Codegen Error", "Could not resolve chained member access");
         return NULL;
     }
 
@@ -272,8 +278,9 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
         field_index = cached->field_index;
         field_type = cached->field_type;
         if (!cached->is_public) {
-            fprintf(stderr, "Error: Field '%s' in struct '%s' is private\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' in struct '%s' is private", field_name,
+                     struct_info->name);
             return NULL;
         }
     } else {
@@ -288,9 +295,9 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
         }
 
         if (field_index < 0 || !is_field_access_allowed(ctx, struct_info, field_index)) {
-            fprintf(stderr,
-                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' not found in struct '%s' or any struct embedding it",
+                     field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
@@ -307,7 +314,7 @@ static LLVMValueRef handle_indexed_member(CodeGenContext *ctx, AstNode *node) {
     
     LLVMValueRef indexed_value = codegen_expr_index(ctx, node->expr.member.object);
     if (!indexed_value) {
-        fprintf(stderr, "Error: Failed to generate indexed expression\n");
+        cg_error(ctx, node, "Codegen Error", "Failed to generate indexed expression");
         return NULL;
     }
 
@@ -315,7 +322,8 @@ static LLVMValueRef handle_indexed_member(CodeGenContext *ctx, AstNode *node) {
     LLVMTypeKind indexed_kind = LLVMGetTypeKind(indexed_type);
 
     if (indexed_kind != LLVMStructTypeKind) {
-        fprintf(stderr, "Error: Indexed expression is not a struct (kind: %d)\n", indexed_kind);
+        cg_error(ctx, node, "Codegen Error",
+                 "Indexed expression is not a struct (kind: %d)", indexed_kind);
         return NULL;
     }
 
@@ -333,7 +341,8 @@ static LLVMValueRef handle_indexed_member(CodeGenContext *ctx, AstNode *node) {
     }
 
     if (!struct_info) {
-        fprintf(stderr, "Error: Could not determine struct type for indexed access\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Could not determine struct type for indexed access");
         return NULL;
     }
 
@@ -359,9 +368,9 @@ static LLVMValueRef handle_indexed_member(CodeGenContext *ctx, AstNode *node) {
         }
 
         if (field_index < 0) {
-            fprintf(stderr,
-                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' not found in struct '%s' or any struct embedding it",
+                     field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
@@ -431,9 +440,9 @@ static LLVMValueRef handle_call_result_member(CodeGenContext *ctx, AstNode *node
         }
 
         if (field_index < 0) {
-            fprintf(stderr,
-                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' not found in struct '%s' or any struct embedding it",
+                     field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
@@ -459,7 +468,8 @@ static LLVMValueRef handle_deref_member(CodeGenContext *ctx, AstNode *node) {
         if (type_name) struct_info = find_struct_type(ctx, type_name);
     }
     if (!struct_info) {
-        fprintf(stderr, "Error: Could not find struct for deref member access\n");
+        cg_error(ctx, node, "Codegen Error",
+                 "Could not find struct for deref member access");
         return NULL;
     }
 
@@ -482,9 +492,9 @@ static LLVMValueRef handle_deref_member(CodeGenContext *ctx, AstNode *node) {
         }
 
         if (field_index < 0) {
-            fprintf(stderr,
-                    "Error: Field '%s' not found in struct '%s' or any struct embedding it\n",
-                    field_name, struct_info->name);
+            cg_error(ctx, node, "Codegen Error",
+                     "Field '%s' not found in struct '%s' or any struct embedding it",
+                     field_name, struct_info->name);
             return NULL;
         }
         field_type = struct_info->field_types[field_index];
