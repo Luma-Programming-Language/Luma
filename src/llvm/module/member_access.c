@@ -129,22 +129,42 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
       continue;
     }
 
+    // Try qualified names first ("Struct.method" / "Struct::method") for
+    // struct methods, then fall back to the bare member name.
     LLVMValueRef source_func =
-        LLVMGetNamedFunction(search_module->module, member);
+        LLVMGetNamedFunction(search_module->module, qualified_name);
+    if (!source_func) {
+      source_func = LLVMGetNamedFunction(search_module->module,
+                                         static_qualified_name);
+    }
+    if (!source_func) {
+      source_func = LLVMGetNamedFunction(search_module->module, member);
+    }
 
     if (source_func) {
-      LLVMValueRef existing = LLVMGetNamedFunction(current_llvm_module, member);
+      LLVMValueRef existing =
+          LLVMGetNamedFunction(current_llvm_module, member);
+      if (!existing) {
+        existing =
+            LLVMGetNamedFunction(current_llvm_module, qualified_name);
+      }
+      if (!existing) {
+        existing = LLVMGetNamedFunction(current_llvm_module,
+                                        static_qualified_name);
+      }
 
       if (!existing) {
         LLVMTypeRef func_type = LLVMGlobalGetValueType(source_func);
-        existing = LLVMAddFunction(current_llvm_module, member, func_type);
+        const char *source_name = LLVMGetValueName(source_func);
+        existing = LLVMAddFunction(current_llvm_module, source_name,
+                                   func_type);
         LLVMSetLinkage(existing, LLVMExternalLinkage);
 
         LLVMCallConv cc = LLVMGetFunctionCallConv(source_func);
         LLVMSetFunctionCallConv(existing, cc);
 
-        add_symbol_to_module(ctx->current_module, member, existing, func_type,
-                             true);
+        add_symbol_to_module(ctx->current_module, source_name, existing,
+                             func_type, true);
         add_symbol_to_module(ctx->current_module, qualified_name, existing,
                              func_type, true);
       }
@@ -153,21 +173,49 @@ LLVMValueRef codegen_module_access(CodeGenContext *ctx, AstNode *node) {
     }
 
     LLVM_Symbol *source_sym = find_symbol_in_module(search_module, member);
+    if (!source_sym) {
+      source_sym = find_symbol_in_module(search_module, qualified_name);
+      // Qualified-name variable matches in other modules are alias-import
+      // artifacts (e.g. "io.NULL_FORMAT_ARG" living in an importing module),
+      // not definitions. Only struct static methods and enum constants are
+      // genuine dotted definitions, so ignore everything else here and keep
+      // searching for the real source module.
+      if (source_sym && !source_sym->is_function &&
+          !is_enum_constant(source_sym)) {
+        source_sym = NULL;
+      }
+    }
+    if (!source_sym) {
+      source_sym = find_symbol_in_module(search_module, static_qualified_name);
+      if (source_sym && !source_sym->is_function &&
+          !is_enum_constant(source_sym)) {
+        source_sym = NULL;
+      }
+    }
     if (source_sym) {
       if (source_sym->is_function) {
         LLVMValueRef existing =
             LLVMGetNamedFunction(current_llvm_module, member);
+        if (!existing) {
+          existing = LLVMGetNamedFunction(current_llvm_module, qualified_name);
+        }
+        if (!existing) {
+          existing = LLVMGetNamedFunction(current_llvm_module,
+                                          static_qualified_name);
+        }
 
         if (!existing) {
           LLVMTypeRef func_type = LLVMGlobalGetValueType(source_sym->value);
-          existing = LLVMAddFunction(current_llvm_module, member, func_type);
+          const char *source_name = LLVMGetValueName(source_sym->value);
+          existing = LLVMAddFunction(current_llvm_module, source_name,
+                                     func_type);
           LLVMSetLinkage(existing, LLVMExternalLinkage);
 
           LLVMCallConv cc = LLVMGetFunctionCallConv(source_sym->value);
           LLVMSetFunctionCallConv(existing, cc);
 
-          add_symbol_to_module(ctx->current_module, member, existing, func_type,
-                               true);
+          add_symbol_to_module(ctx->current_module, source_name, existing,
+                               func_type, true);
           add_symbol_to_module(ctx->current_module, qualified_name, existing,
                                func_type, true);
         }

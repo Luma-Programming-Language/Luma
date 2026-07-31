@@ -127,6 +127,16 @@ LLVMValueRef codegen_stmt_var_decl(CodeGenContext *ctx, AstNode *node) {
                    init_kind == LLVMIntegerTypeKind) {
           init_val =
               LLVMBuildSIToFP(ctx->builder, init_val, var_type, "int_to_float");
+        } else if (var_kind == LLVMIntegerTypeKind &&
+                   init_kind == LLVMIntegerTypeKind) {
+          unsigned init_bits = LLVMGetIntTypeWidth(init_type);
+          unsigned var_bits = LLVMGetIntTypeWidth(var_type);
+          if (init_bits < var_bits) {
+            init_val = LLVMBuildSExt(ctx->builder, init_val, var_type, "sext");
+          } else if (init_bits > var_bits) {
+            init_val =
+                LLVMBuildTrunc(ctx->builder, init_val, var_type, "trunc");
+          }
         }
       }
 
@@ -581,6 +591,19 @@ LLVMValueRef codegen_stmt_return(CodeGenContext *ctx, AstNode *node) {
                    actual_kind == LLVMIntegerTypeKind) {
           ret_val = LLVMBuildSIToFP(ctx->builder, ret_val, expected_return_type,
                                     "ret_int_to_float");
+        } else if (expected_kind == LLVMIntegerTypeKind &&
+                   actual_kind == LLVMIntegerTypeKind) {
+          unsigned actual_bits = LLVMGetIntTypeWidth(actual_return_type);
+          unsigned expected_bits = LLVMGetIntTypeWidth(expected_return_type);
+          if (actual_bits < expected_bits) {
+            ret_val =
+                LLVMBuildSExt(ctx->builder, ret_val, expected_return_type,
+                              "ret_sext");
+          } else if (actual_bits > expected_bits) {
+            ret_val =
+                LLVMBuildTrunc(ctx->builder, ret_val, expected_return_type,
+                               "ret_trunc");
+          }
         }
         // Add more conversion cases as needed
       }
@@ -1038,6 +1061,7 @@ LLVMValueRef codegen_while_loop(CodeGenContext *ctx, AstNode *node) {
       // ADD THIS: Restore on error
       ctx->loop_continue_block = old_continue;
       ctx->loop_break_block = old_break;
+      LLVMPositionBuilderAtEnd(ctx->builder, after_block);
       return NULL;
     }
     LLVMBuildCondBr(ctx->builder, cond, body_block, after_block);
@@ -1093,6 +1117,7 @@ LLVMValueRef codegen_for_loop(CodeGenContext *ctx, AstNode *node) {
       // Restore old blocks
       ctx->loop_continue_block = old_continue;
       ctx->loop_break_block = old_break;
+      LLVMPositionBuilderAtEnd(ctx->builder, after_block);
       return NULL;
     }
   }
@@ -1108,6 +1133,7 @@ LLVMValueRef codegen_for_loop(CodeGenContext *ctx, AstNode *node) {
       // Restore old blocks
       ctx->loop_continue_block = old_continue;
       ctx->loop_break_block = old_break;
+      LLVMPositionBuilderAtEnd(ctx->builder, after_block);
       return NULL;
     }
     LLVMBuildCondBr(ctx->builder, cond, body_block, after_block);

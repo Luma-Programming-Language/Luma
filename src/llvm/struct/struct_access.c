@@ -12,7 +12,6 @@ typedef struct FieldAccessCache {
     int field_index;
     LLVMTypeRef field_type;
     LLVMTypeRef element_type;
-    bool is_public;
     struct FieldAccessCache *next;
 } FieldAccessCache;
 
@@ -85,7 +84,6 @@ static void cache_field_access(StructInfo *info, const char *field_name, int ind
     entry->field_index = index;
     entry->field_type = info->field_types[index];
     entry->element_type = info->field_element_types[index];
-    entry->is_public = info->field_is_public[index];
     entry->next = field_cache[hash];
     field_cache[hash] = entry;
 }
@@ -152,7 +150,7 @@ static LLVMValueRef handle_identifier_member(CodeGenContext *ctx, AstNode *node)
         field_index = cached->field_index;
         field_type = cached->field_type;
 
-        if (!cached->is_public) {
+        if (!is_field_access_allowed(ctx, struct_info, field_index)) {
             cg_error(ctx, node, "Codegen Error",
                      "Field '%s' in struct '%s' is private", field_name,
                      struct_info->name);
@@ -277,7 +275,7 @@ static LLVMValueRef handle_chained_member(CodeGenContext *ctx, AstNode *node) {
     if (cached) {
         field_index = cached->field_index;
         field_type = cached->field_type;
-        if (!cached->is_public) {
+        if (!is_field_access_allowed(ctx, struct_info, field_index)) {
             cg_error(ctx, node, "Codegen Error",
                      "Field '%s' in struct '%s' is private", field_name,
                      struct_info->name);
@@ -503,4 +501,204 @@ static LLVMValueRef handle_deref_member(CodeGenContext *ctx, AstNode *node) {
 
     return struct_gep_load(ctx, struct_info->llvm_type, ptr,
                           field_index, field_type, "field_val");
+}
+
+// ============================================================================
+// LVALUE ADDRESS RESOLUTION - compute the address of an assignable expression
+// ============================================================================
+
+// Find a StructInfo given an LLVM struct type.
+static StructInfo *find_struct_info_by_type(CodeGenContext *ctx,
+                                            LLVMTypeRef type) {
+  if (!type) {
+    return NULL;
+  }
+  for (StructInfo *info = ctx->struct_types; info; info = info->next) {
+    if (info->llvm_type == type) {
+      return info;
+    }
+  }
+  const char *type_name = LLVMGetStructName(type);
+  if (type_name) {
+    return find_struct_type(ctx, type_name);
+  }
+  return NULL;
+}
+
+// Resolve the address of an lvalue expression: identifiers, pointer derefs,
+// array/pointer indexing, and chained member access (e.g. self.cells[idx].j).
+//
+// LLVM opaque pointers cannot report pointee types, so the type of the value
+// stored at the returned address is passed back through *value_type_out, and
+// the tracked element/pointee type (for pointer-typed values) through
+// *element_type_out.
+LLVMValueRef codegen_member_address(CodeGenContext *ctx, AstNode *node,
+                                    LLVMTypeRef *value_type_out,
+                                    LLVMTypeRef *element_type_out) {
+  if (!node) {
+    return NULL;
+  }
+
+  LLVMTypeRef value_type = NULL;
+  LLVMTypeRef element_type = NULL;
+
+  switch (node->type) {
+  case AST_EXPR_IDENTIFIER: {
+    LLVM_Symbol *sym = find_symbol(ctx, node->expr.identifier.name);
+    if (!sym || sym->is_function) {
+      cg_error(ctx, node, "Codegen Error",
+               "Variable '%s' not found or is a function",
+               node->expr.identifier.name);
+      return NULL;
+    }
+    value_type = sym->type;
+    element_type = sym->element_type;
+    if (value_type_out) *value_type_out = value_type;
+    if (element_type_out) *element_type_out = element_type;
+    return sym->value;
+  }
+
+  case AST_EXPR_DEREF: {
+    AstNode *object = node->expr.deref.object;
+    LLVMValueRef ptr = codegen_expr(ctx, object);
+    if (!ptr) {
+      return NULL;
+    }
+    element_type = NULL;
+    if (object->type == AST_EXPR_IDENTIFIER) {
+      LLVM_Symbol *sym = find_symbol(ctx, object->expr.identifier.name);
+      if (sym && !sym->is_function) {
+        element_type = sym->element_type;
+      }
+    }
+    if (!element_type) {
+      cg_error(ctx, node, "Codegen Error",
+               "Could not determine pointee type for dereference");
+      return NULL;
+    }
+    value_type = element_type;
+    if (value_type_out) *value_type_out = value_type;
+    if (element_type_out) *element_type_out = NULL;
+    return ptr;
+  }
+
+  case AST_EXPR_INDEX: {
+    AstNode *obj = node->expr.index.object;
+    LLVMTypeRef base_value_type = NULL;
+    LLVMTypeRef base_element_type = NULL;
+    LLVMValueRef base_addr =
+        codegen_member_address(ctx, obj, &base_value_type, &base_element_type);
+    if (!base_addr) {
+      return NULL;
+    }
+
+    LLVMValueRef index = codegen_expr(ctx, node->expr.index.index);
+    if (!index) {
+      return NULL;
+    }
+
+    LLVMTypeKind base_kind = LLVMGetTypeKind(base_value_type);
+    if (base_kind == LLVMPointerTypeKind) {
+      if (!base_element_type) {
+        cg_error(ctx, node, "Codegen Error",
+                 "Could not determine element type for index expression");
+        return NULL;
+      }
+      LLVMValueRef base_ptr = LLVMBuildLoad2(ctx->builder, base_value_type,
+                                             base_addr, "load_base_ptr");
+      value_type = base_element_type;
+      if (value_type_out) *value_type_out = value_type;
+      if (element_type_out) *element_type_out = NULL;
+      return LLVMBuildGEP2(ctx->builder, base_element_type, base_ptr, &index,
+                           1, "element_addr");
+    } else if (base_kind == LLVMArrayTypeKind) {
+      LLVMValueRef indices[2] = {ctx->common_types.const_i32_0, index};
+      value_type = LLVMGetElementType(base_value_type);
+      if (value_type_out) *value_type_out = value_type;
+      if (element_type_out) *element_type_out = NULL;
+      return LLVMBuildGEP2(ctx->builder, base_value_type, base_addr, indices,
+                           2, "array_element_addr");
+    }
+
+    cg_error(ctx, node, "Codegen Error",
+             "Cannot index into non-pointer, non-array lvalue");
+    return NULL;
+  }
+
+  case AST_EXPR_MEMBER: {
+    const char *field_name = node->expr.member.member;
+    AstNode *object = node->expr.member.object;
+
+    LLVMTypeRef obj_value_type = NULL;
+    LLVMTypeRef obj_element_type = NULL;
+    LLVMValueRef obj_addr =
+        codegen_member_address(ctx, object, &obj_value_type, &obj_element_type);
+    if (!obj_addr) {
+      return NULL;
+    }
+
+    StructInfo *struct_info = NULL;
+    LLVMValueRef struct_ptr = NULL;
+
+    LLVMTypeKind obj_kind = LLVMGetTypeKind(obj_value_type);
+    if (obj_kind == LLVMPointerTypeKind) {
+      if (!obj_element_type) {
+        cg_error(ctx, node, "Codegen Error",
+                 "Cannot access field '%s': object pointee type unknown",
+                 field_name);
+        return NULL;
+      }
+      struct_info = find_struct_info_by_type(ctx, obj_element_type);
+      if (struct_info) {
+        struct_ptr = LLVMBuildLoad2(ctx->builder, obj_value_type, obj_addr,
+                                    "load_struct_ptr");
+      }
+    } else if (obj_kind == LLVMStructTypeKind) {
+      struct_info = find_struct_info_by_type(ctx, obj_value_type);
+      struct_ptr = obj_addr;
+    }
+
+    if (!struct_info || !struct_ptr) {
+      cg_error(ctx, node, "Codegen Error",
+               "Cannot access field '%s' on non-struct lvalue", field_name);
+      return NULL;
+    }
+
+    int field_index = get_field_index(struct_info, field_name);
+    if (field_index < 0) {
+      StructInfo *concrete =
+          find_concrete_struct_for_base(ctx, struct_info, field_name);
+      if (concrete) {
+        struct_info = concrete;
+        field_index = get_field_index(concrete, field_name);
+      }
+    }
+
+    if (field_index < 0) {
+      cg_error(ctx, node, "Codegen Error",
+               "Field '%s' not found in struct '%s' or any struct embedding it",
+               field_name, struct_info->name);
+      return NULL;
+    }
+
+    if (!is_field_access_allowed(ctx, struct_info, field_index)) {
+      cg_error(ctx, node, "Codegen Error",
+               "Field '%s' in struct '%s' is private", field_name,
+               struct_info->name);
+      return NULL;
+    }
+
+    value_type = struct_info->field_types[field_index];
+    element_type = struct_info->field_element_types[field_index];
+    if (value_type_out) *value_type_out = value_type;
+    if (element_type_out) *element_type_out = element_type;
+    return LLVMBuildStructGEP2(ctx->builder, struct_info->llvm_type, struct_ptr,
+                               field_index, "field_addr");
+  }
+
+  default:
+    cg_error(ctx, node, "Codegen Error",
+             "Unsupported lvalue expression type: %d", node->type);
+    return NULL;
+  }
 }

@@ -120,14 +120,17 @@ bool generate_llvm_code_modules(AstNode *root, BuildConfig config,
   signal(SIGSEGV, handle_segfault);
   signal(SIGILL, handle_illegal_instruction);
 
-  bool success = generate_program_modules(ctx, root, output_dir);
+  // Generate code for all modules first so that codegen errors can be
+  // reported before any object emission runs (avoids LLVM crashes on
+  // partially-generated/corrupt IR).
+  codegen_stmt_program_multi_module(ctx, root);
 
   if (error_has_errors()) {
     cleanup_codegen_context(ctx);
     return false;
   }
 
-  if (!success) {
+  if (!compile_modules_to_objects(ctx, output_dir)) {
     fprintf(stderr, "Failed to generate LLVM modules\n");
     cleanup_codegen_context(ctx);
     return false;

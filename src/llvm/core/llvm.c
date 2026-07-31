@@ -20,6 +20,11 @@
 #define MAX_COMPILE_THREADS 64
 #define MAX_PATH_LENGTH 512
 
+// LLVMContext is not safe for concurrent mutation: multiple threads running
+// LLVMTargetMachineEmitToFile on modules that share one context can corrupt
+// the context's heap. Serialize object emission with a global mutex.
+static pthread_mutex_t g_emit_mutex = PTHREAD_MUTEX_INITIALIZER;
+
 typedef struct {
   ModuleCompilationUnit *module;
   const char *output_dir;
@@ -191,6 +196,10 @@ bool generate_module_object_file(ModuleCompilationUnit *module,
   char *error = NULL;
   bool success = true;
 
+  // Serialize the LLVM codegen pipeline — it mutates the shared LLVMContext,
+  // which is not safe to touch from multiple threads concurrently.
+  pthread_mutex_lock(&g_emit_mutex);
+
   if (LLVMTargetMachineEmitToFile(target_machine, module->module,
                                   (char *)output_path, LLVMObjectFile,
                                   &error)) {
@@ -199,6 +208,8 @@ bool generate_module_object_file(ModuleCompilationUnit *module,
     LLVMDisposeMessage(error);
     success = false;
   }
+
+  pthread_mutex_unlock(&g_emit_mutex);
 
   LLVMDisposeTargetMachine(target_machine);
   return success;

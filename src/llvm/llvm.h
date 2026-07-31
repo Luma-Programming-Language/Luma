@@ -73,6 +73,7 @@ typedef struct DeferredStatement {
 
 typedef struct StructInfo {
   char *name;
+  const char *module_name;
   LLVMTypeRef llvm_type;
   char **field_names;
   LLVMTypeRef *field_types;
@@ -199,6 +200,9 @@ StructInfo *lookup_cached_struct(const char *name);
 StructInfo *find_struct_type_fast(CodeGenContext *ctx, const char *name);
 LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
                                             AstNode *node);
+LLVMValueRef codegen_member_address(CodeGenContext *ctx, AstNode *node,
+                                    LLVMTypeRef *value_type_out,
+                                    LLVMTypeRef *element_type_out);
 
 // =============================================================================
 // SYMBOL IMPORT AND MODULE INTEROP

@@ -521,6 +521,15 @@ LLVMValueRef codegen_expr_assignment(CodeGenContext *ctx, AstNode *node) {
         }
       }
 
+      LLVMTypeRef target_type = sym->type;
+      LLVMTypeRef value_type = LLVMTypeOf(value);
+      if (target_type && target_type != value_type) {
+        LLVMValueRef converted =
+            convert_value_to_type(ctx, value, value_type, target_type);
+        if (converted)
+          value = converted;
+      }
+
       LLVMBuildStore(ctx->builder, value, sym->value);
       return value;
     }
@@ -1859,7 +1868,7 @@ static uint64_t compute_type_size(LLVMTypeRef type) {
   switch (kind) {
   case LLVMIntegerTypeKind: {
     unsigned width = LLVMGetIntTypeWidth(type);
-    return width / 8;
+    return (width + 7) / 8;
   }
   case LLVMFloatTypeKind:
     return 4;

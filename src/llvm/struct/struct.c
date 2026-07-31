@@ -69,6 +69,12 @@ bool is_field_access_allowed(CodeGenContext *ctx, StructInfo *struct_info,
       }
     }
   }
+  // Allow private field access from any function in the same module
+  if (ctx->current_module && struct_info->module_name &&
+      ctx->current_module->module_name &&
+      strcmp(ctx->current_module->module_name, struct_info->module_name) == 0) {
+    return true;
+  }
   return false;
 }
 
@@ -131,6 +137,8 @@ LLVMValueRef codegen_stmt_struct(CodeGenContext *ctx, AstNode *node) {
       ctx->arena, sizeof(StructInfo), alignof(StructInfo));
 
   struct_info->name = arena_strdup(ctx->arena, struct_name);
+  struct_info->module_name =
+      ctx->current_module ? ctx->current_module->module_name : NULL;
   struct_info->field_count = data_field_count;
   struct_info->is_public = node->stmt.struct_decl.is_public;
 
@@ -636,6 +644,42 @@ LLVMValueRef codegen_expr_struct_assignment(CodeGenContext *ctx,
                             field_index, "field_ptr");
 
     LLVMBuildStore(ctx->builder, value, field_ptr);
+    return value;
+  }
+
+  // Chained lvalue assignment: obj.field.field = value, arr[i].field = value,
+  // (*ptr).field = value, etc. Resolve the address of the target and store.
+  LLVMTypeRef field_type = NULL;
+  LLVMTypeRef field_element_type = NULL;
+  LLVMValueRef field_addr =
+      codegen_member_address(ctx, target, &field_type, &field_element_type);
+  if (field_addr && field_type) {
+    LLVMTypeRef actual_type = LLVMTypeOf(value);
+
+    if (field_type != actual_type) {
+      LLVMTypeKind expected_kind = LLVMGetTypeKind(field_type);
+      LLVMTypeKind actual_kind = LLVMGetTypeKind(actual_type);
+
+      if (expected_kind == LLVMIntegerTypeKind &&
+          actual_kind == LLVMIntegerTypeKind) {
+        unsigned expected_bits = LLVMGetIntTypeWidth(field_type);
+        unsigned actual_bits = LLVMGetIntTypeWidth(actual_type);
+        if (expected_bits > actual_bits) {
+          value = LLVMBuildSExt(ctx->builder, value, field_type, "extend");
+        } else if (expected_bits < actual_bits) {
+          value = LLVMBuildTrunc(ctx->builder, value, field_type, "trunc");
+        }
+      } else if (expected_kind == LLVMFloatTypeKind &&
+                 actual_kind == LLVMDoubleTypeKind) {
+        value =
+            LLVMBuildFPTrunc(ctx->builder, value, field_type, "fptrunc");
+      } else if (expected_kind == LLVMDoubleTypeKind &&
+                 actual_kind == LLVMFloatTypeKind) {
+        value = LLVMBuildFPExt(ctx->builder, value, field_type, "fpext");
+      }
+    }
+
+    LLVMBuildStore(ctx->builder, value, field_addr);
     return value;
   }
 
