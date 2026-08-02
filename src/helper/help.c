@@ -1,10 +1,3 @@
-/**
- * @file help.c
- * @brief Implements command-line argument parsing, file reading,
- * help/version/license printing, and token printing with color-highlighted
- * token types.
- */
-
 #include <string.h>
 
 // Platform-specific includes
@@ -122,7 +115,7 @@ int print_help() {
  * @return Always returns 0.
  */
 int print_version() {
-  printf("Luma Compiler %s\n", Luma_Compiler_version);
+  printf("Luma Compiler %s\n", LUMA_VERSION);
   return 0;
 }
 

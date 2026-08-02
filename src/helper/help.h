@@ -18,6 +18,7 @@
 #include "../c_libs/memory/memory.h"
 #include "../lexer/lexer.h"
 #include "../llvm/llvm.h"
+#include "config.h"
 
 /** Macro to access token at index in a token growable array */
 #define TOKEN_AT(i) (((Token *)tokens.data)[(i)])
@@ -27,8 +28,6 @@
 
 /** Enable debug logs for arena allocator (comment to disable) */
 #define DEBUG_ARENA_ALLOC 1
-
-#define Luma_Compiler_version "v0.2.8"
 
 /** Error codes returned by the compiler */
 typedef enum {
