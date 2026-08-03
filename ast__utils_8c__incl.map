@@ -1,0 +1,33 @@
+<map id="src/ast/ast_utils.c" name="src/ast/ast_utils.c">
+<area shape="rect" id="Node000001" title=" " alt="" coords="233,5,367,31"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="136,152,203,177"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="233,31,187,48,167,62,150,80,145,94,145,109,157,139,152,141,140,110,140,93,146,77,163,58,184,44,231,26"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="161,79,231,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="285,33,226,73,223,68,282,28"/>
+<area shape="rect" id="Node000004" href="$color_8h.html" title="ANSI escape codes and convenience macros for terminal text coloring and styling." alt="" coords="443,225,597,251"/>
+<area shape="poly" id="edge3_Node000001_Node000004" title=" " alt="" coords="318,29,378,77,449,150,504,213,500,216,445,154,374,81,315,33"/>
+<area shape="rect" id="Node000006" href="$ast_8h.html" title="Abstract Syntax Tree definitions with documentation comment support." alt="" coords="273,152,327,177"/>
+<area shape="poly" id="edge5_Node000001_Node000006" title=" " alt="" coords="318,29,340,50,359,78,361,97,355,115,329,145,325,141,350,112,355,96,353,80,336,53,314,33"/>
+<area shape="rect" id="Node000013" href="$ast__utils_8h.html" title=" " alt="" coords="255,79,345,104"/>
+<area shape="poly" id="edge16_Node000001_Node000013" title=" " alt="" coords="303,31,303,65,297,65,297,31"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="364,372,447,397"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="513,253,425,363,421,360,509,249"/>
+<area shape="poly" id="edge6_Node000006_Node000005" title=" " alt="" coords="321,176,347,196,370,224,386,258,397,295,407,358,401,359,392,296,381,260,366,227,343,200,317,180"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="5,372,80,397"/>
+<area shape="poly" id="edge7_Node000006_Node000007" title=" " alt="" coords="273,176,227,191,170,216,112,253,86,275,64,300,50,329,46,359,40,358,45,327,59,297,82,271,109,248,167,212,225,186,272,171"/>
+<area shape="rect" id="Node000008" href="$memory_8h.html" title="Arena allocator and growable array utilities for fast memory management." alt="" coords="74,299,273,324"/>
+<area shape="poly" id="edge8_Node000006_Node000008" title=" " alt="" coords="286,180,260,201,233,227,208,258,189,288,184,285,204,255,229,224,256,197,282,176"/>
+<area shape="rect" id="Node000011" href="$lexer_8h.html" title="Tokenizer (lexer) definitions and API for lexical analysis of source code." alt="" coords="243,225,357,251"/>
+<area shape="poly" id="edge13_Node000006_Node000011" title=" " alt="" coords="303,178,303,212,297,212,297,178"/>
+<area shape="poly" id="edge10_Node000008_Node000005" title=" " alt="" coords="211,321,356,365,354,371,210,327"/>
+<area shape="poly" id="edge11_Node000008_Node000007" title=" " alt="" coords="154,326,77,368,75,363,151,322"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="114,372,201,397"/>
+<area shape="poly" id="edge9_Node000008_Node000009" title=" " alt="" coords="173,325,165,359,160,358,168,324"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="225,372,335,397"/>
+<area shape="poly" id="edge12_Node000008_Node000010" title=" " alt="" coords="192,322,253,362,250,367,189,326"/>
+<area shape="poly" id="edge14_Node000011_Node000008" title=" " alt="" coords="281,253,207,294,205,289,278,248"/>
+<area shape="rect" id="Node000012" title=" " alt="" coords="297,299,367,324"/>
+<area shape="poly" id="edge15_Node000011_Node000012" title=" " alt="" coords="308,250,324,285,319,287,303,252"/>
+<area shape="poly" id="edge18_Node000013_Node000002" title=" " alt="" coords="280,106,204,148,201,143,278,102"/>
+<area shape="poly" id="edge17_Node000013_Node000006" title=" " alt="" coords="303,104,303,138,297,138,297,104"/>
+</map>

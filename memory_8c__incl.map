@@ -1,0 +1,22 @@
+<map id="src/c_libs/memory/memory.c" name="src/c_libs/memory/memory.c">
+<area shape="rect" id="Node000001" title="Implementation of arena allocator and growable array utilities." alt="" coords="376,5,585,31"/>
+<area shape="rect" id="Node000002" href="$memory_8h.html" title="Arena allocator and growable array utilities for fast memory management." alt="" coords="217,79,304,104"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="446,33,310,77,308,72,445,28"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="322,152,431,177"/>
+<area shape="poly" id="edge8_Node000001_Node000006" title=" " alt="" coords="449,33,415,52,399,65,387,80,377,109,376,139,371,138,372,108,382,77,396,61,412,47,447,28"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="397,79,471,104"/>
+<area shape="poly" id="edge6_Node000001_Node000007" title=" " alt="" coords="475,32,451,69,447,66,471,30"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="495,79,562,104"/>
+<area shape="poly" id="edge7_Node000001_Node000008" title=" " alt="" coords="491,30,516,66,511,69,486,33"/>
+<area shape="rect" id="Node000009" title=" " alt="" coords="587,79,657,104"/>
+<area shape="poly" id="edge9_Node000001_Node000009" title=" " alt="" coords="505,28,588,70,586,75,502,33"/>
+<area shape="rect" id="Node000010" title=" " alt="" coords="681,79,752,104"/>
+<area shape="poly" id="edge10_Node000001_Node000010" title=" " alt="" coords="519,28,669,73,667,78,518,33"/>
+<area shape="rect" id="Node000003" title=" " alt="" coords="5,152,92,177"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="227,107,97,150,95,145,226,101"/>
+<area shape="rect" id="Node000004" title=" " alt="" coords="117,152,199,177"/>
+<area shape="poly" id="edge3_Node000002_Node000004" title=" " alt="" coords="246,106,188,146,185,142,243,102"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="223,152,298,177"/>
+<area shape="poly" id="edge4_Node000002_Node000005" title=" " alt="" coords="263,104,263,138,258,138,258,104"/>
+<area shape="poly" id="edge5_Node000002_Node000006" title=" " alt="" coords="281,102,347,142,345,147,278,106"/>
+</map>

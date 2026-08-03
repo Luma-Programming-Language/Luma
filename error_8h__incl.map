@@ -1,0 +1,19 @@
+<map id="src/c_libs/error/error.h" name="src/c_libs/error/error.h">
+<area shape="rect" id="Node000001" title="Error reporting utilities for lexer and parser diagnostics." alt="" coords="59,5,221,31"/>
+<area shape="rect" id="Node000002" title=" " alt="" coords="5,225,88,251"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="136,32,107,84,74,153,55,212,50,211,70,151,102,81,131,29"/>
+<area shape="rect" id="Node000003" href="$lexer_8h.html" title="Tokenizer (lexer) definitions and API for lexical analysis of source code." alt="" coords="177,79,303,104"/>
+<area shape="poly" id="edge2_Node000001_Node000003" title=" " alt="" coords="158,29,214,68,211,73,155,33"/>
+<area shape="rect" id="Node000004" href="$memory_8h.html" title="Arena allocator and growable array utilities for fast memory management." alt="" coords="83,152,282,177"/>
+<area shape="poly" id="edge9_Node000001_Node000004" title=" " alt="" coords="146,30,178,138,173,139,141,32"/>
+<area shape="poly" id="edge3_Node000003_Node000004" title=" " alt="" coords="233,106,203,143,199,139,228,103"/>
+<area shape="rect" id="Node000008" title=" " alt="" coords="306,152,377,177"/>
+<area shape="poly" id="edge8_Node000003_Node000008" title=" " alt="" coords="258,102,315,142,312,146,255,106"/>
+<area shape="poly" id="edge5_Node000004_Node000002" title=" " alt="" coords="162,180,82,221,80,217,160,175"/>
+<area shape="rect" id="Node000005" title=" " alt="" coords="113,225,199,251"/>
+<area shape="poly" id="edge4_Node000004_Node000005" title=" " alt="" coords="181,179,168,214,163,212,176,177"/>
+<area shape="rect" id="Node000006" title=" " alt="" coords="224,225,299,251"/>
+<area shape="poly" id="edge6_Node000004_Node000006" title=" " alt="" coords="197,175,240,214,237,218,194,179"/>
+<area shape="rect" id="Node000007" title=" " alt="" coords="323,225,432,251"/>
+<area shape="poly" id="edge7_Node000004_Node000007" title=" " alt="" coords="215,175,334,218,332,223,213,180"/>
+</map>

@@ -1,0 +1,11 @@
+<map id="ModuleCompileTask" name="ModuleCompileTask">
+<area shape="rect" id="Node000001" title=" " alt="" coords="105,181,258,207"/>
+<area shape="rect" id="Node000002" href="$structModuleCompilationUnit.html" title=" " alt="" coords="93,93,269,119"/>
+<area shape="poly" id="edge1_Node000001_Node000002" title=" " alt="" coords="184,133,184,181,179,181,179,133"/>
+<area shape="poly" id="edge4_Node000002_Node000002" title=" " alt="" coords="284,98,296,106,288,113,270,116,269,111,286,108,291,106,282,103"/>
+<area shape="rect" id="Node000003" href="$structLLVM__Symbol.html" title=" " alt="" coords="5,5,117,31"/>
+<area shape="poly" id="edge2_Node000002_Node000003" title=" " alt="" coords="90,37,167,91,163,95,87,41"/>
+<area shape="poly" id="edge3_Node000003_Node000003" title=" " alt="" coords="132,9,144,18,136,26,118,29,117,23,133,21,139,18,130,14"/>
+<area shape="rect" id="Node000004" href="$structToken.html" title="Represents a single token extracted by the lexer." alt="" coords="199,5,257,31"/>
+<area shape="poly" id="edge5_Node000002_Node000004" title=" " alt="" coords="218,44,190,94,185,92,213,41"/>
+</map>
