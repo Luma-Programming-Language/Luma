@@ -1,16 +1,30 @@
-project('luma', 'c',
-  version : 'git',
+project(
+  'luma',
+  'c', 'cpp',
+  version : '0.2.9',
   license : 'MIT',
-  default_options : [
-    'c_std=c11',
-    'warning_level=2',
-    'buildtype=release',
-  ]
+  default_options : ['c_std=c11', 'warning_level=2']
 )
 
-add_languages('cpp', native : false, required : true)
-
 cc = meson.get_compiler('c')
+
+config_vars = {
+  'LUMA_VERSION': meson.project_version(),
+  'LUMA_OS': host_machine.system(),
+  'LUMA_ARCH': host_machine.cpu_family(),
+  'LUMA_COMPILER': cc.get_id(),
+  'LUMA_COMPILER_VERSION': cc.version(), 
+}
+
+cfg_data = configuration_data()
+foreach key, value : config_vars
+  cfg_data.set_quoted(key, value)
+endforeach
+
+configure_file(
+  output: 'config.h',
+  configuration: cfg_data,
+)
 
 llvm_dep = dependency('llvm',
   modules  : ['core', 'support', 'irreader', 'target', 'analysis', 'all-targets'],
@@ -108,17 +122,17 @@ sources = files(
   'src/typechecker/type.c',
 )
 
-system = host_machine.system()
-if system == 'darwin'
-  rpath_arg = '-Wl,-rpath,@executable_path'
+if host_machine.system() == 'darwin'
+  rpath_val = '@loader_path'
 else
-  rpath_arg = '-Wl,-rpath,$ORIGIN'
+  rpath_val = '$ORIGIN'
 endif
 
 executable('luma',
   sources,
-  dependencies : llvm_dep,
-  install      : true,
-  install_dir  : get_option('bindir'),
-  link_args    : [rpath_arg],
+  dependencies  : llvm_dep,
+  install       : true,
+  install_dir   : get_option('bindir'),
+  build_rpath   : rpath_val,
+  install_rpath : rpath_val,
 )
