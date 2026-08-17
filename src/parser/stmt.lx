@@ -191,13 +191,15 @@ const consume_doc_comments -> fn (p: *Parser) *byte {
 
   let total_len: int = 0;
   loop [i: int = 0](i < lines.size) : (i++) {
-    total_len = total_len + STRING::strlen((cast<**byte>(lines.data))[i]) + 1;
+    let string: **byte = cast<**byte>(lines.data);
+    total_len = total_len + STRING::strlen(string[i]) + 1;
   }
 
   let result: *byte = cast<*byte>(alloc(total_len + 1));
   let ptr: int = cast<int>(result);
   loop [i: int = 0](i < lines.size) : (i++) {
-    let line: *byte = (cast<**byte>(lines.data))[i];
+    let string: **byte = cast<**byte>(lines.data);
+    let line: *byte = string[i];
     let len: int = STRING::strlen(line);
     MEM::memcpy(cast<*void>(ptr), cast<*void>(line), len);
     ptr = ptr + len;
