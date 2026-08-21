@@ -90,18 +90,17 @@ pub const parse_file -> fn (path: *byte) *AstNode {
   let module_node: *AstNode = MAST::make_module(
     module_name, "", path,
     PARS::vec_to_node_array(&stmts), stmts.size,
-    line, col
+    line, col,
+    src, tks, tokens.size
   );
 
   if (p.had_error == 1) {
     ERR::error_report();
     AST::free_node(module_node);
-    return fail(&tokens, &stmts, src, p);
+    return fail(cast<*Vector>(0), &stmts, cast<*byte>(0), p);
   }
 
   VEC::free_vector(&stmts);
-  VEC::free_vector(&tokens);
-  free(src);
   PARS::free_parser(p);
 
   return module_node;

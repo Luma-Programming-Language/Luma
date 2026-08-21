@@ -40,16 +40,16 @@ const tnud -> fn (p: *Parser) *AstNode {
 pub const parse_type -> fn (p: *Parser) *AstNode {
   let kind: int = p.current().kind;
 
-  if (kind == TOK::LumaTokenType::TOK_INT    ||
-      kind == TOK::LumaTokenType::TOK_UINT   ||
-      kind == TOK::LumaTokenType::TOK_DOUBLE ||
-      kind == TOK::LumaTokenType::TOK_FLOAT  ||
-      kind == TOK::LumaTokenType::TOK_BOOL   ||
-      kind == TOK::LumaTokenType::TOK_VOID   ||
-      kind == TOK::LumaTokenType::TOK_CHAR   ||
+  if (kind == TOK::LumaTokenType::TOK_INT        ||
+      kind == TOK::LumaTokenType::TOK_UINT       ||
+      kind == TOK::LumaTokenType::TOK_DOUBLE     ||
+      kind == TOK::LumaTokenType::TOK_FLOAT      ||
+      kind == TOK::LumaTokenType::TOK_BOOL       ||
+      kind == TOK::LumaTokenType::TOK_VOID       ||
+      kind == TOK::LumaTokenType::TOK_CHAR       ||
       kind == TOK::LumaTokenType::TOK_IDENTIFIER ||
-      kind == TOK::LumaTokenType::TOK_STAR   ||
-      kind == TOK::LumaTokenType::TOK_LBRACKET ||
+      kind == TOK::LumaTokenType::TOK_STAR       ||
+      kind == TOK::LumaTokenType::TOK_LBRACKET   ||
       kind == TOK::LumaTokenType::TOK_FN) {
     return tnud(p);
   }

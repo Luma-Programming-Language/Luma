@@ -1,12 +1,14 @@
 @module "ast_module"
 
 @use "ast" as AST
+@use "lexer_tokens" as TOK
 
 #returns_ownership
-pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte, 
-                            body: **AstNode, body_count: int, line: int, col: int) *AstNode {
+pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
+                            body: **AstNode, body_count: int, line: int, col: int,
+                            source: *byte, tokens: *Token, token_count: int) *AstNode {
   let node: *ModuleNode = cast<*ModuleNode>(alloc(sizeof<ModuleNode>));
-  
+
   node.kind = AST::NodeType::PREPROCESSOR_MODULE;
   node.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
   node.line = line;
@@ -17,7 +19,11 @@ pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
   node.file_path = file_path;
   node.body = body;
   node.body_count = body_count;
-  
+
+  node.source = source;
+  node.tokens = tokens;
+  node.token_count = token_count;
+
   return cast<*AstNode>(node);
 }
 

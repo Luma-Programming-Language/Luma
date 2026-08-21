@@ -13,8 +13,6 @@
 @use "tc_stmt"      as STMT
 @use "tc_error"     as ERR
 
-// ─── Module Registry Helpers ──────────────────────────────────────────────────
-
 const find_module_scope -> fn (registry: *Vector, name: *byte) *Scope {
   let c: int = registry.size;
   loop [i: int = 0](i < c) : (++i) {
@@ -61,8 +59,6 @@ const check_module_body -> fn (mnode: *AstNode, ms: *Scope) bool {
   }
   return ok;
 }
-
-// ─── Entry Point ──────────────────────────────────────────────────────────────
 
 pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
   if (node == cast<*AstNode>(0)) return true;
@@ -128,7 +124,7 @@ pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
       let mod: *ModuleNode = cast<*ModuleNode>(mnode);
       let ms: *Scope = find_module_scope(&registry, mod.name);
 
-      ERR::tc_error_init(cast<*Token>(0), 0, mod.file_path);
+      ERR::tc_error_init(mod);
       if (check_module_body(mnode, ms) == false) ok = false;
     }
   }

@@ -1,5 +1,7 @@
 @module "ast"
 
+@use "lexer_tokens" as TOK
+
 pub const NodeType -> enum {
   PREPROCESSOR_MODULE,
   PREPROCESSOR_USE,
@@ -132,6 +134,12 @@ pub const ModuleNode -> struct {
   file_path:   *byte,
   body:        **AstNode,
   body_count:  int,
+
+  // Owned for the lifetime of the module so the typechecker can regenerate
+  // source lines for diagnostics (see tc_error_init / generate_line).
+  source:      *byte,
+  tokens:      *Token,
+  token_count: int,
 };
 
 pub const UseNode -> struct {
@@ -269,18 +277,18 @@ pub const StructExprNode -> struct {
 // ─── Statement Nodes ─────────────────────────────────────────────────────────
 
 pub const ProgramNode -> struct {
-  base:         AstNode,
+  ...AstNode,
   modules:      **AstNode,
   module_count: int,
 };
 
 pub const ExprStmtNode -> struct {
-  base:       AstNode,
+  ...AstNode,
   expression: *AstNode,
 };
 
 pub const VarDeclNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   name:        *byte,
   doc_comment: *byte,
   var_type:    *AstNode,
@@ -290,7 +298,7 @@ pub const VarDeclNode -> struct {
 };
 
 pub const FuncDeclNode -> struct {
-  base:              AstNode,
+  ...AstNode,
   name:              *byte,
   doc_comment:       *byte,
   param_names:       **byte,
@@ -311,7 +319,7 @@ pub const FuncDeclNode -> struct {
 };
 
 pub const StructDeclNode -> struct {
-  base:            AstNode,
+  ...AstNode,
   name:            *byte,
   doc_comment:     *byte,
   public_members:  **AstNode,
@@ -322,7 +330,7 @@ pub const StructDeclNode -> struct {
 };
 
 pub const FieldDeclNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   name:        *byte,
   doc_comment: *byte,
   type_node:   *AstNode,
@@ -331,7 +339,7 @@ pub const FieldDeclNode -> struct {
 };
 
 pub const EnumDeclNode -> struct {
-  base:         AstNode,
+  ...AstNode,
   name:         *byte,
   doc_comment:  *byte,
   members:      **byte,
@@ -340,7 +348,7 @@ pub const EnumDeclNode -> struct {
 };
 
 pub const IfStmtNode -> struct {
-  base:       AstNode,
+  ...AstNode,
   condition:  *AstNode,
   then_stmt:  *AstNode,
   elif_stmts: **AstNode,
@@ -349,7 +357,7 @@ pub const IfStmtNode -> struct {
 };
 
 pub const LoopStmtNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   condition:   *AstNode,
   optional:    *AstNode,
   body:        *AstNode,
@@ -358,35 +366,35 @@ pub const LoopStmtNode -> struct {
 };
 
 pub const ReturnStmtNode -> struct {
-  base:  AstNode,
+  ...AstNode,
   value: *AstNode,
 };
 
 pub const BlockNode -> struct {
-  base:       AstNode,
+  ...AstNode,
   statements: **AstNode,
   stmt_count: int,
 };
 
 pub const PrintStmtNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   expressions: **AstNode,
   expr_count:  int,
   ln:          int,
 };
 
 pub const BreakContinueNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   is_continue: int,
 };
 
 pub const DeferNode -> struct {
-  base:      AstNode,
+  ...AstNode,
   statement: *AstNode,
 };
 
 pub const SwitchNode -> struct {
-  base:         AstNode,
+  ...AstNode,
   condition:    *AstNode,
   cases:        **AstNode,
   case_count:   int,
@@ -394,7 +402,7 @@ pub const SwitchNode -> struct {
 };
 
 pub const ImplNode -> struct {
-  base:                AstNode,
+  ...AstNode,
   function_name_list:  **byte,
   function_type_list:  **AstNode,
   struct_name_list:    **byte,
@@ -404,44 +412,44 @@ pub const ImplNode -> struct {
 };
 
 pub const CaseNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   values:      **AstNode,
   value_count: int,
   body:        *AstNode,
 };
 
 pub const DefaultNode -> struct {
-  base: AstNode,
+  ...AstNode,
   body: *AstNode,
 };
 
 // ─── Type Nodes ──────────────────────────────────────────────────────────────
 
 pub const BasicTypeNode -> struct {
-  base: AstNode,
+  ...AstNode,
   name: *byte,
 };
 
 pub const PointerTypeNode -> struct {
-  base:         AstNode,
+  ...AstNode,
   pointee_type: *AstNode,
 };
 
 pub const ArrayTypeNode -> struct {
-  base:         AstNode,
+  ...AstNode,
   element_type: *AstNode,
   size:         *AstNode,
 };
 
 pub const FuncTypeNode -> struct {
-  base:        AstNode,
+  ...AstNode,
   param_types: **AstNode,
   param_count: int,
   return_type: *AstNode,
 };
 
 pub const ResolutionNode -> struct {
-  base:       AstNode,
+  ...AstNode,
   parts:      **byte,
   part_count: int,
 };
@@ -463,6 +471,8 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.body);
     free(n.name);
+    free(n.tokens);
+    free(n.source);
     free(node);
     return;
   }

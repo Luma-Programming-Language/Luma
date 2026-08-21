@@ -5,13 +5,12 @@
 #returns_ownership
 pub const make_program -> fn (modules: **AstNode, module_count: int, line: int, col: int) *AstNode {
   let n: *ProgramNode = cast<*ProgramNode>(alloc(sizeof<ProgramNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::PROGRAM;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
+  n.kind = AST::NodeType::PROGRAM;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
 
-  base.col = col;
+  n.col = col;
   n.modules = modules;
   n.module_count = module_count;
 
@@ -21,12 +20,11 @@ pub const make_program -> fn (modules: **AstNode, module_count: int, line: int, 
 #returns_ownership
 pub const make_expr_stmt -> fn (expression: *AstNode, line: int, col: int) *AstNode {
   let n: *ExprStmtNode = cast<*ExprStmtNode>(alloc(sizeof<ExprStmtNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_EXPRESSION;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_EXPRESSION;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.expression = expression;
 
@@ -37,12 +35,11 @@ pub const make_expr_stmt -> fn (expression: *AstNode, line: int, col: int) *AstN
 pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AstNode,
                                initializer: *AstNode, is_mutable: int, is_public: int, line: int, col: int) *AstNode {
   let n: *VarDeclNode = cast<*VarDeclNode>(alloc(sizeof<VarDeclNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_VAR_DECL;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_VAR_DECL;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.name = name;
   n.doc_comment = doc_comment;
@@ -58,12 +55,11 @@ pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AstNo
 pub const make_const_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AstNode,
                                  initializer: *AstNode, is_public: int, line: int, col: int) *AstNode {
   let n: *VarDeclNode = cast<*VarDeclNode>(alloc(sizeof<VarDeclNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_CONST_DECL;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_CONST_DECL;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.name = name;
   n.doc_comment = doc_comment;
@@ -81,12 +77,11 @@ pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **
                                 returns_ownership: int, takes_ownership: int,
                                 forward_declared: int, line: int, col: int) *AstNode {
   let n: *FuncDeclNode = cast<*FuncDeclNode>(alloc(sizeof<FuncDeclNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_FUNCTION;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_FUNCTION;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.name = name;
   n.doc_comment = doc_comment;
@@ -113,12 +108,11 @@ pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_member
                                   public_count: int, private_members: **AstNode, private_count: int,
                                   is_public: int, line: int, col: int) *AstNode {
   let n: *StructDeclNode = cast<*StructDeclNode>(alloc(sizeof<StructDeclNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_STRUCT;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_STRUCT;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.name = name;
   n.doc_comment = doc_comment;
@@ -135,12 +129,11 @@ pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_member
 pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AstNode,
                                  function: *AstNode, is_public: int, line: int, col: int) *AstNode {
   let n: *FieldDeclNode = cast<*FieldDeclNode>(alloc(sizeof<FieldDeclNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_FIELD_DECL;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_FIELD_DECL;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.name = name;
   n.doc_comment = doc_comment;
@@ -155,12 +148,11 @@ pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *As
 pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte,
                                 member_count: int, is_public: int, line: int, col: int) *AstNode {
   let n: *EnumDeclNode = cast<*EnumDeclNode>(alloc(sizeof<EnumDeclNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_ENUM;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_ENUM;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.name = name;
   n.doc_comment = doc_comment;
@@ -175,12 +167,11 @@ pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte
 pub const make_if_stmt -> fn (condition: *AstNode, then_stmt: *AstNode, elif_stmts: **AstNode,
                               elif_count: int, else_stmt: *AstNode, line: int, col: int) *AstNode {
   let n: *IfStmtNode = cast<*IfStmtNode>(alloc(sizeof<IfStmtNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_IF;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_IF;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.condition = condition;
   n.then_stmt = then_stmt;
@@ -195,12 +186,11 @@ pub const make_if_stmt -> fn (condition: *AstNode, then_stmt: *AstNode, elif_stm
 pub const make_loop_stmt -> fn (condition: *AstNode, optional: *AstNode, body: *AstNode,
                                 initializer: **AstNode, init_count: int, line: int, col: int) *AstNode {
   let n: *LoopStmtNode = cast<*LoopStmtNode>(alloc(sizeof<LoopStmtNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_LOOP;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_LOOP;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.condition = condition;
   n.optional = optional;
@@ -214,12 +204,11 @@ pub const make_loop_stmt -> fn (condition: *AstNode, optional: *AstNode, body: *
 #returns_ownership
 pub const make_return_stmt -> fn (value: *AstNode, line: int, col: int) *AstNode {
   let n: *ReturnStmtNode = cast<*ReturnStmtNode>(alloc(sizeof<ReturnStmtNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_RETURN;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_RETURN;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.value = value;
 
@@ -229,12 +218,11 @@ pub const make_return_stmt -> fn (value: *AstNode, line: int, col: int) *AstNode
 #returns_ownership
 pub const make_block -> fn (statements: **AstNode, stmt_count: int, line: int, col: int) *AstNode {
   let n: *BlockNode = cast<*BlockNode>(alloc(sizeof<BlockNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_BLOCK;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_BLOCK;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.statements = statements;
   n.stmt_count = stmt_count;
@@ -245,12 +233,11 @@ pub const make_block -> fn (statements: **AstNode, stmt_count: int, line: int, c
 #returns_ownership
 pub const make_print_stmt -> fn (expressions: **AstNode, expr_count: int, ln: int, line: int, col: int) *AstNode {
   let n: *PrintStmtNode = cast<*PrintStmtNode>(alloc(sizeof<PrintStmtNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_PRINT;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_PRINT;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.expressions = expressions;
   n.expr_count = expr_count;
@@ -262,12 +249,11 @@ pub const make_print_stmt -> fn (expressions: **AstNode, expr_count: int, ln: in
 #returns_ownership
 pub const make_break_continue -> fn (is_continue: int, line: int, col: int) *AstNode {
   let n: *BreakContinueNode = cast<*BreakContinueNode>(alloc(sizeof<BreakContinueNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_BREAK_CONTINUE;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_BREAK_CONTINUE;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.is_continue = is_continue;
 
@@ -277,12 +263,11 @@ pub const make_break_continue -> fn (is_continue: int, line: int, col: int) *Ast
 #returns_ownership
 pub const make_defer_stmt -> fn (statement: *AstNode, line: int, col: int) *AstNode {
   let n: *DeferNode = cast<*DeferNode>(alloc(sizeof<DeferNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_DEFER;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_DEFER;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.statement = statement;
 
@@ -293,12 +278,11 @@ pub const make_defer_stmt -> fn (statement: *AstNode, line: int, col: int) *AstN
 pub const make_switch_stmt -> fn (condition: *AstNode, cases: **AstNode, case_count: int,
                                   default_case: *AstNode, line: int, col: int) *AstNode {
   let n: *SwitchNode = cast<*SwitchNode>(alloc(sizeof<SwitchNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_SWITCH;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_SWITCH;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.condition = condition;
   n.cases = cases;
@@ -313,12 +297,11 @@ pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: 
                                 function_name_count: int, struct_name_count: int, body: *AstNode,
                                 line: int, col: int) *AstNode {
   let n: *ImplNode = cast<*ImplNode>(alloc(sizeof<ImplNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_IMPL;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_IMPL;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.function_name_list = function_name_list;
   n.function_type_list = function_type_list;
@@ -333,12 +316,11 @@ pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: 
 #returns_ownership
 pub const make_case_stmt -> fn (values: **AstNode, value_count: int, body: *AstNode, line: int, col: int) *AstNode {
   let n: *CaseNode = cast<*CaseNode>(alloc(sizeof<CaseNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_CASE;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_CASE;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.values = values;
   n.value_count = value_count;
@@ -350,12 +332,11 @@ pub const make_case_stmt -> fn (values: **AstNode, value_count: int, body: *AstN
 #returns_ownership
 pub const make_default_stmt -> fn (body: *AstNode, line: int, col: int) *AstNode {
   let n: *DefaultNode = cast<*DefaultNode>(alloc(sizeof<DefaultNode>));
-  let base: *AstNode = cast<*AstNode>(n);
 
-  base.kind = AST::NodeType::STMT_DEFAULT;
-  base.category = AST::NodeCategory::Node_Category_STMT;
-  base.line = line;
-  base.col = col;
+  n.kind = AST::NodeType::STMT_DEFAULT;
+  n.category = AST::NodeCategory::Node_Category_STMT;
+  n.line = line;
+  n.col = col;
 
   n.body = body;
   

@@ -23,8 +23,6 @@ const new_vector -> fn (elem_size: int) *Vector {
   return v;
 }
 
-// ─── Scope Construction ───────────────────────────────────────────────────────
-
 #returns_ownership
 pub const scope_init -> fn (name: *byte, check_mem: bool) *Scope {
   let s: *Scope = cast<*Scope>(alloc(sizeof<Scope>));
@@ -73,8 +71,6 @@ pub const scope_create_child -> fn (parent: *Scope, name: *byte) *Scope {
   return s;
 }
 
-// ─── Module Helpers ───────────────────────────────────────────────────────────
-
 pub const find_containing_module -> fn (scope: *Scope) *Scope {
   let s: *Scope = scope;
   loop (s != cast<*Scope>(0)) {
@@ -116,8 +112,6 @@ pub const find_module_import -> fn (scope: *Scope, alias: *byte) *ModuleImport {
   }
   return cast<*ModuleImport>(0);
 }
-
-// ─── Symbol Management ────────────────────────────────────────────────────────
 
 pub const scope_lookup_current -> fn (scope: *Scope, name: *byte) *Symbol {
   let v: *Vector = scope.symbols;

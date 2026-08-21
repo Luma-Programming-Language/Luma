@@ -182,9 +182,9 @@ pub const Parser -> struct {
   },
   advance -> fn () Token {
     if (self.has_tokens()) {
-      let tok: Token = self.tks[self.pos];  // capture current first
+      let tok: Token = self.tks[self.pos];
       self.pos = self.pos + 1;
-      return tok;                            // return what was consumed
+      return tok;
     }
     return EOF_TOK;
   },
@@ -211,7 +211,7 @@ pub const Parser -> struct {
     };
     ERR::error_add(info);
     self.had_error = 1;
-    self.advance(); // advance past the error token
+    self.advance();
 
     return EOF_TOK;
   },
@@ -281,7 +281,7 @@ pub const vec_to_node_array -> fn (v: *Vector) **AstNode {
 #returns_ownership
 pub const vec_to_byte_array -> fn (v: *Vector) **byte {
   if (v.size == 0) return cast<**byte>(0);
-  
+
   let allocation_size: int = v.size * sizeof<*byte>;
   let arr: **byte = cast<**byte>(alloc(allocation_size));
   MEM::memcpy(cast<*void>(arr), v.data, allocation_size);

@@ -70,7 +70,7 @@ pub const next_token -> fn (lx: *Lexer) Token {
     let start: *byte = lx.current;
     let c:     byte  = lx.peek(0);
     let line:  int   = lx.line;
-    let col:   int   = lx.col;    // <-- snapshot BEFORE advancing
+    let col:   int   = lx.col;
 
     if (c == '/' && lx.peek(1) == '/' && lx.peek(2) == '!') {
       skip_line_comment(lx);
@@ -144,7 +144,8 @@ pub const next_token -> fn (lx: *Lexer) Token {
         return make_token(start, sym::LumaTokenType::TOK_ERROR, 2, line, col, ws);
       }
       lx.advance();
-      return make_token(start, sym::LumaTokenType::TOK_CHAR_LITERAL, 3, line, col, ws);
+      let len: int = cast<int>(lx.current) - cast<int>(start);
+      return make_token(start, sym::LumaTokenType::TOK_CHAR_LITERAL, len, line, col, ws);
     }
 
     if (is_digit(c)) {

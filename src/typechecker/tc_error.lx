@@ -4,21 +4,15 @@
 @use "error"      as ERR 
 @use "ast"        as AST
 
-// ─── Global Error Context ─────────────────────────────────────────────────────
-
 pub let g_tokens:      *Token = cast<*Token>(0);
 pub let g_token_count: int    = 0;
 pub let g_file_path:   *byte  = cast<*byte>(0);
 
-// ─── Init ─────────────────────────────────────────────────────────────────────
-
-pub const tc_error_init -> fn (tokens: *Token, token_count: int, file_path: *byte) void {
-  g_tokens      = tokens;
-  g_token_count = token_count;
-  g_file_path   = file_path;
+pub const tc_error_init -> fn (mod: *ModuleNode) void {
+  g_tokens      = mod.tokens;
+  g_token_count = mod.token_count;
+  g_file_path   = mod.file_path;
 }
-
-// ─── Internal Helper ─────────────────────────────────────────────────────────
 
 const do_error -> fn (node: *AstNode, error_type: *byte, message: *byte, help: *byte, token_len: int) void {
   let err: ErrorInformation = ErrorInformation {
@@ -36,8 +30,6 @@ const do_error -> fn (node: *AstNode, error_type: *byte, message: *byte, help: *
 
   ERR::error_add(err);
 }
-
-// ─── Public API ───────────────────────────────────────────────────────────────
 
 pub const tc_error -> fn (node: *AstNode, error_type: *byte, message: *byte) void {
   do_error(node, error_type, message, cast<*byte>(0), 1);

@@ -23,8 +23,6 @@ const MAX_ERRORS: int = 256;
 let error_list: [ErrorInformation; 256];
 let error_count: int = 0;
 
-// ─── Public API ──────────────────────────────────────────────────────────────
-
 pub const error_add -> fn (err: ErrorInformation) void {
   if (error_count < MAX_ERRORS) {
     error_list[error_count] = err;
@@ -50,8 +48,6 @@ pub const error_get_at_index -> fn (index: int) *ErrorInformation {
   return &error_list[index];
 }
 
-// ─── Line Generation ─────────────────────────────────────────────────────────
-
 #returns_ownership
 pub const generate_line -> fn (tokens: *Token, token_count: int, target_line: int) *byte {
     if (target_line < 0 || tokens == cast<*Token>(0)) {
@@ -64,6 +60,9 @@ pub const generate_line -> fn (tokens: *Token, token_count: int, target_line: in
     loop [i: int = 0](i < token_count) : (++i) {
         if (tokens[i].line == target_line) {
             total_len = total_len + tokens[i].whitespace_len + tokens[i].len;
+            if (tokens[i].kind == TOK::LumaTokenType::TOK_STRING) {
+                total_len = total_len + 2;
+            }
         }
     }
 
@@ -78,18 +77,21 @@ pub const generate_line -> fn (tokens: *Token, token_count: int, target_line: in
             pos = pos + 1;
         }
 
+        let is_string: bool = (tokens[i].kind == TOK::LumaTokenType::TOK_STRING);
+        if (is_string) { result[pos] = '"'; pos = pos + 1; }
+
         let src: *byte = tokens[i].val;
         loop [j: int = 0](j < tokens[i].len) : (++j) {
             result[pos] = src[j];
             pos = pos + 1;
         }
+
+        if (is_string) { result[pos] = '"'; pos = pos + 1; }
     }
 
     result[pos] = '\0';
     return result;
 }
-
-// ─── Formatting Helpers ──────────────────────────────────────────────────────
 
 const get_line_width -> fn (line: int) int {
   let width: int = 1;
@@ -134,7 +136,7 @@ const print_source_line -> fn (line: int, text: *byte, max_width: int) void {
 
 const print_indicator -> fn (col: int, length: int, max_width: int) void {
   print_gutter(max_width);
-  let actual_col: int = col - 1;
+  let actual_col: int = col;
   if (actual_col < 0) { actual_col = 0; }
   loop [i: int = 0](i < actual_col) : (++i) { output(" "); }
   output("\x1b[1;33m");
@@ -143,8 +145,6 @@ const print_indicator -> fn (col: int, length: int, max_width: int) void {
   loop [i: int = 0](i < indicator_length) : (++i) { output("^"); }
   output("\x1b[0m\n");
 }
-
-// ─── Report ──────────────────────────────────────────────────────────────────
 
 pub const error_report -> fn () int {
   if (error_count == 0) return 0;

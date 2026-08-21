@@ -9,8 +9,6 @@
 @use "tc_error" as ERR
 @use "ast"      as AST
 
-// ─── Forward declarations ─────────────────────────────────────────────────────
-
 #returns_ownership pub const typecheck_expression -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode;
 
 #returns_ownership const tc_literal     -> fn (expr: *AstNode, scope: *Scope) *AstNode;
@@ -27,8 +25,6 @@
 #returns_ownership const tc_deref       -> fn (expr: *AstNode, scope: *Scope) *AstNode;
 #returns_ownership const tc_addr        -> fn (expr: *AstNode, scope: *Scope) *AstNode;
 #returns_ownership const tc_struct_expr -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode;
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 #returns_ownership
 pub const qualify -> fn (a: *byte, b: *byte) *byte {
@@ -50,8 +46,6 @@ const strip_pointer -> fn (t: *AstNode) *AstNode {
   }
   return t;
 }
-
-// ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 #returns_ownership
 pub const typecheck_expression -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode {
@@ -126,8 +120,6 @@ pub const typecheck_expression -> fn (expr: *AstNode, scope: *Scope, expected: *
   return cast<*AstNode>(0);
 }
 
-// ─── Literals ─────────────────────────────────────────────────────────────────
-
 #returns_ownership
 const tc_literal -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   let n: *LiteralNode = cast<*LiteralNode>(expr);
@@ -149,8 +141,6 @@ const tc_literal -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   return cast<*AstNode>(0);
 }
 
-// ─── Identifiers ──────────────────────────────────────────────────────────────
-
 #returns_ownership
 const tc_identifier -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   let n: *IdentifierNode = cast<*IdentifierNode>(expr);
@@ -161,8 +151,6 @@ const tc_identifier -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   }
   return sym.type;
 }
-
-// ─── Binary ───────────────────────────────────────────────────────────────────
 
 #returns_ownership
 const tc_binary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
@@ -221,8 +209,6 @@ const tc_binary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   return rt;
 }
 
-// ─── Unary ────────────────────────────────────────────────────────────────────
-
 #returns_ownership
 const tc_unary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   let n: *UnaryNode = cast<*UnaryNode>(expr);
@@ -235,8 +221,6 @@ const tc_unary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   // -, +, ~, ++, -- preserve the operand type.
   return ot;
 }
-
-// ─── Deref / Addr ─────────────────────────────────────────────────────────────
 
 #returns_ownership
 const tc_deref -> fn (expr: *AstNode, scope: *Scope) *AstNode {
@@ -258,8 +242,6 @@ const tc_addr -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   if (ot == cast<*AstNode>(0)) return cast<*AstNode>(0);
   return TYPE::make_pointer_to(ot);
 }
-
-// ─── Index ────────────────────────────────────────────────────────────────────
 
 #returns_ownership
 const tc_index -> fn (expr: *AstNode, scope: *Scope) *AstNode {
@@ -286,8 +268,6 @@ const tc_index -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   ERR::tc_error(expr, "Type Error", "cannot index a non-array, non-pointer value");
   return cast<*AstNode>(0);
 }
-
-// ─── Member Access ────────────────────────────────────────────────────────────
 
 #returns_ownership
 const tc_member -> fn (expr: *AstNode, scope: *Scope) *AstNode {
@@ -336,8 +316,6 @@ const tc_member -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   // Field/method not found in registry — stay permissive (don't reject).
   return cast<*AstNode>(0);
 }
-
-// ─── Calls ────────────────────────────────────────────────────────────────────
 
 #returns_ownership
 const resolve_callee_type -> fn (callee: *AstNode, scope: *Scope) *AstNode {
@@ -404,8 +382,6 @@ const tc_call -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   return cast<*AstNode>(0);
 }
 
-// ─── Assignment ───────────────────────────────────────────────────────────────
-
 #returns_ownership
 const tc_assign -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   let n: *AssignNode = cast<*AssignNode>(expr);
@@ -432,8 +408,6 @@ const tc_assign -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   return tt;
 }
 
-// ─── Ternary ──────────────────────────────────────────────────────────────────
-
 #returns_ownership
 const tc_ternary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   let n: *TernaryNode = cast<*TernaryNode>(expr);
@@ -443,8 +417,6 @@ const tc_ternary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   if (a != cast<*AstNode>(0)) return a;
   return b;
 }
-
-// ─── Cast ─────────────────────────────────────────────────────────────────────
 
 #returns_ownership
 const tc_cast -> fn (expr: *AstNode, scope: *Scope) *AstNode {
@@ -457,8 +429,6 @@ const tc_cast -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   }
   return n.type_node;
 }
-
-// ─── Array Literal ────────────────────────────────────────────────────────────
 
 #returns_ownership
 const tc_array -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode {
@@ -489,8 +459,6 @@ const tc_array -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNod
   if (first == cast<*AstNode>(0)) return cast<*AstNode>(0);
   return TYPE::make_pointer_to(first);
 }
-
-// ─── Struct Literal ───────────────────────────────────────────────────────────
 
 #returns_ownership
 const tc_struct_expr -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode {

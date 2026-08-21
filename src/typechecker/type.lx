@@ -7,8 +7,6 @@
 @use "ast"      as AST
 @use "ast_type" as TAST
 
-// ─── Type Node Accessors ──────────────────────────────────────────────────────
-
 pub const type_is_kind -> fn (t: *AstNode, kind: int) bool {
   if (t == cast<*AstNode>(0)) return false;
   return t.kind == kind;
@@ -18,8 +16,6 @@ pub const basic_name -> fn (t: *AstNode) *byte {
   let n: *BasicTypeNode = cast<*BasicTypeNode>(t);
   return n.name;
 }
-
-// ─── Type Introspection ───────────────────────────────────────────────────────
 
 pub const is_builtin_name -> fn (name: *byte) bool {
   if (STR::strcmp(name, "int")    == 0) return true;
@@ -148,8 +144,6 @@ pub const numeric_rank -> fn (t: *AstNode) int {
   return -1;
 }
 
-// ─── Type Matching ────────────────────────────────────────────────────────────
-
 pub const types_match -> fn (a: *AstNode, b: *AstNode) int;
 
 const match_basic -> fn (a: *AstNode, b: *AstNode) int {
@@ -276,8 +270,6 @@ pub const types_match -> fn (a: *AstNode, b: *AstNode) int {
   }
 }
 
-// ─── Cast Validity ────────────────────────────────────────────────────────────
-
 pub const is_cast_valid -> fn (from: *AstNode, to: *AstNode) bool {
   if (from == cast<*AstNode>(0) || to == cast<*AstNode>(0)) return false;
 
@@ -307,8 +299,6 @@ pub const is_cast_valid -> fn (from: *AstNode, to: *AstNode) bool {
 
   return false;
 }
-
-// ─── Type Pretty Printing ─────────────────────────────────────────────────────
 
 const append_str -> fn (buf: *byte, pos: int, s: *byte) int {
   let len: int = STR::strlen(s);

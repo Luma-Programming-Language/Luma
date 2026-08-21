@@ -853,7 +853,7 @@ const _switch -> fn (p: *Parser) *AstNode {
         } else {
           default_body = parse_stmt(p);
         }
-        
+ 
         if (default_body == cast<*AstNode>(0)) {
           p.error("SyntaxError", "Expected block after default case.");
           VEC::free_vector(&cases);

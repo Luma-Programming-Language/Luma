@@ -11,8 +11,6 @@
 @use "ast"      as AST
 @use "ast_type" as TAST
 
-// ─── Forward declarations ─────────────────────────────────────────────────────
-
 pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool;
 pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool;
 
@@ -26,8 +24,6 @@ const handle_switch      -> fn (stmt: *AstNode, scope: *Scope) bool;
 const handle_return      -> fn (stmt: *AstNode, scope: *Scope) bool;
 const handle_block       -> fn (stmt: *AstNode, scope: *Scope) bool;
 const handle_defer       -> fn (stmt: *AstNode, scope: *Scope) bool;
-
-// ─── Dispatcher ───────────────────────────────────────────────────────────────
 
 pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool {
   if (stmt == cast<*AstNode>(0)) return true;
@@ -81,8 +77,6 @@ pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool {
 
   return true;
 }
-
-// ─── Variable / Constant Declarations ─────────────────────────────────────────
 
 const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *VarDeclNode = cast<*VarDeclNode>(stmt);
@@ -140,7 +134,7 @@ const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
       pos = pos + 1;
       msg[pos] = '\0';
 
-      ERR::tc_error_help(stmt, "Type Mismatch", msg, "Check that the initializer type matches the declared type");
+      ERR::tc_error_help(init, "Type Mismatch", msg, "Check that the initializer type matches the declared type");
       ok = false;
     }
   }
@@ -151,8 +145,6 @@ const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   SCOPE::scope_add_symbol(scope, n.name, final_type, n.is_public == 1, mutable);
   return ok;
 }
-
-// ─── Function Declarations ────────────────────────────────────────────────────
 
 const handle_func_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   let fd: *FuncDeclNode = cast<*FuncDeclNode>(stmt);
@@ -184,8 +176,6 @@ const handle_func_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
 
   return typecheck_statement(fd.body, fscope);
 }
-
-// ─── Struct Declarations ──────────────────────────────────────────────────────
 
 const register_field -> fn (struct_name: *byte, member: *AstNode, scope: *Scope) void {
   if (member == cast<*AstNode>(0)) return;
@@ -239,8 +229,6 @@ const handle_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   return true;
 }
 
-// ─── Enum Declarations ────────────────────────────────────────────────────────
-
 const handle_enum_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   let ed: *EnumDeclNode = cast<*EnumDeclNode>(stmt);
 
@@ -255,8 +243,6 @@ const handle_enum_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   }
   return true;
 }
-
-// ─── If / Elif / Else ─────────────────────────────────────────────────────────
 
 const check_condition -> fn (cond: *AstNode, scope: *Scope) void {
   if (cond == cast<*AstNode>(0)) return;
@@ -289,8 +275,6 @@ const handle_if -> fn (stmt: *AstNode, scope: *Scope) bool {
   return true;
 }
 
-// ─── Loops ────────────────────────────────────────────────────────────────────
-
 const handle_loop -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *LoopStmtNode = cast<*LoopStmtNode>(stmt);
   let loop_scope: *Scope = SCOPE::scope_create_child(scope, "loop");
@@ -309,8 +293,6 @@ const handle_loop -> fn (stmt: *AstNode, scope: *Scope) bool {
 
   return typecheck_statement(n.body, loop_scope);
 }
-
-// ─── Switch ───────────────────────────────────────────────────────────────────
 
 const handle_switch -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *SwitchNode = cast<*SwitchNode>(stmt);
@@ -337,8 +319,6 @@ const handle_switch -> fn (stmt: *AstNode, scope: *Scope) bool {
   }
   return true;
 }
-
-// ─── Return ───────────────────────────────────────────────────────────────────
 
 const handle_return -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *ReturnStmtNode = cast<*ReturnStmtNode>(stmt);
@@ -375,8 +355,6 @@ const handle_return -> fn (stmt: *AstNode, scope: *Scope) bool {
   return true;
 }
 
-// ─── Block ────────────────────────────────────────────────────────────────────
-
 const handle_block -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *BlockNode = cast<*BlockNode>(stmt);
   let block_scope: *Scope = SCOPE::scope_create_child(scope, "block");
@@ -389,8 +367,6 @@ const handle_block -> fn (stmt: *AstNode, scope: *Scope) bool {
   }
   return ok;
 }
-
-// ─── Defer ────────────────────────────────────────────────────────────────────
 
 const handle_defer -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *DeferNode = cast<*DeferNode>(stmt);
