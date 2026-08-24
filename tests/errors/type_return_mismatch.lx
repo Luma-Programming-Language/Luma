@@ -1,0 +1,11 @@
+// error-type: Type Error
+@module "main"
+
+const give_int -> fn () int {
+    return "not an int";
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let x: int = give_int();
+    return 0;
+}

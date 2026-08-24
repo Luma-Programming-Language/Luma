@@ -1,0 +1,7 @@
+// error-type: Type Mismatch
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let x: int = "not a number";
+    return 0;
+}

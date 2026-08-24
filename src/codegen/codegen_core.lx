@@ -1,0 +1,373 @@
+@module "cg_core"
+
+@use "std_vector"  as VEC
+@use "std_cstring" as STR
+@use "std_memory"  as MEM
+@use "ast"         as AST
+
+// ─── Growable byte buffer ────────────────────────────────────────────────────
+
+pub const Buf -> struct {
+  data: *byte,
+  len:  int,
+  cap:  int,
+};
+
+#returns_ownership
+pub const buf_init -> fn () *Buf {
+  let b: *Buf = cast<*Buf>(alloc(sizeof<Buf>));
+  b.cap  = 4096;
+  b.data = cast<*byte>(alloc(b.cap));
+  b.len  = 0;
+  return b;
+}
+
+const buf_ensure -> fn (b: *Buf, extra: int) void {
+  if (b.len + extra + 1 <= b.cap) return;
+  let ncap: int = b.cap * 2;
+  loop (ncap < b.len + extra + 1) { ncap = ncap * 2; }
+  let nd: *byte = cast<*byte>(alloc(ncap));
+  MEM::memcpy(cast<*void>(nd), cast<*void>(b.data), b.len);
+  free(b.data);
+  b.data = nd;
+  b.cap  = ncap;
+}
+
+pub const buf_str -> fn (b: *Buf, s: *byte) void {
+  if (s == cast<*byte>(0)) return;
+  let n: int = STR::strlen(s);
+  buf_ensure(b, n);
+  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  b.len = b.len + n;
+}
+
+pub const buf_nstr -> fn (b: *Buf, s: *byte, n: int) void {
+  buf_ensure(b, n);
+  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  b.len = b.len + n;
+}
+
+pub const buf_char -> fn (b: *Buf, c: byte) void {
+  buf_ensure(b, 1);
+  b.data[b.len] = c;
+  b.len = b.len + 1;
+}
+
+pub const buf_int -> fn (b: *Buf, v: int) void {
+  let s: *byte = STR::from_int(v);
+  buf_str(b, s);
+  free(s);
+}
+
+pub const buf_last_char -> fn (b: *Buf) byte {
+  if (b.len == 0) return cast<byte>(0);
+  return b.data[b.len - 1];
+}
+
+#returns_ownership
+pub const buf_finish -> fn (b: *Buf) *byte {
+  buf_ensure(b, 0);
+  b.data[b.len] = '\0';
+  let out: *byte = b.data;
+  free(b);
+  return out;
+}
+
+#returns_ownership
+pub const dup_str -> fn (s: *byte) *byte {
+  let n: int = STR::strlen(s);
+  let d: *byte = cast<*byte>(alloc(n + 1));
+  MEM::memcpy(cast<*void>(d), cast<*void>(s), n);
+  d[n] = '\0';
+  return d;
+}
+
+#returns_ownership
+pub const strcat2 -> fn (a: *byte, b: *byte) *byte {
+  let la: int = STR::strlen(a);
+  let lb: int = STR::strlen(b);
+  let s: *byte = cast<*byte>(alloc(la + lb + 1));
+  MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
+  MEM::memcpy(cast<*void>(cast<int>(s) + la), cast<*void>(b), lb);
+  s[la + lb] = '\0';
+  return s;
+}
+
+// `module__name` mangling. Caller owns the returned string.
+#returns_ownership
+pub const mangle2 -> fn (a: *byte, b: *byte) *byte {
+  let la: int = STR::strlen(a);
+  let lb: int = STR::strlen(b);
+  let s: *byte = cast<*byte>(alloc(la + lb + 3));
+  MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
+  s[la] = '_'; s[la + 1] = '_';
+  MEM::memcpy(cast<*void>(cast<int>(s) + la + 2), cast<*void>(b), lb);
+  s[la + lb + 2] = '\0';
+  return s;
+}
+
+// `module__Struct_method` mangling.
+#returns_ownership
+pub const mangle3 -> fn (a: *byte, b: *byte, c: *byte) *byte {
+  let ab: *byte = mangle2(a, b);
+  let la: int = STR::strlen(ab);
+  let lc: int = STR::strlen(c);
+  let s: *byte = cast<*byte>(alloc(la + lc + 2));
+  MEM::memcpy(cast<*void>(s), cast<*void>(ab), la);
+  s[la] = '_';
+  MEM::memcpy(cast<*void>(cast<int>(s) + la + 1), cast<*void>(c), lc);
+  s[la + lc + 1] = '\0';
+  free(ab);
+  return s;
+}
+
+// ─── Registries built directly from the AST (Pass A) ────────────────────────
+// Structural questions (field lists, method lists, embedding chains) are
+// re-derived straight from the StructDeclNode/EnumDeclNode/FuncDeclNode AST
+// rather than reusing the typechecker's scope tree. Plain expression typing
+// still relies on the typechecker's `AstNode.resolved_type` annotations.
+
+pub const StructInfo -> struct {
+  name:        *byte,
+  module_name: *byte,
+  decl:        *StructDeclNode,
+  defined:     bool,    // has its full C body been emitted yet?
+  in_progress: bool,    // cycle guard while topologically emitting
+};
+
+pub const EnumInfo -> struct {
+  name:        *byte,
+  module_name: *byte,
+  decl:        *EnumDeclNode,
+};
+
+pub const FuncInfo -> struct {
+  name:        *byte,
+  module_name: *byte,
+  decl:        *FuncDeclNode,
+  is_extern:   bool,    // body-less (FFI) => keep the bare C name
+  is_main:     bool,
+  owner:       *byte,   // struct name if this is a method, else null
+};
+
+pub const GlobalInfo -> struct {
+  name:        *byte,
+  module_name: *byte,
+  decl:        *VarDeclNode,
+};
+
+// Records a module's `@use "target" as alias` so `ALIAS::symbol` inside
+// that module can be mapped back to the real owning module.
+pub const UseAlias -> struct {
+  owner_module:  *byte,
+  alias:         *byte,
+  target_module: *byte,
+};
+
+// Luma allows re-`let`-ing the same name within one block (shadowing); C
+// doesn't allow redeclaring a name in the same block scope, so each local is
+// tracked here and uniquified on collision. Pushed on declaration, truncated
+// back on the enclosing block's exit (see codegen_stmt.lx's gen_block/gen_loop).
+pub const LocalBinding -> struct {
+  name:   *byte, // Luma source name
+  c_name: *byte, // emitted C identifier (may equal `name`)
+};
+
+pub const CodegenContext -> struct {
+  out:            *void,   // FILE*
+  structs:        Vector,  // of StructInfo
+  enums:          Vector,  // of EnumInfo
+  funcs:          Vector,  // of FuncInfo
+  globals:        Vector,  // of GlobalInfo
+  use_aliases:    Vector,  // of UseAlias
+  locals:         Vector,  // of LocalBinding — current function's live locals/params
+  current_module: *byte,
+  current_return_type: *AstNode, // return type of the function body being emitted
+  label_counter:  int,
+
+  // Pending `defer` statements for the function being emitted, most-recent
+  // last. Flushed (LIFO) inline at each `return` and at each block's normal
+  // fall-through exit — see codegen_stmt.lx's gen_return/gen_block.
+  defer_stack:    Vector,  // of *AstNode
+};
+
+#returns_ownership
+pub const ctx_init -> fn (out: *void) *CodegenContext {
+  let c: *CodegenContext = cast<*CodegenContext>(alloc(sizeof<CodegenContext>));
+  c.out            = out;
+  c.structs        = VEC::create_vector(sizeof<StructInfo>);
+  c.enums          = VEC::create_vector(sizeof<EnumInfo>);
+  c.funcs          = VEC::create_vector(sizeof<FuncInfo>);
+  c.globals        = VEC::create_vector(sizeof<GlobalInfo>);
+  c.use_aliases    = VEC::create_vector(sizeof<UseAlias>);
+  c.locals         = VEC::create_vector(sizeof<LocalBinding>);
+  c.current_module = "";
+  c.current_return_type = cast<*AstNode>(0);
+  c.label_counter  = 0;
+  c.defer_stack    = VEC::create_vector(sizeof<*AstNode>);
+  return c;
+}
+
+pub const find_struct -> fn (ctx: *CodegenContext, name: *byte) *StructInfo {
+  let v: *Vector = &ctx.structs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let s: *StructInfo = cast<*StructInfo>(v.get(i));
+    if (STR::strcmp(s.name, name) == 0) return s;
+    i = i + 1;
+  }
+  return cast<*StructInfo>(0);
+}
+
+pub const find_enum -> fn (ctx: *CodegenContext, name: *byte) *EnumInfo {
+  let v: *Vector = &ctx.enums;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let e: *EnumInfo = cast<*EnumInfo>(v.get(i));
+    if (STR::strcmp(e.name, name) == 0) return e;
+    i = i + 1;
+  }
+  return cast<*EnumInfo>(0);
+}
+
+pub const find_func -> fn (ctx: *CodegenContext, name: *byte) *FuncInfo {
+  let v: *Vector = &ctx.funcs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
+    if (f.owner == cast<*byte>(0)) {
+      if (STR::strcmp(f.name, name) == 0) return f;
+    }
+    i = i + 1;
+  }
+  return cast<*FuncInfo>(0);
+}
+
+pub const find_method -> fn (ctx: *CodegenContext, struct_name: *byte, method_name: *byte) *FuncInfo {
+  let v: *Vector = &ctx.funcs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
+    if (f.owner != cast<*byte>(0)) {
+      if (STR::strcmp(f.owner, struct_name) == 0 && STR::strcmp(f.name, method_name) == 0) return f;
+    }
+    i = i + 1;
+  }
+  return cast<*FuncInfo>(0);
+}
+
+pub const find_func_in_module -> fn (ctx: *CodegenContext, module_name: *byte, name: *byte) *FuncInfo {
+  let v: *Vector = &ctx.funcs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
+    if (f.owner == cast<*byte>(0)) {
+      if (STR::strcmp(f.module_name, module_name) == 0 && STR::strcmp(f.name, name) == 0) return f;
+    }
+    i = i + 1;
+  }
+  return cast<*FuncInfo>(0);
+}
+
+pub const find_global_in_module -> fn (ctx: *CodegenContext, module_name: *byte, name: *byte) *GlobalInfo {
+  let v: *Vector = &ctx.globals;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let g: *GlobalInfo = cast<*GlobalInfo>(v.get(i));
+    if (STR::strcmp(g.module_name, module_name) == 0 && STR::strcmp(g.name, name) == 0) return g;
+    i = i + 1;
+  }
+  return cast<*GlobalInfo>(0);
+}
+
+// Resolves `alias` used inside `owner_module` to the real module name it
+// points at, or null if it isn't a known module alias there.
+pub const resolve_alias -> fn (ctx: *CodegenContext, owner_module: *byte, alias: *byte) *byte {
+  let v: *Vector = &ctx.use_aliases;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let u: *UseAlias = cast<*UseAlias>(v.get(i));
+    if (STR::strcmp(u.owner_module, owner_module) == 0 && STR::strcmp(u.alias, alias) == 0) return u.target_module;
+    i = i + 1;
+  }
+  return cast<*byte>(0);
+}
+
+#returns_ownership
+pub const c_name_for_func -> fn (f: *FuncInfo) *byte {
+  if (f.is_main) return dup_str("main");
+  if (f.is_extern) return dup_str(f.name);
+  return mangle2(f.module_name, f.name);
+}
+
+#returns_ownership
+pub const c_name_for_method -> fn (f: *FuncInfo) *byte {
+  return mangle3(f.module_name, f.owner, f.name);
+}
+
+#returns_ownership
+pub const c_name_for_struct -> fn (s: *StructInfo) *byte {
+  return mangle2(s.module_name, s.name);
+}
+
+#returns_ownership
+pub const c_name_for_enum -> fn (e: *EnumInfo) *byte {
+  return mangle2(e.module_name, e.name);
+}
+
+#returns_ownership
+pub const c_name_for_enum_member -> fn (e: *EnumInfo, member: *byte) *byte {
+  return mangle3(e.module_name, e.name, member);
+}
+
+pub const next_label -> fn (ctx: *CodegenContext) int {
+  ctx.label_counter = ctx.label_counter + 1;
+  return ctx.label_counter;
+}
+
+// Most-recently-declared binding wins (shadowing). Null if `name` isn't a
+// known local/param — the caller then treats it as a module-level func/global.
+pub const local_lookup -> fn (ctx: *CodegenContext, name: *byte) *byte {
+  let v: *Vector = &ctx.locals;
+  let i: int = v.size - 1;
+  loop (i >= 0) {
+    let b: *LocalBinding = cast<*LocalBinding>(v.get(i));
+    if (STR::strcmp(b.name, name) == 0) return b.c_name;
+    i = i - 1;
+  }
+  return cast<*byte>(0);
+}
+
+// Registers `name` with a fixed C identifier (used for function parameters
+// and `self`, whose spelling is already fixed by the emitted signature).
+pub const local_bind_as -> fn (ctx: *CodegenContext, name: *byte, c_name: *byte) void {
+  let b: LocalBinding = LocalBinding { name: name, c_name: c_name };
+  let v: *Vector = &ctx.locals;
+  v.push_back(cast<*void>(&b));
+}
+
+// Registers a fresh `let`/`const` binding of `name`, returning the C
+// identifier to actually declare it under — `name` itself unless that name
+// is already bound (by an enclosing scope, an earlier shadowed `let`, or a
+// parameter), in which case a `name__N` suffix keeps the emitted C valid.
+#returns_ownership
+pub const local_declare -> fn (ctx: *CodegenContext, name: *byte) *byte {
+  let c_name: *byte = cast<*byte>(0);
+  if (local_lookup(ctx, name) == cast<*byte>(0)) {
+    c_name = dup_str(name);
+  } else {
+    let n: int = next_label(ctx);
+    let suffix: *byte = STR::from_int(n);
+    c_name = mangle2(name, suffix);
+    free(suffix);
+  }
+  local_bind_as(ctx, name, c_name);
+  return c_name;
+}

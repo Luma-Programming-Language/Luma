@@ -1,0 +1,7 @@
+// error-type: Undefined Identifier
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    output(totally_undefined_name, "\n");
+    return 0;
+}

@@ -1,0 +1,8 @@
+// error-type: Type Error
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let x: int = 5;
+    let y: int = x[0];
+    return 0;
+}

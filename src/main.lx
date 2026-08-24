@@ -20,6 +20,7 @@
 @use "ast"          as AST
 
 @use "tc"           as TC
+@use "codegen"      as CODEGEN
 
 pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
@@ -63,12 +64,22 @@ pub const main -> fn (argc: int, argv: **byte) int {
   VEC::free_vector(&modules);
   VEC::free_vector(&build_config.link_files);
 
-  PRINT::print_node(program, 0);
+  // PRINT::print_node(program, 0);
 
   let tc: bool = TC::typecheck(program, build_config);
-  output(tc, "\n");
+
+  let ok: bool = tc;
+  if (tc) {
+    ok = CODEGEN::codegen_generate(program, build_config);
+    if (ok == false) {
+      output("Codegen/compile step failed.", "\n");
+    }
+  }
 
   AST::free_node(program);
 
+  // Exit non-zero on a typecheck or codegen failure, matching normal
+  // compiler convention (and what a test harness checks exit code for).
+  if (ok == false) return 1;
   return 0;
 }

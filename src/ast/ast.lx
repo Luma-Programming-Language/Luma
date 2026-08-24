@@ -123,6 +123,13 @@ pub const AstNode -> struct {
   category: int,
   line:     int,
   col:      int,
+
+  // Filled in by the typechecker (tc_expr's `typecheck_expression` wrapper)
+  // for every expression node it successfully checks. Not owned — points at
+  // a type node living in some scope's symbol table or a `TAST::make_*`
+  // allocation; never freed via this field. Lets codegen read an already
+  // -computed static type straight off the AST instead of re-inferring it.
+  resolved_type: *AstNode,
 };
 
 // ─── Preprocessor Nodes ──────────────────────────────────────────────────────
@@ -336,6 +343,11 @@ pub const FieldDeclNode -> struct {
   type_node:   *AstNode,
   function:    *AstNode,
   is_public:   int,
+  // `...Type,` struct embedding (e.g. `...AstNode,`) — `name`/`type_node` are
+  // still the embedded type's name, so existing consumers that don't care
+  // about embedding keep working; is_embedded distinguishes it from a
+  // same-named regular data field.
+  is_embedded: int,
 };
 
 pub const EnumDeclNode -> struct {

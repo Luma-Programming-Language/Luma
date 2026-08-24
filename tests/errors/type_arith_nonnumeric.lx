@@ -1,0 +1,10 @@
+// error-type: Type Error
+@module "main"
+
+const Color -> enum { Red, Green, Blue };
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let s: *byte = "hello";
+    let bad: *byte = s + "world";
+    return 0;
+}

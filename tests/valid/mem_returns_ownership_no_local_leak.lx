@@ -1,0 +1,13 @@
+@module "main"
+
+#returns_ownership
+const make_buf -> fn () *byte {
+    let p: *byte = cast<*byte>(alloc(8));
+    return p;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: *byte = make_buf();
+    free(p);
+    return 0;
+}

@@ -1,0 +1,14 @@
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let x: int = 10;
+    let px: *int = &x;
+    let y: int = *px;
+
+    let arr: *int = cast<*int>(alloc(sizeof<int> * 4));
+    let p2: *int = arr + 1;
+    free(arr);
+
+    output(y, "\n");
+    return 0;
+}

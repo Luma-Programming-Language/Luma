@@ -478,7 +478,8 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
       let n: *FieldDeclNode = cast<*FieldDeclNode>(node);
       pf(flags, depth);
       cn(is_last);
-      output(nc, "Field", col(_R, _R0), ": ", n.name);
+      if (n.is_embedded == 1) output(nc, "Embed", col(_R, _R0), ": ", n.name);
+      else                    output(nc, "Field", col(_R, _R0), ": ", n.name);
       ann_lc(node);
       output("\n");
 

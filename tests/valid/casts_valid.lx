@@ -1,0 +1,14 @@
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let i: int = 42;
+    let f: float = cast<float>(i);
+    let back: int = cast<int>(f);
+
+    let p: *int = cast<*int>(alloc(sizeof<int>));
+    let addr: int = cast<int>(p);
+    output(addr, "\n");
+    free(p);
+
+    return 0;
+}

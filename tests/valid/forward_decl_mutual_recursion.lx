@@ -1,0 +1,19 @@
+@module "main"
+
+const is_even -> fn (n: int) bool;
+const is_odd  -> fn (n: int) bool;
+
+const is_even -> fn (n: int) bool {
+    if (n == 0) { return true; }
+    return is_odd(n - 1);
+}
+
+const is_odd -> fn (n: int) bool {
+    if (n == 0) { return false; }
+    return is_even(n - 1);
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    output(is_even(4), "\n");
+    return 0;
+}

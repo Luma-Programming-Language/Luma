@@ -1,0 +1,599 @@
+@module "codegen"
+
+@use "std_cstring" as STR
+@use "std_vector"  as VEC
+@use "std_libc"    as LIBC
+
+@use "ast"       as AST
+@use "constants" as CONST
+@use "tc_type"   as TCT
+@use "cg_core"   as CG
+@use "cg_type"   as CGT
+@use "cg_expr"   as CGE
+@use "cg_stmt"   as CGS
+
+// libc/libm names already given correct prototypes by the preamble's own
+// `#include`s. A program that also `@use "std_libc"`s one of these must not
+// get a second, conflicting prototype generated from its Luma signature.
+const is_known_libc_name -> fn (name: *byte) bool {
+  let names: **byte = cast<**byte>(alloc(sizeof<*byte> * 60));
+  let n: int = 0;
+  names[n] = "printf"; n = n + 1;
+  names[n] = "puts"; n = n + 1;
+  names[n] = "putchar"; n = n + 1;
+  names[n] = "getchar"; n = n + 1;
+  names[n] = "fflush"; n = n + 1;
+  names[n] = "fopen"; n = n + 1;
+  names[n] = "fclose"; n = n + 1;
+  names[n] = "fread"; n = n + 1;
+  names[n] = "fwrite"; n = n + 1;
+  names[n] = "fgets"; n = n + 1;
+  names[n] = "fputs"; n = n + 1;
+  names[n] = "feof"; n = n + 1;
+  names[n] = "ferror"; n = n + 1;
+  names[n] = "rewind"; n = n + 1;
+  names[n] = "fseek"; n = n + 1;
+  names[n] = "ftell"; n = n + 1;
+  names[n] = "remove"; n = n + 1;
+  names[n] = "rename"; n = n + 1;
+  names[n] = "tmpfile"; n = n + 1;
+  names[n] = "malloc"; n = n + 1;
+  names[n] = "calloc"; n = n + 1;
+  names[n] = "realloc"; n = n + 1;
+  names[n] = "exit"; n = n + 1;
+  names[n] = "abort"; n = n + 1;
+  names[n] = "abs"; n = n + 1;
+  names[n] = "atoi"; n = n + 1;
+  names[n] = "atof"; n = n + 1;
+  names[n] = "atol"; n = n + 1;
+  names[n] = "rand"; n = n + 1;
+  names[n] = "srand"; n = n + 1;
+  names[n] = "getenv"; n = n + 1;
+  names[n] = "qsort"; n = n + 1;
+  names[n] = "bsearch"; n = n + 1;
+  names[n] = "time"; n = n + 1;
+  names[n] = "clock"; n = n + 1;
+  names[n] = "difftime"; n = n + 1;
+  names[n] = "strlen"; n = n + 1;
+  names[n] = "strcpy"; n = n + 1;
+  names[n] = "strncpy"; n = n + 1;
+  names[n] = "strcat"; n = n + 1;
+  names[n] = "strncat"; n = n + 1;
+  names[n] = "strcmp"; n = n + 1;
+  names[n] = "strncmp"; n = n + 1;
+  names[n] = "strchr"; n = n + 1;
+  names[n] = "strrchr"; n = n + 1;
+  names[n] = "strstr"; n = n + 1;
+  names[n] = "strtok"; n = n + 1;
+  names[n] = "memset"; n = n + 1;
+  names[n] = "memcpy"; n = n + 1;
+  names[n] = "memmove"; n = n + 1;
+  names[n] = "memcmp"; n = n + 1;
+  names[n] = "sqrt"; n = n + 1;
+  names[n] = "pow"; n = n + 1;
+  names[n] = "floor"; n = n + 1;
+  names[n] = "ceil"; n = n + 1;
+  names[n] = "fabs"; n = n + 1;
+  names[n] = "fmod"; n = n + 1;
+  names[n] = "log"; n = n + 1;
+  names[n] = "exp"; n = n + 1;
+  names[n] = "sin"; n = n + 1;
+  names[n] = "cos"; n = n + 1;
+
+  let found: bool = false;
+  let i: int = 0;
+  loop (i < n) {
+    if (STR::strcmp(names[i], name) == 0) found = true;
+    i = i + 1;
+  }
+  free(names);
+  return found;
+}
+
+const IOWRITE -> fn (out: *void, s: *byte) void {
+  LIBC::fputs(s, out);
+}
+
+const write_preamble -> fn (out: *void) void {
+  IOWRITE(out, "#include <stdio.h>\n");
+  IOWRITE(out, "#include <stdlib.h>\n");
+  IOWRITE(out, "#include <string.h>\n");
+  IOWRITE(out, "#include <stdbool.h>\n");
+  IOWRITE(out, "#include <math.h>\n");
+  IOWRITE(out, "#include <time.h>\n");
+  IOWRITE(out, "#include <unistd.h>\n");
+  IOWRITE(out, "#include <sys/syscall.h>\n\n");
+  IOWRITE(out, "typedef struct { long long lo; long long hi; } __luma_range_t;\n\n");
+}
+
+// ─── Pass A: registries ──────────────────────────────────────────────────────
+
+const resolve_os_for -> fn (node: *AstNode, os: *byte) *AstNode {
+  if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);
+  let n: *OsNode = cast<*OsNode>(node);
+  if (os != cast<*byte>(0)) {
+    let i: int = 0;
+    loop (n.platforms[i] != cast<*byte>(0)) {
+      if (STR::strcmp(n.platforms[i], os) == 0) return n.bodies[i];
+      i = i + 1;
+    }
+  }
+  if (n.has_default == 1) return n.default_body;
+  return cast<*AstNode>(0);
+}
+
+const register_method -> fn (ctx: *CodegenContext, module_name: *byte, struct_name: *byte, member: *AstNode) void {
+  if (member == cast<*AstNode>(0)) return;
+  if (member.kind != AST::NodeType::STMT_FIELD_DECL) return;
+  let f: *FieldDeclNode = cast<*FieldDeclNode>(member);
+  if (f.is_embedded == 1) return;
+  if (f.function == cast<*AstNode>(0)) return;
+
+  let fd: *FuncDeclNode = cast<*FuncDeclNode>(f.function);
+  let fi: FuncInfo = FuncInfo {
+    name: fd.name, module_name: module_name, decl: fd,
+    is_extern: fd.body == cast<*AstNode>(0), is_main: false, owner: struct_name,
+  };
+  let v: *Vector = &ctx.funcs;
+  v.push_back(cast<*void>(&fi));
+}
+
+const register_decl -> fn (ctx: *CodegenContext, os: *byte, module_name: *byte, decl: *AstNode) void {
+  if (decl == cast<*AstNode>(0)) return;
+  let k: int = decl.kind;
+
+  if (k == AST::NodeType::PREPROCESSOR_OS) {
+    let body: *AstNode = resolve_os_for(decl, os);
+    if (body != cast<*AstNode>(0)) {
+      if (body.kind == AST::NodeType::STMT_BLOCK) {
+        let blk: *BlockNode = cast<*BlockNode>(body);
+        let i: int = 0;
+        loop (i < blk.stmt_count) {
+          register_decl(ctx, os, module_name, blk.statements[i]);
+          i = i + 1;
+        }
+      }
+    }
+    return;
+  }
+
+  if (k == AST::NodeType::STMT_STRUCT) {
+    let sd: *StructDeclNode = cast<*StructDeclNode>(decl);
+    let si: StructInfo = StructInfo { name: sd.name, module_name: module_name, decl: sd, defined: false, in_progress: false };
+    let sv: *Vector = &ctx.structs;
+    sv.push_back(cast<*void>(&si));
+
+    let i: int = 0;
+    loop (i < sd.public_count) { register_method(ctx, module_name, sd.name, sd.public_members[i]); i = i + 1; }
+    let j: int = 0;
+    loop (j < sd.private_count) { register_method(ctx, module_name, sd.name, sd.private_members[j]); j = j + 1; }
+    return;
+  }
+
+  if (k == AST::NodeType::STMT_ENUM) {
+    let ed: *EnumDeclNode = cast<*EnumDeclNode>(decl);
+    let ei: EnumInfo = EnumInfo { name: ed.name, module_name: module_name, decl: ed };
+    let ev: *Vector = &ctx.enums;
+    ev.push_back(cast<*void>(&ei));
+    return;
+  }
+
+  if (k == AST::NodeType::STMT_FUNCTION) {
+    let fd: *FuncDeclNode = cast<*FuncDeclNode>(decl);
+    let is_main: bool = STR::strcmp(fd.name, "main") == 0;
+    let has_body: bool = fd.body != cast<*AstNode>(0);
+
+    // A forward declaration (`fn (...) T;`, no body) followed later by the
+    // real definition is a common pattern here (mutual recursion). Both are
+    // separate STMT_FUNCTION nodes with the same name — update the existing
+    // entry in place instead of registering a second, conflicting one.
+    let existing: *FuncInfo = CG::find_func_in_module(ctx, module_name, fd.name);
+    if (existing != cast<*FuncInfo>(0)) {
+      if (has_body) {
+        existing.decl = fd;
+        existing.is_extern = false;
+      }
+      return;
+    }
+
+    let fi: FuncInfo = FuncInfo {
+      name: fd.name, module_name: module_name, decl: fd,
+      is_extern: has_body == false, is_main: is_main, owner: cast<*byte>(0),
+    };
+    let fv: *Vector = &ctx.funcs;
+    fv.push_back(cast<*void>(&fi));
+    return;
+  }
+
+  if (k == AST::NodeType::STMT_VAR_DECL || k == AST::NodeType::STMT_CONST_DECL) {
+    let vd: *VarDeclNode = cast<*VarDeclNode>(decl);
+    let gi: GlobalInfo = GlobalInfo { name: vd.name, module_name: module_name, decl: vd };
+    let gv: *Vector = &ctx.globals;
+    gv.push_back(cast<*void>(&gi));
+    return;
+  }
+
+  if (k == AST::NodeType::PREPROCESSOR_USE) {
+    let un: *UseNode = cast<*UseNode>(decl);
+    let ua: UseAlias = UseAlias { owner_module: module_name, alias: un.alias, target_module: un.module_name };
+    let uv: *Vector = &ctx.use_aliases;
+    uv.push_back(cast<*void>(&ua));
+    return;
+  }
+}
+
+const run_pass_a -> fn (ctx: *CodegenContext, prog: *ProgramNode, os: *byte) void {
+  let i: int = 0;
+  loop (i < prog.module_count) {
+    let mnode: *AstNode = prog.modules[i];
+    if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
+      let mod: *ModuleNode = cast<*ModuleNode>(mnode);
+      let j: int = 0;
+      loop (j < mod.body_count) {
+        register_decl(ctx, os, mod.name, mod.body[j]);
+        j = j + 1;
+      }
+    }
+    i = i + 1;
+  }
+}
+
+// ─── Pass B: emission ────────────────────────────────────────────────────────
+
+const emit_enums -> fn (ctx: *CodegenContext, buf: *Buf) void {
+  let v: *Vector = &ctx.enums;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let e: *EnumInfo = cast<*EnumInfo>(v.get(i));
+    let cname: *byte = CG::c_name_for_enum(e);
+    CG::buf_str(buf, "typedef enum { ");
+    let ed: *EnumDeclNode = e.decl;
+    let j: int = 0;
+    loop (j < ed.member_count) {
+      if (j > 0) CG::buf_str(buf, ", ");
+      let mname: *byte = CG::c_name_for_enum_member(e, ed.members[j]);
+      CG::buf_str(buf, mname);
+      free(mname);
+      j = j + 1;
+    }
+    CG::buf_str(buf, " } ");
+    CG::buf_str(buf, cname);
+    CG::buf_str(buf, ";\n");
+    free(cname);
+    i = i + 1;
+  }
+  CG::buf_str(buf, "\n");
+}
+
+const emit_struct_typedefs -> fn (ctx: *CodegenContext, buf: *Buf) void {
+  let v: *Vector = &ctx.structs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let s: *StructInfo = cast<*StructInfo>(v.get(i));
+    let cname: *byte = CG::c_name_for_struct(s);
+    CG::buf_str(buf, "typedef struct ");
+    CG::buf_str(buf, cname);
+    CG::buf_str(buf, " ");
+    CG::buf_str(buf, cname);
+    CG::buf_str(buf, ";\n");
+    free(cname);
+    i = i + 1;
+  }
+  CG::buf_str(buf, "\n");
+}
+
+const emit_struct_body -> fn (ctx: *CodegenContext, buf: *Buf, s: *StructInfo) void {
+  if (s.defined) return;
+  if (s.in_progress) return; // cycle guard — shouldn't happen for valid programs
+  s.in_progress = true;
+
+  let sd: *StructDeclNode = s.decl;
+  let groups: int = 0;
+  loop (groups < 2) {
+    let members: **AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AstNode = members[i];
+      if (m != cast<*AstNode>(0)) {
+        if (m.kind == AST::NodeType::STMT_FIELD_DECL) {
+          let f: *FieldDeclNode = cast<*FieldDeclNode>(m);
+          if (f.function == cast<*AstNode>(0)) {
+            if (f.type_node != cast<*AstNode>(0)) {
+              if (TCT::is_nominal_type(f.type_node)) {
+                let dep: *StructInfo = CG::find_struct(ctx, TCT::basic_name(f.type_node));
+                if (dep != cast<*StructInfo>(0)) emit_struct_body(ctx, buf, dep);
+              }
+            }
+          }
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+
+  let cname: *byte = CG::c_name_for_struct(s);
+  CG::buf_str(buf, "struct ");
+  CG::buf_str(buf, cname);
+  CG::buf_str(buf, " {\n");
+  free(cname);
+
+  groups = 0;
+  loop (groups < 2) {
+    let members: **AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AstNode = members[i];
+      if (m != cast<*AstNode>(0)) {
+        if (m.kind == AST::NodeType::STMT_FIELD_DECL) {
+          let f: *FieldDeclNode = cast<*FieldDeclNode>(m);
+          if (f.function == cast<*AstNode>(0)) {
+            CG::buf_str(buf, "  ");
+            CGT::emit_declarator(ctx, buf, f.type_node, f.name);
+            CG::buf_str(buf, ";\n");
+          }
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+
+  CG::buf_str(buf, "};\n\n");
+  s.defined = true;
+  s.in_progress = false;
+}
+
+const emit_all_struct_bodies -> fn (ctx: *CodegenContext, buf: *Buf) void {
+  let v: *Vector = &ctx.structs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    emit_struct_body(ctx, buf, cast<*StructInfo>(v.get(i)));
+    i = i + 1;
+  }
+}
+
+const emit_func_prototype -> fn (ctx: *CodegenContext, buf: *Buf, f: *FuncInfo) void {
+  let fd: *FuncDeclNode = f.decl;
+  if (f.is_extern) { if (is_known_libc_name(f.name)) return; }
+
+  // `main`'s signature is fixed by the C runtime (`int main(int, char**)`),
+  // not by Luma's declared param types (`argc: int` maps to `long long`
+  // everywhere else, but crt0 calls main with real 32-bit `int`s).
+  if (f.is_main) {
+    CG::buf_str(buf, "int main(int argc, char **argv);\n");
+    return;
+  }
+
+  let cname: *byte = cast<*byte>(0);
+  if (f.owner != cast<*byte>(0)) { cname = CG::c_name_for_method(f); } else { cname = CG::c_name_for_func(f); }
+
+  let sig: *Buf = CG::buf_init();
+  CG::buf_str(sig, cname);
+  CG::buf_str(sig, "(");
+  let has_self: bool = f.owner != cast<*byte>(0);
+  if (has_self) {
+    let s: *StructInfo = CG::find_struct(ctx, f.owner);
+    let sname: *byte = CG::c_name_for_struct(s);
+    CG::buf_str(sig, sname);
+    CG::buf_str(sig, " *self");
+    free(sname);
+  }
+  let i: int = 0;
+  loop (i < fd.param_count) {
+    if (has_self || i > 0) CG::buf_str(sig, ", ");
+    let pb: *Buf = CG::buf_init();
+    CGT::emit_declarator(ctx, pb, fd.param_types[i], fd.param_names[i]);
+    let ps: *byte = CG::buf_finish(pb);
+    CG::buf_str(sig, ps);
+    free(ps);
+    i = i + 1;
+  }
+  if (fd.param_count == 0 && has_self == false) CG::buf_str(sig, "void");
+  CG::buf_str(sig, ")");
+  let sig_str: *byte = CG::buf_finish(sig);
+
+  CGT::emit_declarator(ctx, buf, fd.return_type, sig_str);
+  CG::buf_str(buf, ";\n");
+  free(sig_str);
+  free(cname);
+}
+
+const emit_all_prototypes -> fn (ctx: *CodegenContext, buf: *Buf) void {
+  let v: *Vector = &ctx.funcs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    emit_func_prototype(ctx, buf, cast<*FuncInfo>(v.get(i)));
+    i = i + 1;
+  }
+  CG::buf_str(buf, "\n");
+}
+
+const emit_globals -> fn (ctx: *CodegenContext, buf: *Buf) void {
+  let v: *Vector = &ctx.globals;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let g: *GlobalInfo = cast<*GlobalInfo>(v.get(i));
+    let vd: *VarDeclNode = g.decl;
+    ctx.current_module = g.module_name;
+    let t: *AstNode = vd.var_type;
+    if (t == cast<*AstNode>(0)) {
+      let init: *AstNode = vd.initializer;
+      if (init != cast<*AstNode>(0)) { t = init.resolved_type; }
+    }
+    let cname: *byte = CG::mangle2(g.module_name, g.name);
+    CGT::emit_declarator(ctx, buf, t, cname);
+    free(cname);
+    if (vd.initializer != cast<*AstNode>(0)) {
+      CG::buf_str(buf, " = ");
+      CGE::gen_expr(ctx, buf, vd.initializer);
+    }
+    CG::buf_str(buf, ";\n");
+    i = i + 1;
+  }
+  CG::buf_str(buf, "\n");
+}
+
+const emit_func_body -> fn (ctx: *CodegenContext, buf: *Buf, f: *FuncInfo) void {
+  if (f.is_extern) return;
+  let fd: *FuncDeclNode = f.decl;
+  if (fd.body == cast<*AstNode>(0)) return;
+
+  ctx.current_module = f.module_name;
+  ctx.current_return_type = fd.return_type;
+  let dv: *Vector = &ctx.defer_stack;
+  dv.size = 0;
+  let lv: *Vector = &ctx.locals;
+  lv.size = 0;
+
+  // See emit_func_prototype: main's C signature is fixed by the runtime.
+  if (f.is_main) {
+    CG::buf_str(buf, "int main(");
+    if (fd.param_count >= 1) {
+      CG::buf_str(buf, "int ");
+      CG::buf_str(buf, fd.param_names[0]);
+      CG::local_bind_as(ctx, fd.param_names[0], fd.param_names[0]);
+    }
+    if (fd.param_count >= 2) {
+      CG::buf_str(buf, ", char **");
+      CG::buf_str(buf, fd.param_names[1]);
+      CG::local_bind_as(ctx, fd.param_names[1], fd.param_names[1]);
+    }
+    if (fd.param_count == 0) CG::buf_str(buf, "void");
+    CG::buf_str(buf, ") ");
+    CGS::gen_stmt(ctx, buf, fd.body);
+    CG::buf_str(buf, "\n");
+    return;
+  }
+
+  let cname: *byte = cast<*byte>(0);
+  if (f.owner != cast<*byte>(0)) { cname = CG::c_name_for_method(f); } else { cname = CG::c_name_for_func(f); }
+
+  let sig: *Buf = CG::buf_init();
+  CG::buf_str(sig, cname);
+  CG::buf_str(sig, "(");
+  let has_self: bool = f.owner != cast<*byte>(0);
+  if (has_self) {
+    CG::local_bind_as(ctx, "self", "self");
+    let s: *StructInfo = CG::find_struct(ctx, f.owner);
+    let sname: *byte = CG::c_name_for_struct(s);
+    CG::buf_str(sig, sname);
+    CG::buf_str(sig, " *self");
+    free(sname);
+  }
+  let i: int = 0;
+  loop (i < fd.param_count) {
+    if (has_self || i > 0) CG::buf_str(sig, ", ");
+    CG::local_bind_as(ctx, fd.param_names[i], fd.param_names[i]);
+    let pb: *Buf = CG::buf_init();
+    CGT::emit_declarator(ctx, pb, fd.param_types[i], fd.param_names[i]);
+    let ps: *byte = CG::buf_finish(pb);
+    CG::buf_str(sig, ps);
+    free(ps);
+    i = i + 1;
+  }
+  if (fd.param_count == 0 && has_self == false) CG::buf_str(sig, "void");
+  CG::buf_str(sig, ")");
+  let sig_str: *byte = CG::buf_finish(sig);
+
+  CGT::emit_declarator(ctx, buf, fd.return_type, sig_str);
+  CG::buf_str(buf, " ");
+  free(sig_str);
+  free(cname);
+
+  CGS::gen_stmt(ctx, buf, fd.body);
+  CG::buf_str(buf, "\n");
+}
+
+const emit_all_func_bodies -> fn (ctx: *CodegenContext, buf: *Buf) void {
+  let v: *Vector = &ctx.funcs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) { // main last (cosmetic — prototypes make ordering unnecessary)
+    let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
+    if (f.is_main == false) emit_func_body(ctx, buf, f);
+    i = i + 1;
+  }
+  i = 0;
+  loop (i < n) {
+    let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
+    if (f.is_main) emit_func_body(ctx, buf, f);
+    i = i + 1;
+  }
+}
+
+// ─── Entry point ─────────────────────────────────────────────────────────────
+
+const basename_of -> fn (path: *byte) *byte {
+  let len: int = STR::strlen(path);
+  let i: int = len - 1;
+  loop (i >= 0) {
+    if (path[i] == '/') return cast<*byte>(cast<int>(path) + i + 1);
+    i = i - 1;
+  }
+  return path;
+}
+
+pub const codegen_generate -> fn (program: *AstNode, config: LumaBuildConfig) bool {
+  if (program == cast<*AstNode>(0)) return false;
+  if (program.kind != AST::NodeType::PROGRAM) return false;
+
+  // e.g. `-name test` -> `output/test.c`, for `-save` to keep.
+  let mkdir_rc: int = system("mkdir -p output");
+  let pb: *Buf = CG::buf_init();
+  CG::buf_str(pb, "output/");
+  CG::buf_str(pb, basename_of(config.name));
+  CG::buf_str(pb, ".c");
+  let c_path: *byte = CG::buf_finish(pb);
+
+  let out: *void = LIBC::fopen(c_path, "w");
+  if (out == cast<*void>(0)) { free(c_path); return false; }
+
+  let ctx: *CodegenContext = CG::ctx_init(out);
+  let prog: *ProgramNode = cast<*ProgramNode>(program);
+  run_pass_a(ctx, prog, config.os);
+
+  let buf: *Buf = CG::buf_init();
+  write_preamble(out);
+  emit_enums(ctx, buf);
+  emit_struct_typedefs(ctx, buf);
+  emit_all_struct_bodies(ctx, buf);
+  emit_all_prototypes(ctx, buf);
+  emit_globals(ctx, buf);
+  emit_all_func_bodies(ctx, buf);
+
+  let src: *byte = CG::buf_finish(buf);
+  IOWRITE(out, src);
+  free(src);
+  LIBC::fclose(out);
+
+  // ── Compile & link ──────────────────────────────────────────────────────
+  let cmd: *Buf = CG::buf_init();
+  CG::buf_str(cmd, "cc ");
+  if (config.opt_level > 0) { CG::buf_str(cmd, "-O"); CG::buf_int(cmd, config.opt_level); CG::buf_str(cmd, " "); }
+  CG::buf_str(cmd, c_path);
+  CG::buf_str(cmd, " -lm -o ");
+  CG::buf_str(cmd, config.name);
+  let cmd_str: *byte = CG::buf_finish(cmd);
+
+  let rc: int = system(cmd_str);
+  free(cmd_str);
+
+  if (config.save) {
+    output("Saved generated C source to '", c_path, "'\n");
+  } else {
+    LIBC::remove(c_path);
+  }
+  free(c_path);
+
+  return rc == 0;
+}

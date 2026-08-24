@@ -118,8 +118,20 @@ pub const next_token -> fn (lx: *Lexer) Token {
         if (lx.peek(0) == '\n') {
           return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
         }
-        lx.advance();
-        len = len + 1;
+        // An escape sequence (`\"`, `\\`, `\n`, ...) consumes its backslash
+        // and the following character as one unit, so an escaped quote is
+        // never mistaken for the string's real terminator.
+        if (lx.peek(0) == '\\') {
+          lx.advance();
+          len = len + 1;
+          if (lx.is_end() == 0) {
+            lx.advance();
+            len = len + 1;
+          }
+        } else {
+          lx.advance();
+          len = len + 1;
+        }
       }
       if (lx.is_end() == 1) {
         return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
@@ -177,6 +189,13 @@ pub const next_token -> fn (lx: *Lexer) Token {
       free(word);
       if (kw_kind != -1) return make_token(start, kw_kind, len, line, col, ws);
       return make_token(start, sym::LumaTokenType::TOK_IDENTIFIER, len, line, col, ws);
+    }
+
+    if (c == '.' && lx.peek(1) == '.' && lx.peek(2) == '.') {
+      lx.advance();
+      lx.advance();
+      lx.advance();
+      return make_token(start, sym::LumaTokenType::TOK_ELLIPSIS, 3, line, col, ws);
     }
 
     let kind: int = sym::lookup_double(c, lx.peek(1));

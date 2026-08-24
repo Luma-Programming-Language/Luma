@@ -1,0 +1,15 @@
+// error-type: Use After Free
+@module "main"
+
+const Point -> struct {
+pub:
+  x: int,
+  y: int,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: *Point = cast<*Point>(alloc(sizeof<Point>));
+    free(p);
+    output(p.x, "\n");
+    return 0;
+}

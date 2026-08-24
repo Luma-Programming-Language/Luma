@@ -1,0 +1,25 @@
+@module "main"
+
+@use "std_args"    as ARGS
+@use "std_cstring" as STR
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let args: Args = ARGS::init_args(argc, argv);
+  args = args.tail(); // remove the ./test and only see if we have any args
+  
+  if (args.contains("--help") == 1 || args.is_empty()) {
+     output("Usage: program [options]\n");
+     return 0;
+  }
+
+  let iter: ArgsIter = args.iter();
+  loop {
+      let arg: *byte = iter.next();
+      if (arg == cast<*byte>(0)) break;
+      output(STR::strlen(arg), " | ", arg, "\n");
+  }
+
+  let x: int = "hello";
+
+  return 0;
+}

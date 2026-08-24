@@ -103,6 +103,7 @@ pub const LumaTokenType -> enum {
   TOK_SHIFT_LEFT,  /**< << */
   TOK_SHIFT_RIGHT, /**< >> */
   TOK_RANGE,       /**< .. */
+  TOK_ELLIPSIS,    /**< ... */
   TOK_RIGHT_ARROW, /**< -> */
   TOK_LEFT_ARROW,  /**< <- */
   TOK_MODL,        /**< % */
@@ -226,9 +227,9 @@ pub const lookup_double -> fn (c: byte, c2: byte) int {
   return -1;
 }
 
-const KEYWORD_COUNT: int = 45;
+const KEYWORD_COUNT: int = 44;
 const Keyword -> struct { val: *byte, kind: int };
-pub const keyword_map: [Keyword; 45] = [
+pub const keyword_map: [Keyword; 44] = [
   // Primitive Types
   Keyword { val: "int",    kind: LumaTokenType::TOK_INT },
   Keyword { val: "double", kind: LumaTokenType::TOK_DOUBLE },
@@ -281,7 +282,13 @@ pub const keyword_map: [Keyword; 45] = [
   Keyword { val: "pub",    kind: LumaTokenType::TOK_PUBLIC },
   Keyword { val: "priv",   kind: LumaTokenType::TOK_PRIVATE },
   Keyword { val: "import", kind: LumaTokenType::TOK_IMPORT },
-  Keyword { val: "mod",    kind: LumaTokenType::TOK_MOD },
+  // NOTE: no "mod" keyword entry — TOK_MOD (below) is unused by the parser
+  // (the real modulo operator is the `%` symbol, tokenized separately as
+  // TOK_MODL), and `mod` is an extremely common local variable name
+  // throughout this codebase (e.g. `let mod: *ModuleNode = ...`). Reserving
+  // it as a keyword made the self-hosted lexer misparse most of its own
+  // source — see the "unknown type Token" / cascading parser-error
+  // investigation this fixed.
 
   // Literals / Helpers
   Keyword { val: "true",  kind: LumaTokenType::TOK_TRUE },

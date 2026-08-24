@@ -1,0 +1,15 @@
+@module "main"
+
+const Color -> enum { Red, Green, Blue };
+
+const describe -> fn (c: Color) int {
+    let n: int = c;
+    return n;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let c: Color = Color::Green;
+    let n: int = describe(c);
+    output(n, "\n");
+    return 0;
+}

@@ -1,5 +1,6 @@
 build
 obj
+output
 lux
 
 # autotools

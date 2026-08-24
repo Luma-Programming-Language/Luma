@@ -73,7 +73,6 @@ pub const is_bool_type -> fn (t: *AstNode) bool {
   return is_basic_named(t, "bool");
 }
 
-// A non-builtin basic type name denotes a struct or enum (nominal type).
 pub const is_nominal_type -> fn (t: *AstNode) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   if (is_builtin_name(basic_name(t)) == true) return false;
@@ -85,10 +84,6 @@ pub const is_pointer_to_function_type -> fn (t: *AstNode) bool {
   let p: *PointerTypeNode = cast<*PointerTypeNode>(t);
   return is_function_type(p.pointee_type);
 }
-
-// ─── Type Construction Helpers ────────────────────────────────────────────────
-// Inferred types are allocated fresh; they are owned by the typechecker pass and
-// intentionally outlive individual checks (freed at process exit).
 
 #returns_ownership
 pub const make_int_type -> fn () *AstNode {
@@ -115,13 +110,11 @@ pub const make_named_type -> fn (name: *byte) *AstNode {
   return TAST::make_basic_type(name, 0, 0);
 }
 
-// `*byte` — the representation of a string literal.
 #returns_ownership
 pub const make_string_type -> fn () *AstNode {
   return TAST::make_pointer_type(make_byte_type(), 0, 0);
 }
 
-// `*void` — the representation of the null literal.
 #returns_ownership
 pub const make_voidptr_type -> fn () *AstNode {
   return TAST::make_pointer_type(make_void_type(), 0, 0);
@@ -132,7 +125,6 @@ pub const make_pointer_to -> fn (pointee: *AstNode) *AstNode {
   return TAST::make_pointer_type(pointee, 0, 0);
 }
 
-// Numeric promotion rank: double > float > int/uint > byte.
 pub const numeric_rank -> fn (t: *AstNode) int {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return -1;
   let n: *byte = basic_name(t);
@@ -173,7 +165,6 @@ const match_pointer -> fn (a: *AstNode, b: *AstNode) int {
   let pa: *PointerTypeNode = cast<*PointerTypeNode>(a);
   let pb: *PointerTypeNode = cast<*PointerTypeNode>(b);
 
-  // void* is compatible with any pointer.
   if (is_void_type(pa.pointee_type) || is_void_type(pb.pointee_type))
     return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 
@@ -191,11 +182,9 @@ const match_array -> fn (a: *AstNode, b: *AstNode) int {
   let a_size: *AstNode = aa.size;
   let b_size: *AstNode = ab.size;
 
-  // Unsized arrays are compatible with any same-element array.
   if (a_size == cast<*AstNode>(0) || b_size == cast<*AstNode>(0))
     return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 
-  // Both sized: compare literal sizes if available.
   if (a_size.kind == AST::NodeType::EXPR_LITERAL &&
       b_size.kind == AST::NodeType::EXPR_LITERAL) {
     let la: *LiteralNode = cast<*LiteralNode>(a_size);

@@ -1,0 +1,18 @@
+@module "main"
+
+const Base -> struct {
+pub:
+  id: int,
+};
+
+const Derived -> struct {
+pub:
+  ...Base,
+  name: *byte,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let d: Derived = Derived { id: 1, name: "hi" };
+    output(d.name, "\n");
+    return 0;
+}

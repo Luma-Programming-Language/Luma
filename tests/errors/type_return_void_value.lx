@@ -1,0 +1,11 @@
+// error-type: Type Error
+@module "main"
+
+const do_nothing -> fn () void {
+    return 5;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    do_nothing();
+    return 0;
+}

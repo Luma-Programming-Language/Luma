@@ -1,0 +1,10 @@
+// error-type: Type Error
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let arr: *int = cast<*int>(alloc(sizeof<int> * 4));
+    let idx: *byte = "not an index";
+    let y: int = arr[idx];
+    free(arr);
+    return 0;
+}

@@ -1,0 +1,7 @@
+// error-type: Memory Leak
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: *byte = cast<*byte>(alloc(8));
+    return 0;
+}

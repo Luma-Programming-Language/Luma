@@ -134,7 +134,7 @@ const print_source_line -> fn (line: int, text: *byte, max_width: int) void {
   output("\n");
 }
 
-const print_indicator -> fn (col: int, length: int, max_width: int) void {
+const print_indicator -> fn (col: int, length: int, max_width: int, label: *byte) void {
   print_gutter(max_width);
   let actual_col: int = col;
   if (actual_col < 0) { actual_col = 0; }
@@ -143,6 +143,7 @@ const print_indicator -> fn (col: int, length: int, max_width: int) void {
   let indicator_length: int = length;
   if (indicator_length <= 0) { indicator_length = 1; }
   loop [i: int = 0](i < indicator_length) : (++i) { output("^"); }
+  if (label != cast<*byte>(0)) { output(" ", label); }
   output("\x1b[0m\n");
 }
 
@@ -151,12 +152,6 @@ pub const error_report -> fn () int {
 
   let max_width: int = get_max_line_width();
 
-  output("\n");
-  if (error_count == 1) {
-    output("\x1b[1;31merror\x1b[0m: could not compile due to previous error\n");
-  } else {
-    output("\x1b[1;31merror\x1b[0m: could not compile due to ", error_count, " previous errors\n");
-  }
   output("\n");
 
   loop [i: int = 0](i < error_count) : (++i) {
@@ -178,7 +173,7 @@ pub const error_report -> fn () int {
     // Source line and indicator
     if (e.line_text != cast<*byte>(0)) {
       print_source_line(e.line, e.line_text, max_width);
-      print_indicator(e.col, e.token_length, max_width);
+      print_indicator(e.col, e.token_length, max_width, e.label);
     }
 
     // Note
@@ -197,6 +192,12 @@ pub const error_report -> fn () int {
     output("\n");
 
     if (i < error_count - 1) { output("\n"); }
+  }
+
+  if (error_count == 1) {
+    output("\x1b[1;31merror\x1b[0m: aborting due to previous error\n");
+  } else {
+    output("\x1b[1;31merror\x1b[0m: aborting due to ", error_count, " previous errors\n");
   }
 
   return 1;

@@ -1,0 +1,175 @@
+@module "cg_type"
+
+@use "std_cstring" as STR
+
+@use "ast"      as AST
+@use "cg_core"  as CG
+
+// Luma's `int`/`uint` are 64-bit, `byte` is 8-bit.
+const basic_c_name -> fn (name: *byte) *byte {
+  if (STR::strcmp(name, "int")    == 0) return "long long";
+  if (STR::strcmp(name, "uint")   == 0) return "unsigned long long";
+  if (STR::strcmp(name, "float")  == 0) return "float";
+  if (STR::strcmp(name, "double") == 0) return "double";
+  if (STR::strcmp(name, "bool")   == 0) return "bool";
+  if (STR::strcmp(name, "void")   == 0) return "void";
+  if (STR::strcmp(name, "byte")   == 0) return "char";
+  return cast<*byte>(0);
+}
+
+// Base ("leaf") type name for a TYPE_BASIC / TYPE_RESOLUTION node — pointer
+// /array/function wrapping is emit_declarator's job. Caller owns the result.
+#returns_ownership
+pub const c_base_type_string -> fn (ctx: *CodegenContext, t: *AstNode) *byte {
+  if (t == cast<*AstNode>(0)) return CG::dup_str("void");
+
+  if (t.kind == AST::NodeType::TYPE_RESOLUTION) {
+    // `Module::Type` isn't fully resolved by the typechecker — fall back to
+    // the last path segment's bare name.
+    let r: *ResolutionNode = cast<*ResolutionNode>(t);
+    if (r.part_count > 0) return CG::dup_str(r.parts[r.part_count - 1]);
+    return CG::dup_str("void");
+  }
+
+  if (t.kind != AST::NodeType::TYPE_BASIC) return CG::dup_str("void");
+
+  let n: *BasicTypeNode = cast<*BasicTypeNode>(t);
+  let builtin: *byte = basic_c_name(n.name);
+  if (builtin != cast<*byte>(0)) return CG::dup_str(builtin);
+
+  let s: *StructInfo = CG::find_struct(ctx, n.name);
+  if (s != cast<*StructInfo>(0)) return CG::c_name_for_struct(s);
+
+  let e: *EnumInfo = CG::find_enum(ctx, n.name);
+  if (e != cast<*EnumInfo>(0)) return CG::c_name_for_enum(e);
+
+  return CG::dup_str(n.name);
+}
+
+#returns_ownership
+pub const c_type_string -> fn (ctx: *CodegenContext, t: *AstNode) *byte;
+
+// Handles the common array-bound shapes (`[int; 10]`, `[int; size]`, simple
+// arithmetic on those) without depending on the full expression codegen —
+// cg_expr already depends on cg_type, so pulling it in here would be
+// circular. A non-literal size becomes a plain C VLA, valid for a local decl.
+const emit_array_size -> fn (buf: *Buf, node: *AstNode) void {
+  if (node == cast<*AstNode>(0)) return;
+  let k: int = node.kind;
+
+  if (k == AST::NodeType::EXPR_LITERAL) {
+    let ln: *LiteralNode = cast<*LiteralNode>(node);
+    CG::buf_int(buf, ln.int_val);
+    return;
+  }
+  if (k == AST::NodeType::EXPR_IDENTIFIER) {
+    let idn: *IdentifierNode = cast<*IdentifierNode>(node);
+    CG::buf_str(buf, idn.name);
+    return;
+  }
+  if (k == AST::NodeType::EXPR_BINARY) {
+    let bn: *BinaryNode = cast<*BinaryNode>(node);
+    CG::buf_str(buf, "(");
+    emit_array_size(buf, bn.left);
+    if (bn.op == AST::BinaryOp::BINOP_ADD) CG::buf_str(buf, " + ");
+    if (bn.op == AST::BinaryOp::BINOP_SUB) CG::buf_str(buf, " - ");
+    if (bn.op == AST::BinaryOp::BINOP_MUL) CG::buf_str(buf, " * ");
+    if (bn.op == AST::BinaryOp::BINOP_DIV) CG::buf_str(buf, " / ");
+    emit_array_size(buf, bn.right);
+    CG::buf_str(buf, ")");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_GROUPING) {
+    let un: *UnaryNode = cast<*UnaryNode>(node);
+    emit_array_size(buf, un.operand);
+    return;
+  }
+
+  CG::buf_str(buf, "1"); // fallback: keeps the declarator syntactically valid
+}
+
+// Emits a full C declarator for `name` of Luma type `t` (e.g. "long long x",
+// "long long x[10]", "long long (*x)(long long)") — standard spiral-rule recursion.
+pub const emit_declarator -> fn (ctx: *CodegenContext, buf: *Buf, t: *AstNode, name: *byte) void {
+  if (t == cast<*AstNode>(0)) {
+    CG::buf_str(buf, "void ");
+    CG::buf_str(buf, name);
+    return;
+  }
+
+  if (t.kind == AST::NodeType::TYPE_POINTER) {
+    let p: *PointerTypeNode = cast<*PointerTypeNode>(t);
+    let pointee: *AstNode = p.pointee_type;
+
+    let inner: *Buf = CG::buf_init();
+    let needs_parens: bool = false;
+    if (pointee != cast<*AstNode>(0)) {
+      if (pointee.kind == AST::NodeType::TYPE_ARRAY)    needs_parens = true;
+      if (pointee.kind == AST::NodeType::TYPE_FUNCTION) needs_parens = true;
+    }
+    if (needs_parens) CG::buf_str(inner, "(");
+    CG::buf_str(inner, "*");
+    CG::buf_str(inner, name);
+    if (needs_parens) CG::buf_str(inner, ")");
+    let inner_name: *byte = CG::buf_finish(inner);
+    emit_declarator(ctx, buf, pointee, inner_name);
+    free(inner_name);
+    return;
+  }
+
+  if (t.kind == AST::NodeType::TYPE_ARRAY) {
+    let a: *ArrayTypeNode = cast<*ArrayTypeNode>(t);
+    let inner: *Buf = CG::buf_init();
+    CG::buf_str(inner, name);
+    CG::buf_str(inner, "[");
+    let asize: *AstNode = a.size;
+    if (asize != cast<*AstNode>(0)) emit_array_size(inner, asize);
+    CG::buf_str(inner, "]");
+    let inner_name: *byte = CG::buf_finish(inner);
+    emit_declarator(ctx, buf, a.element_type, inner_name);
+    free(inner_name);
+    return;
+  }
+
+  if (t.kind == AST::NodeType::TYPE_FUNCTION) {
+    let f: *FuncTypeNode = cast<*FuncTypeNode>(t);
+    let inner: *Buf = CG::buf_init();
+    CG::buf_str(inner, name);
+    CG::buf_str(inner, "(");
+    let i: int = 0;
+    loop (i < f.param_count) {
+      if (i > 0) CG::buf_str(inner, ", ");
+      let ps: *byte = c_type_string(ctx, f.param_types[i]);
+      CG::buf_str(inner, ps);
+      free(ps);
+      i = i + 1;
+    }
+    if (f.param_count == 0) CG::buf_str(inner, "void");
+    CG::buf_str(inner, ")");
+    let inner_name: *byte = CG::buf_finish(inner);
+    emit_declarator(ctx, buf, f.return_type, inner_name);
+    free(inner_name);
+    return;
+  }
+
+  let base: *byte = c_base_type_string(ctx, t);
+  CG::buf_str(buf, base);
+  CG::buf_str(buf, " ");
+  CG::buf_str(buf, name);
+  free(base);
+}
+
+// Full type string with no variable name attached (casts, sizeof, param lists).
+#returns_ownership
+pub const c_type_string -> fn (ctx: *CodegenContext, t: *AstNode) *byte {
+  let b: *Buf = CG::buf_init();
+  emit_declarator(ctx, b, t, "");
+  let s: *byte = CG::buf_finish(b);
+
+  // Trim the trailing space emit_declarator leaves before an empty name.
+  let n: int = STR::strlen(s);
+  if (n > 0) {
+    if (s[n - 1] == ' ') s[n - 1] = '\0';
+  }
+  return s;
+}

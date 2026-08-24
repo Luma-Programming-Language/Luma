@@ -37,6 +37,24 @@ const resolve_uses -> fn (mnode: *AstNode, ms: *Scope, registry: *Vector) void {
   }
 }
 
+const check_module_uses -> fn (mnode: *AstNode, registry: *Vector) void {
+  let mod: *ModuleNode = cast<*ModuleNode>(mnode);
+  let bc: int = mod.body_count;
+  loop [i: int = 0](i < bc) : (++i) {
+    let bn: *AstNode = mod.body[i];
+    if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
+      let u: *UseNode = cast<*UseNode>(bn);
+      let target: *Scope = find_module_scope(registry, u.module_name);
+      if (target == cast<*Scope>(0)) {
+        // +2 for the quotes around the module name in the source text.
+        let token_len: int = STR::strlen(u.module_name) + 2;
+        ERR::tc_error_len(bn, "Module Error",
+          "module not found — was its file passed with -l?", token_len, "not found");
+      }
+    }
+  }
+}
+
 const register_module_body -> fn (mnode: *AstNode, ms: *Scope) void {
   let mod: *ModuleNode = cast<*ModuleNode>(mnode);
   let body: **AstNode = mod.body;
@@ -53,19 +71,77 @@ const check_module_body -> fn (mnode: *AstNode, ms: *Scope) bool {
   let ok: bool = true;
   loop [i: int = 0](i < bc) : (++i) {
     let bn: *AstNode = mod.body[i];
-    if (bn.category != AST::NodeCategory::Node_Category_PREPROCESSOR) {
+
+    if (bn.kind == AST::NodeType::PREPROCESSOR_OS) {
+      let body: *AstNode = STMT::resolve_os_body(bn, ms);
+      if (body != cast<*AstNode>(0)) {
+        if (body.kind == AST::NodeType::STMT_BLOCK) {
+          let blk: *BlockNode = cast<*BlockNode>(body);
+          let sc: int = blk.stmt_count;
+          loop [j: int = 0](j < sc) : (++j) {
+            if (STMT::typecheck_statement(blk.statements[j], ms) == false) ok = false;
+          }
+        }
+      }
+    } elif (bn.category != AST::NodeCategory::Node_Category_PREPROCESSOR) {
       if (STMT::typecheck_statement(bn, ms) == false) ok = false;
     }
   }
   return ok;
 }
 
+const report_module_allocations -> fn (analyzer: *StaticMemoryAnalyzer, file_path: *byte) void {
+  if (analyzer == cast<*StaticMemoryAnalyzer>(0)) return;
+
+  let v: *Vector = analyzer.allocations;
+  let count: int = v.size;
+  loop [i: int = 0](i < count) : (++i) {
+    let a: *StaticAllocation = cast<*StaticAllocation>(v.get(i));
+    if (a.reported) continue;
+    if (STR::strcmp(a.file_path, file_path) != 0) continue;
+
+    if (a.free_count > 1) {
+      let err: ErrorInformation = ErrorInformation {
+        error_type:   "Double Free",
+        file_path:    a.file_path,
+        message:      "this pointer is freed more than once",
+        line:         a.line,
+        col:          a.col,
+        line_text:    ERR::generate_line_for_current_module(a.line),
+        token_length: 1,
+        label:        "freed again here",
+        note:         cast<*byte>(0),
+        help:         cast<*byte>(0),
+      };
+      ERO::error_add(err);
+      a.reported = true;
+      continue;
+    }
+
+    if (a.has_matching_free == false && a.address_taken == false) {
+      let err2: ErrorInformation = ErrorInformation {
+        error_type:   "Memory Leak",
+        file_path:    a.file_path,
+        message:      "this allocation is never freed",
+        line:         a.line,
+        col:          a.col,
+        line_text:    ERR::generate_line_for_current_module(a.line),
+        token_length: 1,
+        label:        "never freed",
+        note:         cast<*byte>(0),
+        help:         cast<*byte>(0),
+      };
+      ERO::error_add(err2);
+      a.reported = true;
+    }
+  }
+}
+
 pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
   if (node == cast<*AstNode>(0)) return true;
 
-  let root: *Scope = SCOPE::scope_init("global", config.check_mem);
+  let root: *Scope = SCOPE::scope_init("global", config.check_mem, config.os);
 
-  // Single-statement / non-program fallback.
   if (node.kind != AST::NodeType::PROGRAM) {
     STMT::typecheck_statement(node, root);
     if (ERO::error_has_errors() != 0) { ERO::error_report(); return false; }
@@ -125,7 +201,12 @@ pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
       let ms: *Scope = find_module_scope(&registry, mod.name);
 
       ERR::tc_error_init(mod);
+      check_module_uses(mnode, &registry);
       if (check_module_body(mnode, ms) == false) ok = false;
+
+      if (config.check_mem) {
+        report_module_allocations(ms.memory_analyzer, mod.file_path);
+      }
     }
   }
 

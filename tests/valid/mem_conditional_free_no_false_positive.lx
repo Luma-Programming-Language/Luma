@@ -1,0 +1,11 @@
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: *byte = cast<*byte>(alloc(8));
+    if (argc > 1) {
+        free(p);
+        return 0;
+    }
+    free(p);
+    return 0;
+}

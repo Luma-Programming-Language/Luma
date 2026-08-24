@@ -50,7 +50,7 @@ pub const print_commands -> fn () void {
 }
 
 pub const print_license -> fn () void {
-  output("Luma Compiler - ", Luma_Compiler_version, "\n");
+  output("Luma Compiler - ", CONST::Luma_Compiler_version, "\n");
   output("Copyright (c) 2026 Luma Team\n");
   output("Licensed under the MIT License\n");
 }
@@ -115,6 +115,8 @@ pub const parse_args -> fn (args: *Args, build_config: *LumaBuildConfig) int {
       build_config.opt_level = cast<int>(cast<int>(arg[2]) - cast<int>('0'));
     } elif (match_command(arg, ["--no-sanitize"], 1) == 1) {
       build_config.check_mem = false; // disable the static analyzer
+    } elif (match_command(arg, ["-save"], 1) == 1) {
+      build_config.save = true; // keep the generated intermediate (.c) file
     } elif (match_command(arg, ["--target-os", "-t"], 2) == 1) {
       build_config.os = args.get(++i);
     }

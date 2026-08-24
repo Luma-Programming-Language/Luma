@@ -2,6 +2,7 @@
 
 @use "std_memory" as MEM
 @use "std_cstring" as STR
+@use "std_vector" as VEC
 
 @use "tc_core"  as CORE
 @use "tc_type"  as TYPE
@@ -14,10 +15,11 @@
 pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool;
 pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool;
 
-const handle_var_decl    -> fn (stmt: *AstNode, scope: *Scope) bool;
-const handle_func_decl   -> fn (stmt: *AstNode, scope: *Scope) bool;
-const handle_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool;
-const handle_enum_decl   -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_var_decl      -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_func_decl     -> fn (stmt: *AstNode, scope: *Scope) bool;
+const register_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_struct_decl   -> fn (stmt: *AstNode, scope: *Scope) bool;
+const handle_enum_decl     -> fn (stmt: *AstNode, scope: *Scope) bool;
 const handle_if          -> fn (stmt: *AstNode, scope: *Scope) bool;
 const handle_loop        -> fn (stmt: *AstNode, scope: *Scope) bool;
 const handle_switch      -> fn (stmt: *AstNode, scope: *Scope) bool;
@@ -50,13 +52,27 @@ pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool {
     return true;
   }
 
-  // Preprocessor nodes are handled by the orchestrator; ignore here.
   return true;
 }
 
-// ─── Pre-registration (forward pass) ──────────────────────────────────────────
-// Registers top-level declarations into a scope WITHOUT checking bodies, so that
-// mutual references resolve regardless of declaration order.
+pub const resolve_os_body -> fn (node: *AstNode, scope: *Scope) *AstNode {
+  if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);
+  if (node.kind != AST::NodeType::PREPROCESSOR_OS) return cast<*AstNode>(0);
+
+  let n: *OsNode = cast<*OsNode>(node);
+  let target: *byte = scope.os;
+
+  if (target != cast<*byte>(0)) {
+    let i: int = 0;
+    loop (n.platforms[i] != cast<*byte>(0)) {
+      if (STR::strcmp(n.platforms[i], target) == 0) { return n.bodies[i]; }
+      i = i + 1;
+    }
+  }
+
+  if (n.has_default == 1) return n.default_body;
+  return cast<*AstNode>(0);
+}
 
 pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool {
   if (stmt == cast<*AstNode>(0)) return true;
@@ -73,7 +89,38 @@ pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool {
   }
 
   if (k == AST::NodeType::STMT_ENUM)   return handle_enum_decl(stmt, scope);
-  if (k == AST::NodeType::STMT_STRUCT) return handle_struct_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_STRUCT) return register_struct_decl(stmt, scope);
+
+  // Forward-register module-level globals that have an explicit declared
+  // type, so a *different* module processed earlier in Pass 3b can resolve
+  // `ALIAS::global` regardless of module processing order (mirrors the
+  // STMT_FUNCTION case above). Type-inferred globals (no `var_type`) can't
+  // be forward-registered without evaluating the initializer, so they keep
+  // the pre-existing in-order-only visibility — handle_var_decl (Pass 3b)
+  // still registers them normally when their own module is checked.
+  if (k == AST::NodeType::STMT_VAR_DECL || k == AST::NodeType::STMT_CONST_DECL) {
+    let vd: *VarDeclNode = cast<*VarDeclNode>(stmt);
+    if (vd.var_type != cast<*AstNode>(0)) {
+      let mutable: bool = (vd.is_mutable == 1);
+      if (k == AST::NodeType::STMT_CONST_DECL) mutable = false;
+      SCOPE::scope_add_symbol(scope, vd.name, vd.var_type, vd.is_public == 1, mutable);
+    }
+    return true;
+  }
+
+  if (k == AST::NodeType::PREPROCESSOR_OS) {
+    let body: *AstNode = resolve_os_body(stmt, scope);
+    if (body != cast<*AstNode>(0)) {
+      if (body.kind == AST::NodeType::STMT_BLOCK) {
+        let blk: *BlockNode = cast<*BlockNode>(body);
+        let sc: int = blk.stmt_count;
+        loop [i: int = 0](i < sc) : (++i) {
+          register_declaration(blk.statements[i], scope);
+        }
+      }
+    }
+    return true;
+  }
 
   return true;
 }
@@ -89,7 +136,7 @@ const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   }
 
   if (declared == cast<*AstNode>(0) && init == cast<*AstNode>(0)) {
-    ERR::tc_error(stmt, "Type Error", "variable declaration needs a type or an initializer");
+    ERR::tc_error(stmt, "Type Error", "variable declaration needs a type or an initializer", "missing type or initializer");
     return false;
   }
 
@@ -130,17 +177,25 @@ const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
       MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(declared_str), dlen);
       pos = pos + dlen;
 
+      // Their contents are already copied into msg — nothing else references
+      // these two strings themselves (unlike msg, which tc_error_help stores
+      // for later reporting).
+      free(inferred_str);
+      free(declared_str);
+
       msg[pos] = '\'';
       pos = pos + 1;
       msg[pos] = '\0';
 
-      ERR::tc_error_help(init, "Type Mismatch", msg, "Check that the initializer type matches the declared type");
+      ERR::tc_error_help(init, "Type Mismatch", "Check that the initializer type matches the declared type", msg, "type mismatch");
       ok = false;
     }
   }
 
   let mutable: bool = (n.is_mutable == 1);
   if (stmt.kind == AST::NodeType::STMT_CONST_DECL) mutable = false;
+
+  EXPR::track_pointer_source(n.name, init, scope);
 
   SCOPE::scope_add_symbol(scope, n.name, final_type, n.is_public == 1, mutable);
   return ok;
@@ -149,14 +204,12 @@ const handle_var_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
 const handle_func_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   let fd: *FuncDeclNode = cast<*FuncDeclNode>(stmt);
 
-  // Register the function symbol in the enclosing scope (idempotent).
   let ftype: *AstNode = TAST::make_func_type(fd.param_types, fd.param_count,
                                              fd.return_type, stmt.line, stmt.col);
   SCOPE::scope_add_symbol_full(scope, fd.name, ftype,
                                fd.is_public == 1, false,
                                fd.returns_ownership == 1, fd.takes_ownership == 1);
 
-  // Imported / forward-declared functions have no body to check.
   if (fd.forward_declared == 1) return true;
   if (fd.dll_import == 1)       return true;
   if (fd.lib_import == 1)       return true;
@@ -174,7 +227,20 @@ const handle_func_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
     SCOPE::scope_add_symbol(fscope, fd.param_names[i], fd.param_types[i], false, true);
   }
 
-  return typecheck_statement(fd.body, fscope);
+  let ok: bool = typecheck_statement(fd.body, fscope);
+
+  let analyzer: *StaticMemoryAnalyzer = fscope.memory_analyzer;
+  if (analyzer != cast<*StaticMemoryAnalyzer>(0)) {
+    let fname: *byte = fd.name;
+    let dv: *Vector = fscope.deferred_frees;
+    let dc: int = dv.size;
+    loop [i: int = 0](i < dc) : (++i) {
+      let namep: *byte = cast<**byte>(dv.data)[i];
+      SCOPE::analyzer_track_free(analyzer, namep, fname, false);
+    }
+  }
+
+  return ok;
 }
 
 const register_field -> fn (struct_name: *byte, member: *AstNode, scope: *Scope) void {
@@ -182,10 +248,11 @@ const register_field -> fn (struct_name: *byte, member: *AstNode, scope: *Scope)
   if (member.kind != AST::NodeType::STMT_FIELD_DECL) return;
 
   let f: *FieldDeclNode = cast<*FieldDeclNode>(member);
+  if (f.is_embedded == 1) return;
+
   let qname: *byte = EXPR::qualify(struct_name, f.name);
 
   if (f.function != cast<*AstNode>(0)) {
-    // Method: register its function type under StructName.method
     let fn_node: *FuncDeclNode = cast<*FuncDeclNode>(f.function);
     let mtype: *AstNode = TAST::make_func_type(fn_node.param_types, fn_node.param_count,
                                                fn_node.return_type, member.line, member.col);
@@ -194,14 +261,12 @@ const register_field -> fn (struct_name: *byte, member: *AstNode, scope: *Scope)
     return;
   }
 
-  // Data field: register StructName.field -> field type
   SCOPE::scope_add_symbol(scope, qname, f.type_node, f.is_public == 1, true);
 }
 
-const handle_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
+const register_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   let sd: *StructDeclNode = cast<*StructDeclNode>(stmt);
 
-  // Register the struct name as a nominal type.
   let stype: *AstNode = TYPE::make_named_type(sd.name);
   SCOPE::scope_add_symbol(scope, sd.name, stype, sd.is_public == 1, false);
 
@@ -213,11 +278,23 @@ const handle_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
   loop [i: int = 0](i < privc) : (++i) {
     register_field(sd.name, sd.private_members[i], scope);
   }
+  return true;
+}
 
-  // Typecheck method bodies (with an implicit self parameter).
+const handle_struct_decl -> fn (stmt: *AstNode, scope: *Scope) bool {
+  let sd: *StructDeclNode = cast<*StructDeclNode>(stmt);
+
+  register_struct_decl(stmt, scope);
+
+  let stype: *AstNode = TYPE::make_named_type(sd.name);
+  let pubc: int = sd.public_count;
   loop [i: int = 0](i < pubc) : (++i) {
     let m: *AstNode = sd.public_members[i];
-    if (m != cast<*AstNode>(0) && m.kind == AST::NodeType::STMT_FIELD_DECL) {
+    let is_field_decl: bool = false;
+    if (m != cast<*AstNode>(0)) {
+      if (m.kind == AST::NodeType::STMT_FIELD_DECL) { is_field_decl = true; }
+    }
+    if (is_field_decl) {
       let f: *FieldDeclNode = cast<*FieldDeclNode>(m);
       if (f.function != cast<*AstNode>(0)) {
         let mscope: *Scope = SCOPE::scope_create_child(scope, "method");
@@ -249,7 +326,7 @@ const check_condition -> fn (cond: *AstNode, scope: *Scope) void {
   let ct: *AstNode = EXPR::typecheck_expression(cond, scope, cast<*AstNode>(0));
   if (ct != cast<*AstNode>(0)) {
     if (TYPE::is_bool_type(ct) == false && TYPE::is_numeric_type(ct) == false) {
-      ERR::tc_error(cond, "Type Error", "condition must be a boolean expression");
+      ERR::tc_error(cond, "Type Error", "condition must be a boolean expression", "not a boolean");
     }
   }
 }
@@ -298,6 +375,15 @@ const handle_switch -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *SwitchNode = cast<*SwitchNode>(stmt);
   let cond_type: *AstNode = EXPR::typecheck_expression(n.condition, scope, cast<*AstNode>(0));
 
+  let is_enum: bool = (cond_type != cast<*AstNode>(0) && TYPE::is_nominal_type(cond_type));
+  let enum_name: *byte = cast<*byte>(0);
+  let members: Vector = VEC::create_vector(sizeof<*byte>);
+  let covered: Vector = VEC::create_vector(sizeof<*byte>);
+  if (is_enum) {
+    enum_name = TYPE::basic_name(cond_type);
+    members = SCOPE::find_enum_members(scope, enum_name);
+  }
+
   let cc: int = n.case_count;
   loop [i: int = 0](i < cc) : (++i) {
     let case_node: *AstNode = n.cases[i];
@@ -305,18 +391,58 @@ const handle_switch -> fn (stmt: *AstNode, scope: *Scope) bool {
       let cn: *CaseNode = cast<*CaseNode>(case_node);
       let vc: int = cn.value_count;
       loop [j: int = 0](j < vc) : (++j) {
-        EXPR::typecheck_expression(cn.values[j], scope, cond_type);
+        let cv: *AstNode = cn.values[j];
+        EXPR::typecheck_expression(cv, scope, cond_type);
+
+        let cv_is_member: bool = false;
+        if (is_enum) {
+          if (cv != cast<*AstNode>(0)) {
+            if (cv.kind == AST::NodeType::EXPR_MEMBER) { cv_is_member = true; }
+          }
+        }
+        if (cv_is_member) {
+          let mn: *MemberNode = cast<*MemberNode>(cv);
+          let mobj: *AstNode = mn.object;
+          if (mn.is_compiletime == 1 && mobj.kind == AST::NodeType::EXPR_IDENTIFIER) {
+            let obj: *IdentifierNode = cast<*IdentifierNode>(mobj);
+            if (STR::strcmp(obj.name, enum_name) == 0) {
+              let qname: *byte = EXPR::qualify(obj.name, mn.member);
+
+              let already: bool = false;
+              let cvc: int = covered.size;
+              loop [k: int = 0](k < cvc) : (++k) {
+                let seen: *byte = cast<**byte>(covered.data)[k];
+                if (STR::strcmp(seen, qname) == 0) { already = true; }
+              }
+
+              if (already) {
+                ERR::tc_error_id(cv, mn.member, "Duplicate Case", "this enum member is already covered by another case", "duplicate case");
+              } else {
+                covered.push_back(cast<*void>(&qname));
+              }
+            }
+          }
+        }
       }
       let case_scope: *Scope = SCOPE::scope_create_child(scope, "case");
       typecheck_statement(cn.body, case_scope);
     }
   }
 
+  let has_default: bool = (n.default_case != cast<*AstNode>(0));
   if (n.default_case != cast<*AstNode>(0)) {
     let dn: *DefaultNode = cast<*DefaultNode>(n.default_case);
     let def_scope: *Scope = SCOPE::scope_create_child(scope, "default");
     typecheck_statement(dn.body, def_scope);
   }
+
+  if (is_enum && covered.size < members.size && has_default == false) {
+    ERR::tc_error(stmt, "Non-Exhaustive Switch",
+      "not every enum member is covered by this switch — add the missing cases or a default", "missing cases");
+  }
+
+  VEC::free_vector(&members);
+  VEC::free_vector(&covered);
   return true;
 }
 
@@ -335,7 +461,7 @@ const handle_return -> fn (stmt: *AstNode, scope: *Scope) bool {
 
   if (n.value == cast<*AstNode>(0)) {
     if (expected != cast<*AstNode>(0) && TYPE::is_void_type(expected) == false) {
-      ERR::tc_error(stmt, "Type Error", "non-void function must return a value");
+      ERR::tc_error(stmt, "Type Error", "non-void function must return a value", "missing return value");
       return false;
     }
     return true;
@@ -344,11 +470,11 @@ const handle_return -> fn (stmt: *AstNode, scope: *Scope) bool {
   let vt: *AstNode = EXPR::typecheck_expression(n.value, scope, expected);
   if (expected != cast<*AstNode>(0) && vt != cast<*AstNode>(0)) {
     if (TYPE::is_void_type(expected)) {
-      ERR::tc_error(stmt, "Type Error", "void function cannot return a value");
+      ERR::tc_error(stmt, "Type Error", "void function cannot return a value", "unexpected return value");
       return false;
     }
     if (TYPE::types_match(vt, expected) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
-      ERR::tc_error(stmt, "Type Error", "returned value does not match the function return type");
+      ERR::tc_error(stmt, "Type Error", "returned value does not match the function return type", "type mismatch");
       return false;
     }
   }
@@ -370,6 +496,18 @@ const handle_block -> fn (stmt: *AstNode, scope: *Scope) bool {
 
 const handle_defer -> fn (stmt: *AstNode, scope: *Scope) bool {
   let n: *DeferNode = cast<*DeferNode>(stmt);
-  // Use the same scope so deferred frees attribute to the enclosing function.
-  return typecheck_statement(n.statement, scope);
+
+  let analyzer: *StaticMemoryAnalyzer = scope.memory_analyzer;
+  let was_skipping: bool = false;
+  if (analyzer != cast<*StaticMemoryAnalyzer>(0)) {
+    was_skipping = analyzer.skip_memory_tracking;
+    analyzer.skip_memory_tracking = true;
+  }
+
+  let ok: bool = typecheck_statement(n.statement, scope);
+
+  if (analyzer != cast<*StaticMemoryAnalyzer>(0)) {
+    analyzer.skip_memory_tracking = was_skipping;
+  }
+  return ok;
 }

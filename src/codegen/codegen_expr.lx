@@ -1,0 +1,798 @@
+@module "cg_expr"
+
+@use "std_cstring" as STR
+
+@use "ast"      as AST
+@use "tc_type"  as TCT
+@use "cg_core"  as CG
+@use "cg_type"  as CGT
+
+pub const gen_expr -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void;
+const static_type_of -> fn (ctx: *CodegenContext, expr: *AstNode) *AstNode;
+
+const strip_ptr -> fn (t: *AstNode) *AstNode {
+  if (t == cast<*AstNode>(0)) return t;
+  if (TCT::is_pointer_type(t)) {
+    let p: *PointerTypeNode = cast<*PointerTypeNode>(t);
+    return p.pointee_type;
+  }
+  return t;
+}
+
+// ─── Field/method resolution through `...Type,` embedding ───────────────────
+// The typechecker leaves `AstNode.resolved_type` null for promoted-field
+// accesses (it never registers promoted names in its own symbol table), so
+// this walk is done straight from the StructDeclNode AST instead.
+
+pub const FieldLookup -> struct {
+  found:     bool,
+  is_method: bool,
+  type_node: *AstNode,   // field type, or the method's function type
+  c_path:    *byte,      // dotted C access path from the struct root, e.g. "AstNode.kind"
+  owner:     *byte,      // struct name the method actually belongs to (for is_method)
+};
+
+const not_found -> fn () FieldLookup {
+  return FieldLookup { found: false, is_method: false, type_node: cast<*AstNode>(0), c_path: cast<*byte>(0), owner: cast<*byte>(0) };
+}
+
+const resolve_field -> fn (ctx: *CodegenContext, struct_name: *byte, member: *byte) FieldLookup {
+  let s: *StructInfo = CG::find_struct(ctx, struct_name);
+  if (s == cast<*StructInfo>(0)) return not_found();
+
+  let sd: *StructDeclNode = s.decl;
+
+  let groups: int = 0;
+  loop (groups < 2) {
+    let members: **AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AstNode = members[i];
+      if (m != cast<*AstNode>(0)) {
+        if (m.kind == AST::NodeType::STMT_FIELD_DECL) {
+          let f: *FieldDeclNode = cast<*FieldDeclNode>(m);
+          if (f.is_embedded == 0) {
+            if (STR::strcmp(f.name, member) == 0) {
+              if (f.function != cast<*AstNode>(0)) {
+                let fn_node: *FuncDeclNode = cast<*FuncDeclNode>(f.function);
+                return FieldLookup { found: true, is_method: true, type_node: fn_node.return_type, c_path: cast<*byte>(0), owner: struct_name };
+              }
+              return FieldLookup { found: true, is_method: false, type_node: f.type_node, c_path: CG::dup_str(f.name), owner: cast<*byte>(0) };
+            }
+          }
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+
+  // Not a direct member — search embedded (by-value) members recursively.
+  groups = 0;
+  loop (groups < 2) {
+    let members: **AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AstNode = members[i];
+      if (m != cast<*AstNode>(0)) {
+        if (m.kind == AST::NodeType::STMT_FIELD_DECL) {
+          let f: *FieldDeclNode = cast<*FieldDeclNode>(m);
+          if (f.is_embedded == 1) {
+            let inner: FieldLookup = resolve_field(ctx, f.name, member);
+            if (inner.found) {
+              if (inner.is_method) return inner;
+              let joined: *byte = CG::strcat2(f.name, ".");
+              let full: *byte = CG::strcat2(joined, inner.c_path);
+              free(joined);
+              free(inner.c_path);
+              return FieldLookup { found: true, is_method: false, type_node: inner.type_node, c_path: full, owner: cast<*byte>(0) };
+            }
+          }
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+
+  return not_found();
+}
+
+// Static type of an arbitrary expression, used to drive member access and
+// method-call resolution. Falls back to `resolved_type` (reliable for
+// identifiers/calls/casts/literals, not for promoted/embedded field access).
+const static_type_of -> fn (ctx: *CodegenContext, expr: *AstNode) *AstNode {
+  if (expr == cast<*AstNode>(0)) return cast<*AstNode>(0);
+
+  if (expr.kind == AST::NodeType::EXPR_CAST) {
+    let n: *CastNode = cast<*CastNode>(expr);
+    return n.type_node;
+  }
+
+  if (expr.kind == AST::NodeType::EXPR_DEREF) {
+    let n: *UnaryNode = cast<*UnaryNode>(expr);
+    return strip_ptr(static_type_of(ctx, n.operand));
+  }
+
+  if (expr.kind == AST::NodeType::EXPR_ADDR) {
+    return expr.resolved_type;
+  }
+
+  if (expr.kind == AST::NodeType::EXPR_INDEX) {
+    let n: *IndexNode = cast<*IndexNode>(expr);
+    let ot: *AstNode = static_type_of(ctx, n.object);
+    if (ot == cast<*AstNode>(0)) return cast<*AstNode>(0);
+    if (TCT::is_array_type(ot)) { let a: *ArrayTypeNode = cast<*ArrayTypeNode>(ot); return a.element_type; }
+    if (TCT::is_pointer_type(ot)) { let p: *PointerTypeNode = cast<*PointerTypeNode>(ot); return p.pointee_type; }
+    return cast<*AstNode>(0);
+  }
+
+  if (expr.kind == AST::NodeType::EXPR_MEMBER) {
+    let n: *MemberNode = cast<*MemberNode>(expr);
+    if (n.is_compiletime == 1) return expr.resolved_type;
+
+    let ot: *AstNode = static_type_of(ctx, n.object);
+    if (ot == cast<*AstNode>(0)) return expr.resolved_type;
+    let base: *AstNode = strip_ptr(ot);
+    if (TCT::is_nominal_type(base) == false) return expr.resolved_type;
+
+    let sname: *byte = TCT::basic_name(base);
+    let fl: FieldLookup = resolve_field(ctx, sname, n.member);
+    if (fl.found) {
+      if (fl.c_path != cast<*byte>(0)) free(fl.c_path);
+      return fl.type_node;
+    }
+    return expr.resolved_type;
+  }
+
+  return expr.resolved_type;
+}
+
+// ─── String / char escaping ──────────────────────────────────────────────────
+
+const emit_c_string_literal -> fn (buf: *Buf, s: *byte) void {
+  CG::buf_char(buf, '"');
+  if (s != cast<*byte>(0)) {
+    let i: int = 0;
+    loop (s[i] != cast<byte>(0)) {
+      let c: byte = s[i];
+      if (c == '"')                 { CG::buf_str(buf, "\\\""); }
+      elif (c == '\\')              { CG::buf_str(buf, "\\\\"); }
+      elif (c == '\n')              { CG::buf_str(buf, "\\n"); }
+      elif (c == '\t')              { CG::buf_str(buf, "\\t"); }
+      elif (c == '\r')              { CG::buf_str(buf, "\\r"); }
+      elif (c == cast<byte>(0))     { CG::buf_str(buf, "\\0"); }
+      else                          { CG::buf_char(buf, c); }
+      i = i + 1;
+    }
+  }
+  CG::buf_char(buf, '"');
+}
+
+const emit_c_char_literal -> fn (buf: *Buf, c: byte) void {
+  CG::buf_char(buf, '\'');
+  if (c == '\'')                 { CG::buf_str(buf, "\\'"); }
+  elif (c == '\\')               { CG::buf_str(buf, "\\\\"); }
+  elif (c == '\n')               { CG::buf_str(buf, "\\n"); }
+  elif (c == '\t')               { CG::buf_str(buf, "\\t"); }
+  elif (c == '\r')               { CG::buf_str(buf, "\\r"); }
+  elif (c == cast<byte>(0))      { CG::buf_str(buf, "\\0"); }
+  else                           { CG::buf_char(buf, c); }
+  CG::buf_char(buf, '\'');
+}
+
+// ─── output()/outputln() argument formatting ────────────────────────────────
+
+const gen_output_arg -> fn (ctx: *CodegenContext, buf: *Buf, arg: *AstNode) void {
+  let t: *AstNode = static_type_of(ctx, arg);
+
+  if (t != cast<*AstNode>(0)) {
+    if (TCT::is_bool_type(t)) {
+      CG::buf_str(buf, "((");
+      gen_expr(ctx, buf, arg);
+      CG::buf_str(buf, ") ? \"true\" : \"false\")");
+      return;
+    }
+    if (TCT::is_basic_named(t, "byte")) {
+      CG::buf_str(buf, "((int)(");
+      gen_expr(ctx, buf, arg);
+      CG::buf_str(buf, "))");
+      return;
+    }
+    if (TCT::is_basic_named(t, "float") || TCT::is_basic_named(t, "double")) {
+      CG::buf_str(buf, "((double)(");
+      gen_expr(ctx, buf, arg);
+      CG::buf_str(buf, "))");
+      return;
+    }
+    if (TCT::is_pointer_type(t)) {
+      gen_expr(ctx, buf, arg);
+      return;
+    }
+    CG::buf_str(buf, "((long long)(");
+    gen_expr(ctx, buf, arg);
+    CG::buf_str(buf, "))");
+    return;
+  }
+
+  CG::buf_str(buf, "((long long)(");
+  gen_expr(ctx, buf, arg);
+  CG::buf_str(buf, "))");
+}
+
+const output_fmt_for -> fn (ctx: *CodegenContext, arg: *AstNode) *byte {
+  let t: *AstNode = static_type_of(ctx, arg);
+  if (t != cast<*AstNode>(0)) {
+    if (TCT::is_bool_type(t)) return "%s";
+    if (TCT::is_basic_named(t, "byte")) return "%d";
+    if (TCT::is_basic_named(t, "float") || TCT::is_basic_named(t, "double")) return "%f";
+    if (TCT::is_pointer_type(t)) return "%s";
+    return "%lld";
+  }
+  return "%lld";
+}
+
+pub const gen_output_call -> fn (ctx: *CodegenContext, buf: *Buf, args: **AstNode, arg_count: int) void {
+  let i: int = 0;
+  loop (i < arg_count) {
+    CG::buf_str(buf, "printf(\"");
+    CG::buf_str(buf, output_fmt_for(ctx, args[i]));
+    CG::buf_str(buf, "\", ");
+    gen_output_arg(ctx, buf, args[i]);
+    CG::buf_str(buf, "); ");
+    i = i + 1;
+  }
+}
+
+// ─── Call-site self-prepending (obj.method(args)) ───────────────────────────
+
+const gen_call -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void {
+  let n: *CallNode = cast<*CallNode>(expr);
+  let callee: *AstNode = n.callee;
+
+  if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
+    let id: *IdentifierNode = cast<*IdentifierNode>(callee);
+    if (STR::strcmp(id.name, "output") == 0 || STR::strcmp(id.name, "outputln") == 0) {
+      // N args lowers to N sequential printf(...) statements — wrap in
+      // do{}while(0) so it's still one statement (safe as an unbraced
+      // if/else/loop body, which Luma allows).
+      CG::buf_str(buf, "do { ");
+      gen_output_call(ctx, buf, n.args, n.arg_count);
+      if (STR::strcmp(id.name, "outputln") == 0) CG::buf_str(buf, "printf(\"\\n\"); ");
+      CG::buf_str(buf, "} while (0)");
+      return;
+    }
+
+    let fi: *FuncInfo = CG::find_func_in_module(ctx, ctx.current_module, id.name);
+    if (fi == cast<*FuncInfo>(0)) fi = CG::find_func(ctx, id.name);
+    if (fi != cast<*FuncInfo>(0)) {
+      let cname: *byte = CG::c_name_for_func(fi);
+      CG::buf_str(buf, cname);
+      free(cname);
+    } else {
+      CG::buf_str(buf, id.name);
+    }
+    CG::buf_str(buf, "(");
+    let i: int = 0;
+    loop (i < n.arg_count) {
+      if (i > 0) CG::buf_str(buf, ", ");
+      gen_expr(ctx, buf, n.args[i]);
+      i = i + 1;
+    }
+    CG::buf_str(buf, ")");
+    return;
+  }
+
+  if (callee.kind == AST::NodeType::EXPR_MEMBER) {
+    let mn: *MemberNode = cast<*MemberNode>(callee);
+
+    if (mn.is_compiletime == 1) {
+      // ALIAS::function(...) — a plain top-level call into another module.
+      let mn_object: *AstNode = mn.object;
+      let mn_object_kind: int = mn_object.kind;
+      if (mn_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
+        let obj: *IdentifierNode = cast<*IdentifierNode>(mn_object);
+        let target_mod: *byte = CG::resolve_alias(ctx, ctx.current_module, obj.name);
+        if (target_mod != cast<*byte>(0)) {
+          let fi: *FuncInfo = CG::find_func_in_module(ctx, target_mod, mn.member);
+          if (fi != cast<*FuncInfo>(0)) {
+            let cname: *byte = CG::c_name_for_func(fi);
+            CG::buf_str(buf, cname);
+            free(cname);
+            CG::buf_str(buf, "(");
+            let i: int = 0;
+            loop (i < n.arg_count) {
+              if (i > 0) CG::buf_str(buf, ", ");
+              gen_expr(ctx, buf, n.args[i]);
+              i = i + 1;
+            }
+            CG::buf_str(buf, ")");
+            return;
+          }
+        }
+      }
+      CG::buf_str(buf, "/* unresolved qualified call */ 0");
+      return;
+    }
+
+    // obj.method(args) — instance method call, self passed by pointer.
+    let ot: *AstNode = static_type_of(ctx, mn.object);
+    let base: *AstNode = strip_ptr(ot);
+    if (base != cast<*AstNode>(0)) {
+      if (TCT::is_nominal_type(base)) {
+        let sname: *byte = TCT::basic_name(base);
+        let fi: *FuncInfo = CG::find_method(ctx, sname, mn.member);
+        if (fi != cast<*FuncInfo>(0)) {
+          let cname: *byte = CG::c_name_for_method(fi);
+          CG::buf_str(buf, cname);
+          free(cname);
+          CG::buf_str(buf, "(");
+          let is_ptr: bool = TCT::is_pointer_type(ot);
+          if (is_ptr == false) CG::buf_str(buf, "&(");
+          gen_expr(ctx, buf, mn.object);
+          if (is_ptr == false) CG::buf_str(buf, ")");
+          let i: int = 0;
+          loop (i < n.arg_count) {
+            CG::buf_str(buf, ", ");
+            gen_expr(ctx, buf, n.args[i]);
+            i = i + 1;
+          }
+          CG::buf_str(buf, ")");
+          return;
+        }
+      }
+    }
+  }
+
+  gen_expr(ctx, buf, callee);
+  CG::buf_str(buf, "(");
+  let i: int = 0;
+  loop (i < n.arg_count) {
+    if (i > 0) CG::buf_str(buf, ", ");
+    gen_expr(ctx, buf, n.args[i]);
+    i = i + 1;
+  }
+  CG::buf_str(buf, ")");
+}
+
+// ─── Member access (data field, embedding-aware) ────────────────────────────
+
+const gen_member -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void {
+  let n: *MemberNode = cast<*MemberNode>(expr);
+
+  if (n.is_compiletime == 1) {
+    let n_object: *AstNode = n.object;
+    let n_object_kind: int = n_object.kind;
+    if (n_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
+      let obj: *IdentifierNode = cast<*IdentifierNode>(n_object);
+
+      let target_mod: *byte = CG::resolve_alias(ctx, ctx.current_module, obj.name);
+      if (target_mod != cast<*byte>(0)) {
+        let gi: *GlobalInfo = CG::find_global_in_module(ctx, target_mod, n.member);
+        if (gi != cast<*GlobalInfo>(0)) {
+          let cname: *byte = CG::mangle2(gi.module_name, gi.name);
+          CG::buf_str(buf, cname);
+          free(cname);
+          return;
+        }
+        let fi: *FuncInfo = CG::find_func_in_module(ctx, target_mod, n.member);
+        if (fi != cast<*FuncInfo>(0)) {
+          let cname: *byte = CG::c_name_for_func(fi);
+          CG::buf_str(buf, cname);
+          free(cname);
+          return;
+        }
+      }
+
+      let ei: *EnumInfo = CG::find_enum(ctx, obj.name);
+      if (ei != cast<*EnumInfo>(0)) {
+        let cname: *byte = CG::c_name_for_enum_member(ei, n.member);
+        CG::buf_str(buf, cname);
+        free(cname);
+        return;
+      }
+    }
+
+    // `Alias::EnumName::Member` — nested MemberNodes, not a single
+    // identifier. Unwrap one level and look the enum up by its unqualified
+    // name (enum names are unique across the program in practice).
+    if (n_object_kind == AST::NodeType::EXPR_MEMBER) {
+      let inner: *MemberNode = cast<*MemberNode>(n_object);
+      if (inner.is_compiletime == 1) {
+        let ei2: *EnumInfo = CG::find_enum(ctx, inner.member);
+        if (ei2 != cast<*EnumInfo>(0)) {
+          let cname2: *byte = CG::c_name_for_enum_member(ei2, n.member);
+          CG::buf_str(buf, cname2);
+          free(cname2);
+          return;
+        }
+      }
+    }
+
+    CG::buf_str(buf, "0 /* unresolved qualified name */");
+    return;
+  }
+
+  let ot: *AstNode = static_type_of(ctx, n.object);
+  let base: *AstNode = strip_ptr(ot);
+  if (base != cast<*AstNode>(0)) {
+    if (TCT::is_nominal_type(base)) {
+      let sname: *byte = TCT::basic_name(base);
+      let fl: FieldLookup = resolve_field(ctx, sname, n.member);
+      if (fl.found && fl.is_method == false) {
+        CG::buf_str(buf, "(");
+        gen_expr(ctx, buf, n.object);
+        if (TCT::is_pointer_type(ot)) { CG::buf_str(buf, ")->"); } else { CG::buf_str(buf, ")."); }
+        CG::buf_str(buf, fl.c_path);
+        free(fl.c_path);
+        return;
+      }
+    }
+  }
+
+  CG::buf_str(buf, "(");
+  gen_expr(ctx, buf, n.object);
+  if (TCT::is_pointer_type(ot)) { CG::buf_str(buf, ")->"); } else { CG::buf_str(buf, ")."); }
+  CG::buf_str(buf, n.member);
+}
+
+// ─── Struct literal ──────────────────────────────────────────────────────────
+
+const gen_struct_literal -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void {
+  let n: *StructExprNode = cast<*StructExprNode>(expr);
+
+  let type_name: *byte = n.name;
+  if (type_name == cast<*byte>(0)) {
+    let t: *AstNode = expr.resolved_type;
+    if (t != cast<*AstNode>(0)) {
+      if (TCT::is_nominal_type(t)) type_name = TCT::basic_name(t);
+    }
+  }
+
+  CG::buf_str(buf, "(");
+  if (type_name != cast<*byte>(0)) {
+    let s: *StructInfo = CG::find_struct(ctx, type_name);
+    if (s != cast<*StructInfo>(0)) {
+      let cname: *byte = CG::c_name_for_struct(s);
+      CG::buf_str(buf, cname);
+      free(cname);
+    }
+  }
+  CG::buf_str(buf, "){ ");
+  let i: int = 0;
+  loop (i < n.field_count) {
+    if (i > 0) CG::buf_str(buf, ", ");
+    CG::buf_str(buf, ".");
+    CG::buf_str(buf, n.field_names[i]);
+    CG::buf_str(buf, " = ");
+    gen_expr(ctx, buf, n.field_vals[i]);
+    i = i + 1;
+  }
+  CG::buf_str(buf, " }");
+}
+
+// ─── Binary / unary operators ────────────────────────────────────────────────
+
+const binop_str -> fn (op: int) *byte {
+  if (op == AST::BinaryOp::BINOP_ADD)     return "+";
+  if (op == AST::BinaryOp::BINOP_SUB)     return "-";
+  if (op == AST::BinaryOp::BINOP_MUL)     return "*";
+  if (op == AST::BinaryOp::BINOP_DIV)     return "/";
+  if (op == AST::BinaryOp::BINOP_MOD)     return "%";
+  if (op == AST::BinaryOp::BINOP_EQ)      return "==";
+  if (op == AST::BinaryOp::BINOP_NE)      return "!=";
+  if (op == AST::BinaryOp::BINOP_LT)      return "<";
+  if (op == AST::BinaryOp::BINOP_LE)      return "<=";
+  if (op == AST::BinaryOp::BINOP_GT)      return ">";
+  if (op == AST::BinaryOp::BINOP_GE)      return ">=";
+  if (op == AST::BinaryOp::BINOP_AND)     return "&&";
+  if (op == AST::BinaryOp::BINOP_OR)      return "||";
+  if (op == AST::BinaryOp::BINOP_BIT_AND) return "&";
+  if (op == AST::BinaryOp::BINOP_BIT_OR)  return "|";
+  if (op == AST::BinaryOp::BINOP_BIT_XOR) return "^";
+  if (op == AST::BinaryOp::BINOP_SHL)     return "<<";
+  if (op == AST::BinaryOp::BINOP_SHR)     return ">>";
+  return cast<*byte>(0);
+}
+
+const gen_binary -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void {
+  let n: *BinaryNode = cast<*BinaryNode>(expr);
+
+  if (n.op == AST::BinaryOp::BINOP_POW) {
+    let rt: *byte = CGT::c_type_string(ctx, expr.resolved_type);
+    CG::buf_str(buf, "(("); CG::buf_str(buf, rt); CG::buf_str(buf, ")pow((double)(");
+    gen_expr(ctx, buf, n.left);
+    CG::buf_str(buf, "), (double)(");
+    gen_expr(ctx, buf, n.right);
+    CG::buf_str(buf, ")))");
+    free(rt);
+    return;
+  }
+
+  if (n.op == AST::BinaryOp::BINOP_RANGE) {
+    CG::buf_str(buf, "(__luma_range_t){ (long long)(");
+    gen_expr(ctx, buf, n.left);
+    CG::buf_str(buf, "), (long long)(");
+    gen_expr(ctx, buf, n.right);
+    CG::buf_str(buf, ") }");
+    return;
+  }
+
+  let os: *byte = binop_str(n.op);
+  CG::buf_str(buf, "(");
+  gen_expr(ctx, buf, n.left);
+  CG::buf_str(buf, " ");
+  if (os != cast<*byte>(0)) CG::buf_str(buf, os);
+  CG::buf_str(buf, " ");
+  gen_expr(ctx, buf, n.right);
+  CG::buf_str(buf, ")");
+}
+
+const gen_unary -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void {
+  let n: *UnaryNode = cast<*UnaryNode>(expr);
+  let op: int = n.op;
+
+  if (op == AST::UnaryType::UNOP_POST_INC) { CG::buf_str(buf, "("); gen_expr(ctx, buf, n.operand); CG::buf_str(buf, "++)"); return; }
+  if (op == AST::UnaryType::UNOP_POST_DEC) { CG::buf_str(buf, "("); gen_expr(ctx, buf, n.operand); CG::buf_str(buf, "--)"); return; }
+
+  let prefix: *byte = "?";
+  if (op == AST::UnaryType::UNOP_NOT)      prefix = "!";
+  if (op == AST::UnaryType::UNOP_NEG)      prefix = "-";
+  if (op == AST::UnaryType::UNOP_POS)      prefix = "+";
+  if (op == AST::UnaryType::UNOP_BIT_NOT)  prefix = "~";
+  if (op == AST::UnaryType::UNOP_PRE_INC)  prefix = "++";
+  if (op == AST::UnaryType::UNOP_PRE_DEC)  prefix = "--";
+
+  CG::buf_str(buf, "(");
+  CG::buf_str(buf, prefix);
+  gen_expr(ctx, buf, n.operand);
+  CG::buf_str(buf, ")");
+}
+
+// ─── Array literal ───────────────────────────────────────────────────────────
+// C only allows a bare `{ ... }` brace list directly in a declaration's
+// initializer position (as_compound_literal == false); anywhere else it
+// needs a C99 compound literal `(T[]){ ... }` to be a valid expression.
+pub const gen_array_literal -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode, as_compound_literal: bool) void {
+  let n: *ArrayNode = cast<*ArrayNode>(expr);
+
+  if (as_compound_literal) {
+    let elem_t: *AstNode = cast<*AstNode>(0);
+    let rt: *AstNode = expr.resolved_type;
+    if (rt != cast<*AstNode>(0)) {
+      if (TCT::is_pointer_type(rt)) {
+        let p: *PointerTypeNode = cast<*PointerTypeNode>(rt);
+        elem_t = p.pointee_type;
+      }
+    }
+    if (elem_t != cast<*AstNode>(0)) {
+      let ts: *byte = CGT::c_type_string(ctx, elem_t);
+      CG::buf_str(buf, "(");
+      CG::buf_str(buf, ts);
+      CG::buf_str(buf, "[]){ ");
+      free(ts);
+    } else {
+      CG::buf_str(buf, "{ ");
+    }
+  } else {
+    CG::buf_str(buf, "{ ");
+  }
+
+  let i: int = 0;
+  loop (i < n.element_count) {
+    if (i > 0) CG::buf_str(buf, ", ");
+    gen_expr(ctx, buf, n.elements[i]);
+    i = i + 1;
+  }
+  CG::buf_str(buf, " }");
+}
+
+// ─── Top-level dispatcher ────────────────────────────────────────────────────
+
+pub const gen_expr -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void {
+  if (expr == cast<*AstNode>(0)) return;
+
+  let k: int = expr.kind;
+
+  if (k == AST::NodeType::EXPR_LITERAL) {
+    let n: *LiteralNode = cast<*LiteralNode>(expr);
+    let lt: int = n.lit_type;
+    if (lt == AST::LiteralType::LITERAL_INT)    { CG::buf_int(buf, n.int_val); return; }
+    if (lt == AST::LiteralType::LITERAL_FLOAT)  { CG::buf_str(buf, "((float)"); CG::buf_int(buf, n.float_val); CG::buf_str(buf, ")"); return; }
+    if (lt == AST::LiteralType::LITERAL_DOUBLE) { CG::buf_str(buf, "((double)"); CG::buf_int(buf, n.float_val); CG::buf_str(buf, ")"); return; }
+    if (lt == AST::LiteralType::LITERAL_STRING) { emit_c_string_literal(buf, n.string_val); return; }
+    if (lt == AST::LiteralType::LITERAL_CHAR)   { emit_c_char_literal(buf, n.char_val); return; }
+    if (lt == AST::LiteralType::LITERAL_BOOL)   {
+      if (n.bool_val != 0) { CG::buf_str(buf, "true"); } else { CG::buf_str(buf, "false"); }
+      return;
+    }
+    if (lt == AST::LiteralType::LITERAL_NULL)   { CG::buf_str(buf, "((void*)0)"); return; }
+    if (lt == AST::LiteralType::LITERAL_IDENT)  { CG::buf_str(buf, n.string_val); return; }
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_IDENTIFIER) {
+    let n: *IdentifierNode = cast<*IdentifierNode>(expr);
+
+    // Locals/params shadow module-level funcs/globals of the same name.
+    let local_c_name: *byte = CG::local_lookup(ctx, n.name);
+    if (local_c_name != cast<*byte>(0)) {
+      CG::buf_str(buf, local_c_name);
+      return;
+    }
+
+    let fi: *FuncInfo = CG::find_func_in_module(ctx, ctx.current_module, n.name);
+    if (fi != cast<*FuncInfo>(0)) {
+      let cname: *byte = CG::c_name_for_func(fi);
+      CG::buf_str(buf, cname);
+      free(cname);
+      return;
+    }
+    let gi: *GlobalInfo = CG::find_global_in_module(ctx, ctx.current_module, n.name);
+    if (gi != cast<*GlobalInfo>(0)) {
+      let cname: *byte = CG::mangle2(gi.module_name, gi.name);
+      CG::buf_str(buf, cname);
+      free(cname);
+      return;
+    }
+    CG::buf_str(buf, n.name);
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_BINARY) { gen_binary(ctx, buf, expr); return; }
+  if (k == AST::NodeType::EXPR_RANGE)  { gen_binary(ctx, buf, expr); return; }
+  if (k == AST::NodeType::EXPR_UNARY)  { gen_unary(ctx, buf, expr); return; }
+
+  if (k == AST::NodeType::EXPR_DEREF) {
+    let n: *UnaryNode = cast<*UnaryNode>(expr);
+    CG::buf_str(buf, "(*(");
+    gen_expr(ctx, buf, n.operand);
+    CG::buf_str(buf, "))");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_ADDR) {
+    let n: *UnaryNode = cast<*UnaryNode>(expr);
+    CG::buf_str(buf, "(&(");
+    gen_expr(ctx, buf, n.operand);
+    CG::buf_str(buf, "))");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_GROUPING) {
+    let n: *UnaryNode = cast<*UnaryNode>(expr);
+    CG::buf_str(buf, "(");
+    gen_expr(ctx, buf, n.operand);
+    CG::buf_str(buf, ")");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_SYSTEM) {
+    let n: *UnaryNode = cast<*UnaryNode>(expr);
+    CG::buf_str(buf, "system(");
+    gen_expr(ctx, buf, n.operand);
+    CG::buf_str(buf, ")");
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_CALL)   { gen_call(ctx, buf, expr); return; }
+  if (k == AST::NodeType::EXPR_MEMBER) { gen_member(ctx, buf, expr); return; }
+
+  if (k == AST::NodeType::EXPR_ASSIGNMENT) {
+    let n: *AssignNode = cast<*AssignNode>(expr);
+    CG::buf_str(buf, "(");
+    gen_expr(ctx, buf, n.target);
+    CG::buf_str(buf, " = ");
+    gen_expr(ctx, buf, n.value);
+    CG::buf_str(buf, ")");
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_TERNARY) {
+    let n: *TernaryNode = cast<*TernaryNode>(expr);
+    CG::buf_str(buf, "(");
+    gen_expr(ctx, buf, n.condition);
+    CG::buf_str(buf, " ? ");
+    gen_expr(ctx, buf, n.then_expr);
+    CG::buf_str(buf, " : ");
+    gen_expr(ctx, buf, n.else_expr);
+    CG::buf_str(buf, ")");
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_INDEX) {
+    let n: *IndexNode = cast<*IndexNode>(expr);
+    CG::buf_str(buf, "(");
+    gen_expr(ctx, buf, n.object);
+    CG::buf_str(buf, ")[");
+    gen_expr(ctx, buf, n.index);
+    CG::buf_str(buf, "]");
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_ARRAY) {
+    gen_array_literal(ctx, buf, expr, true);
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_CAST) {
+    let n: *CastNode = cast<*CastNode>(expr);
+    let ts: *byte = CGT::c_type_string(ctx, n.type_node);
+    CG::buf_str(buf, "((");
+    CG::buf_str(buf, ts);
+    CG::buf_str(buf, ")(");
+    gen_expr(ctx, buf, n.castee);
+    CG::buf_str(buf, "))");
+    free(ts);
+    return;
+  }
+
+  if (k == AST::NodeType::EXPR_ALLOC) {
+    let n: *AllocNode = cast<*AllocNode>(expr);
+    CG::buf_str(buf, "malloc((size_t)(");
+    gen_expr(ctx, buf, n.size);
+    CG::buf_str(buf, "))");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_FREE) {
+    let n: *FreeNode = cast<*FreeNode>(expr);
+    CG::buf_str(buf, "free((void*)(");
+    gen_expr(ctx, buf, n.ptr);
+    CG::buf_str(buf, "))");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_MEMCPY) {
+    let n: *MemcpyNode = cast<*MemcpyNode>(expr);
+    CG::buf_str(buf, "memcpy((void*)(");
+    gen_expr(ctx, buf, n.to);
+    CG::buf_str(buf, "), (void*)(");
+    gen_expr(ctx, buf, n.from);
+    CG::buf_str(buf, "), (size_t)(");
+    gen_expr(ctx, buf, n.size);
+    CG::buf_str(buf, "))");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_SIZEOF) {
+    let n: *SizeofNode = cast<*SizeofNode>(expr);
+    if (n.is_type == 1) {
+      let ts: *byte = CGT::c_type_string(ctx, n.object);
+      CG::buf_str(buf, "((long long)sizeof(");
+      CG::buf_str(buf, ts);
+      CG::buf_str(buf, "))");
+      free(ts);
+    } else {
+      CG::buf_str(buf, "((long long)sizeof(");
+      gen_expr(ctx, buf, n.object);
+      CG::buf_str(buf, "))");
+    }
+    return;
+  }
+  if (k == AST::NodeType::EXPR_SYSCALL) {
+    let n: *SyscallNode = cast<*SyscallNode>(expr);
+    CG::buf_str(buf, "syscall(");
+    let i: int = 0;
+    loop (i < n.count) {
+      if (i > 0) CG::buf_str(buf, ", ");
+      gen_expr(ctx, buf, n.args[i]);
+      i = i + 1;
+    }
+    CG::buf_str(buf, ")");
+    return;
+  }
+  if (k == AST::NodeType::EXPR_INPUT) {
+    // Not fully supported yet — emit a zeroed value of the requested type.
+    let n: *CastNode = cast<*CastNode>(expr);
+    let ts: *byte = CGT::c_type_string(ctx, n.type_node);
+    CG::buf_str(buf, "((");
+    CG::buf_str(buf, ts);
+    CG::buf_str(buf, "){0})");
+    free(ts);
+    return;
+  }
+  if (k == AST::NodeType::EXPR_STRUCT) { gen_struct_literal(ctx, buf, expr); return; }
+
+  CG::buf_str(buf, "0 /* unsupported expr kind */");
+}

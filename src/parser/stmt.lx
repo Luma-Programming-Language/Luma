@@ -9,6 +9,7 @@
 @use "lexer_tokens" as TOK
 @use "ast_module"   as MAST
 @use "ast_stmt"     as SAST
+@use "ast_type"     as TAST
 @use "parser"       as PARS
 @use "ast"          as AST
 
@@ -298,7 +299,6 @@ const os_stmt     -> fn (p: *Parser) *AstNode {
     bodies.push_back(cast<*void>(&arm_body));
   }
 
-  // NULL-terminate for OsNode printing/free loops
   let null_p: *byte = cast<*byte>(0);
   let null_b: *AstNode = cast<*AstNode>(0);
   platforms.push_back(cast<*void>(&null_p));
@@ -539,6 +539,42 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
       continue;
     }
 
+    // `...Type,` struct embedding.
+    if (p.current().kind == TOK::LumaTokenType::TOK_ELLIPSIS) {
+      p.advance();
+
+      let embed_line: int = p.current().line;
+      let embed_col:  int = p.current().col;
+      let embed_name: *byte = p.get_name();
+      p.advance();
+
+      let embed_type: *AstNode = TAST::make_basic_type(embed_name, embed_line, embed_col);
+      let elen: int = STRING::strlen(embed_name);
+      let name_copy: *byte = cast<*byte>(alloc(elen + 1));
+      MEM::memcpy(cast<*void>(name_copy), cast<*void>(embed_name), elen);
+      name_copy[elen] = '\0';
+
+      if (p.current().kind == TOK::LumaTokenType::TOK_COMMA) {
+        p.advance();
+      } elif (p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+        p.error("SyntaxError", "Expected ',' or '}' after embedded struct field.");
+        VEC::free_vector(&public_fields);
+        VEC::free_vector(&private_fields);
+        return cast<*AstNode>(0);
+      }
+
+      let embed_decl: *AstNode = SAST::make_field_decl(
+        name_copy, "", embed_type, cast<*AstNode>(0), public_member, 1, embed_line, embed_col
+      );
+
+      if (public_member == 1) {
+        public_fields.push_back(cast<*void>(&embed_decl));
+      } else {
+        private_fields.push_back(cast<*void>(&embed_decl));
+      }
+      continue;
+    }
+
     let field_line: int = p.current().line;
     let field_col:  int = p.current().col;
 
@@ -562,7 +598,6 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
       p.advance();
       field_function = _fn(p, field_name, public_member, field_returns_ownership, field_takes_ownership);
 
-      // _fn took ownership of field_name, so make a fresh copy for field_decl
       let len: int = STRING::strlen(field_name);
       let name_copy: *byte = cast<*byte>(alloc(len + 1));
       MEM::memcpy(cast<*void>(name_copy), cast<*void>(field_name), len);
@@ -583,7 +618,7 @@ const _struct -> fn (p: *Parser, name: *byte, is_public: int) *AstNode {
     }
 
     let field_decl: *AstNode = SAST::make_field_decl(
-      field_name, "", field_type, field_function, public_member, field_line, field_col
+      field_name, "", field_type, field_function, public_member, 0, field_line, field_col
     );
 
     if (public_member == 1) {
@@ -648,11 +683,14 @@ const expr -> fn (p: *Parser) *AstNode {
 }
 
 #returns_ownership 
-const use -> fn (p: *Parser) *AstNode { 
+const use -> fn (p: *Parser) *AstNode {
+  p.consume(TOK::LumaTokenType::TOK_USE, "Expected '@use' keyword.");
+
+  // Anchored at the module-name token itself (not `@use`) so diagnostics
+  // about the module (e.g. "module not found") point at the actual name.
   let line: int = p.current().line;
   let col:  int = p.current().col;
-  
-  p.consume(TOK::LumaTokenType::TOK_USE, "Expected '@use' keyword.");
+
   let mod_name: *byte = p.get_name();
   p.advance();
   

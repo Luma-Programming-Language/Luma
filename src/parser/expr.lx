@@ -10,6 +10,71 @@
 @use "parser"       as PARS
 @use "ast"          as AST
 
+// String/char literal token text is raw source bytes (the lexer does not
+// interpret `\n`/`\t`/etc. — see src/lexer/lexer.lx's '"'/'\'' cases). Resolve
+// escapes here, once, when building the literal AST node.
+const unescape_char -> fn (c: byte) byte {
+  if (c == 'n')  return cast<byte>(10);
+  if (c == 't')  return cast<byte>(9);
+  if (c == 'r')  return cast<byte>(13);
+  if (c == '0')  return cast<byte>(0);
+  if (c == '\\') return cast<byte>(92);
+  if (c == '\'') return cast<byte>(39);
+  if (c == '"')  return cast<byte>(34);
+  return c; // unknown escape — pass the character through as-is
+}
+
+const hex_digit_val -> fn (c: byte) int {
+  if (c >= '0' && c <= '9') return cast<int>(c) - cast<int>('0');
+  if (c >= 'a' && c <= 'f') return cast<int>(c) - cast<int>('a') + 10;
+  if (c >= 'A' && c <= 'F') return cast<int>(c) - cast<int>('A') + 10;
+  return -1;
+}
+
+#returns_ownership
+const unescape_str -> fn (s: *byte) *byte {
+  let len: int = STRING::strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  let oi: int = 0;
+  let i: int = 0;
+  loop (i < len) {
+    if (s[i] == '\\') {
+      if (i + 1 < len) {
+        // `\xHH` — a two-hex-digit byte escape (used throughout error.lx's
+        // ANSI color codes, e.g. "\x1b[31m").
+        let is_hex_escape: bool = false;
+        if (s[i + 1] == 'x') {
+          if (i + 3 < len) {
+            let h1: int = hex_digit_val(s[i + 2]);
+            let h2: int = hex_digit_val(s[i + 3]);
+            if (h1 >= 0 && h2 >= 0) {
+              out[oi] = cast<byte>(h1 * 16 + h2);
+              oi = oi + 1;
+              i = i + 4;
+              is_hex_escape = true;
+            }
+          }
+        }
+        if (is_hex_escape == false) {
+          out[oi] = unescape_char(s[i + 1]);
+          oi = oi + 1;
+          i = i + 2;
+        }
+      } else {
+        out[oi] = s[i];
+        oi = oi + 1;
+        i = i + 1;
+      }
+    } else {
+      out[oi] = s[i];
+      oi = oi + 1;
+      i = i + 1;
+    }
+  }
+  out[oi] = cast<byte>(0);
+  return out;
+}
+
 #returns_ownership const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
 #returns_ownership const binary   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
 #returns_ownership const call     -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
@@ -54,6 +119,7 @@ const nud -> fn (p: *Parser) *AstNode {
     TOK::LumaTokenType::TOK_SYSCALL  -> return syscall(p);
     TOK::LumaTokenType::TOK_SIZE_OF  -> return _sizeof(p);
     _ -> {
+      p.error("Syntax Error", "Expected an expression.");
       p.advance();
       return cast<*AstNode>(0);
     }
@@ -87,10 +153,12 @@ const led -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 #returns_ownership
 pub const parse_expr -> fn (p: *Parser, bp: int) *AstNode {
   let left: *AstNode = nud(p);
+  if (left == cast<*AstNode>(0)) return cast<*AstNode>(0);
 
   loop (p.has_tokens() && (PARS::get_bp(p.current().kind) > bp)) {
     let c_bp: int = PARS::get_bp(p.current().kind);
     left = led(p, left, c_bp);
+    if (left == cast<*AstNode>(0)) return cast<*AstNode>(0);
   }
 
   return left;
@@ -304,13 +372,18 @@ const primary -> fn (p: *Parser) *AstNode {
   
   if (lit_type == AST::LiteralType::LITERAL_STRING) {
     let val: *byte = p.get_name();
+    let unescaped: *byte = unescape_str(val);
+    free(val);
     p.advance();
-    return EAST::make_literal_string(val, line, col);
+    return EAST::make_literal_string(unescaped, line, col);
   }
   
   if (lit_type == AST::LiteralType::LITERAL_CHAR) {
     let val: *byte = p.get_name();
+    // Token text includes the opening quote: val[0]=='\'', val[1] is either
+    // the literal char or (for an escape like '\n') a backslash.
     let char_val: byte = val[1];
+    if (val[1] == '\\') char_val = unescape_char(val[2]);
     free(val);
     p.advance();
     return EAST::make_literal_char(char_val, line, col);

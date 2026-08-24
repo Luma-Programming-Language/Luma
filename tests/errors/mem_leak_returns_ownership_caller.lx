@@ -1,0 +1,12 @@
+// error-type: Memory Leak
+@module "main"
+
+#returns_ownership
+const make_buf -> fn () *byte {
+    return cast<*byte>(alloc(8));
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: *byte = make_buf();
+    return 0;
+}

@@ -26,17 +26,13 @@ pub const StaticAllocation -> struct {
   free_count:           int,
   conditional_free:     int,
   use_after_free_count: int,
-  aliases:              Vector,
+  aliases:              *Vector,
   reported:             bool,
   address_taken:        bool,
   function_name:        *byte,
   file_path:            *byte,
 };
 
-// NOTE: Vectors are referenced by pointer, never embedded by value. The bootstrap
-// compiler under-computes sizeof<T> for structs that embed another struct, so a
-// heap `alloc(sizeof<T>)` of such a struct overflows. Keeping only pointers and
-// scalars here makes sizeof correct.
 pub const StaticMemoryAnalyzer -> struct {
   allocations:          *Vector,
   skip_memory_tracking: bool,
@@ -71,6 +67,7 @@ pub const Scope -> struct {
   deferred_frees:    *Vector,
 
   check_mem:         bool,
+  os:                *byte,
 };
 
 pub const ModuleImport -> struct {

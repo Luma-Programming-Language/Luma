@@ -3,6 +3,9 @@ name      = "luma"
 directory = "src"
 entry     = "src/main.lx"
 
+[build]
+flags = "-O2 --no-sanitize"
+
 [output]
 binary_dir = "bin"
 
@@ -11,9 +14,12 @@ paths = [
     ""
 ]
 
-[build]
-flags = "-O2 --no-sanitize"
+[test]
+valid  = []
+errors = []
 
-[run]
+[run] 
 // args = "test/test.lx -l std/args.lx -name test"
-args = "test/test.lx -name test"
+// args = "test/test.lx -name test"
+args = "src/main.lx -l src/ast/ast.lx src/ast/ast_print.lx src/ast/expr.lx src/ast/module.lx src/ast/stmt.lx src/ast/type.lx std/cstring.lx std/memory.lx std/vector.lx std/args.lx std/io.lx std/libc.lx src/commands.lx src/constants.lx src/error/error.lx src/lexer/lexer.lx src/lexer/tokens.lx src/parser/expr.lx src/parser/file.lx src/parser/parser.lx src/parser/stmt.lx src/parser/type.lx src/typechecker/core.lx src/typechecker/expr.lx src/typechecker/stmt.lx src/typechecker/tc.lx src/typechecker/tc_error.lx src/typechecker/scope.lx src/typechecker/type.lx src/codegen/codegen_core.lx src/codegen/codegen_type.lx src/codegen/codegen_expr.lx src/codegen/codegen_stmt.lx src/codegen/codegen.lx -O2 --no-sanitize -name bin/luma"
+

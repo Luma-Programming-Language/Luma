@@ -1,0 +1,13 @@
+// error-type: Non-Exhaustive Switch
+@module "main"
+
+const Color -> enum { Red, Green, Blue };
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let c: Color = Color::Red;
+    switch (c) {
+        Color::Red -> { output("r\n"); }
+        Color::Green -> { output("g\n"); }
+    }
+    return 0;
+}

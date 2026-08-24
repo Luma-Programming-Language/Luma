@@ -1,0 +1,9 @@
+// error-type: Use After Free
+@module "main"
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: *byte = cast<*byte>(alloc(8));
+    free(p);
+    output(p, "\n");
+    return 0;
+}
