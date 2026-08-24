@@ -1,6 +1,7 @@
 build
 obj
 output
+self-hosted
 lux
 
 # autotools
