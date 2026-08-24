@@ -14,6 +14,7 @@
 
 pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool;
 pub const register_declaration -> fn (stmt: *AstNode, scope: *Scope) bool;
+pub const resolve_os_body -> fn (node: *AstNode, scope: *Scope) *AstNode;
 
 const handle_var_decl      -> fn (stmt: *AstNode, scope: *Scope) bool;
 const handle_func_decl     -> fn (stmt: *AstNode, scope: *Scope) bool;
@@ -50,6 +51,24 @@ pub const typecheck_statement -> fn (stmt: *AstNode, scope: *Scope) bool {
     let n: *ExprStmtNode = cast<*ExprStmtNode>(stmt);
     EXPR::typecheck_expression(n.expression, scope, cast<*AstNode>(0));
     return true;
+  }
+
+  // `@os {}` used as a statement inside a function body (not just at module
+  // top level) — e.g. std/io.lx's syscall wrappers. Transparent like the
+  // module-level handling in tc.lx's check_module_body: the matched arm's
+  // statements are checked directly in `scope`, not a nested child scope,
+  // so a `let`/`const` inside it stays visible to code after the block.
+  if (k == AST::NodeType::PREPROCESSOR_OS) {
+    let body: *AstNode = resolve_os_body(stmt, scope);
+    if (body == cast<*AstNode>(0)) return true;
+    if (body.kind != AST::NodeType::STMT_BLOCK) return typecheck_statement(body, scope);
+
+    let blk: *BlockNode = cast<*BlockNode>(body);
+    let ok: bool = true;
+    loop [i: int = 0](i < blk.stmt_count) : (++i) {
+      if (typecheck_statement(blk.statements[i], scope) == false) ok = false;
+    }
+    return ok;
   }
 
   return true;

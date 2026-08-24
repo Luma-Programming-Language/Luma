@@ -184,6 +184,7 @@ pub const CodegenContext -> struct {
   current_module: *byte,
   current_return_type: *AstNode, // return type of the function body being emitted
   label_counter:  int,
+  os:             *byte, // target platform (config.os) — resolves `@os {}` arms
 
   // Pending `defer` statements for the function being emitted, most-recent
   // last. Flushed (LIFO) inline at each `return` and at each block's normal
@@ -204,6 +205,7 @@ pub const ctx_init -> fn (out: *void) *CodegenContext {
   c.current_module = "";
   c.current_return_type = cast<*AstNode>(0);
   c.label_counter  = 0;
+  c.os             = cast<*byte>(0);
   c.defer_stack    = VEC::create_vector(sizeof<*AstNode>);
   return c;
 }
@@ -327,13 +329,25 @@ pub const c_name_for_enum_member -> fn (e: *EnumInfo, member: *byte) *byte {
   return mangle3(e.module_name, e.name, member);
 }
 
+pub const resolve_os_for -> fn (node: *AstNode, os: *byte) *AstNode {
+  if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);
+  let n: *OsNode = cast<*OsNode>(node);
+  if (os != cast<*byte>(0)) {
+    let i: int = 0;
+    loop (n.platforms[i] != cast<*byte>(0)) {
+      if (STR::strcmp(n.platforms[i], os) == 0) return n.bodies[i];
+      i = i + 1;
+    }
+  }
+  if (n.has_default == 1) return n.default_body;
+  return cast<*AstNode>(0);
+}
+
 pub const next_label -> fn (ctx: *CodegenContext) int {
   ctx.label_counter = ctx.label_counter + 1;
   return ctx.label_counter;
 }
 
-// Most-recently-declared binding wins (shadowing). Null if `name` isn't a
-// known local/param — the caller then treats it as a module-level func/global.
 pub const local_lookup -> fn (ctx: *CodegenContext, name: *byte) *byte {
   let v: *Vector = &ctx.locals;
   let i: int = v.size - 1;
@@ -345,18 +359,12 @@ pub const local_lookup -> fn (ctx: *CodegenContext, name: *byte) *byte {
   return cast<*byte>(0);
 }
 
-// Registers `name` with a fixed C identifier (used for function parameters
-// and `self`, whose spelling is already fixed by the emitted signature).
 pub const local_bind_as -> fn (ctx: *CodegenContext, name: *byte, c_name: *byte) void {
   let b: LocalBinding = LocalBinding { name: name, c_name: c_name };
   let v: *Vector = &ctx.locals;
   v.push_back(cast<*void>(&b));
 }
 
-// Registers a fresh `let`/`const` binding of `name`, returning the C
-// identifier to actually declare it under — `name` itself unless that name
-// is already bound (by an enclosing scope, an earlier shadowed `let`, or a
-// parameter), in which case a `name__N` suffix keeps the emitted C valid.
 #returns_ownership
 pub const local_declare -> fn (ctx: *CodegenContext, name: *byte) *byte {
   let c_name: *byte = cast<*byte>(0);

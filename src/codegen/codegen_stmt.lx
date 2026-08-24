@@ -250,6 +250,26 @@ pub const gen_stmt -> fn (ctx: *CodegenContext, buf: *Buf, stmt: *AstNode) void 
     return;
   }
 
-  // STMT_FUNCTION/STRUCT/ENUM/PREPROCESSOR_OS nested in a function body: no-op
-  // (the typechecker doesn't register them at nested scope either).
+  // `@os {}` used as a statement (e.g. std/io.lx's syscall wrappers) —
+  // transparent like a typechecker's handling in stmt.lx: the matched
+  // arm's statements are emitted directly, not wrapped in a C block, so a
+  // `let`/`const` inside it stays visible to code after it in the same C
+  // function scope.
+  if (k == AST::NodeType::PREPROCESSOR_OS) {
+    let body: *AstNode = CG::resolve_os_for(stmt, ctx.os);
+    if (body == cast<*AstNode>(0)) return;
+    if (body.kind != AST::NodeType::STMT_BLOCK) { gen_stmt(ctx, buf, body); return; }
+
+    let blk: *BlockNode = cast<*BlockNode>(body);
+    let i: int = 0;
+    loop (i < blk.stmt_count) {
+      gen_stmt(ctx, buf, blk.statements[i]);
+      i = i + 1;
+    }
+    return;
+  }
+
+  // STMT_FUNCTION/STRUCT/ENUM nested in a function body: no-op (not part of
+  // the language's supported surface today; the typechecker doesn't
+  // register them at nested scope either).
 }

@@ -721,6 +721,31 @@ pub const gen_expr -> fn (ctx: *CodegenContext, buf: *Buf, expr: *AstNode) void 
   if (k == AST::NodeType::EXPR_CAST) {
     let n: *CastNode = cast<*CastNode>(expr);
     let ts: *byte = CGT::c_type_string(ctx, n.type_node);
+
+    // `cast<int>(bool_expr)` etc.: the reference compiler represents bool
+    // as a 1-bit value and always sign-extends on a widening cast, so
+    // `true` (bit 1, sign-extended) becomes -1, not 1 — a real idiom this
+    // codebase relies on (see std/args.lx's `is_empty`: `-cast<int>(count
+    // == 0)`). A plain C cast can't reproduce that (a C comparison is
+    // already a full-width 0/1 int, nothing left to sign-extend), so this
+    // needs its own case rather than the generic `((T)(expr))` below.
+    let castee_type: *AstNode = static_type_of(ctx, n.castee);
+    let cast_is_bool_widen: bool = false;
+    if (castee_type != cast<*AstNode>(0)) {
+      if (TCT::is_bool_type(castee_type)) {
+        if (TCT::is_bool_type(n.type_node) == false) { cast_is_bool_widen = true; }
+      }
+    }
+    if (cast_is_bool_widen) {
+      CG::buf_str(buf, "((");
+      CG::buf_str(buf, ts);
+      CG::buf_str(buf, ")((");
+      gen_expr(ctx, buf, n.castee);
+      CG::buf_str(buf, ") ? -1 : 0))");
+      free(ts);
+      return;
+    }
+
     CG::buf_str(buf, "((");
     CG::buf_str(buf, ts);
     CG::buf_str(buf, ")(");

@@ -108,20 +108,6 @@ const write_preamble -> fn (out: *void) void {
 
 // ─── Pass A: registries ──────────────────────────────────────────────────────
 
-const resolve_os_for -> fn (node: *AstNode, os: *byte) *AstNode {
-  if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);
-  let n: *OsNode = cast<*OsNode>(node);
-  if (os != cast<*byte>(0)) {
-    let i: int = 0;
-    loop (n.platforms[i] != cast<*byte>(0)) {
-      if (STR::strcmp(n.platforms[i], os) == 0) return n.bodies[i];
-      i = i + 1;
-    }
-  }
-  if (n.has_default == 1) return n.default_body;
-  return cast<*AstNode>(0);
-}
-
 const register_method -> fn (ctx: *CodegenContext, module_name: *byte, struct_name: *byte, member: *AstNode) void {
   if (member == cast<*AstNode>(0)) return;
   if (member.kind != AST::NodeType::STMT_FIELD_DECL) return;
@@ -143,7 +129,7 @@ const register_decl -> fn (ctx: *CodegenContext, os: *byte, module_name: *byte, 
   let k: int = decl.kind;
 
   if (k == AST::NodeType::PREPROCESSOR_OS) {
-    let body: *AstNode = resolve_os_for(decl, os);
+    let body: *AstNode = CG::resolve_os_for(decl, os);
     if (body != cast<*AstNode>(0)) {
       if (body.kind == AST::NodeType::STMT_BLOCK) {
         let blk: *BlockNode = cast<*BlockNode>(body);
@@ -559,6 +545,7 @@ pub const codegen_generate -> fn (program: *AstNode, config: LumaBuildConfig) bo
   if (out == cast<*void>(0)) { free(c_path); return false; }
 
   let ctx: *CodegenContext = CG::ctx_init(out);
+  ctx.os = config.os;
   let prog: *ProgramNode = cast<*ProgramNode>(program);
   run_pass_a(ctx, prog, config.os);
 

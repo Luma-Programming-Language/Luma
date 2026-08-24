@@ -435,6 +435,27 @@ const tc_member -> fn (expr: *AstNode, scope: *Scope) *AstNode {
       // Unknown qualified name — treat as enum-like int to stay permissive.
       return TYPE::make_named_type(obj.name);
     }
+
+    // `Alias::EnumName::Member` — nested MemberNodes (this node's `object`
+    // is itself the compiletime member `Alias::EnumName`), not a single
+    // identifier. Unwrap one level: resolve the alias to its module, then
+    // look up "EnumName.Member" in that module's own scope.
+    if (object.kind == AST::NodeType::EXPR_MEMBER) {
+      let inner: *MemberNode = cast<*MemberNode>(object);
+      if (inner.is_compiletime == 1) {
+        let inner_object: *AstNode = inner.object;
+        if (inner_object.kind == AST::NodeType::EXPR_IDENTIFIER) {
+          let iobj: *IdentifierNode = cast<*IdentifierNode>(inner_object);
+          let imp2: *ModuleImport = SCOPE::find_module_import(scope, iobj.name);
+          if (imp2 != cast<*ModuleImport>(0)) {
+            let qname2: *byte = qualify(inner.member, n.member);
+            let msym2: *Symbol = SCOPE::scope_lookup_in_module(imp2.module_scope, qname2);
+            if (msym2 != cast<*Symbol>(0)) return msym2.type;
+          }
+        }
+      }
+    }
+
     return cast<*AstNode>(0);
   }
 
