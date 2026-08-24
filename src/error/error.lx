@@ -2,6 +2,21 @@
 
 @use "std_io"       as IO
 @use "lexer_tokens" as TOK
+@use "color"        as COLOR
+
+// Small named wrappers around the color lib's fg()/style() calls (they
+// return string literals, not allocations — nothing here needs freeing).
+// These stay functions rather than module-level consts: a global's
+// initializer has to be a compile-time constant, and these are calls.
+const c_reset      -> fn () void { output(COLOR::RESET_CODE); }
+const c_bold_red   -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::RED)); }
+const c_bold_white -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::WHITE)); }
+const c_bold_blue  -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::BLUE)); }
+const c_bold_yellow -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::YELLOW)); }
+const c_bold_cyan  -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::CYAN)); }
+const c_bold_green -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::GREEN)); }
+const c_blue       -> fn () void { output(COLOR::fg(COLOR::Color::BLUE)); }
+const c_gray       -> fn () void { output(COLOR::fg(COLOR::Color::BRIGHT_BLACK)); }
 
 pub const ErrorInformation -> struct {
   error_type:   *byte,
@@ -121,15 +136,15 @@ const print_line_padding -> fn (current_line: int, max_width: int) void {
 const print_gutter -> fn (max_width: int) void {
   output(" ");
   loop [i: int = 0](i < max_width) : (++i) { output(" "); }
-  output("\x1b[34m |\x1b[0m ");
+  c_blue(); output(" |"); c_reset(); output(" ");
 }
 
 const print_source_line -> fn (line: int, text: *byte, max_width: int) void {
   output(" ");
   print_line_padding(line, max_width);
-  output("\x1b[1;34m", line, " |\x1b[0m");
+  c_bold_blue(); output(line, " |"); c_reset();
   if (text != cast<*byte>(0)) {
-    output("\x1b[1;37m ", text, "\x1b[0m");
+    c_bold_white(); output(" ", text); c_reset();
   }
   output("\n");
 }
@@ -139,12 +154,13 @@ const print_indicator -> fn (col: int, length: int, max_width: int, label: *byte
   let actual_col: int = col;
   if (actual_col < 0) { actual_col = 0; }
   loop [i: int = 0](i < actual_col) : (++i) { output(" "); }
-  output("\x1b[1;33m");
+  c_bold_yellow();
   let indicator_length: int = length;
   if (indicator_length <= 0) { indicator_length = 1; }
   loop [i: int = 0](i < indicator_length) : (++i) { output("^"); }
   if (label != cast<*byte>(0)) { output(" ", label); }
-  output("\x1b[0m\n");
+  c_reset();
+  output("\n");
 }
 
 pub const error_report -> fn () int {
@@ -158,13 +174,14 @@ pub const error_report -> fn () int {
     let e: *ErrorInformation = &error_list[i];
 
     // Error header
-    output("\x1b[1;31merror\x1b[0m");
-    output("\x1b[1;37m[", e.error_type, "]\x1b[0m");
+    c_bold_red(); output("error"); c_reset();
+    c_bold_white(); output("[", e.error_type, "]"); c_reset();
     output(": ", e.message, "\n");
 
     // File location
-    output("  \x1b[1;34m-->\x1b[0m");
-    output("\x1b[90m ", e.file_path, ":", e.line, ":", e.col, "\x1b[0m\n");
+    output("  "); c_bold_blue(); output("-->"); c_reset();
+    c_gray(); output(" ", e.file_path, ":", e.line, ":", e.col); c_reset();
+    output("\n");
 
     // Gutter
     print_gutter(max_width);
@@ -179,13 +196,13 @@ pub const error_report -> fn () int {
     // Note
     if (e.note != cast<*byte>(0)) {
       print_gutter(max_width);
-      output("\x1b[1;36mnote\x1b[0m: ", e.note, "\n");
+      c_bold_cyan(); output("note"); c_reset(); output(": ", e.note, "\n");
     }
 
     // Help
     if (e.help != cast<*byte>(0)) {
       print_gutter(max_width);
-      output("\x1b[1;32mhelp\x1b[0m: ", e.help, "\n");
+      c_bold_green(); output("help"); c_reset(); output(": ", e.help, "\n");
     }
 
     print_gutter(max_width);
@@ -194,10 +211,11 @@ pub const error_report -> fn () int {
     if (i < error_count - 1) { output("\n"); }
   }
 
+  c_bold_red(); output("error"); c_reset();
   if (error_count == 1) {
-    output("\x1b[1;31merror\x1b[0m: aborting due to previous error\n");
+    output(": aborting due to previous error\n");
   } else {
-    output("\x1b[1;31merror\x1b[0m: aborting due to ", error_count, " previous errors\n");
+    output(": aborting due to ", error_count, " previous errors\n");
   }
 
   return 1;
