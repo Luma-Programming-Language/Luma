@@ -1,0 +1,228 @@
+@module "color"
+
+pub const Color -> enum {
+  RESET,
+  BLACK,
+  RED,
+  GREEN,
+  YELLOW,
+  BLUE,
+  MAGENTA,
+  CYAN,
+  WHITE,
+
+  BRIGHT_BLACK,
+  BRIGHT_RED,
+  BRIGHT_GREEN,
+  BRIGHT_YELLOW,
+  BRIGHT_BLUE,
+  BRIGHT_MAGENTA,
+  BRIGHT_CYAN,
+  BRIGHT_WHITE,
+};
+
+pub const Style -> enum {
+  RESET_ALL,
+  BOLD,
+  DIM,
+  ITALIC,
+  UNDERLINE,
+  BLINK,
+  FAST_BLINK,
+  REVERSE,
+  HIDDEN,
+  STRIKETHROUGH,
+};
+
+const FG_RGB_PREFIX: *byte = "\x1b[38;2;";
+const BG_RGB_PREFIX: *byte = "\x1b[48;2;";
+
+pub const RESET_CODE: *byte = "\x1b[0m";
+
+pub const fg -> fn (c: Color) *byte {
+  switch (c) {
+    Color::RESET         -> { return "\x1b[0m"; }
+    Color::BLACK         -> { return "\x1b[30m"; }
+    Color::RED           -> { return "\x1b[31m"; }
+    Color::GREEN         -> { return "\x1b[32m"; }
+    Color::YELLOW        -> { return "\x1b[33m"; }
+    Color::BLUE          -> { return "\x1b[34m"; }
+    Color::MAGENTA       -> { return "\x1b[35m"; }
+    Color::CYAN          -> { return "\x1b[36m"; }
+    Color::WHITE         -> { return "\x1b[37m"; }
+
+    Color::BRIGHT_BLACK   -> { return "\x1b[90m"; }
+    Color::BRIGHT_RED     -> { return "\x1b[91m"; }
+    Color::BRIGHT_GREEN   -> { return "\x1b[92m"; }
+    Color::BRIGHT_YELLOW  -> { return "\x1b[93m"; }
+    Color::BRIGHT_BLUE    -> { return "\x1b[94m"; }
+    Color::BRIGHT_MAGENTA -> { return "\x1b[95m"; }
+    Color::BRIGHT_CYAN    -> { return "\x1b[96m"; }
+    Color::BRIGHT_WHITE   -> { return "\x1b[97m"; }
+  }
+  return "\x1b[0m";
+}
+
+pub const bg -> fn (c: Color) *byte {
+  switch (c) {
+    Color::RESET         -> { return "\x1b[0m"; }
+    Color::BLACK         -> { return "\x1b[40m"; }
+    Color::RED           -> { return "\x1b[41m"; }
+    Color::GREEN         -> { return "\x1b[42m"; }
+    Color::YELLOW        -> { return "\x1b[43m"; }
+    Color::BLUE          -> { return "\x1b[44m"; }
+    Color::MAGENTA       -> { return "\x1b[45m"; }
+    Color::CYAN          -> { return "\x1b[46m"; }
+    Color::WHITE         -> { return "\x1b[47m"; }
+
+    Color::BRIGHT_BLACK   -> { return "\x1b[100m"; }
+    Color::BRIGHT_RED     -> { return "\x1b[101m"; }
+    Color::BRIGHT_GREEN   -> { return "\x1b[102m"; }
+    Color::BRIGHT_YELLOW  -> { return "\x1b[103m"; }
+    Color::BRIGHT_BLUE    -> { return "\x1b[104m"; }
+    Color::BRIGHT_MAGENTA -> { return "\x1b[105m"; }
+    Color::BRIGHT_CYAN    -> { return "\x1b[106m"; }
+    Color::BRIGHT_WHITE   -> { return "\x1b[107m"; }
+  }
+  return "\x1b[0m";
+}
+
+pub const style -> fn (s: Style) *byte {
+  switch (s) {
+    Style::RESET_ALL      -> { return "\x1b[0m"; }
+    Style::BOLD           -> { return "\x1b[1m"; }
+    Style::DIM            -> { return "\x1b[2m"; }
+    Style::ITALIC         -> { return "\x1b[3m"; }
+    Style::UNDERLINE      -> { return "\x1b[4m"; }
+    Style::BLINK          -> { return "\x1b[5m"; }
+    Style::FAST_BLINK     -> { return "\x1b[6m"; }
+    Style::REVERSE        -> { return "\x1b[7m"; }
+    Style::HIDDEN         -> { return "\x1b[8m"; }
+    Style::STRIKETHROUGH  -> { return "\x1b[9m"; }
+  }
+  return "\x1b[0m";
+}
+
+const strlen -> fn (s: *byte) int {
+  let n: int = 0;
+  loop (s[n] != cast<byte>(0)) {
+    n = n + 1;
+  }
+  return n;
+}
+
+#returns_ownership
+const concat -> fn (a: *byte, b: *byte) *byte {
+  let la: int = strlen(a);
+  let lb: int = strlen(b);
+  let out: *byte = cast<*byte>(alloc(la + lb + 1));
+  let pos: int = 0;
+  loop [i: int = 0](i < la) : (++i) {
+    out[pos] = a[i];
+    pos = pos + 1;
+  }
+  loop [i: int = 0](i < lb) : (++i) {
+    out[pos] = b[i];
+    pos = pos + 1;
+  }
+  out[pos] = '\0';
+  return out;
+}
+
+#returns_ownership
+pub const paint -> fn (text: *byte, c: Color) *byte {
+  let left: *byte = concat(fg(c), text);
+  let out: *byte = concat(left, RESET_CODE);
+  free(left);
+  return out;
+}
+
+#returns_ownership
+pub const paint_bg -> fn (text: *byte, c: Color) *byte {
+  let left: *byte = concat(bg(c), text);
+  let out: *byte = concat(left, RESET_CODE);
+  free(left);
+  return out;
+}
+
+#returns_ownership
+pub const paint_with -> fn (text: *byte, c: Color, s: Style) *byte {
+  let pre: *byte = concat(style(s), fg(c));
+  let mid: *byte = concat(pre, text);
+  free(pre);
+  let out: *byte = concat(mid, RESET_CODE);
+  free(mid);
+  return out;
+}
+
+const clamp8 -> fn (v: int) int {
+  if (v < 0) return 0;
+  if (v > 255) return 255;
+  return v;
+}
+
+#returns_ownership
+const num_to_str -> fn (n: int) *byte {
+  let out: *byte = cast<*byte>(alloc(21));
+  let pos: int = 20;
+  out[pos] = '\0';
+
+  let v: int = clamp8(n);
+  loop (1) {
+    pos = pos - 1;
+    out[pos] = cast<byte>(cast<int>('0') + (v % 10));
+    v = v / 10;
+    if (v == 0) break;
+  }
+
+  let len: int = 20 - pos;
+  loop [i: int = 0](i < len) : (++i) {
+    out[i] = out[pos + i];
+  }
+  out[len] = '\0';
+  return out;
+}
+
+#returns_ownership
+pub const fg_rgb -> fn (r: int, g: int, b: int) *byte {
+  let rs: *byte = num_to_str(clamp8(r));
+  let gs: *byte = num_to_str(clamp8(g));
+  let bs: *byte = num_to_str(clamp8(b));
+
+  let p1: *byte = concat(FG_RGB_PREFIX, rs);
+  free(rs);
+  let p2: *byte = concat(p1, ";");
+  free(p1);
+  let p3: *byte = concat(p2, gs);
+  free(gs);
+  let p4: *byte = concat(p3, ";");
+  free(p3);
+  let p5: *byte = concat(p4, bs);
+  free(bs);
+  let out: *byte = concat(p5, "m");
+  free(p5);
+
+  return out;
+}
+
+#returns_ownership
+pub const bg_rgb -> fn (r: int, g: int, b: int) *byte {
+  let rs: *byte = num_to_str(clamp8(r));
+  let gs: *byte = num_to_str(clamp8(g));
+  let bs: *byte = num_to_str(clamp8(b));
+
+  let p1: *byte = concat(BG_RGB_PREFIX, rs);
+  free(rs);
+  let p2: *byte = concat(p1, ";");
+  free(p1);
+  let p3: *byte = concat(p2, gs);
+  free(gs);
+  let p4: *byte = concat(p3, ";");
+  free(p3);
+  let p5: *byte = concat(p4, bs);
+  free(bs);
+  let out: *byte = concat(p5, "m");
+  free(p5);
+
+  return out;
+}

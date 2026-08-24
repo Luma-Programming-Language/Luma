@@ -7,7 +7,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
   let args: Args = ARGS::init_args(argc, argv);
   args = args.tail(); // remove the ./test and only see if we have any args
   
-  if (args.contains("--help") == 1 || args.is_empty()) {
+  if (args.contains("--help") == 1 || args.is_empty() == 1) {
      output("Usage: program [options]\n");
      return 0;
   }
@@ -19,7 +19,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
       output(STR::strlen(arg), " | ", arg, "\n");
   }
 
-  let x: int = "hello";
+  // let x: int = "hello";
 
   return 0;
 }

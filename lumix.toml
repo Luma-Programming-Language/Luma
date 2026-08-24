@@ -11,7 +11,7 @@ binary_dir = "bin"
 
 [dependiecs]
 paths = [
-    ""
+    "lib/color.lx"
 ]
 
 [test]
