@@ -4,7 +4,7 @@
 @use "std_cstring" as STR
 
 pub const main -> fn (argc: int, argv: **byte) int {
-  let args: Args = ARGS::init_args(argc, argv);
+  let args: ARGS::Args = ARGS::init_args(argc, argv);
   args = args.tail(); // remove the ./test and only see if we have any args
   
   if (args.contains("--help") == 1 || args.is_empty() == 1) {
@@ -12,7 +12,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
      return 0;
   }
 
-  let iter: ArgsIter = args.iter();
+  let iter: ARGS::ArgsIter = args.iter();
   loop {
       let arg: *byte = iter.next();
       if (arg == cast<*byte>(0)) break;

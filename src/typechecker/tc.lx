@@ -5,7 +5,6 @@
 
 @use "constants"    as CONST
 @use "ast"          as AST
-@use "lexer_tokens" as TOK
 @use "error"        as ERO
 
 @use "tc_core"      as CORE
@@ -13,39 +12,39 @@
 @use "tc_stmt"      as STMT
 @use "tc_error"     as ERR
 
-const find_module_scope -> fn (registry: *Vector, name: *byte) *Scope {
+const find_module_scope -> fn (registry: *VEC::Vector, name: *byte) *CORE::Scope {
   let c: int = registry.size;
   loop [i: int = 0](i < c) : (++i) {
-    let imp: *ModuleImport = cast<*ModuleImport>(registry.get(i));
+    let imp: *CORE::ModuleImport = cast<*CORE::ModuleImport>(registry.get(i));
     if (STR::strcmp(imp.module_name, name) == 0) return imp.module_scope;
   }
-  return cast<*Scope>(0);
+  return cast<*CORE::Scope>(0);
 }
 
-const resolve_uses -> fn (mnode: *AstNode, ms: *Scope, registry: *Vector) void {
-  let mod: *ModuleNode = cast<*ModuleNode>(mnode);
-  let body: **AstNode = mod.body;
+const resolve_uses -> fn (mnode: *AST::AstNode, ms: *CORE::Scope, registry: *VEC::Vector) void {
+  let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
+  let body: **AST::AstNode = mod.body;
   let bc: int = mod.body_count;
 
   loop [i: int = 0](i < bc) : (++i) {
-    let bn: *AstNode = body[i];
+    let bn: *AST::AstNode = body[i];
     if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
-      let u: *UseNode = cast<*UseNode>(bn);
-      let target: *Scope = find_module_scope(registry, u.module_name);
+      let u: *AST::UseNode = cast<*AST::UseNode>(bn);
+      let target: *CORE::Scope = find_module_scope(registry, u.module_name);
       SCOPE::add_module_import(ms, u.module_name, u.alias, target);
     }
   }
 }
 
-const check_module_uses -> fn (mnode: *AstNode, registry: *Vector) void {
-  let mod: *ModuleNode = cast<*ModuleNode>(mnode);
+const check_module_uses -> fn (mnode: *AST::AstNode, registry: *VEC::Vector) void {
+  let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let bc: int = mod.body_count;
   loop [i: int = 0](i < bc) : (++i) {
-    let bn: *AstNode = mod.body[i];
+    let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
-      let u: *UseNode = cast<*UseNode>(bn);
-      let target: *Scope = find_module_scope(registry, u.module_name);
-      if (target == cast<*Scope>(0)) {
+      let u: *AST::UseNode = cast<*AST::UseNode>(bn);
+      let target: *CORE::Scope = find_module_scope(registry, u.module_name);
+      if (target == cast<*CORE::Scope>(0)) {
         // +2 for the quotes around the module name in the source text.
         let token_len: int = STR::strlen(u.module_name) + 2;
         ERR::tc_error_len(bn, "Module Error",
@@ -55,28 +54,28 @@ const check_module_uses -> fn (mnode: *AstNode, registry: *Vector) void {
   }
 }
 
-const register_module_body -> fn (mnode: *AstNode, ms: *Scope) void {
-  let mod: *ModuleNode = cast<*ModuleNode>(mnode);
-  let body: **AstNode = mod.body;
+const register_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) void {
+  let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
+  let body: **AST::AstNode = mod.body;
   let bc: int = mod.body_count;
   loop [i: int = 0](i < bc) : (++i) {
     STMT::register_declaration(body[i], ms);
   }
 }
 
-const check_module_body -> fn (mnode: *AstNode, ms: *Scope) bool {
-  let mod: *ModuleNode = cast<*ModuleNode>(mnode);
+const check_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) bool {
+  let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let bc: int = mod.body_count;
 
   let ok: bool = true;
   loop [i: int = 0](i < bc) : (++i) {
-    let bn: *AstNode = mod.body[i];
+    let bn: *AST::AstNode = mod.body[i];
 
     if (bn.kind == AST::NodeType::PREPROCESSOR_OS) {
-      let body: *AstNode = STMT::resolve_os_body(bn, ms);
-      if (body != cast<*AstNode>(0)) {
+      let body: *AST::AstNode = STMT::resolve_os_body(bn, ms);
+      if (body != cast<*AST::AstNode>(0)) {
         if (body.kind == AST::NodeType::STMT_BLOCK) {
-          let blk: *BlockNode = cast<*BlockNode>(body);
+          let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
           let sc: int = blk.stmt_count;
           loop [j: int = 0](j < sc) : (++j) {
             if (STMT::typecheck_statement(blk.statements[j], ms) == false) ok = false;
@@ -90,18 +89,18 @@ const check_module_body -> fn (mnode: *AstNode, ms: *Scope) bool {
   return ok;
 }
 
-const report_module_allocations -> fn (analyzer: *StaticMemoryAnalyzer, file_path: *byte) void {
-  if (analyzer == cast<*StaticMemoryAnalyzer>(0)) return;
+const report_module_allocations -> fn (analyzer: *CORE::StaticMemoryAnalyzer, file_path: *byte) void {
+  if (analyzer == cast<*CORE::StaticMemoryAnalyzer>(0)) return;
 
-  let v: *Vector = analyzer.allocations;
+  let v: *VEC::Vector = analyzer.allocations;
   let count: int = v.size;
   loop [i: int = 0](i < count) : (++i) {
-    let a: *StaticAllocation = cast<*StaticAllocation>(v.get(i));
+    let a: *CORE::StaticAllocation = cast<*CORE::StaticAllocation>(v.get(i));
     if (a.reported) continue;
     if (STR::strcmp(a.file_path, file_path) != 0) continue;
 
     if (a.free_count > 1) {
-      let err: ErrorInformation = ErrorInformation {
+      let err: ERO::ErrorInformation = ERO::ErrorInformation {
         error_type:   "Double Free",
         file_path:    a.file_path,
         message:      "this pointer is freed more than once",
@@ -119,7 +118,7 @@ const report_module_allocations -> fn (analyzer: *StaticMemoryAnalyzer, file_pat
     }
 
     if (a.has_matching_free == false && a.address_taken == false) {
-      let err2: ErrorInformation = ErrorInformation {
+      let err2: ERO::ErrorInformation = ERO::ErrorInformation {
         error_type:   "Memory Leak",
         file_path:    a.file_path,
         message:      "this allocation is never freed",
@@ -137,10 +136,10 @@ const report_module_allocations -> fn (analyzer: *StaticMemoryAnalyzer, file_pat
   }
 }
 
-pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
-  if (node == cast<*AstNode>(0)) return true;
+pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) bool {
+  if (node == cast<*AST::AstNode>(0)) return true;
 
-  let root: *Scope = SCOPE::scope_init("global", config.check_mem, config.os);
+  let root: *CORE::Scope = SCOPE::scope_init("global", config.check_mem, config.os);
 
   if (node.kind != AST::NodeType::PROGRAM) {
     STMT::typecheck_statement(node, root);
@@ -148,22 +147,22 @@ pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
     return true;
   }
 
-  let prog: *ProgramNode = cast<*ProgramNode>(node);
+  let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(node);
   let mc: int = prog.module_count;
-  let modules: **AstNode = prog.modules;
+  let modules: **AST::AstNode = prog.modules;
 
-  let registry: Vector = VEC::create_vector(sizeof<ModuleImport>);
+  let registry: VEC::Vector = VEC::create_vector(sizeof<CORE::ModuleImport>);
 
   // ── Pass 1: register a scope for every module ───────────────────────────────
   loop [i: int = 0](i < mc) : (++i) {
-    let mnode: *AstNode = modules[i];
+    let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
-      let mod: *ModuleNode = cast<*ModuleNode>(mnode);
-      let ms: *Scope = SCOPE::scope_create_child(root, "module");
+      let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
+      let ms: *CORE::Scope = SCOPE::scope_create_child(root, "module");
       ms.is_module_scope = true;
       ms.module_name     = mod.name;
 
-      let imp: ModuleImport = ModuleImport {
+      let imp: CORE::ModuleImport = CORE::ModuleImport {
         module_name:  mod.name,
         alias:        mod.name,
         module_scope: ms,
@@ -174,20 +173,24 @@ pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
 
   // ── Pass 2: resolve @use imports ────────────────────────────────────────────
   loop [i: int = 0](i < mc) : (++i) {
-    let mnode: *AstNode = modules[i];
+    let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
-      let mod: *ModuleNode = cast<*ModuleNode>(mnode);
-      let ms: *Scope = find_module_scope(&registry, mod.name);
+      let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
+      let ms: *CORE::Scope = find_module_scope(&registry, mod.name);
       resolve_uses(mnode, ms, &registry);
     }
   }
 
   // ── Pass 3a: forward-register declarations ──────────────────────────────────
   loop [i: int = 0](i < mc) : (++i) {
-    let mnode: *AstNode = modules[i];
+    let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
-      let mod: *ModuleNode = cast<*ModuleNode>(mnode);
-      let ms: *Scope = find_module_scope(&registry, mod.name);
+      let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
+      let ms: *CORE::Scope = find_module_scope(&registry, mod.name);
+      // Forward-registration can itself raise errors (e.g. resolve_type_ref
+      // on a param/return type) — set the error context for *this* module
+      // now, not just in Pass 3b, or those errors report a null file/line.
+      ERR::tc_error_init(mod);
       register_module_body(mnode, ms);
     }
   }
@@ -195,10 +198,10 @@ pub const typecheck -> fn (node: *AstNode, config: LumaBuildConfig) bool {
   // ── Pass 3b: typecheck bodies ───────────────────────────────────────────────
   let ok: bool = true;
   loop [i: int = 0](i < mc) : (++i) {
-    let mnode: *AstNode = modules[i];
+    let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
-      let mod: *ModuleNode = cast<*ModuleNode>(mnode);
-      let ms: *Scope = find_module_scope(&registry, mod.name);
+      let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
+      let ms: *CORE::Scope = find_module_scope(&registry, mod.name);
 
       ERR::tc_error_init(mod);
       check_module_uses(mnode, &registry);

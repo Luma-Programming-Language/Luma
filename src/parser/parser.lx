@@ -2,12 +2,8 @@
 
 @use "std_vector" as VEC
 @use "std_memory" as MEM
-@use "std_io"     as IO
 
 @use "lexer_tokens" as TOK
-@use "lexer"        as LEXER
-@use "constants"    as CONST
-@use "commands"     as COMD
 @use "error"        as ERR
 @use "ast"          as AST
 
@@ -107,7 +103,7 @@ pub const search_unop_map -> fn (kind: int) int {
   return -1;
 }
 
-const EOF_TOK: Token = { 
+const EOF_TOK: TOK::Token = { 
   val: "", 
   kind: TOK::LumaTokenType::TOK_EOF, 
   len: 0, 
@@ -160,7 +156,7 @@ pub const get_bp -> fn (kind: int) int {
 
 pub const Parser -> struct {
   file_path:   *byte,
-  tks:         *Token,
+  tks:         *TOK::Token,
   tok_count:   int,
   pos:         int,
   had_error:   int,
@@ -169,26 +165,26 @@ pub const Parser -> struct {
     return (self.pos < self.tok_count && 
             self.tks[self.pos].kind != TOK::LumaTokenType::TOK_EOF); 
   },
-  peek       -> fn (offset: int) Token {
+  peek       -> fn (offset: int) TOK::Token {
     let idx: int = self.pos + offset;
     if (idx < self.tok_count)  
       return self.tks[idx]; 
     return EOF_TOK; 
   },
-  current    -> fn () Token {
+  current    -> fn () TOK::Token {
     if (self.pos < self.tok_count)  
       return self.tks[self.pos]; 
     return EOF_TOK; 
   },
-  advance -> fn () Token {
+  advance -> fn () TOK::Token {
     if (self.has_tokens()) {
-      let tok: Token = self.tks[self.pos];
+      let tok: TOK::Token = self.tks[self.pos];
       self.pos = self.pos + 1;
       return tok;
     }
     return EOF_TOK;
   },
-  consume    -> fn (kind: int, err_msg: *byte) Token {
+  consume    -> fn (kind: int, err_msg: *byte) TOK::Token {
     let line: int = self.current().line;
     let col:  int = self.current().col;
     let len:  int = self.current().len;
@@ -197,7 +193,7 @@ pub const Parser -> struct {
       return self.advance();
 
     // Create a Parser Error
-    let info: ErrorInformation = ErrorInformation {
+    let info: ERR::ErrorInformation = ERR::ErrorInformation {
       error_type:   "Parser Error",
       file_path:    self.file_path,
       message:      err_msg,
@@ -221,7 +217,7 @@ pub const Parser -> struct {
     let col:  int = self.current().col;
     let len:  int = self.current().len;
 
-    let info: ErrorInformation = ErrorInformation {
+    let info: ERR::ErrorInformation = ERR::ErrorInformation {
       error_type:   err_type,
       file_path:    self.file_path,
       message:      err_msg,
@@ -251,7 +247,7 @@ pub const Parser -> struct {
 };
 
 #returns_ownership
-pub const create_parser -> fn (tks: *Token, tok_count: int, file_path: *byte) *Parser {
+pub const create_parser -> fn (tks: *TOK::Token, tok_count: int, file_path: *byte) *Parser {
   let p: *Parser = cast<*Parser>(alloc(sizeof<Parser>));
 
   p.file_path = file_path;
@@ -269,17 +265,17 @@ pub const free_parser -> fn (p: *Parser) void {
 }
 
 #returns_ownership
-pub const vec_to_node_array -> fn (v: *Vector) **AstNode {
-  if (v.size == 0) return cast<**AstNode>(0);
+pub const vec_to_node_array -> fn (v: *VEC::Vector) **AST::AstNode {
+  if (v.size == 0) return cast<**AST::AstNode>(0);
 
-  let arr: **AstNode = cast<**AstNode>(alloc(v.size * v.element_size));
+  let arr: **AST::AstNode = cast<**AST::AstNode>(alloc(v.size * v.element_size));
   MEM::memcpy(cast<*void>(arr), v.data, v.size * v.element_size);
 
   return arr;
 }
 
 #returns_ownership
-pub const vec_to_byte_array -> fn (v: *Vector) **byte {
+pub const vec_to_byte_array -> fn (v: *VEC::Vector) **byte {
   if (v.size == 0) return cast<**byte>(0);
 
   let allocation_size: int = v.size * sizeof<*byte>;

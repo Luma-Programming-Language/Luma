@@ -5,9 +5,9 @@
 
 #returns_ownership
 pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
-                            body: **AstNode, body_count: int, line: int, col: int,
-                            source: *byte, tokens: *Token, token_count: int) *AstNode {
-  let node: *ModuleNode = cast<*ModuleNode>(alloc(sizeof<ModuleNode>));
+                            body: **AST::AstNode, body_count: int, line: int, col: int,
+                            source: *byte, tokens: *TOK::Token, token_count: int) *AST::AstNode {
+  let node: *AST::ModuleNode = cast<*AST::ModuleNode>(alloc(sizeof<AST::ModuleNode>));
 
   node.kind = AST::NodeType::PREPROCESSOR_MODULE;
   node.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
@@ -24,12 +24,12 @@ pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
   node.tokens = tokens;
   node.token_count = token_count;
 
-  return cast<*AstNode>(node);
+  return cast<*AST::AstNode>(node);
 }
 
 #returns_ownership
-pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int) *AstNode {
-  let node: *UseNode = cast<*UseNode>(alloc(sizeof<UseNode>));
+pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int) *AST::AstNode {
+  let node: *AST::UseNode = cast<*AST::UseNode>(alloc(sizeof<AST::UseNode>));
 
   node.kind = AST::NodeType::PREPROCESSOR_USE;
   node.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
@@ -39,13 +39,13 @@ pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int)
   node.module_name=  module_name;
   node.alias = alias;
 
-  return cast<*AstNode>(node);
+  return cast<*AST::AstNode>(node);
 }
 
 #returns_ownership
-pub const make_os -> fn (platforms: **byte, bodies: **AstNode, has_default: int, 
-                         default_body: *AstNode, line: int, col: int) *AstNode {
-  let node: *OsNode = cast<*OsNode>(alloc(sizeof<OsNode>));
+pub const make_os -> fn (platforms: **byte, bodies: **AST::AstNode, has_default: int, 
+                         default_body: *AST::AstNode, line: int, col: int) *AST::AstNode {
+  let node: *AST::OsNode = cast<*AST::OsNode>(alloc(sizeof<AST::OsNode>));
 
   node.kind = AST::NodeType::PREPROCESSOR_OS;
   node.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
@@ -57,12 +57,12 @@ pub const make_os -> fn (platforms: **byte, bodies: **AstNode, has_default: int,
   node.has_default = has_default;
   node.default_body = default_body;
 
-  return cast<*AstNode>(node);
+  return cast<*AST::AstNode>(node);
 }
 
 #returns_ownership
-pub const make_link -> fn (lib_name: *byte, line: int, col: int) *AstNode {
-  let node: *LinkNode = cast<*LinkNode>(alloc(sizeof<LinkNode>));
+pub const make_link -> fn (lib_name: *byte, line: int, col: int) *AST::AstNode {
+  let node: *AST::LinkNode = cast<*AST::LinkNode>(alloc(sizeof<AST::LinkNode>));
 
   node.kind = AST::NodeType::PREPROCESSOR_LINK;
   node.category = AST::NodeCategory::Node_Category_PREPROCESSOR;
@@ -71,5 +71,5 @@ pub const make_link -> fn (lib_name: *byte, line: int, col: int) *AstNode {
 
   node.lib_name = lib_name;
 
-  return cast<*AstNode>(node);
+  return cast<*AST::AstNode>(node);
 }

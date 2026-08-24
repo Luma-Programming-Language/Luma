@@ -1,0 +1,224 @@
+// ============================================================================
+// sdl2.lx - SDL2 graphics library FFI bindings
+// ============================================================================
+
+//! FFI bindings to SDL2 (Simple DirectMedia Layer) graphics library.
+//!
+//! Provides window creation, rendering, input event polling, and timing
+//! functions via raw C FFI calls to libSDL2. Includes helpers for
+//! constructing `SDL_Rect` values with correct C ABI layout.
+//!
+//! PLATFORM: Linux x86_64, macOS
+//!
+//! # Example
+//! ```luma
+//! sdl2::SDL_Init(sdl2::SDL_INIT_VIDEO);
+//! defer sdl2::SDL_Quit();
+//!
+//! let win: *void = sdl2::SDL_CreateWindow(
+//!     "Hello", sdl2::SDL_WINDOWPOS_CENTERED, sdl2::SDL_WINDOWPOS_CENTERED,
+//!     800, 600, sdl2::SDL_WINDOW_SHOWN
+//! );
+//! ```
+
+@module "std_sdl2"
+
+@os {
+    "linux"   -> { @link("libSDL2.so") }
+    "macos"   -> { @link("libSDL2.dylib") }
+}
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/// Initialize all SDL subsystems
+pub const SDL_INIT_EVERYTHING: int = 255;
+/// Initialize the audio subsystem
+pub const SDL_INIT_AUDIO: int = 1;
+/// Initialize the video subsystem
+pub const SDL_INIT_VIDEO: int = 32;
+/// Initialize the timer subsystem
+pub const SDL_INIT_TIMER: int = 256;
+/// Initialize the game controller subsystem
+pub const SDL_INIT_GAMECONTROLLER: int = 512;
+/// Initialize the events subsystem
+pub const SDL_INIT_EVENTS: int = 1024;
+
+/// Center the window on the display
+pub const SDL_WINDOWPOS_CENTERED: int = 805240832;
+/// Window should be visible
+pub const SDL_WINDOW_SHOWN:       int = 4;
+
+/// Use hardware-accelerated rendering
+pub const SDL_RENDERER_ACCELERATED:  int = 2;
+/// Synchronize render presents with vertical refresh
+pub const SDL_RENDERER_PRESENTVSYNC: int = 4;
+
+/// Window close event type
+pub const SDL_QUIT:    int = 256;
+/// Key down event type
+pub const SDL_KEYDOWN: int = 768;
+
+// ============================================================================
+// SDL2 Functions
+// ============================================================================
+
+@os {
+    "linux" -> {
+        /// Initialize SDL subsystems
+        pub const SDL_Init               -> fn (flags: int) int;
+        /// Shut down SDL
+        pub const SDL_Quit               -> fn () void;
+        /// Get the last SDL error message
+        pub const SDL_GetError           -> fn () *byte;
+        /// Create a window
+        pub const SDL_CreateWindow       -> fn (title: *byte, x: int, y: int, w: int, h: int, flags: int) *void;
+        /// Destroy a window
+        pub const SDL_DestroyWindow      -> fn (window: *void) void;
+        /// Create a 2D renderer for a window
+        pub const SDL_CreateRenderer     -> fn (window: *void, index: int, flags: int) *void;
+        /// Destroy a renderer
+        pub const SDL_DestroyRenderer    -> fn (renderer: *void) void;
+        /// Set the color used for drawing operations
+        pub const SDL_SetRenderDrawColor -> fn (renderer: *void, r: int, g: int, b: int, a: int) int;
+        /// Clear the current rendering target with the draw color
+        pub const SDL_RenderClear        -> fn (renderer: *void) int;
+        /// Present the rendered frame on screen
+        pub const SDL_RenderPresent      -> fn (renderer: *void) void;
+        /// Fill a rectangle on the rendering target
+        pub const SDL_RenderFillRect     -> fn (renderer: *void, rect: *void) int;
+        /// Draw a rectangle outline on the rendering target
+        pub const SDL_RenderDrawRect     -> fn (renderer: *void, rect: *void) int;
+        /// Draw a line on the rendering target
+        pub const SDL_RenderDrawLine     -> fn (renderer: *void, x1: int, y1: int, x2: int, y2: int) int;
+        /// Draw a point on the rendering target
+        pub const SDL_RenderDrawPoint    -> fn (renderer: *void, x: int, y: int) int;
+        /// Poll for currently pending events
+        pub const SDL_PollEvent          -> fn (event: *void) int;
+        /// Wait a specified number of milliseconds
+        pub const SDL_Delay              -> fn (ms: int) void;
+        /// Get the number of milliseconds since SDL initialization
+        pub const SDL_GetTicks           -> fn () int;
+    }
+    "macos" -> {
+        /// Initialize SDL subsystems
+        pub const SDL_Init               -> fn (flags: int) int;
+        /// Shut down SDL
+        pub const SDL_Quit               -> fn () void;
+        /// Get the last SDL error message
+        pub const SDL_GetError           -> fn () *byte;
+        /// Create a window
+        pub const SDL_CreateWindow       -> fn (title: *byte, x: int, y: int, w: int, h: int, flags: int) *void;
+        /// Destroy a window
+        pub const SDL_DestroyWindow      -> fn (window: *void) void;
+        /// Create a 2D renderer for a window
+        pub const SDL_CreateRenderer     -> fn (window: *void, index: int, flags: int) *void;
+        /// Destroy a renderer
+        pub const SDL_DestroyRenderer    -> fn (renderer: *void) void;
+        /// Set the color used for drawing operations
+        pub const SDL_SetRenderDrawColor -> fn (renderer: *void, r: int, g: int, b: int, a: int) int;
+        /// Clear the current rendering target with the draw color
+        pub const SDL_RenderClear        -> fn (renderer: *void) int;
+        /// Present the rendered frame on screen
+        pub const SDL_RenderPresent      -> fn (renderer: *void) void;
+        /// Fill a rectangle on the rendering target
+        pub const SDL_RenderFillRect     -> fn (renderer: *void, rect: *void) int;
+        /// Draw a rectangle outline on the rendering target
+        pub const SDL_RenderDrawRect     -> fn (renderer: *void, rect: *void) int;
+        /// Draw a line on the rendering target
+        pub const SDL_RenderDrawLine     -> fn (renderer: *void, x1: int, y1: int, x2: int, y2: int) int;
+        /// Draw a point on the rendering target
+        pub const SDL_RenderDrawPoint    -> fn (renderer: *void, x: int, y: int) int;
+        /// Poll for currently pending events
+        pub const SDL_PollEvent          -> fn (event: *void) int;
+        /// Wait a specified number of milliseconds
+        pub const SDL_Delay              -> fn (ms: int) void;
+        /// Get the number of milliseconds since SDL initialization
+        pub const SDL_GetTicks           -> fn () int;
+    }
+}
+
+// ============================================================================
+// SDL_Rect
+//
+// C layout: four 32-bit signed ints = 16 bytes total.
+// Luma's int is 64-bit so we cannot use a struct with int fields —
+// the sizes would mismatch. Instead we use a [byte; 16] buffer and
+// pack the values ourselves as little-endian 32-bit integers.
+//
+// Use make_rect() to create one, then pass &your_rect to fill/draw calls.
+// ============================================================================
+
+/// SDL rectangle type with C ABI-compatible layout
+///
+/// Stores four 32-bit little-endian integers (x, y, w, h) in a
+/// 16-byte buffer to match the C `SDL_Rect` layout on x86_64.
+pub const SDL_Rect -> struct {
+    data: [byte; 16]
+};
+
+/// Write a 32-bit little-endian integer into a byte buffer at offset
+const write_i32 -> fn (buf: *byte, offset: int, val: int) void {
+    buf[offset]     = cast<byte>(val & 255);
+    buf[offset + 1] = cast<byte>((val >> 8)  & 255);
+    buf[offset + 2] = cast<byte>((val >> 16) & 255);
+    buf[offset + 3] = cast<byte>((val >> 24) & 255);
+}
+
+/// Create an SDL_Rect with the given position and size
+///
+/// # Parameters
+/// * `x` - X coordinate of the top-left corner
+/// * `y` - Y coordinate of the top-left corner
+/// * `w` - Width of the rectangle
+/// * `h` - Height of the rectangle
+///
+/// # Returns
+/// A new SDL_Rect with the specified dimensions
+///
+/// # Example
+/// ```luma
+/// let rect: SDL_Rect = sdl2::make_rect(10, 10, 200, 100);
+/// sdl2::SDL_RenderFillRect(renderer, &rect);
+/// ```
+pub const make_rect -> fn (x: int, y: int, w: int, h: int) SDL_Rect {
+    let r: SDL_Rect = SDL_Rect { data: cast<[byte; 16]>(0) };
+    let buf: *byte = cast<*byte>(&r);
+    write_i32(buf, 0,  x);
+    write_i32(buf, 4,  y);
+    write_i32(buf, 8,  w);
+    write_i32(buf, 12, h);
+    return r;
+}
+
+// ============================================================================
+// Event helpers
+// ============================================================================
+
+/// Extract the event type from an SDL event buffer
+///
+/// Reads the first 4 bytes of an SDL event as a little-endian 32-bit
+/// integer to determine the event type (e.g., SDL_QUIT, SDL_KEYDOWN).
+///
+/// # Parameters
+/// * `buf` - Pointer to the SDL event byte buffer
+///
+/// # Returns
+/// The event type as an integer
+///
+/// # Example
+/// ```luma
+/// let event: [byte; 64] = cast<[byte; 64]>(0);
+/// while (sdl2::SDL_PollEvent(&event)) {
+///     let t: int = sdl2::event_type(&event);
+///     if (t == sdl2::SDL_QUIT) { break; }
+/// }
+/// ```
+pub const event_type -> fn (buf: *byte) int {
+    let b0: int = cast<int>(buf[0]);
+    let b1: int = cast<int>(buf[1]);
+    let b2: int = cast<int>(buf[2]);
+    let b3: int = cast<int>(buf[3]);
+    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+}

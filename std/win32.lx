@@ -1,0 +1,340 @@
+//! std_win32.lx - Windows Win32 API Interface
+//!
+//! PLATFORM: Windows x86_64 only
+//!
+//! Provides direct access to kernel32.dll and other core Win32 APIs.
+//! This is the Windows equivalent of std_sys — use @os blocks to select
+//! between std_sys (POSIX) and std_win32 (Windows) in cross-platform code.
+
+@module "std_win32"
+
+// ============================================================================
+// HANDLE CONSTANTS
+// ============================================================================
+
+pub const INVALID_HANDLE_VALUE: int = -1;
+
+pub const STD_INPUT_HANDLE: int  = -10;
+pub const STD_OUTPUT_HANDLE: int = -11;
+pub const STD_ERROR_HANDLE: int  = -12;
+
+// ============================================================================
+// FILE ACCESS FLAGS
+// ============================================================================
+
+pub const GENERIC_READ: int    = 2147483648; // 0x80000000
+pub const GENERIC_WRITE: int   = 1073741824; // 0x40000000
+pub const GENERIC_EXECUTE: int = 536870912;  // 0x20000000
+pub const GENERIC_ALL: int     = 268435456;  // 0x10000000
+
+// ============================================================================
+// FILE SHARE FLAGS
+// ============================================================================
+
+pub const FILE_SHARE_NONE: int   = 0;
+pub const FILE_SHARE_READ: int   = 1;
+pub const FILE_SHARE_WRITE: int  = 2;
+pub const FILE_SHARE_DELETE: int = 4;
+
+// ============================================================================
+// FILE CREATION DISPOSITION
+// ============================================================================
+
+pub const CREATE_NEW: int        = 1;
+pub const CREATE_ALWAYS: int     = 2;
+pub const OPEN_EXISTING: int     = 3;
+pub const OPEN_ALWAYS: int       = 4;
+pub const TRUNCATE_EXISTING: int = 5;
+
+// ============================================================================
+// FILE ATTRIBUTE FLAGS
+// ============================================================================
+
+pub const FILE_ATTRIBUTE_READONLY: int  = 1;
+pub const FILE_ATTRIBUTE_HIDDEN: int    = 2;
+pub const FILE_ATTRIBUTE_SYSTEM: int    = 4;
+pub const FILE_ATTRIBUTE_DIRECTORY: int = 16;
+pub const FILE_ATTRIBUTE_NORMAL: int    = 128;
+
+// ============================================================================
+// FILE SEEK (SetFilePointer whence)
+// ============================================================================
+
+pub const FILE_BEGIN: int   = 0;
+pub const FILE_CURRENT: int = 1;
+pub const FILE_END: int     = 2;
+
+// ============================================================================
+// PROCESS / EXIT
+// ============================================================================
+
+pub const STILL_ACTIVE: int = 259;
+
+// ============================================================================
+// MEMORY PROTECTION FLAGS (VirtualAlloc)
+// ============================================================================
+
+pub const PAGE_NOACCESS: int          = 1;
+pub const PAGE_READONLY: int          = 2;
+pub const PAGE_READWRITE: int         = 4;
+pub const PAGE_EXECUTE: int           = 16;
+pub const PAGE_EXECUTE_READ: int      = 32;
+pub const PAGE_EXECUTE_READWRITE: int = 64;
+
+// ============================================================================
+// VIRTUAL ALLOC TYPE FLAGS
+// ============================================================================
+
+pub const MEM_COMMIT: int  = 4096;   // 0x1000
+pub const MEM_RESERVE: int = 8192;   // 0x2000
+pub const MEM_RELEASE: int = 32768;  // 0x8000
+
+// ============================================================================
+// SIGNAL / CONSOLE CONSTANTS
+// ============================================================================
+
+pub const CTRL_C_EVENT: int     = 0;
+pub const CTRL_BREAK_EVENT: int = 1;
+
+// ============================================================================
+// KERNEL32 IMPORTS — File I/O
+// ============================================================================
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const CreateFileA -> fn (
+    lpFileName: *byte,
+    dwDesiredAccess: int,
+    dwShareMode: int,
+    lpSecurityAttributes: *void,
+    dwCreationDisposition: int,
+    dwFlagsAndAttributes: int,
+    hTemplateFile: int
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const ReadFile -> fn (
+    hFile: int,
+    lpBuffer: *void,
+    nNumberOfBytesToRead: int,
+    lpNumberOfBytesRead: *int,
+    lpOverlapped: *void
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const WriteFile -> fn (
+    hFile: int,
+    lpBuffer: *void,
+    nNumberOfBytesToWrite: int,
+    lpNumberOfBytesWritten: *int,
+    lpOverlapped: *void
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const CloseHandle -> fn (hObject: int) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetFileSizeEx -> fn (hFile: int, lpFileSize: *int) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const SetFilePointerEx -> fn (
+    hFile: int,
+    liDistanceToMove: int,
+    lpNewFilePointer: *int,
+    dwMoveMethod: int
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const DeleteFileA -> fn (lpFileName: *byte) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const MoveFileA -> fn (lpExistingFileName: *byte, lpNewFileName: *byte) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const CopyFileA -> fn (
+    lpExistingFileName: *byte,
+    lpNewFileName: *byte,
+    bFailIfExists: int
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const CreateDirectoryA -> fn (
+    lpPathName: *byte,
+    lpSecurityAttributes: *void
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const RemoveDirectoryA -> fn (lpPathName: *byte) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetCurrentDirectoryA -> fn (
+    nBufferLength: int,
+    lpBuffer: *byte
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const SetCurrentDirectoryA -> fn (lpPathName: *byte) int;
+
+// ============================================================================
+// KERNEL32 IMPORTS — Console / Stdio
+// ============================================================================
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetStdHandle -> fn (nStdHandle: int) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const SetConsoleOutputCP -> fn (wCodePageID: int) int;
+
+// ============================================================================
+// KERNEL32 IMPORTS — Process
+// ============================================================================
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const ExitProcess -> fn (uExitCode: int) void;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetCurrentProcessId -> fn () int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const OpenProcess -> fn (
+    dwDesiredAccess: int,
+    bInheritHandle: int,
+    dwProcessId: int
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const TerminateProcess -> fn (hProcess: int, uExitCode: int) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetExitCodeProcess -> fn (hProcess: int, lpExitCode: *int) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const CreateProcessA -> fn (
+    lpApplicationName: *byte,
+    lpCommandLine: *byte,
+    lpProcessAttributes: *void,
+    lpThreadAttributes: *void,
+    bInheritHandles: int,
+    dwCreationFlags: int,
+    lpEnvironment: *void,
+    lpCurrentDirectory: *byte,
+    lpStartupInfo: *void,
+    lpProcessInformation: *void
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const WaitForSingleObject -> fn (hHandle: int, dwMilliseconds: int) int;
+
+// ============================================================================
+// KERNEL32 IMPORTS — Memory
+// ============================================================================
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const VirtualAlloc -> fn (
+    lpAddress: *void,
+    dwSize: int,
+    flAllocationType: int,
+    flProtect: int
+) *void;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const VirtualFree -> fn (
+    lpAddress: *void,
+    dwSize: int,
+    dwFreeType: int
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetProcessHeap -> fn () int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const HeapAlloc -> fn (hHeap: int, dwFlags: int, dwBytes: int) *void;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const HeapFree -> fn (hHeap: int, dwFlags: int, lpMem: *void) int;
+
+// ============================================================================
+// KERNEL32 IMPORTS — Error handling
+// ============================================================================
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetLastError -> fn () int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const SetLastError -> fn (dwErrCode: int) void;
+
+// ============================================================================
+// KERNEL32 IMPORTS — Time
+// ============================================================================
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const GetTickCount64 -> fn () int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const Sleep -> fn (dwMilliseconds: int) void;
+
+// ============================================================================
+// HELPER FUNCTIONS
+// ============================================================================
+
+/// Returns true if a handle is invalid.
+pub const is_invalid_handle -> fn (handle: int) bool {
+    return handle == INVALID_HANDLE_VALUE;
+}
+
+/// Returns true if a Win32 boolean return value indicates failure (0 = failed).
+pub const win32_failed -> fn (result: int) bool {
+    return result == 0;
+}
+
+/// Write a null-terminated string to a handle. Returns bytes written.
+pub const write_str -> fn (handle: int, s: *byte) int {
+    let len: int = 0;
+    loop (s[len] != cast<byte>(0)) : (++len) {}
+    let written: int = 0;
+    WriteFile(handle, cast<*void>(s), len, &written, cast<*void>(0));
+    return written;
+}
+
+/// Write a null-terminated string to stderr.
+pub const eprint -> fn (s: *byte) int {
+    let handle: int = GetStdHandle(STD_ERROR_HANDLE);
+    return write_str(handle, s);
+}
+
+/// Write a null-terminated string to stdout.
+pub const print_str -> fn (s: *byte) int {
+    let handle: int = GetStdHandle(STD_OUTPUT_HANDLE);
+    return write_str(handle, s);
+}
+
+/// Open a file for reading. Returns a handle or INVALID_HANDLE_VALUE.
+pub const open_read -> fn (path: *byte) int {
+    return CreateFileA(
+        path, GENERIC_READ, FILE_SHARE_READ,
+        cast<*void>(0), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+    );
+}
+
+/// Open a file for writing (creates or truncates). Returns a handle or INVALID_HANDLE_VALUE.
+pub const open_write -> fn (path: *byte) int {
+    return CreateFileA(
+        path, GENERIC_WRITE, FILE_SHARE_READ,
+        cast<*void>(0), CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0
+    );
+}
+
+/// Open a file for reading and writing. Returns a handle or INVALID_HANDLE_VALUE.
+pub const open_rdwr -> fn (path: *byte) int {
+    return CreateFileA(
+        path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
+        cast<*void>(0), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+    );
+}
+
+/// Get the size of an open file. Returns -1 on error.
+pub const file_size -> fn (handle: int) int {
+    let size: int = 0;
+    let ok: int = GetFileSizeEx(handle, &size);
+    if (ok == 0) { return -1; }
+    return size;
+}

@@ -3,12 +3,13 @@
 @use "std_cstring" as STR
 @use "error"      as ERR 
 @use "ast"        as AST
+@use "lexer_tokens" as TOK
 
-pub let g_tokens:      *Token = cast<*Token>(0);
+pub let g_tokens:      *TOK::Token = cast<*TOK::Token>(0);
 pub let g_token_count: int    = 0;
 pub let g_file_path:   *byte  = cast<*byte>(0);
 
-pub const tc_error_init -> fn (mod: *ModuleNode) void {
+pub const tc_error_init -> fn (mod: *AST::ModuleNode) void {
   g_tokens      = mod.tokens;
   g_token_count = mod.token_count;
   g_file_path   = mod.file_path;
@@ -22,8 +23,8 @@ pub const generate_line_for_current_module -> fn (line: int) *byte {
 // `label` is the short caption printed right after the caret underline
 // (e.g. `^^^^ not a numeric type`) — a few words, distinct from the full
 // sentence in `message`.
-const do_error -> fn (node: *AstNode, error_type: *byte, message: *byte, help: *byte, token_len: int, label: *byte) void {
-  let err: ErrorInformation = ErrorInformation {
+const do_error -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, help: *byte, token_len: int, label: *byte) void {
+  let err: ERR::ErrorInformation = ERR::ErrorInformation {
     error_type:   error_type,
     file_path:    g_file_path,
     message:      message,
@@ -39,15 +40,15 @@ const do_error -> fn (node: *AstNode, error_type: *byte, message: *byte, help: *
   ERR::error_add(err);
 }
 
-pub const tc_error -> fn (node: *AstNode, error_type: *byte, message: *byte, label: *byte) void {
+pub const tc_error -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, label: *byte) void {
   do_error(node, error_type, message, cast<*byte>(0), 1, label);
 }
 
-pub const tc_error_help -> fn (node: *AstNode, error_type: *byte, help: *byte, message: *byte, label: *byte) void {
+pub const tc_error_help -> fn (node: *AST::AstNode, error_type: *byte, help: *byte, message: *byte, label: *byte) void {
   do_error(node, error_type, message, help, 1, label);
 }
 
-pub const tc_error_id -> fn (node: *AstNode, identifier: *byte, error_type: *byte, message: *byte, label: *byte) void {
+pub const tc_error_id -> fn (node: *AST::AstNode, identifier: *byte, error_type: *byte, message: *byte, label: *byte) void {
   let len: int = 1;
   if (identifier != cast<*byte>(0)) {
     len = STR::strlen(identifier);
@@ -58,6 +59,6 @@ pub const tc_error_id -> fn (node: *AstNode, identifier: *byte, error_type: *byt
 // Like tc_error, but with an explicit caret width instead of the default 1
 // — for pointing at something wider than a single token, e.g. a quoted
 // string literal (whose reconstructed line text includes the quotes).
-pub const tc_error_len -> fn (node: *AstNode, error_type: *byte, message: *byte, token_len: int, label: *byte) void {
+pub const tc_error_len -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, token_len: int, label: *byte) void {
   do_error(node, error_type, message, cast<*byte>(0), token_len, label);
 }

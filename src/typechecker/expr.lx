@@ -9,29 +9,30 @@
 @use "tc_scope" as SCOPE
 @use "tc_error" as ERR
 @use "ast"      as AST
+@use "error" as ERR
 
-#returns_ownership pub const typecheck_expression -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode;
-#returns_ownership const typecheck_expression_inner -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode;
+#returns_ownership pub const typecheck_expression -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode;
+#returns_ownership const typecheck_expression_inner -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode;
 
-#returns_ownership const tc_literal     -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_identifier  -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_binary      -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_unary       -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_call        -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_assign      -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_ternary     -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_member      -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_index       -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_array       -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode;
-#returns_ownership const tc_cast        -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_deref       -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_addr        -> fn (expr: *AstNode, scope: *Scope) *AstNode;
-#returns_ownership const tc_struct_expr -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode;
+#returns_ownership const tc_literal     -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_identifier  -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_binary      -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_unary       -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_call        -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_assign      -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_ternary     -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_member      -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_index       -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_array       -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode;
+#returns_ownership const tc_cast        -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_deref       -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_addr        -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode;
+#returns_ownership const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode;
 
-const check_uaf                 -> fn (node: *AstNode, scope: *Scope) void;
-const track_free                -> fn (ptr_expr: *AstNode, scope: *Scope) void;
-const call_is_returns_ownership -> fn (call_expr: *AstNode, scope: *Scope) bool;
-pub const track_pointer_source  -> fn (name: *byte, value_expr: *AstNode, scope: *Scope) void;
+const check_uaf                 -> fn (node: *AST::AstNode, scope: *CORE::Scope) void;
+const track_free                -> fn (ptr_expr: *AST::AstNode, scope: *CORE::Scope) void;
+const call_is_returns_ownership -> fn (call_expr: *AST::AstNode, scope: *CORE::Scope) bool;
+pub const track_pointer_source  -> fn (name: *byte, value_expr: *AST::AstNode, scope: *CORE::Scope) void;
 
 #returns_ownership
 pub const qualify -> fn (a: *byte, b: *byte) *byte {
@@ -45,41 +46,41 @@ pub const qualify -> fn (a: *byte, b: *byte) *byte {
   return s;
 }
 
-const strip_pointer -> fn (t: *AstNode) *AstNode {
+const strip_pointer -> fn (t: *AST::AstNode) *AST::AstNode {
   if (TYPE::is_pointer_type(t)) {
-    let p: *PointerTypeNode = cast<*PointerTypeNode>(t);
+    let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
     return p.pointee_type;
   }
   return t;
 }
 
-const check_uaf -> fn (node: *AstNode, scope: *Scope) void {
-  if (node == cast<*AstNode>(0)) return;
+const check_uaf -> fn (node: *AST::AstNode, scope: *CORE::Scope) void {
+  if (node == cast<*AST::AstNode>(0)) return;
   if (node.kind != AST::NodeType::EXPR_IDENTIFIER) return;
 
-  let analyzer: *StaticMemoryAnalyzer = scope.memory_analyzer;
-  if (analyzer == cast<*StaticMemoryAnalyzer>(0)) return;
+  let analyzer: *CORE::StaticMemoryAnalyzer = scope.memory_analyzer;
+  if (analyzer == cast<*CORE::StaticMemoryAnalyzer>(0)) return;
 
-  let id: *IdentifierNode = cast<*IdentifierNode>(node);
+  let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(node);
   let fname: *byte = SCOPE::get_enclosing_function_name(scope);
   if (SCOPE::analyzer_check_use_after_free(analyzer, id.name, fname)) {
     ERR::tc_error_id(node, id.name, "Use After Free", "value used after being freed", "used after being freed");
   }
 }
 
-const track_free -> fn (ptr_expr: *AstNode, scope: *Scope) void {
-  if (ptr_expr == cast<*AstNode>(0)) return;
+const track_free -> fn (ptr_expr: *AST::AstNode, scope: *CORE::Scope) void {
+  if (ptr_expr == cast<*AST::AstNode>(0)) return;
   if (ptr_expr.kind != AST::NodeType::EXPR_IDENTIFIER) return;
 
-  let analyzer: *StaticMemoryAnalyzer = scope.memory_analyzer;
-  if (analyzer == cast<*StaticMemoryAnalyzer>(0)) return;
+  let analyzer: *CORE::StaticMemoryAnalyzer = scope.memory_analyzer;
+  if (analyzer == cast<*CORE::StaticMemoryAnalyzer>(0)) return;
 
-  let id: *IdentifierNode = cast<*IdentifierNode>(ptr_expr);
-  let fscope: *Scope = SCOPE::get_enclosing_function(scope);
+  let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(ptr_expr);
+  let fscope: *CORE::Scope = SCOPE::get_enclosing_function(scope);
 
   if (analyzer.skip_memory_tracking) {
-    if (fscope != cast<*Scope>(0)) {
-      let v: *Vector = fscope.deferred_frees;
+    if (fscope != cast<*CORE::Scope>(0)) {
+      let v: *VEC::Vector = fscope.deferred_frees;
       let name: *byte = id.name;
       v.push_back(cast<*void>(&name));
     }
@@ -87,41 +88,41 @@ const track_free -> fn (ptr_expr: *AstNode, scope: *Scope) void {
   }
 
   let fname: *byte = SCOPE::get_enclosing_function_name(scope);
-  let is_conditional: bool = (fscope == cast<*Scope>(0)) || SCOPE::scope_is_conditional(scope, fscope);
+  let is_conditional: bool = (fscope == cast<*CORE::Scope>(0)) || SCOPE::scope_is_conditional(scope, fscope);
   SCOPE::analyzer_track_free(analyzer, id.name, fname, is_conditional);
 }
 
-const call_is_returns_ownership -> fn (call_expr: *AstNode, scope: *Scope) bool {
-  let n: *CallNode = cast<*CallNode>(call_expr);
-  let callee: *AstNode = n.callee;
+const call_is_returns_ownership -> fn (call_expr: *AST::AstNode, scope: *CORE::Scope) bool {
+  let n: *AST::CallNode = cast<*AST::CallNode>(call_expr);
+  let callee: *AST::AstNode = n.callee;
 
   if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let id: *IdentifierNode = cast<*IdentifierNode>(callee);
-    let sym: *Symbol = SCOPE::scope_lookup(scope, id.name);
-    if (sym == cast<*Symbol>(0)) return false;
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
+    let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, id.name);
+    if (sym == cast<*CORE::Symbol>(0)) return false;
     return sym.returns_ownership;
   }
 
   return false;
 }
 
-pub const track_pointer_source -> fn (name: *byte, value_expr: *AstNode, scope: *Scope) void {
-  if (value_expr == cast<*AstNode>(0)) return;
+pub const track_pointer_source -> fn (name: *byte, value_expr: *AST::AstNode, scope: *CORE::Scope) void {
+  if (value_expr == cast<*AST::AstNode>(0)) return;
 
-  let src_expr: *AstNode = value_expr;
+  let src_expr: *AST::AstNode = value_expr;
   loop (true) {
-    if (src_expr == cast<*AstNode>(0)) break;
+    if (src_expr == cast<*AST::AstNode>(0)) break;
     if (src_expr.kind != AST::NodeType::EXPR_CAST) break;
-    let cn: *CastNode = cast<*CastNode>(src_expr);
+    let cn: *AST::CastNode = cast<*AST::CastNode>(src_expr);
     src_expr = cn.castee;
   }
-  if (src_expr == cast<*AstNode>(0)) return;
+  if (src_expr == cast<*AST::AstNode>(0)) return;
 
-  let analyzer: *StaticMemoryAnalyzer = scope.memory_analyzer;
-  if (analyzer == cast<*StaticMemoryAnalyzer>(0)) return;
+  let analyzer: *CORE::StaticMemoryAnalyzer = scope.memory_analyzer;
+  if (analyzer == cast<*CORE::StaticMemoryAnalyzer>(0)) return;
 
-  let fscope: *Scope = SCOPE::get_enclosing_function(scope);
-  if (fscope != cast<*Scope>(0)) {
+  let fscope: *CORE::Scope = SCOPE::get_enclosing_function(scope);
+  if (fscope != cast<*CORE::Scope>(0)) {
     if (fscope.returns_ownership) return;
   }
 
@@ -140,7 +141,7 @@ pub const track_pointer_source -> fn (name: *byte, value_expr: *AstNode, scope: 
   }
 
   if (src_expr.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let idn: *IdentifierNode = cast<*IdentifierNode>(src_expr);
+    let idn: *AST::IdentifierNode = cast<*AST::IdentifierNode>(src_expr);
     SCOPE::analyzer_track_alias(analyzer, name, idn.name, fname);
   }
 }
@@ -150,15 +151,15 @@ pub const track_pointer_source -> fn (name: *byte, value_expr: *AstNode, scope: 
 // so codegen can later read a static type straight off the AST without
 // re-running inference or rebuilding a scope tree.
 #returns_ownership
-pub const typecheck_expression -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode {
-  let result: *AstNode = typecheck_expression_inner(expr, scope, expected);
-  if (expr != cast<*AstNode>(0)) expr.resolved_type = result;
+pub const typecheck_expression -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
+  let result: *AST::AstNode = typecheck_expression_inner(expr, scope, expected);
+  if (expr != cast<*AST::AstNode>(0)) expr.resolved_type = result;
   return result;
 }
 
 #returns_ownership
-const typecheck_expression_inner -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode {
-  if (expr == cast<*AstNode>(0)) return cast<*AstNode>(0);
+const typecheck_expression_inner -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
+  if (expr == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
   let k: int = expr.kind;
 
@@ -180,75 +181,76 @@ const typecheck_expression_inner -> fn (expr: *AstNode, scope: *Scope, expected:
 
   // Grouping / system wrap a single operand.
   if (k == AST::NodeType::EXPR_GROUPING) {
-    let n: *UnaryNode = cast<*UnaryNode>(expr);
+    let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
     return typecheck_expression(n.operand, scope, expected);
   }
   if (k == AST::NodeType::EXPR_SYSTEM) {
-    let n: *UnaryNode = cast<*UnaryNode>(expr);
-    typecheck_expression(n.operand, scope, cast<*AstNode>(0));
+    let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
+    typecheck_expression(n.operand, scope, cast<*AST::AstNode>(0));
     return TYPE::make_int_type();
   }
 
   // Built-in memory / introspection forms.
   if (k == AST::NodeType::EXPR_ALLOC) {
-    let n: *AllocNode = cast<*AllocNode>(expr);
-    typecheck_expression(n.size, scope, cast<*AstNode>(0));
+    let n: *AST::AllocNode = cast<*AST::AllocNode>(expr);
+    typecheck_expression(n.size, scope, cast<*AST::AstNode>(0));
     return TYPE::make_voidptr_type();
   }
   if (k == AST::NodeType::EXPR_FREE) {
-    let n: *FreeNode = cast<*FreeNode>(expr);
-    let ptr: *AstNode = n.ptr;
+    let n: *AST::FreeNode = cast<*AST::FreeNode>(expr);
+    let ptr: *AST::AstNode = n.ptr;
 
     let ptr_is_ident: bool = false;
-    if (ptr != cast<*AstNode>(0)) {
+    if (ptr != cast<*AST::AstNode>(0)) {
       if (ptr.kind == AST::NodeType::EXPR_IDENTIFIER) { ptr_is_ident = true; }
     }
 
     if (ptr_is_ident) {
-      let idn: *IdentifierNode = cast<*IdentifierNode>(ptr);
-      let sym: *Symbol = SCOPE::scope_lookup(scope, idn.name);
-      if (sym == cast<*Symbol>(0)) {
+      let idn: *AST::IdentifierNode = cast<*AST::IdentifierNode>(ptr);
+      let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, idn.name);
+      if (sym == cast<*CORE::Symbol>(0)) {
         ERR::tc_error_id(ptr, idn.name, "Undefined Identifier", "use of undeclared identifier", "not found in this scope");
       }
     } else {
-      typecheck_expression(ptr, scope, cast<*AstNode>(0));
+      typecheck_expression(ptr, scope, cast<*AST::AstNode>(0));
     }
 
     track_free(ptr, scope);
     return TYPE::make_void_type();
   }
   if (k == AST::NodeType::EXPR_SIZEOF) {
-    let n: *SizeofNode = cast<*SizeofNode>(expr);
-    if (n.is_type == 0) typecheck_expression(n.object, scope, cast<*AstNode>(0));
+    let n: *AST::SizeofNode = cast<*AST::SizeofNode>(expr);
+    if (n.is_type == 0) { typecheck_expression(n.object, scope, cast<*AST::AstNode>(0)); }
+    else { n.object = TYPE::resolve_type_ref(n.object, scope); }
     return TYPE::make_int_type();
   }
   if (k == AST::NodeType::EXPR_INPUT) {
-    let n: *CastNode = cast<*CastNode>(expr);
-    if (n.castee != cast<*AstNode>(0))
-      typecheck_expression(n.castee, scope, cast<*AstNode>(0));
+    let n: *AST::CastNode = cast<*AST::CastNode>(expr);
+    if (n.castee != cast<*AST::AstNode>(0))
+      typecheck_expression(n.castee, scope, cast<*AST::AstNode>(0));
     return n.type_node;
   }
   if (k == AST::NodeType::EXPR_SYSCALL) {
-    let n: *SyscallNode = cast<*SyscallNode>(expr);
+    let n: *AST::SyscallNode = cast<*AST::SyscallNode>(expr);
     loop [i: int = 0](i < n.count) : (++i) {
-      typecheck_expression(n.args[i], scope, cast<*AstNode>(0));
+      typecheck_expression(n.args[i], scope, cast<*AST::AstNode>(0));
     }
     return TYPE::make_int_type();
   }
   if (k == AST::NodeType::EXPR_MEMCPY) {
-    let n: *MemcpyNode = cast<*MemcpyNode>(expr);
-    typecheck_expression(n.to, scope, cast<*AstNode>(0));
-    typecheck_expression(n.from, scope, cast<*AstNode>(0));
-    typecheck_expression(n.size, scope, cast<*AstNode>(0));
+    let n: *AST::MemcpyNode = cast<*AST::MemcpyNode>(expr);
+    typecheck_expression(n.to, scope, cast<*AST::AstNode>(0));
+    typecheck_expression(n.from, scope, cast<*AST::AstNode>(0));
+    typecheck_expression(n.size, scope, cast<*AST::AstNode>(0));
     return TYPE::make_void_type();
   }
 
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership
-const tc_literal -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *LiteralNode = cast<*LiteralNode>(expr);
+const tc_literal -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::LiteralNode = cast<*AST::LiteralNode>(expr);
   let lt: int = n.lit_type;
 
   if (lt == AST::LiteralType::LITERAL_INT)    return TYPE::make_int_type();
@@ -260,31 +262,31 @@ const tc_literal -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   if (lt == AST::LiteralType::LITERAL_NULL)   return TYPE::make_voidptr_type();
 
   if (lt == AST::LiteralType::LITERAL_IDENT) {
-    let sym: *Symbol = SCOPE::scope_lookup(scope, n.string_val);
-    if (sym != cast<*Symbol>(0)) return sym.type;
-    return cast<*AstNode>(0);
+    let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, n.string_val);
+    if (sym != cast<*CORE::Symbol>(0)) return sym.type;
+    return cast<*AST::AstNode>(0);
   }
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership
-const tc_identifier -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *IdentifierNode = cast<*IdentifierNode>(expr);
-  let sym: *Symbol = SCOPE::scope_lookup(scope, n.name);
-  if (sym == cast<*Symbol>(0)) {
+const tc_identifier -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::IdentifierNode = cast<*AST::IdentifierNode>(expr);
+  let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, n.name);
+  if (sym == cast<*CORE::Symbol>(0)) {
     ERR::tc_error_id(expr, n.name, "Undefined Identifier", "use of undeclared identifier", "not found in this scope");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
   check_uaf(expr, scope);
   return sym.type;
 }
 
 #returns_ownership
-const tc_binary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *BinaryNode = cast<*BinaryNode>(expr);
-  let lt: *AstNode = typecheck_expression(n.left,  scope, cast<*AstNode>(0));
-  let rt: *AstNode = typecheck_expression(n.right, scope, cast<*AstNode>(0));
-  if (lt == cast<*AstNode>(0) || rt == cast<*AstNode>(0)) return cast<*AstNode>(0);
+const tc_binary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::BinaryNode = cast<*AST::BinaryNode>(expr);
+  let lt: *AST::AstNode = typecheck_expression(n.left,  scope, cast<*AST::AstNode>(0));
+  let rt: *AST::AstNode = typecheck_expression(n.right, scope, cast<*AST::AstNode>(0));
+  if (lt == cast<*AST::AstNode>(0) || rt == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
   let op: int = n.op;
 
@@ -320,14 +322,14 @@ const tc_binary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
   let rr: int = TYPE::numeric_rank(rt);
   if (lr < 0 || rr < 0) {
     ERR::tc_error(expr, "Type Error", "arithmetic operands must be numeric", "not a numeric type");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   // Modulo requires integers.
   if (op == AST::BinaryOp::BINOP_MOD) {
     if (TYPE::is_integer_type(lt) == false || TYPE::is_integer_type(rt) == false) {
       ERR::tc_error(expr, "Type Error", "modulo requires integer operands", "not an integer type");
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
     return TYPE::make_int_type();
   }
@@ -337,10 +339,10 @@ const tc_binary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
 }
 
 #returns_ownership
-const tc_unary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *UnaryNode = cast<*UnaryNode>(expr);
-  let ot: *AstNode = typecheck_expression(n.operand, scope, cast<*AstNode>(0));
-  if (ot == cast<*AstNode>(0)) return cast<*AstNode>(0);
+const tc_unary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
+  let ot: *AST::AstNode = typecheck_expression(n.operand, scope, cast<*AST::AstNode>(0));
+  if (ot == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
   let op: int = n.op;
   if (op == AST::UnaryType::UNOP_NOT) return TYPE::make_bool_type();
@@ -349,30 +351,30 @@ const tc_unary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
 }
 
 #returns_ownership
-const tc_deref -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *UnaryNode = cast<*UnaryNode>(expr);
-  let ot: *AstNode = typecheck_expression(n.operand, scope, cast<*AstNode>(0));
-  if (ot == cast<*AstNode>(0)) return cast<*AstNode>(0);
+const tc_deref -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
+  let ot: *AST::AstNode = typecheck_expression(n.operand, scope, cast<*AST::AstNode>(0));
+  if (ot == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
   check_uaf(n.operand, scope);
   if (TYPE::is_pointer_type(ot) == false) {
     ERR::tc_error(expr, "Type Error", "cannot dereference a non-pointer value", "not a pointer");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
-  let p: *PointerTypeNode = cast<*PointerTypeNode>(ot);
+  let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(ot);
   return p.pointee_type;
 }
 
 #returns_ownership
-const tc_addr -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *UnaryNode = cast<*UnaryNode>(expr);
-  let operand: *AstNode = n.operand;
-  let ot: *AstNode = typecheck_expression(operand, scope, cast<*AstNode>(0));
-  if (ot == cast<*AstNode>(0)) return cast<*AstNode>(0);
+const tc_addr -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
+  let operand: *AST::AstNode = n.operand;
+  let ot: *AST::AstNode = typecheck_expression(operand, scope, cast<*AST::AstNode>(0));
+  if (ot == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
   if (operand.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let id: *IdentifierNode = cast<*IdentifierNode>(operand);
-    let analyzer: *StaticMemoryAnalyzer = scope.memory_analyzer;
-    if (analyzer != cast<*StaticMemoryAnalyzer>(0)) {
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(operand);
+    let analyzer: *CORE::StaticMemoryAnalyzer = scope.memory_analyzer;
+    if (analyzer != cast<*CORE::StaticMemoryAnalyzer>(0)) {
       let fname: *byte = SCOPE::get_enclosing_function_name(scope);
       SCOPE::analyzer_mark_address_taken(analyzer, id.name, fname);
     }
@@ -382,55 +384,55 @@ const tc_addr -> fn (expr: *AstNode, scope: *Scope) *AstNode {
 }
 
 #returns_ownership
-const tc_index -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *IndexNode = cast<*IndexNode>(expr);
-  let ot: *AstNode = typecheck_expression(n.object, scope, cast<*AstNode>(0));
-  let it: *AstNode = typecheck_expression(n.index, scope, cast<*AstNode>(0));
+const tc_index -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::IndexNode = cast<*AST::IndexNode>(expr);
+  let ot: *AST::AstNode = typecheck_expression(n.object, scope, cast<*AST::AstNode>(0));
+  let it: *AST::AstNode = typecheck_expression(n.index, scope, cast<*AST::AstNode>(0));
   check_uaf(n.object, scope);
-  if (ot == cast<*AstNode>(0)) return cast<*AstNode>(0);
+  if (ot == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
-  if (it != cast<*AstNode>(0)) {
+  if (it != cast<*AST::AstNode>(0)) {
     if (TYPE::is_integer_type(it) == false) {
       ERR::tc_error(expr, "Type Error", "array index must be an integer", "not an integer");
     }
   }
 
   if (TYPE::is_array_type(ot)) {
-    let a: *ArrayTypeNode = cast<*ArrayTypeNode>(ot);
+    let a: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(ot);
     return a.element_type;
   }
   if (TYPE::is_pointer_type(ot)) {
-    let p: *PointerTypeNode = cast<*PointerTypeNode>(ot);
+    let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(ot);
     return p.pointee_type;
   }
 
   ERR::tc_error(expr, "Type Error", "cannot index a non-array, non-pointer value", "not indexable");
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership
-const tc_member -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *MemberNode = cast<*MemberNode>(expr);
+const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::MemberNode = cast<*AST::MemberNode>(expr);
 
-  let object: *AstNode = n.object;
+  let object: *AST::AstNode = n.object;
 
   // Compile-time resolution: EnumName::MEMBER or Alias::symbol
   if (n.is_compiletime == 1) {
     if (object.kind == AST::NodeType::EXPR_IDENTIFIER) {
-      let obj: *IdentifierNode = cast<*IdentifierNode>(object);
+      let obj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(object);
 
       // Module alias?
-      let imp: *ModuleImport = SCOPE::find_module_import(scope, obj.name);
-      if (imp != cast<*ModuleImport>(0)) {
-        let msym: *Symbol = SCOPE::scope_lookup_in_module(imp.module_scope, n.member);
-        if (msym != cast<*Symbol>(0)) return msym.type;
-        return cast<*AstNode>(0);
+      let imp: *CORE::ModuleImport = SCOPE::find_module_import(scope, obj.name);
+      if (imp != cast<*CORE::ModuleImport>(0)) {
+        let msym: *CORE::Symbol = SCOPE::scope_lookup_in_module(imp.module_scope, n.member);
+        if (msym != cast<*CORE::Symbol>(0)) return msym.type;
+        return cast<*AST::AstNode>(0);
       }
 
       // Enum / namespaced symbol: look up "Name.member".
       let qname: *byte = qualify(obj.name, n.member);
-      let sym: *Symbol = SCOPE::scope_lookup(scope, qname);
-      if (sym != cast<*Symbol>(0)) return sym.type;
+      let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, qname);
+      if (sym != cast<*CORE::Symbol>(0)) return sym.type;
 
       // Unknown qualified name — treat as enum-like int to stay permissive.
       return TYPE::make_named_type(obj.name);
@@ -441,117 +443,117 @@ const tc_member -> fn (expr: *AstNode, scope: *Scope) *AstNode {
     // identifier. Unwrap one level: resolve the alias to its module, then
     // look up "EnumName.Member" in that module's own scope.
     if (object.kind == AST::NodeType::EXPR_MEMBER) {
-      let inner: *MemberNode = cast<*MemberNode>(object);
+      let inner: *AST::MemberNode = cast<*AST::MemberNode>(object);
       if (inner.is_compiletime == 1) {
-        let inner_object: *AstNode = inner.object;
+        let inner_object: *AST::AstNode = inner.object;
         if (inner_object.kind == AST::NodeType::EXPR_IDENTIFIER) {
-          let iobj: *IdentifierNode = cast<*IdentifierNode>(inner_object);
-          let imp2: *ModuleImport = SCOPE::find_module_import(scope, iobj.name);
-          if (imp2 != cast<*ModuleImport>(0)) {
+          let iobj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(inner_object);
+          let imp2: *CORE::ModuleImport = SCOPE::find_module_import(scope, iobj.name);
+          if (imp2 != cast<*CORE::ModuleImport>(0)) {
             let qname2: *byte = qualify(inner.member, n.member);
-            let msym2: *Symbol = SCOPE::scope_lookup_in_module(imp2.module_scope, qname2);
-            if (msym2 != cast<*Symbol>(0)) return msym2.type;
+            let msym2: *CORE::Symbol = SCOPE::scope_lookup_in_module(imp2.module_scope, qname2);
+            if (msym2 != cast<*CORE::Symbol>(0)) return msym2.type;
           }
         }
       }
     }
 
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   // Runtime member access: obj.field
-  let ot: *AstNode = typecheck_expression(n.object, scope, cast<*AstNode>(0));
+  let ot: *AST::AstNode = typecheck_expression(n.object, scope, cast<*AST::AstNode>(0));
   check_uaf(n.object, scope);
-  if (ot == cast<*AstNode>(0)) return cast<*AstNode>(0);
+  if (ot == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
-  let base: *AstNode = strip_pointer(ot);
+  let base: *AST::AstNode = strip_pointer(ot);
   if (TYPE::is_nominal_type(base) == false) {
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   let sname: *byte = TYPE::basic_name(base);
   let qname2: *byte = qualify(sname, n.member);
-  let fsym: *Symbol = SCOPE::scope_lookup(scope, qname2);
-  if (fsym != cast<*Symbol>(0)) return fsym.type;
+  let fsym: *CORE::Symbol = SCOPE::scope_lookup(scope, qname2);
+  if (fsym != cast<*CORE::Symbol>(0)) return fsym.type;
 
   // Field/method not found in registry — stay permissive (don't reject).
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership
-const resolve_callee_type -> fn (callee: *AstNode, scope: *Scope) *AstNode {
+const resolve_callee_type -> fn (callee: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let id: *IdentifierNode = cast<*IdentifierNode>(callee);
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
     // Builtin output()/outputln() — accept anything (handled by caller).
     if (STR::strcmp(id.name, "output") == 0 || STR::strcmp(id.name, "outputln") == 0)
-      return cast<*AstNode>(0);
-    let sym: *Symbol = SCOPE::scope_lookup(scope, id.name);
-    if (sym != cast<*Symbol>(0)) return sym.type;
-    return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
+    let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, id.name);
+    if (sym != cast<*CORE::Symbol>(0)) return sym.type;
+    return cast<*AST::AstNode>(0);
   }
-  return typecheck_expression(callee, scope, cast<*AstNode>(0));
+  return typecheck_expression(callee, scope, cast<*AST::AstNode>(0));
 }
 
 #returns_ownership
-const tc_call -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *CallNode = cast<*CallNode>(expr);
-  let callee: *AstNode = n.callee;
+const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::CallNode = cast<*AST::CallNode>(expr);
+  let callee: *AST::AstNode = n.callee;
 
   // output() builtin: variadic, returns void.
   if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let id: *IdentifierNode = cast<*IdentifierNode>(callee);
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
     if (STR::strcmp(id.name, "output") == 0 || STR::strcmp(id.name, "outputln") == 0) {
       loop [i: int = 0](i < n.arg_count) : (++i) {
-        typecheck_expression(n.args[i], scope, cast<*AstNode>(0));
+        typecheck_expression(n.args[i], scope, cast<*AST::AstNode>(0));
       }
       return TYPE::make_void_type();
     }
   }
 
-  let ct: *AstNode = resolve_callee_type(n.callee, scope);
+  let ct: *AST::AstNode = resolve_callee_type(n.callee, scope);
 
-  let ftype: *AstNode = ct;
+  let ftype: *AST::AstNode = ct;
   if (TYPE::is_pointer_to_function_type(ftype)) {
     ftype = strip_pointer(ftype);
   }
 
-  if (ftype != cast<*AstNode>(0) && TYPE::is_function_type(ftype)) {
-    let ft: *FuncTypeNode = cast<*FuncTypeNode>(ftype);
+  if (ftype != cast<*AST::AstNode>(0) && TYPE::is_function_type(ftype)) {
+    let ft: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(ftype);
     let pcount: int = ft.param_count;
     if (n.arg_count != pcount) {
       ERR::tc_error(expr, "Call Error", "wrong number of arguments in function call", "wrong argument count");
     }
     loop [i: int = 0](i < n.arg_count) : (++i) {
-      let pexp: *AstNode = cast<*AstNode>(0);
+      let pexp: *AST::AstNode = cast<*AST::AstNode>(0);
       if (i < pcount) pexp = ft.param_types[i];
-      let at: *AstNode = typecheck_expression(n.args[i], scope, pexp);
-      if (at != cast<*AstNode>(0) && pexp != cast<*AstNode>(0)) {
+      let at: *AST::AstNode = typecheck_expression(n.args[i], scope, pexp);
+      if (at != cast<*AST::AstNode>(0) && pexp != cast<*AST::AstNode>(0)) {
         if (TYPE::types_match(at, pexp) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
           ERR::tc_error(n.args[i], "Type Error", "argument type does not match parameter type", "type mismatch");
         }
       }
     }
-    let rett: *AstNode = ft.return_type;
+    let rett: *AST::AstNode = ft.return_type;
     return rett;
   }
 
   loop [i: int = 0](i < n.arg_count) : (++i) {
-    typecheck_expression(n.args[i], scope, cast<*AstNode>(0));
+    typecheck_expression(n.args[i], scope, cast<*AST::AstNode>(0));
   }
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership
-const tc_assign -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *AssignNode = cast<*AssignNode>(expr);
-  let target: *AstNode = n.target;
-  let tt: *AstNode = typecheck_expression(target, scope, cast<*AstNode>(0));
-  let vt: *AstNode = typecheck_expression(n.value, scope, tt);
+const tc_assign -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::AssignNode = cast<*AST::AssignNode>(expr);
+  let target: *AST::AstNode = n.target;
+  let tt: *AST::AstNode = typecheck_expression(target, scope, cast<*AST::AstNode>(0));
+  let vt: *AST::AstNode = typecheck_expression(n.value, scope, tt);
 
   if (target.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let id: *IdentifierNode = cast<*IdentifierNode>(target);
-    let sym: *Symbol = SCOPE::scope_lookup(scope, id.name);
-    if (sym != cast<*Symbol>(0)) {
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(target);
+    let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, id.name);
+    if (sym != cast<*CORE::Symbol>(0)) {
       if (sym.is_mutable == false) {
         ERR::tc_error_id(n.target, id.name, "Type Error", "cannot assign to immutable binding", "immutable");
       }
@@ -559,7 +561,7 @@ const tc_assign -> fn (expr: *AstNode, scope: *Scope) *AstNode {
     track_pointer_source(id.name, n.value, scope);
   }
 
-  if (tt != cast<*AstNode>(0) && vt != cast<*AstNode>(0)) {
+  if (tt != cast<*AST::AstNode>(0) && vt != cast<*AST::AstNode>(0)) {
     if (TYPE::types_match(vt, tt) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
       ERR::tc_error(expr, "Type Error", "assigned value type does not match target type", "type mismatch");
     }
@@ -568,20 +570,21 @@ const tc_assign -> fn (expr: *AstNode, scope: *Scope) *AstNode {
 }
 
 #returns_ownership
-const tc_ternary -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *TernaryNode = cast<*TernaryNode>(expr);
-  typecheck_expression(n.condition, scope, cast<*AstNode>(0));
-  let a: *AstNode = typecheck_expression(n.then_expr, scope, cast<*AstNode>(0));
-  let b: *AstNode = typecheck_expression(n.else_expr, scope, cast<*AstNode>(0));
-  if (a != cast<*AstNode>(0)) return a;
+const tc_ternary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::TernaryNode = cast<*AST::TernaryNode>(expr);
+  typecheck_expression(n.condition, scope, cast<*AST::AstNode>(0));
+  let a: *AST::AstNode = typecheck_expression(n.then_expr, scope, cast<*AST::AstNode>(0));
+  let b: *AST::AstNode = typecheck_expression(n.else_expr, scope, cast<*AST::AstNode>(0));
+  if (a != cast<*AST::AstNode>(0)) return a;
   return b;
 }
 
 #returns_ownership
-const tc_cast -> fn (expr: *AstNode, scope: *Scope) *AstNode {
-  let n: *CastNode = cast<*CastNode>(expr);
-  let from: *AstNode = typecheck_expression(n.castee, scope, cast<*AstNode>(0));
-  if (from != cast<*AstNode>(0)) {
+const tc_cast -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  let n: *AST::CastNode = cast<*AST::CastNode>(expr);
+  n.type_node = TYPE::resolve_type_ref(n.type_node, scope);
+  let from: *AST::AstNode = typecheck_expression(n.castee, scope, cast<*AST::AstNode>(0));
+  if (from != cast<*AST::AstNode>(0)) {
     if (TYPE::is_cast_valid(from, n.type_node) == false) {
       ERR::tc_error(expr, "Type Error", "invalid cast between incompatible types", "invalid cast");
     }
@@ -590,46 +593,53 @@ const tc_cast -> fn (expr: *AstNode, scope: *Scope) *AstNode {
 }
 
 #returns_ownership
-const tc_array -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode {
-  let n: *ArrayNode = cast<*ArrayNode>(expr);
+const tc_array -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
+  let n: *AST::ArrayNode = cast<*AST::ArrayNode>(expr);
   if (n.element_count == 0) {
-    if (expected != cast<*AstNode>(0)) return expected;
+    if (expected != cast<*AST::AstNode>(0)) return expected;
     ERR::tc_error(expr, "Type Error", "cannot infer type of empty array literal", "type cannot be inferred");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
-  let elem_expected: *AstNode = cast<*AstNode>(0);
-  if (expected != cast<*AstNode>(0) && TYPE::is_array_type(expected)) {
-    let ea: *ArrayTypeNode = cast<*ArrayTypeNode>(expected);
+  let elem_expected: *AST::AstNode = cast<*AST::AstNode>(0);
+  if (expected != cast<*AST::AstNode>(0) && TYPE::is_array_type(expected)) {
+    let ea: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(expected);
     elem_expected = ea.element_type;
   }
 
-  let first: *AstNode = typecheck_expression(n.elements[0], scope, elem_expected);
+  let first: *AST::AstNode = typecheck_expression(n.elements[0], scope, elem_expected);
 
   loop [i: int = 1](i < n.element_count) : (++i) {
-    let et: *AstNode = typecheck_expression(n.elements[i], scope, elem_expected);
-    if (first != cast<*AstNode>(0) && et != cast<*AstNode>(0)) {
+    let et: *AST::AstNode = typecheck_expression(n.elements[i], scope, elem_expected);
+    if (first != cast<*AST::AstNode>(0) && et != cast<*AST::AstNode>(0)) {
       if (TYPE::types_match(et, first) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
         ERR::tc_error(n.elements[i], "Type Error", "array elements must share a common type", "type mismatch");
       }
     }
   }
 
-  if (first == cast<*AstNode>(0)) return cast<*AstNode>(0);
+  if (first == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
   return TYPE::make_pointer_to(first);
 }
 
 #returns_ownership
-const tc_struct_expr -> fn (expr: *AstNode, scope: *Scope, expected: *AstNode) *AstNode {
-  let n: *StructExprNode = cast<*StructExprNode>(expr);
+const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
+  let n: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
 
   loop [i: int = 0](i < n.field_count) : (++i) {
-    typecheck_expression(n.field_vals[i], scope, cast<*AstNode>(0));
+    typecheck_expression(n.field_vals[i], scope, cast<*AST::AstNode>(0));
   }
 
   if (n.name != cast<*byte>(0)) {
+    // `ALIAS::Name { ... }` vs bare `Name { ... }` — same rule as a type
+    // annotation: bare is only valid when Name is declared in this module.
+    if (n.alias == cast<*byte>(0)) {
+      TYPE::check_nominal_bare(n.name, scope, expr);
+    } elif (SCOPE::find_module_import(scope, n.alias) == cast<*CORE::ModuleImport>(0)) {
+      ERR::tc_error_id(expr, n.alias, "Module Error", "unknown module alias", "not found");
+    }
     return TYPE::make_named_type(n.name);
   }
-  if (expected != cast<*AstNode>(0)) return expected;
-  return cast<*AstNode>(0);
+  if (expected != cast<*AST::AstNode>(0)) return expected;
+  return cast<*AST::AstNode>(0);
 }

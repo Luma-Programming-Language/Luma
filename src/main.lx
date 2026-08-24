@@ -1,20 +1,13 @@
 @module "main"
 
-@use "std_cstring" as STRING
 @use "std_vector" as VEC
-@use "std_memory" as MEM
 @use "std_args"   as ARGS
-@use "std_io"     as IO
 
 @use "parser_file"   as PFILE
-@use "lexer_tokens" as TOK
 @use "constants"    as CONST
 @use "commands"     as COMD
-@use "lexer"        as LEXER
 @use "parser"       as PARS
-@use "error"        as ERR
 
-@use "ast_module"   as MAST
 @use "ast_print"    as PRINT
 @use "ast_stmt"     as STMT
 @use "ast"          as AST
@@ -23,11 +16,11 @@
 @use "codegen"      as CODEGEN
 
 pub const main -> fn (argc: int, argv: **byte) int {
-  let args: Args = ARGS::init_args(argc, argv);
+  let args: ARGS::Args = ARGS::init_args(argc, argv);
   args = args.tail();
 
-  let modules: Vector = VEC::create_vector(sizeof<*AstNode>);
-  let build_config: LumaBuildConfig = CONST::init_build_config(args.get(0));
+  let modules: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
+  let build_config: CONST::LumaBuildConfig = CONST::init_build_config(args.get(0));
   
   let args: int = COMD::parse_args(&args, &build_config);
   if (args != 0) {
@@ -35,23 +28,23 @@ pub const main -> fn (argc: int, argv: **byte) int {
     return args;
   }
 
-  let main_module: *AstNode = PFILE::parse_file(build_config.filepath);
-  let program: *AstNode;
+  let main_module: *AST::AstNode = PFILE::parse_file(build_config.filepath);
+  let program: *AST::AstNode;
 
-  if (main_module == cast<*AstNode>(0)) {
+  if (main_module == cast<*AST::AstNode>(0)) {
     VEC::free_vector(&modules);
     return 1;
   }
   modules.push_back(cast<*void>(&main_module));
 
-  let it: VectorIter = build_config.link_files.iter();
+  let it: VEC::VectorIter = build_config.link_files.iter();
   loop {
     let ptr: *void = it.next();
     if (ptr == cast<*void>(0)) break;
 
     let addr: *int = cast<*int>(ptr);
-    let linked_module: *AstNode = PFILE::parse_file(cast<*byte>(*addr));
-    if (linked_module != cast<*AstNode>(0))
+    let linked_module: *AST::AstNode = PFILE::parse_file(cast<*byte>(*addr));
+    if (linked_module != cast<*AST::AstNode>(0))
       modules.push_back(cast<*void>(&linked_module));
   }
 

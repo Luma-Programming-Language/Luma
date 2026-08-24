@@ -130,7 +130,7 @@ pub const mangle3 -> fn (a: *byte, b: *byte, c: *byte) *byte {
 pub const StructInfo -> struct {
   name:        *byte,
   module_name: *byte,
-  decl:        *StructDeclNode,
+  decl:        *AST::StructDeclNode,
   defined:     bool,    // has its full C body been emitted yet?
   in_progress: bool,    // cycle guard while topologically emitting
 };
@@ -138,13 +138,13 @@ pub const StructInfo -> struct {
 pub const EnumInfo -> struct {
   name:        *byte,
   module_name: *byte,
-  decl:        *EnumDeclNode,
+  decl:        *AST::EnumDeclNode,
 };
 
 pub const FuncInfo -> struct {
   name:        *byte,
   module_name: *byte,
-  decl:        *FuncDeclNode,
+  decl:        *AST::FuncDeclNode,
   is_extern:   bool,    // body-less (FFI) => keep the bare C name
   is_main:     bool,
   owner:       *byte,   // struct name if this is a method, else null
@@ -153,7 +153,7 @@ pub const FuncInfo -> struct {
 pub const GlobalInfo -> struct {
   name:        *byte,
   module_name: *byte,
-  decl:        *VarDeclNode,
+  decl:        *AST::VarDeclNode,
 };
 
 // Records a module's `@use "target" as alias` so `ALIAS::symbol` inside
@@ -175,21 +175,21 @@ pub const LocalBinding -> struct {
 
 pub const CodegenContext -> struct {
   out:            *void,   // FILE*
-  structs:        Vector,  // of StructInfo
-  enums:          Vector,  // of EnumInfo
-  funcs:          Vector,  // of FuncInfo
-  globals:        Vector,  // of GlobalInfo
-  use_aliases:    Vector,  // of UseAlias
-  locals:         Vector,  // of LocalBinding — current function's live locals/params
+  structs:        VEC::Vector,  // of StructInfo
+  enums:          VEC::Vector,  // of EnumInfo
+  funcs:          VEC::Vector,  // of FuncInfo
+  globals:        VEC::Vector,  // of GlobalInfo
+  use_aliases:    VEC::Vector,  // of UseAlias
+  locals:         VEC::Vector,  // of LocalBinding — current function's live locals/params
   current_module: *byte,
-  current_return_type: *AstNode, // return type of the function body being emitted
+  current_return_type: *AST::AstNode, // return type of the function body being emitted
   label_counter:  int,
   os:             *byte, // target platform (config.os) — resolves `@os {}` arms
 
   // Pending `defer` statements for the function being emitted, most-recent
   // last. Flushed (LIFO) inline at each `return` and at each block's normal
   // fall-through exit — see codegen_stmt.lx's gen_return/gen_block.
-  defer_stack:    Vector,  // of *AstNode
+  defer_stack:    VEC::Vector,  // of *AstNode
 };
 
 #returns_ownership
@@ -203,15 +203,15 @@ pub const ctx_init -> fn (out: *void) *CodegenContext {
   c.use_aliases    = VEC::create_vector(sizeof<UseAlias>);
   c.locals         = VEC::create_vector(sizeof<LocalBinding>);
   c.current_module = "";
-  c.current_return_type = cast<*AstNode>(0);
+  c.current_return_type = cast<*AST::AstNode>(0);
   c.label_counter  = 0;
   c.os             = cast<*byte>(0);
-  c.defer_stack    = VEC::create_vector(sizeof<*AstNode>);
+  c.defer_stack    = VEC::create_vector(sizeof<*AST::AstNode>);
   return c;
 }
 
 pub const find_struct -> fn (ctx: *CodegenContext, name: *byte) *StructInfo {
-  let v: *Vector = &ctx.structs;
+  let v: *VEC::Vector = &ctx.structs;
   let n: int = v.size;
   let i: int = 0;
   loop (i < n) {
@@ -223,7 +223,7 @@ pub const find_struct -> fn (ctx: *CodegenContext, name: *byte) *StructInfo {
 }
 
 pub const find_enum -> fn (ctx: *CodegenContext, name: *byte) *EnumInfo {
-  let v: *Vector = &ctx.enums;
+  let v: *VEC::Vector = &ctx.enums;
   let n: int = v.size;
   let i: int = 0;
   loop (i < n) {
@@ -235,7 +235,7 @@ pub const find_enum -> fn (ctx: *CodegenContext, name: *byte) *EnumInfo {
 }
 
 pub const find_func -> fn (ctx: *CodegenContext, name: *byte) *FuncInfo {
-  let v: *Vector = &ctx.funcs;
+  let v: *VEC::Vector = &ctx.funcs;
   let n: int = v.size;
   let i: int = 0;
   loop (i < n) {
@@ -249,7 +249,7 @@ pub const find_func -> fn (ctx: *CodegenContext, name: *byte) *FuncInfo {
 }
 
 pub const find_method -> fn (ctx: *CodegenContext, struct_name: *byte, method_name: *byte) *FuncInfo {
-  let v: *Vector = &ctx.funcs;
+  let v: *VEC::Vector = &ctx.funcs;
   let n: int = v.size;
   let i: int = 0;
   loop (i < n) {
@@ -263,7 +263,7 @@ pub const find_method -> fn (ctx: *CodegenContext, struct_name: *byte, method_na
 }
 
 pub const find_func_in_module -> fn (ctx: *CodegenContext, module_name: *byte, name: *byte) *FuncInfo {
-  let v: *Vector = &ctx.funcs;
+  let v: *VEC::Vector = &ctx.funcs;
   let n: int = v.size;
   let i: int = 0;
   loop (i < n) {
@@ -277,7 +277,7 @@ pub const find_func_in_module -> fn (ctx: *CodegenContext, module_name: *byte, n
 }
 
 pub const find_global_in_module -> fn (ctx: *CodegenContext, module_name: *byte, name: *byte) *GlobalInfo {
-  let v: *Vector = &ctx.globals;
+  let v: *VEC::Vector = &ctx.globals;
   let n: int = v.size;
   let i: int = 0;
   loop (i < n) {
@@ -291,7 +291,7 @@ pub const find_global_in_module -> fn (ctx: *CodegenContext, module_name: *byte,
 // Resolves `alias` used inside `owner_module` to the real module name it
 // points at, or null if it isn't a known module alias there.
 pub const resolve_alias -> fn (ctx: *CodegenContext, owner_module: *byte, alias: *byte) *byte {
-  let v: *Vector = &ctx.use_aliases;
+  let v: *VEC::Vector = &ctx.use_aliases;
   let n: int = v.size;
   let i: int = 0;
   loop (i < n) {
@@ -329,9 +329,9 @@ pub const c_name_for_enum_member -> fn (e: *EnumInfo, member: *byte) *byte {
   return mangle3(e.module_name, e.name, member);
 }
 
-pub const resolve_os_for -> fn (node: *AstNode, os: *byte) *AstNode {
-  if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);
-  let n: *OsNode = cast<*OsNode>(node);
+pub const resolve_os_for -> fn (node: *AST::AstNode, os: *byte) *AST::AstNode {
+  if (node == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
+  let n: *AST::OsNode = cast<*AST::OsNode>(node);
   if (os != cast<*byte>(0)) {
     let i: int = 0;
     loop (n.platforms[i] != cast<*byte>(0)) {
@@ -340,7 +340,7 @@ pub const resolve_os_for -> fn (node: *AstNode, os: *byte) *AstNode {
     }
   }
   if (n.has_default == 1) return n.default_body;
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 pub const next_label -> fn (ctx: *CodegenContext) int {
@@ -349,7 +349,7 @@ pub const next_label -> fn (ctx: *CodegenContext) int {
 }
 
 pub const local_lookup -> fn (ctx: *CodegenContext, name: *byte) *byte {
-  let v: *Vector = &ctx.locals;
+  let v: *VEC::Vector = &ctx.locals;
   let i: int = v.size - 1;
   loop (i >= 0) {
     let b: *LocalBinding = cast<*LocalBinding>(v.get(i));
@@ -361,7 +361,7 @@ pub const local_lookup -> fn (ctx: *CodegenContext, name: *byte) *byte {
 
 pub const local_bind_as -> fn (ctx: *CodegenContext, name: *byte, c_name: *byte) void {
   let b: LocalBinding = LocalBinding { name: name, c_name: c_name };
-  let v: *Vector = &ctx.locals;
+  let v: *VEC::Vector = &ctx.locals;
   v.push_back(cast<*void>(&b));
 }
 

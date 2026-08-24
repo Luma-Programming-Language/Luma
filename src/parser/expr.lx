@@ -75,29 +75,29 @@ const unescape_str -> fn (s: *byte) *byte {
   return out;
 }
 
-#returns_ownership const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
-#returns_ownership const binary   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
-#returns_ownership const call     -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
-#returns_ownership const assign   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
-#returns_ownership const prefix   -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode;
-#returns_ownership const primary  -> fn (p: *Parser) *AstNode;
-#returns_ownership const unary    -> fn (p: *Parser) *AstNode;
-#returns_ownership const group    -> fn (p: *Parser) *AstNode;
-#returns_ownership const array    -> fn (p: *Parser) *AstNode;
-#returns_ownership const index    -> fn (p: *Parser) *AstNode;
-#returns_ownership const deref    -> fn (p: *Parser) *AstNode;
-#returns_ownership const addr     -> fn (p: *Parser) *AstNode;
-#returns_ownership const _alloc   -> fn (p: *Parser) *AstNode;
-#returns_ownership const _free    -> fn (p: *Parser) *AstNode;
-#returns_ownership const _cast    -> fn (p: *Parser) *AstNode;
-#returns_ownership const _input   -> fn (p: *Parser) *AstNode;
-#returns_ownership const _system  -> fn (p: *Parser) *AstNode;
-#returns_ownership const syscall  -> fn (p: *Parser) *AstNode;
-#returns_ownership const _sizeof  -> fn (p: *Parser) *AstNode;
-#returns_ownership const estruct  -> fn (p: *Parser) *AstNode;
+#returns_ownership const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+#returns_ownership const binary   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+#returns_ownership const call     -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+#returns_ownership const assign   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+#returns_ownership const prefix   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+#returns_ownership const primary  -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const unary    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const group    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const array    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const index    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const deref    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const addr     -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const _alloc   -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const _free    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const _cast    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const _input   -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const _system  -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const syscall  -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const _sizeof  -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const estruct  -> fn (p: *PARS::Parser) *AST::AstNode;
 
 #returns_ownership
-const nud -> fn (p: *Parser) *AstNode { 
+const nud -> fn (p: *PARS::Parser) *AST::AstNode { 
   switch (p.current().kind) {
     TOK::LumaTokenType::TOK_NUMBER, TOK::LumaTokenType::TOK_NUM_FLOAT, TOK::LumaTokenType::TOK_STRING,
     TOK::LumaTokenType::TOK_CHAR_LITERAL, TOK::LumaTokenType::TOK_IDENTIFIER,
@@ -121,13 +121,13 @@ const nud -> fn (p: *Parser) *AstNode {
     _ -> {
       p.error("Syntax Error", "Expected an expression.");
       p.advance();
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
   }
 }
 
 #returns_ownership
-const led -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
+const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
   switch(p.current().kind) {
     TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_MINUS, TOK::LumaTokenType::TOK_STAR,
     TOK::LumaTokenType::TOK_SLASH, TOK::LumaTokenType::TOK_MODL, TOK::LumaTokenType::TOK_EQEQ,
@@ -151,54 +151,68 @@ const led -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 }
 
 #returns_ownership
-pub const parse_expr -> fn (p: *Parser, bp: int) *AstNode {
-  let left: *AstNode = nud(p);
-  if (left == cast<*AstNode>(0)) return cast<*AstNode>(0);
+pub const parse_expr -> fn (p: *PARS::Parser, bp: int) *AST::AstNode {
+  let left: *AST::AstNode = nud(p);
+  if (left == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
   loop (p.has_tokens() && (PARS::get_bp(p.current().kind) > bp)) {
     let c_bp: int = PARS::get_bp(p.current().kind);
     left = led(p, left, c_bp);
-    if (left == cast<*AstNode>(0)) return cast<*AstNode>(0);
+    if (left == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
   }
 
   return left;
 }
 
 #returns_ownership 
-const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
+const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   let struct_name: *byte = cast<*byte>(0);
+  let struct_alias: *byte = cast<*byte>(0);
 
   if (left.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let d: *IdentifierNode = cast<*IdentifierNode>(left);
+    let d: *AST::IdentifierNode = cast<*AST::IdentifierNode>(left);
     let len: int = STRING::strlen(d.name);
     struct_name = cast<*byte>(alloc(len + 1));
     MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.name), len);
     struct_name[len] = '\0';
   } elif (left.kind == AST::NodeType::EXPR_MEMBER) {
-    let d: *MemberNode = cast<*MemberNode>(left);
+    let d: *AST::MemberNode = cast<*AST::MemberNode>(left);
     let len: int = STRING::strlen(d.member);
     struct_name = cast<*byte>(alloc(len + 1));
     MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.member), len);
     struct_name[len] = '\0';
+
+    // `ALIAS::StructName { ... }` — keep the alias so the typechecker can
+    // tell a qualified reference apart from a bare one (bare is only valid
+    // for locally-declared structs; see tc_expr.lx's tc_struct_expr).
+    let d_object: *AST::AstNode = d.object;
+    let d_object_kind: int = d_object.kind;
+    if (d_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
+      let aobj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(d_object);
+      let alen: int = STRING::strlen(aobj.name);
+      struct_alias = cast<*byte>(alloc(alen + 1));
+      MEM::memcpy(cast<*void>(struct_alias), cast<*void>(aobj.name), alen);
+      struct_alias[alen] = '\0';
+    }
   } else {
     p.error("Syntax Error", "Expected identifier before '{' for named struct.");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' for struct expression.");
 
-  let field_names:  Vector = VEC::create_vector(sizeof<*byte>);
-  let field_values: Vector = VEC::create_vector(sizeof<*AstNode>);
+  let field_names:  VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  let field_values: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
     if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
       p.error("Syntax Error", "Expected field name in struct expression.");
       VEC::free_vector(&field_names);
       VEC::free_vector(&field_values);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
 
     let field_name: *byte = p.get_name();
@@ -206,12 +220,12 @@ const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 
     p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after field name.");
 
-    let field_value: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
-    if (field_value == cast<*AstNode>(0)) {
+    let field_value: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (field_value == cast<*AST::AstNode>(0)) {
       p.error("Syntax Error", "Expected expression for field value.");
       VEC::free_vector(&field_names);
       VEC::free_vector(&field_values);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
 
     field_names.push_back(cast<*void>(&field_name));
@@ -223,14 +237,15 @@ const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
       p.error("Syntax Error", "Expected ',' or '}' after field value.");
       VEC::free_vector(&field_names);
       VEC::free_vector(&field_values);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
   }
 
   p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to close struct expression.");
 
-  let node: *AstNode = EAST::make_struct_expr(
+  let node: *AST::AstNode = EAST::make_struct_expr(
     struct_name,
+    struct_alias,
     PARS::vec_to_byte_array(&field_names),
     PARS::vec_to_node_array(&field_values),
     field_names.size,
@@ -242,36 +257,36 @@ const enstruct -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 }
 
 #returns_ownership 
-const binary -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
+const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
   let op:   int = PARS::search_binop_map(p.current().kind);
   p.advance();
 
-  let right: *AstNode = parse_expr(p, bp);
-  if (right == cast<*AstNode>(0)) {
+  let right: *AST::AstNode = parse_expr(p, bp);
+  if (right == cast<*AST::AstNode>(0)) {
     p.error("Syntax Error", "Expected expression after binary operator.");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   return EAST::make_binary(op, left, right, line, col); 
 }
 
 #returns_ownership 
-const call -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
+const call -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
-  let args: Vector = VEC::create_vector(sizeof<*AstNode>);
+  let args: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' for function call.");
 
   loop (p.current().kind != TOK::LumaTokenType::TOK_RPAREN) {
-    let arg: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
-    if (arg == cast<*AstNode>(0)) {
+    let arg: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (arg == cast<*AST::AstNode>(0)) {
       p.error("Syntax Error", "Expected expression inside function call.");
       VEC::free_vector(&args);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
     args.push_back(cast<*void>(&arg));
 
@@ -280,29 +295,29 @@ const call -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close a function call.");
   
-  let node: *AstNode = EAST::make_call(left, PARS::vec_to_node_array(&args), args.size, line, col);
+  let node: *AST::AstNode = EAST::make_call(left, PARS::vec_to_node_array(&args), args.size, line, col);
   VEC::free_vector(&args);
   return node;
 }
 
 #returns_ownership 
-const assign -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
+const assign -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' for assignment.");
 
-  let value: *AstNode = parse_expr(p, PARS::BindingPower::BP_ASSIGN);
-  if (value == cast<*AstNode>(0)) {
+  let value: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_ASSIGN);
+  if (value == cast<*AST::AstNode>(0)) {
     p.error("Assignment Error", "Failed to parse assignment value.");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   return EAST::make_assign(left, value, line, col); 
 }
 
 #returns_ownership 
-const prefix -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode { 
+const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
   let kind: int = p.current().kind;
@@ -310,10 +325,10 @@ const prefix -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
   // Array index: left[expr]
   if (kind == TOK::LumaTokenType::TOK_LBRACKET) {
     p.advance();
-    let idx: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
-    if (idx == cast<*AstNode>(0)) {
+    let idx: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (idx == cast<*AST::AstNode>(0)) {
       p.error("Syntax Error", "Expected expression inside index.");
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
     p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close index expression.");
     return EAST::make_index(left, idx, line, col);
@@ -327,7 +342,7 @@ const prefix -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
 
     if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
       p.error("Syntax Error", "Expected identifier after '.' or '::' for member access.");
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
 
     let member: *byte = p.get_name();
@@ -344,11 +359,11 @@ const prefix -> fn (p: *Parser, left: *AstNode, bp: int) *AstNode {
   }
 
   p.error("Syntax Error", "Unexpected token for prefix expression.");
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership 
-const primary -> fn (p: *Parser) *AstNode { 
+const primary -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
   let kind: int = p.current().kind;
@@ -404,51 +419,51 @@ const primary -> fn (p: *Parser) *AstNode {
     return EAST::make_identifier(val, line, col);
   }
 
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership 
-const unary -> fn (p: *Parser) *AstNode { 
+const unary -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
   let op:   int = PARS::search_unop_map(p.current().kind);
   p.advance();
 
-  let operand: *AstNode = parse_expr(p, PARS::BindingPower::BP_UNARY);
-  if (operand == cast<*AstNode>(0)) {
+  let operand: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_UNARY);
+  if (operand == cast<*AST::AstNode>(0)) {
     p.error("Syntax Error", "Expected expression after unary operator."); 
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   return EAST::make_unary(op, operand, line, col); 
 }
 
 #returns_ownership 
-const group -> fn (p: *Parser) *AstNode { 
+const group -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' for grouping.");
-  let expr: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  let expr: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close grouping.");
   return EAST::make_grouping(expr, line, col);
 }
 
 #returns_ownership 
-const array -> fn (p: *Parser) *AstNode { 
+const array -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
-  let elements: Vector = VEC::create_vector(sizeof<*AstNode>);
+  let elements: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   p.consume(TOK::LumaTokenType::TOK_LBRACKET, "Expected '[' for array expression.");
 
   loop (p.current().kind != TOK::LumaTokenType::TOK_RBRACKET) {
-    let element: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
-    if (element == cast<*AstNode>(0)) {
+    let element: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (element == cast<*AST::AstNode>(0)) {
       p.error("Syntax Error", "Expected expression inside array.");
       VEC::free_vector(&elements);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
     elements.push_back(cast<*void>(&element));
 
@@ -457,116 +472,116 @@ const array -> fn (p: *Parser) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close array expression.");
 
-  let node: *AstNode = EAST::make_array(PARS::vec_to_node_array(&elements), elements.size, 0, line, col);
+  let node: *AST::AstNode = EAST::make_array(PARS::vec_to_node_array(&elements), elements.size, 0, line, col);
   VEC::free_vector(&elements);
   return node;
 }
 
 #returns_ownership 
-const deref -> fn (p: *Parser) *AstNode {
+const deref -> fn (p: *PARS::Parser) *AST::AstNode {
   p.advance();
   let line: int = p.current().line;
   let col:  int = p.current().col;
-  let object: *AstNode = parse_expr(p, PARS::BindingPower::BP_UNARY);
+  let object: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_UNARY);
   return EAST::make_deref(object, line, col);
 }
 
 #returns_ownership 
-const addr -> fn (p: *Parser) *AstNode { 
+const addr -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance();
   let line: int = p.current().line;
   let col:  int = p.current().col;
-  let object: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  let object: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
   return EAST::make_addr(object, line, col);
 }
 
 #returns_ownership 
-const _alloc -> fn (p: *Parser) *AstNode { 
+const _alloc -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume alloc
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before size for alloc.");
-  let size: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
+  let size: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after size for alloc.");
 
   return EAST::make_alloc(size, line, col);
 }
 
 #returns_ownership 
-const _free -> fn (p: *Parser) *AstNode { 
+const _free -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume free
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before pointer for free.");
-  let ptr: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
+  let ptr: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after pointer for free.");
 
   return EAST::make_free(ptr, line, col);
 }
 
 #returns_ownership 
-const _cast -> fn (p: *Parser) *AstNode { 
+const _cast -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
   p.advance(); // consume cast
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for cast.");
-  let cast_type: *AstNode = PTYPE::parse_type(p);
+  let cast_type: *AST::AstNode = PTYPE::parse_type(p);
   p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' after type for cast.");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before value for cast.");
-  let castee: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
+  let castee: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after value for cast.");
 
   return EAST::make_cast(cast_type, castee, line, col);
 }
 
 #returns_ownership 
-const _input -> fn (p: *Parser) *AstNode { 
+const _input -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
   p.advance(); // consume input
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for input.");
-  let input_type: *AstNode = PTYPE::parse_type(p);
+  let input_type: *AST::AstNode = PTYPE::parse_type(p);
   p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' after type for input.");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before message for input.");
-  let msg: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
+  let msg: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after message for input.");
 
   return EAST::make_input(input_type, msg, line, col);
 }
 
 #returns_ownership 
-const _system -> fn (p: *Parser) *AstNode { 
+const _system -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume system
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before system command.");
-  let command: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
+  let command: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after system command.");
 
   return EAST::make_system(command, line, col);
 }
 
 #returns_ownership 
-const syscall -> fn (p: *Parser) *AstNode { 
+const syscall -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume __syscall__
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before syscall arguments.");
 
-  let args: Vector = VEC::create_vector(sizeof<*AstNode>);
+  let args: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   loop (p.current().kind != TOK::LumaTokenType::TOK_RPAREN) {
-    let arg: *AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
-    if (arg == cast<*AstNode>(0)) {
+    let arg: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
+    if (arg == cast<*AST::AstNode>(0)) {
       p.error("Syntax Error", "Expected expression inside syscall.");
       VEC::free_vector(&args);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
     args.push_back(cast<*void>(&arg));
 
@@ -575,40 +590,40 @@ const syscall -> fn (p: *Parser) *AstNode {
   }
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after syscall arguments.");
 
-  let node: *AstNode = EAST::make_syscall(PARS::vec_to_node_array(&args), args.size, line, col);
+  let node: *AST::AstNode = EAST::make_syscall(PARS::vec_to_node_array(&args), args.size, line, col);
   VEC::free_vector(&args);
   return node;
 }
 
 #returns_ownership 
-const _sizeof -> fn (p: *Parser) *AstNode { 
+const _sizeof -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
   p.advance();
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for sizeof.");
-  let type_node: *AstNode = PTYPE::parse_type(p);
+  let type_node: *AST::AstNode = PTYPE::parse_type(p);
   p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' after type for sizeof.");
 
   return EAST::make_sizeof(type_node, 1, line, col);
 }
 
 #returns_ownership 
-const estruct -> fn (p: *Parser) *AstNode { 
+const estruct -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' for struct expression.");
 
-  let field_names:  Vector = VEC::create_vector(sizeof<*byte>);
-  let field_values: Vector = VEC::create_vector(sizeof<*AstNode>);
+  let field_names:  VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  let field_values: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
     if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
       p.error("Syntax Error", "Expected field name in struct expression.");
       VEC::free_vector(&field_names);
       VEC::free_vector(&field_values);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
 
     let field_name: *byte = p.get_name();
@@ -616,12 +631,12 @@ const estruct -> fn (p: *Parser) *AstNode {
 
     p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after field name.");
 
-    let field_value: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
-    if (field_value == cast<*AstNode>(0)) {
+    let field_value: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    if (field_value == cast<*AST::AstNode>(0)) {
       p.error("Syntax Error", "Expected expression for field value.");
       VEC::free_vector(&field_names);
       VEC::free_vector(&field_values);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
 
     field_names.push_back(cast<*void>(&field_name));
@@ -633,13 +648,14 @@ const estruct -> fn (p: *Parser) *AstNode {
       p.error("Syntax Error", "Expected ',' or '}' after field value.");
       VEC::free_vector(&field_names);
       VEC::free_vector(&field_values);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
   }
 
   p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to close struct expression.");
 
-  let node: *AstNode = EAST::make_struct_expr(
+  let node: *AST::AstNode = EAST::make_struct_expr(
+    cast<*byte>(0),
     cast<*byte>(0),
     PARS::vec_to_byte_array(&field_names),
     PARS::vec_to_node_array(&field_values),
@@ -652,16 +668,16 @@ const estruct -> fn (p: *Parser) *AstNode {
 }
 
 #returns_ownership 
-const index -> fn (p: *Parser) *AstNode { 
+const index -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACKET, "Expected '[' for index expression.");
-  let idx: *AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
-  if (idx == cast<*AstNode>(0)) {
+  let idx: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
+  if (idx == cast<*AST::AstNode>(0)) {
     p.error("Syntax Error", "Expected expression inside index.");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
   p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close index expression.");
-  return EAST::make_index(cast<*AstNode>(0), idx, line, col);
+  return EAST::make_index(cast<*AST::AstNode>(0), idx, line, col);
 }

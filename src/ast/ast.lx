@@ -145,7 +145,7 @@ pub const ModuleNode -> struct {
   // Owned for the lifetime of the module so the typechecker can regenerate
   // source lines for diagnostics (see tc_error_init / generate_line).
   source:      *byte,
-  tokens:      *Token,
+  tokens:      *TOK::Token,
   token_count: int,
 };
 
@@ -276,6 +276,10 @@ pub const SyscallNode -> struct {
 pub const StructExprNode -> struct {
   ...AstNode,
   name:        *byte,
+  // Set only when written as `ALIAS::Name { ... }` — null for a bare
+  // `Name { ... }`. See tc_expr.lx's tc_struct_expr: a bare reference to an
+  // imported (non-local) struct is now an error.
+  alias:       *byte,
   field_names: **byte,
   field_vals:  **AstNode,
   field_count: int,
@@ -675,6 +679,7 @@ pub const free_node -> fn (node: *AstNode) void {
     free(n.field_names);
     free(n.field_vals);
     free(n.name);
+    free(n.alias);
     free(node);
     return;
   }

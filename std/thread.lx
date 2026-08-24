@@ -1,0 +1,116 @@
+//! POSIX threading bindings for Linux
+//!
+//! PLATFORM: Linux x86_64
+//!
+//! Wraps libpthread — pthread_t, pthread_mutex_t, and pthread_cond_t
+//! are all treated as int (opaque handles).
+
+@module "std_thread"
+
+@link("libpthread.so.0")
+
+// Opaque type sizes on Linux x86_64
+pub const PTHREAD_T_SIZE:       int = 8;
+pub const PTHREAD_MUTEX_SIZE:   int = 40;
+pub const PTHREAD_COND_SIZE:    int = 48;
+pub const PTHREAD_RWLOCK_SIZE:  int = 56;
+pub const PTHREAD_BARRIER_SIZE: int = 32;
+pub const PTHREAD_ONCE_SIZE:    int = 4;
+
+// ============================================================================
+// Thread create / join / detach / self / exit
+// ============================================================================
+
+// int pthread_create(pthread_t *tid, void *attr, void *(*fn)(void*), void *arg)
+pub const pthread_create  -> fn (tid: *int, attr: *void, _fn: fn (*void) *void, arg: *void) int;
+
+// int pthread_join(pthread_t tid, void **retval)
+pub const pthread_join    -> fn (tid: int, retval: **void) int;
+
+// int pthread_detach(pthread_t tid)
+pub const pthread_detach  -> fn (tid: int) int;
+
+// pthread_t pthread_self(void)
+pub const pthread_self    -> fn () int;
+
+// void pthread_exit(void *retval)
+pub const pthread_exit    -> fn (retval: *void) void;
+
+// int pthread_equal(pthread_t t1, pthread_t t2)
+pub const pthread_equal   -> fn (t1: int, t2: int) int;
+
+// int pthread_cancel(pthread_t tid)
+pub const pthread_cancel  -> fn (tid: int) int;
+
+// ============================================================================
+// Mutex
+// ============================================================================
+
+// int pthread_mutex_init(pthread_mutex_t *mutex, void *attr)
+pub const pthread_mutex_init    -> fn (mutex: *int, attr: *void) int;
+
+// int pthread_mutex_destroy(pthread_mutex_t *mutex)
+pub const pthread_mutex_destroy -> fn (mutex: *int) int;
+
+// int pthread_mutex_lock(pthread_mutex_t *mutex)
+pub const pthread_mutex_lock    -> fn (mutex: *int) int;
+
+// int pthread_mutex_trylock(pthread_mutex_t *mutex)
+pub const pthread_mutex_trylock -> fn (mutex: *int) int;
+
+// int pthread_mutex_unlock(pthread_mutex_t *mutex)
+pub const pthread_mutex_unlock  -> fn (mutex: *int) int;
+
+// ============================================================================
+// Condition variables
+// ============================================================================
+
+// int pthread_cond_init(pthread_cond_t *cond, void *attr)
+pub const pthread_cond_init      -> fn (cond: *int, attr: *void) int;
+
+// int pthread_cond_destroy(pthread_cond_t *cond)
+pub const pthread_cond_destroy   -> fn (cond: *int) int;
+
+// int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
+pub const pthread_cond_wait      -> fn (cond: *int, mutex: *int) int;
+
+// int pthread_cond_signal(pthread_cond_t *cond)
+pub const pthread_cond_signal    -> fn (cond: *int) int;
+
+// int pthread_cond_broadcast(pthread_cond_t *cond)
+pub const pthread_cond_broadcast -> fn (cond: *int) int;
+
+// ============================================================================
+// Read/write locks
+// ============================================================================
+
+// int pthread_rwlock_init(pthread_rwlock_t *rwlock, void *attr)
+pub const pthread_rwlock_init    -> fn (rwlock: *int, attr: *void) int;
+
+// int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
+pub const pthread_rwlock_destroy -> fn (rwlock: *int) int;
+
+// int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
+pub const pthread_rwlock_rdlock  -> fn (rwlock: *int) int;
+
+// int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
+pub const pthread_rwlock_wrlock  -> fn (rwlock: *int) int;
+
+// int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
+pub const pthread_rwlock_unlock  -> fn (rwlock: *int) int;
+
+// ============================================================================
+// Once / barriers
+// ============================================================================
+
+// int pthread_once(pthread_once_t *once, void (*fn)(void))
+pub const pthread_once           -> fn (once: *int, _fn: fn () void) int;
+
+// int pthread_barrier_init(pthread_barrier_t *barrier, void *attr, int count)
+pub const pthread_barrier_init   -> fn (barrier: *int, attr: *void, count: int) int;
+
+// int pthread_barrier_destroy(pthread_barrier_t *barrier)
+pub const pthread_barrier_destroy -> fn (barrier: *int) int;
+
+// int pthread_barrier_wait(pthread_barrier_t *barrier)
+pub const pthread_barrier_wait   -> fn (barrier: *int) int;

@@ -9,8 +9,8 @@
 const SCOPE_VEC_CAPACITY: int = 64;
 
 #returns_ownership
-const new_vector -> fn (elem_size: int) *Vector {
-  let v: *Vector = cast<*Vector>(alloc(sizeof<Vector>));
+const new_vector -> fn (elem_size: int) *VEC::Vector {
+  let v: *VEC::Vector = cast<*VEC::Vector>(alloc(sizeof<VEC::Vector>));
   v.data         = cast<*void>(alloc(SCOPE_VEC_CAPACITY * elem_size));
   v.capacity     = SCOPE_VEC_CAPACITY;
   v.size         = 0;
@@ -19,26 +19,26 @@ const new_vector -> fn (elem_size: int) *Vector {
 }
 
 #returns_ownership
-pub const scope_init -> fn (name: *byte, check_mem: bool, os: *byte) *Scope {
-  let s: *Scope = cast<*Scope>(alloc(sizeof<Scope>));
+pub const scope_init -> fn (name: *byte, check_mem: bool, os: *byte) *CORE::Scope {
+  let s: *CORE::Scope = cast<*CORE::Scope>(alloc(sizeof<CORE::Scope>));
 
-  s.parent            = cast<*Scope>(0);
-  s.symbols           = new_vector(sizeof<Symbol>);
+  s.parent            = cast<*CORE::Scope>(0);
+  s.symbols           = new_vector(sizeof<CORE::Symbol>);
   s.scope_name        = name;
   s.depth             = 0;
   s.is_function_scope = false;
-  s.associated_node   = cast<*AstNode>(0);
+  s.associated_node   = cast<*AST::AstNode>(0);
   s.is_module_scope   = false;
   s.module_name       = cast<*byte>(0);
-  s.imported_modules  = new_vector(sizeof<ModuleImport>);
+  s.imported_modules  = new_vector(sizeof<CORE::ModuleImport>);
   s.returns_ownership = false;
   s.takes_ownership   = false;
   s.deferred_frees    = new_vector(sizeof<*byte>);
   s.check_mem         = check_mem;
   s.os                = os;
 
-  let analyzer: *StaticMemoryAnalyzer = cast<*StaticMemoryAnalyzer>(alloc(sizeof<StaticMemoryAnalyzer>));
-  analyzer.allocations          = new_vector(sizeof<StaticAllocation>);
+  let analyzer: *CORE::StaticMemoryAnalyzer = cast<*CORE::StaticMemoryAnalyzer>(alloc(sizeof<CORE::StaticMemoryAnalyzer>));
+  analyzer.allocations          = new_vector(sizeof<CORE::StaticAllocation>);
   analyzer.skip_memory_tracking = false;
   s.memory_analyzer = analyzer;
 
@@ -46,18 +46,18 @@ pub const scope_init -> fn (name: *byte, check_mem: bool, os: *byte) *Scope {
 }
 
 #returns_ownership
-pub const scope_create_child -> fn (parent: *Scope, name: *byte) *Scope {
-  let s: *Scope = cast<*Scope>(alloc(sizeof<Scope>));
+pub const scope_create_child -> fn (parent: *CORE::Scope, name: *byte) *CORE::Scope {
+  let s: *CORE::Scope = cast<*CORE::Scope>(alloc(sizeof<CORE::Scope>));
 
   s.parent            = parent;
-  s.symbols           = new_vector(sizeof<Symbol>);
+  s.symbols           = new_vector(sizeof<CORE::Symbol>);
   s.scope_name        = name;
   s.depth             = parent.depth + 1;
   s.is_function_scope = false;
-  s.associated_node   = cast<*AstNode>(0);
+  s.associated_node   = cast<*AST::AstNode>(0);
   s.is_module_scope   = false;
   s.module_name       = cast<*byte>(0);
-  s.imported_modules  = new_vector(sizeof<ModuleImport>);
+  s.imported_modules  = new_vector(sizeof<CORE::ModuleImport>);
   s.returns_ownership = parent.returns_ownership;
   s.takes_ownership   = parent.takes_ownership;
   s.deferred_frees    = new_vector(sizeof<*byte>);
@@ -68,27 +68,27 @@ pub const scope_create_child -> fn (parent: *Scope, name: *byte) *Scope {
   return s;
 }
 
-pub const find_containing_module -> fn (scope: *Scope) *Scope {
-  let s: *Scope = scope;
-  loop (s != cast<*Scope>(0)) {
+pub const find_containing_module -> fn (scope: *CORE::Scope) *CORE::Scope {
+  let s: *CORE::Scope = scope;
+  loop (s != cast<*CORE::Scope>(0)) {
     if (s.is_module_scope) return s;
     s = s.parent;
   }
-  return cast<*Scope>(0);
+  return cast<*CORE::Scope>(0);
 }
 
-pub const get_enclosing_function -> fn (scope: *Scope) *Scope {
-  let s: *Scope = scope;
-  loop (s != cast<*Scope>(0)) {
+pub const get_enclosing_function -> fn (scope: *CORE::Scope) *CORE::Scope {
+  let s: *CORE::Scope = scope;
+  loop (s != cast<*CORE::Scope>(0)) {
     if (s.is_function_scope) return s;
     s = s.parent;
   }
-  return cast<*Scope>(0);
+  return cast<*CORE::Scope>(0);
 }
 
-pub const scope_is_conditional -> fn (scope: *Scope, fscope: *Scope) bool {
-  let s: *Scope = scope;
-  loop (s != cast<*Scope>(0) && s != fscope) {
+pub const scope_is_conditional -> fn (scope: *CORE::Scope, fscope: *CORE::Scope) bool {
+  let s: *CORE::Scope = scope;
+  loop (s != cast<*CORE::Scope>(0) && s != fscope) {
     let name: *byte = s.scope_name;
     if (STR::strcmp(name, "then_branch") == 0) return true;
     if (STR::strcmp(name, "elif_branch") == 0) return true;
@@ -101,46 +101,46 @@ pub const scope_is_conditional -> fn (scope: *Scope, fscope: *Scope) bool {
   return false;
 }
 
-pub const add_module_import -> fn (scope: *Scope, module_name: *byte, alias: *byte, module_scope: *Scope) void {
-  let imp: ModuleImport = ModuleImport {
+pub const add_module_import -> fn (scope: *CORE::Scope, module_name: *byte, alias: *byte, module_scope: *CORE::Scope) void {
+  let imp: CORE::ModuleImport = CORE::ModuleImport {
     module_name:  module_name,
     alias:        alias,
     module_scope: module_scope,
   };
-  let v: *Vector = scope.imported_modules;
+  let v: *VEC::Vector = scope.imported_modules;
   v.push_back(cast<*void>(&imp));
 }
 
-pub const find_module_import -> fn (scope: *Scope, alias: *byte) *ModuleImport {
-  let s: *Scope = scope;
-  loop (s != cast<*Scope>(0)) {
-    let v: *Vector = s.imported_modules;
+pub const find_module_import -> fn (scope: *CORE::Scope, alias: *byte) *CORE::ModuleImport {
+  let s: *CORE::Scope = scope;
+  loop (s != cast<*CORE::Scope>(0)) {
+    let v: *VEC::Vector = s.imported_modules;
     let count: int = v.size;
     loop [i: int = 0](i < count) : (++i) {
-      let imp: *ModuleImport = cast<*ModuleImport>(v.get(i));
+      let imp: *CORE::ModuleImport = cast<*CORE::ModuleImport>(v.get(i));
       if (STR::strcmp(imp.alias, alias) == 0) return imp;
     }
     s = s.parent;
   }
-  return cast<*ModuleImport>(0);
+  return cast<*CORE::ModuleImport>(0);
 }
 
-pub const scope_lookup_current -> fn (scope: *Scope, name: *byte) *Symbol {
-  let v: *Vector = scope.symbols;
+pub const scope_lookup_current -> fn (scope: *CORE::Scope, name: *byte) *CORE::Symbol {
+  let v: *VEC::Vector = scope.symbols;
   let count: int = v.size;
   loop [i: int = 0](i < count) : (++i) {
-    let sym: *Symbol = cast<*Symbol>(v.get(i));
+    let sym: *CORE::Symbol = cast<*CORE::Symbol>(v.get(i));
     if (STR::strcmp(sym.name, name) == 0) return sym;
   }
-  return cast<*Symbol>(0);
+  return cast<*CORE::Symbol>(0);
 }
 
-pub const scope_add_symbol_full -> fn (scope: *Scope, name: *byte, type: *AstNode,
+pub const scope_add_symbol_full -> fn (scope: *CORE::Scope, name: *byte, type: *AST::AstNode,
                                        is_public: bool, is_mutable: bool,
                                        returns_ownership: bool, takes_ownership: bool) bool {
-  if (scope_lookup_current(scope, name) != cast<*Symbol>(0)) return false;
+  if (scope_lookup_current(scope, name) != cast<*CORE::Symbol>(0)) return false;
 
-  let sym: Symbol = Symbol {
+  let sym: CORE::Symbol = CORE::Symbol {
     name:              name,
     type:              type,
     is_public:         is_public,
@@ -149,63 +149,63 @@ pub const scope_add_symbol_full -> fn (scope: *Scope, name: *byte, type: *AstNod
     returns_ownership: returns_ownership,
     takes_ownership:   takes_ownership,
   };
-  let v: *Vector = scope.symbols;
+  let v: *VEC::Vector = scope.symbols;
   v.push_back(cast<*void>(&sym));
   return true;
 }
 
-pub const scope_add_symbol -> fn (scope: *Scope, name: *byte, type: *AstNode,
+pub const scope_add_symbol -> fn (scope: *CORE::Scope, name: *byte, type: *AST::AstNode,
                                   is_public: bool, is_mutable: bool) bool {
   return scope_add_symbol_full(scope, name, type, is_public, is_mutable, false, false);
 }
 
 // Walks the scope chain, then searches imported modules (public symbols only).
-pub const scope_lookup -> fn (scope: *Scope, name: *byte) *Symbol {
-  let own_module: *Scope = find_containing_module(scope);
+pub const scope_lookup -> fn (scope: *CORE::Scope, name: *byte) *CORE::Symbol {
+  let own_module: *CORE::Scope = find_containing_module(scope);
 
-  let s: *Scope = scope;
-  loop (s != cast<*Scope>(0)) {
-    let found: *Symbol = scope_lookup_current(s, name);
-    if (found != cast<*Symbol>(0)) return found;
+  let s: *CORE::Scope = scope;
+  loop (s != cast<*CORE::Scope>(0)) {
+    let found: *CORE::Symbol = scope_lookup_current(s, name);
+    if (found != cast<*CORE::Symbol>(0)) return found;
 
     // Search modules imported at this scope level.
-    let v: *Vector = s.imported_modules;
+    let v: *VEC::Vector = s.imported_modules;
     let count: int = v.size;
     loop [i: int = 0](i < count) : (++i) {
-      let imp: *ModuleImport = cast<*ModuleImport>(v.get(i));
-      let mscope: *Scope = imp.module_scope;
-      if (mscope != cast<*Scope>(0)) {
-        let m: *Symbol = scope_lookup_current(mscope, name);
-        if (m != cast<*Symbol>(0)) {
+      let imp: *CORE::ModuleImport = cast<*CORE::ModuleImport>(v.get(i));
+      let mscope: *CORE::Scope = imp.module_scope;
+      if (mscope != cast<*CORE::Scope>(0)) {
+        let m: *CORE::Symbol = scope_lookup_current(mscope, name);
+        if (m != cast<*CORE::Symbol>(0)) {
           if (m.is_public || mscope == own_module) return m;
         }
       }
     }
     s = s.parent;
   }
-  return cast<*Symbol>(0);
+  return cast<*CORE::Symbol>(0);
 }
 
 // Look a symbol up directly inside a specific module scope (for ALIAS::name).
-pub const scope_lookup_in_module -> fn (module_scope: *Scope, name: *byte) *Symbol {
-  if (module_scope == cast<*Scope>(0)) return cast<*Symbol>(0);
+pub const scope_lookup_in_module -> fn (module_scope: *CORE::Scope, name: *byte) *CORE::Symbol {
+  if (module_scope == cast<*CORE::Scope>(0)) return cast<*CORE::Symbol>(0);
   return scope_lookup_current(module_scope, name);
 }
 
-pub const get_enclosing_function_name -> fn (scope: *Scope) *byte {
-  let fscope: *Scope = get_enclosing_function(scope);
-  if (fscope == cast<*Scope>(0)) return "";
-  let assoc: *AstNode = fscope.associated_node;
-  if (assoc == cast<*AstNode>(0)) return "";
-  let fd: *FuncDeclNode = cast<*FuncDeclNode>(assoc);
+pub const get_enclosing_function_name -> fn (scope: *CORE::Scope) *byte {
+  let fscope: *CORE::Scope = get_enclosing_function(scope);
+  if (fscope == cast<*CORE::Scope>(0)) return "";
+  let assoc: *AST::AstNode = fscope.associated_node;
+  if (assoc == cast<*AST::AstNode>(0)) return "";
+  let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(assoc);
   return fd.name;
 }
 
-pub const analyzer_find -> fn (analyzer: *StaticMemoryAnalyzer, name: *byte, func_name: *byte) *StaticAllocation {
-  let v: *Vector = analyzer.allocations;
+pub const analyzer_find -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byte, func_name: *byte) *CORE::StaticAllocation {
+  let v: *VEC::Vector = analyzer.allocations;
   let count: int = v.size;
   loop [i: int = 0](i < count) : (++i) {
-    let a: *StaticAllocation = cast<*StaticAllocation>(v.get(i));
+    let a: *CORE::StaticAllocation = cast<*CORE::StaticAllocation>(v.get(i));
     if (STR::strcmp(a.variable_name, name) == 0 && STR::strcmp(a.function_name, func_name) == 0) return a;
   }
 
@@ -213,11 +213,11 @@ pub const analyzer_find -> fn (analyzer: *StaticMemoryAnalyzer, name: *byte, fun
   // some other tracked allocation (`let b = a; free(b);` must satisfy a's
   // has_matching_free, not leave `a` looking un-freed).
   loop [i: int = 0](i < count) : (++i) {
-    let a: *StaticAllocation = cast<*StaticAllocation>(v.get(i));
+    let a: *CORE::StaticAllocation = cast<*CORE::StaticAllocation>(v.get(i));
     if (STR::strcmp(a.function_name, func_name) != 0) continue;
-    if (a.aliases == cast<*Vector>(0)) continue;
+    if (a.aliases == cast<*VEC::Vector>(0)) continue;
 
-    let av: *Vector = a.aliases;
+    let av: *VEC::Vector = a.aliases;
     let ac: int = av.size;
     loop [j: int = 0](j < ac) : (++j) {
       let alias_name: *byte = cast<**byte>(av.data)[j];
@@ -225,14 +225,14 @@ pub const analyzer_find -> fn (analyzer: *StaticMemoryAnalyzer, name: *byte, fun
     }
   }
 
-  return cast<*StaticAllocation>(0);
+  return cast<*CORE::StaticAllocation>(0);
 }
 
-pub const analyzer_track_alloc -> fn (analyzer: *StaticMemoryAnalyzer, name: *byte, func_name: *byte,
+pub const analyzer_track_alloc -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byte, func_name: *byte,
                                       file_path: *byte, line: int, col: int) void {
   if (analyzer.skip_memory_tracking) return;
 
-  let a: StaticAllocation = StaticAllocation {
+  let a: CORE::StaticAllocation = CORE::StaticAllocation {
     line:                 line,
     col:                  col,
     variable_name:        name,
@@ -241,22 +241,22 @@ pub const analyzer_track_alloc -> fn (analyzer: *StaticMemoryAnalyzer, name: *by
     free_count:           0,
     conditional_free:     0,
     use_after_free_count: 0,
-    aliases:              cast<*Vector>(0),
+    aliases:              cast<*VEC::Vector>(0),
     reported:             false,
     address_taken:        false,
     function_name:        func_name,
     file_path:            file_path,
   };
-  let v: *Vector = analyzer.allocations;
+  let v: *VEC::Vector = analyzer.allocations;
   v.push_back(cast<*void>(&a));
 }
 
-pub const analyzer_track_free -> fn (analyzer: *StaticMemoryAnalyzer, name: *byte, func_name: *byte,
+pub const analyzer_track_free -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byte, func_name: *byte,
                                      is_conditional: bool) void {
   if (analyzer.skip_memory_tracking) return;
 
-  let a: *StaticAllocation = analyzer_find(analyzer, name, func_name);
-  if (a == cast<*StaticAllocation>(0)) return;
+  let a: *CORE::StaticAllocation = analyzer_find(analyzer, name, func_name);
+  if (a == cast<*CORE::StaticAllocation>(0)) return;
 
   a.has_matching_free = true;
   if (is_conditional) {
@@ -266,28 +266,28 @@ pub const analyzer_track_free -> fn (analyzer: *StaticMemoryAnalyzer, name: *byt
   }
 }
 
-pub const analyzer_track_alias -> fn (analyzer: *StaticMemoryAnalyzer, target_name: *byte,
+pub const analyzer_track_alias -> fn (analyzer: *CORE::StaticMemoryAnalyzer, target_name: *byte,
                                       source_name: *byte, func_name: *byte) void {
   if (analyzer.skip_memory_tracking) return;
 
-  let src: *StaticAllocation = analyzer_find(analyzer, source_name, func_name);
-  if (src == cast<*StaticAllocation>(0)) return;
+  let src: *CORE::StaticAllocation = analyzer_find(analyzer, source_name, func_name);
+  if (src == cast<*CORE::StaticAllocation>(0)) return;
 
-  if (src.aliases == cast<*Vector>(0)) {
+  if (src.aliases == cast<*VEC::Vector>(0)) {
     src.aliases = new_vector(sizeof<*byte>);
   }
-  let v: *Vector = src.aliases;
+  let v: *VEC::Vector = src.aliases;
   v.push_back(cast<*void>(&target_name));
 }
 
-pub const analyzer_mark_address_taken -> fn (analyzer: *StaticMemoryAnalyzer, name: *byte, func_name: *byte) void {
-  let a: *StaticAllocation = analyzer_find(analyzer, name, func_name);
-  if (a != cast<*StaticAllocation>(0)) { a.address_taken = true; }
+pub const analyzer_mark_address_taken -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byte, func_name: *byte) void {
+  let a: *CORE::StaticAllocation = analyzer_find(analyzer, name, func_name);
+  if (a != cast<*CORE::StaticAllocation>(0)) { a.address_taken = true; }
 }
 
-pub const analyzer_check_use_after_free -> fn (analyzer: *StaticMemoryAnalyzer, name: *byte, func_name: *byte) bool {
-  let a: *StaticAllocation = analyzer_find(analyzer, name, func_name);
-  if (a == cast<*StaticAllocation>(0)) return false;
+pub const analyzer_check_use_after_free -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byte, func_name: *byte) bool {
+  let a: *CORE::StaticAllocation = analyzer_find(analyzer, name, func_name);
+  if (a == cast<*CORE::StaticAllocation>(0)) return false;
   if (a.has_matching_free == false) return false;
 
   a.use_after_free_count = a.use_after_free_count + 1;
@@ -295,17 +295,17 @@ pub const analyzer_check_use_after_free -> fn (analyzer: *StaticMemoryAnalyzer, 
 }
 
 #returns_ownership
-pub const find_enum_members -> fn (scope: *Scope, enum_name: *byte) Vector {
-  let result: Vector = VEC::create_vector(sizeof<*byte>);
+pub const find_enum_members -> fn (scope: *CORE::Scope, enum_name: *byte) VEC::Vector {
+  let result: VEC::Vector = VEC::create_vector(sizeof<*byte>);
 
-  let mscope: *Scope = find_containing_module(scope);
-  if (mscope == cast<*Scope>(0)) return result;
+  let mscope: *CORE::Scope = find_containing_module(scope);
+  if (mscope == cast<*CORE::Scope>(0)) return result;
 
   let elen: int = STR::strlen(enum_name);
-  let v: *Vector = mscope.symbols;
+  let v: *VEC::Vector = mscope.symbols;
   let count: int = v.size;
   loop [i: int = 0](i < count) : (++i) {
-    let sym: *Symbol = cast<*Symbol>(v.get(i));
+    let sym: *CORE::Symbol = cast<*CORE::Symbol>(v.get(i));
 
     let namelen: int = STR::strlen(sym.name);
     if (namelen > elen) {

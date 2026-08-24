@@ -20,7 +20,7 @@ const _R0: *byte = "";
 
 const MAX_DEPTH: int = 128;
 
-pub const print_node -> fn (node: *AstNode, indent: int) void;
+pub const print_node -> fn (node: *AST::AstNode, indent: int) void;
 
 const pf -> fn (flags: *int, depth: int) void {
   loop [i: int = 1](i < depth) : (++i) {
@@ -34,17 +34,17 @@ const cn -> fn (is_last: int) void {
   else              output("├── ");
 }
 
-const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *byte) void;
+const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, color: *byte) void;
 
-const r -> fn (node: *AstNode, flags: *int, depth: int, is_last: int) void {
+const r -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int) void {
   pn(node, flags, depth, is_last, _C);
 }
 
-const rt -> fn (node: *AstNode, flags: *int, depth: int) void {
+const rt -> fn (node: *AST::AstNode, flags: *int, depth: int) void {
   pn(node, flags, depth, 1, _B);
 }
 
-const field -> fn (label: *byte, node: *AstNode, flags: *int, parent_depth: int, more: int, color: *byte) void {
+const field -> fn (label: *byte, node: *AST::AstNode, flags: *int, parent_depth: int, more: int, color: *byte) void {
   pf(flags, parent_depth + 1);
   if (more == 1) output("├── ");
   else           output("└── ");
@@ -57,7 +57,7 @@ const col -> fn (c: *byte, c0: *byte) *byte {
   return c0;
 }
 
-const ann_lc -> fn (node: *AstNode) void {
+const ann_lc -> fn (node: *AST::AstNode) void {
   if (USE_COLOR == 0) return;
   output(col(_D, _D0), "(", node.line, ":", node.col, ")", col(_R, _R0));
 }
@@ -67,8 +67,8 @@ const ann_n -> fn (cnt: int, word: *byte) void {
   output(col(_D, _D0), " (", cnt, " ", word, ")", col(_R, _R0));
 }
 
-const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *byte) void {
-  if (node == cast<*AstNode>(0)) {
+const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, color: *byte) void {
+  if (node == cast<*AST::AstNode>(0)) {
     pf(flags, depth);
     cn(is_last);
     output(col(_M, _M0), "<null>", col(_R, _R0), "\n");
@@ -81,7 +81,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
   switch (kind) {
 
     AST::NodeType::PREPROCESSOR_MODULE -> {
-      let n: *ModuleNode = cast<*ModuleNode>(node);
+      let n: *AST::ModuleNode = cast<*AST::ModuleNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Module", col(_R, _R0), ": ", n.name);
@@ -99,7 +99,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::PREPROCESSOR_USE -> {
-      let n: *UseNode = cast<*UseNode>(node);
+      let n: *AST::UseNode = cast<*AST::UseNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Use", col(_R, _R0), ": ", n.module_name, " as ", n.alias);
@@ -108,7 +108,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::PREPROCESSOR_OS -> {
-      let n: *OsNode = cast<*OsNode>(node);
+      let n: *AST::OsNode = cast<*AST::OsNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Os", col(_R, _R0));
@@ -129,7 +129,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::PREPROCESSOR_LINK -> {
-      let n: *LinkNode = cast<*LinkNode>(node);
+      let n: *AST::LinkNode = cast<*AST::LinkNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Link", col(_R, _R0), ": ", n.lib_name);
@@ -138,7 +138,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::PROGRAM -> {
-      let n: *ProgramNode = cast<*ProgramNode>(node);
+      let n: *AST::ProgramNode = cast<*AST::ProgramNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Program", col(_R, _R0));
@@ -156,7 +156,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_EXPRESSION -> {
-      let n: *ExprStmtNode = cast<*ExprStmtNode>(node);
+      let n: *AST::ExprStmtNode = cast<*AST::ExprStmtNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "ExprStmt", col(_R, _R0));
@@ -166,7 +166,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_VAR_DECL -> {
-      let n: *VarDeclNode = cast<*VarDeclNode>(node);
+      let n: *AST::VarDeclNode = cast<*AST::VarDeclNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "VarDecl", col(_R, _R0), ": ", n.name);
@@ -176,14 +176,14 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
       output("\n");
 
       let has_init: int = 0;
-      if (n.initializer != cast<*AstNode>(0)) has_init = 1;
+      if (n.initializer != cast<*AST::AstNode>(0)) has_init = 1;
       field(cast<*byte>("type"), n.var_type, flags, depth, has_init, _B);
       if (has_init == 1)
         field(cast<*byte>("init"), n.initializer, flags, depth, 0, _C);
     }
 
     AST::NodeType::STMT_CONST_DECL -> {
-      let n: *VarDeclNode = cast<*VarDeclNode>(node);
+      let n: *AST::VarDeclNode = cast<*AST::VarDeclNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "ConstDecl", col(_R, _R0), ": ", n.name);
@@ -191,14 +191,14 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
       output("\n");
 
       let has_init: int = 0;
-      if (n.initializer != cast<*AstNode>(0)) has_init = 1;
+      if (n.initializer != cast<*AST::AstNode>(0)) has_init = 1;
       field(cast<*byte>("type"), n.var_type, flags, depth, has_init, _B);
       if (has_init == 1)
         field(cast<*byte>("init"), n.initializer, flags, depth, 0, _C);
     }
 
     AST::NodeType::STMT_FUNCTION -> {
-      let n: *FuncDeclNode = cast<*FuncDeclNode>(node);
+      let n: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "FuncDecl", col(_R, _R0), ": ", n.name);
@@ -221,7 +221,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
 
       let pc: int = n.param_count;
       let has_body: int = 0;
-      if (n.body != cast<*AstNode>(0)) has_body = 1;
+      if (n.body != cast<*AST::AstNode>(0)) has_body = 1;
       let total: int = pc + 1 + has_body;
       let idx: int = 0;
 
@@ -248,7 +248,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_BLOCK -> {
-      let n: *BlockNode = cast<*BlockNode>(node);
+      let n: *AST::BlockNode = cast<*AST::BlockNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Block", col(_R, _R0));
@@ -266,18 +266,18 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_RETURN -> {
-      let n: *ReturnStmtNode = cast<*ReturnStmtNode>(node);
+      let n: *AST::ReturnStmtNode = cast<*AST::ReturnStmtNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Return", col(_R, _R0));
       ann_lc(node);
       output("\n");
-      if (n.value != cast<*AstNode>(0))
+      if (n.value != cast<*AST::AstNode>(0))
         r(n.value, flags, depth + 1, 1);
     }
 
     AST::NodeType::STMT_IF -> {
-      let n: *IfStmtNode = cast<*IfStmtNode>(node);
+      let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "If", col(_R, _R0));
@@ -287,7 +287,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
       let has_elif: int = 0;
       let has_else: int = 0;
       if (n.elif_count > 0) has_elif = 1;
-      if (n.else_stmt != cast<*AstNode>(0)) has_else = 1;
+      if (n.else_stmt != cast<*AST::AstNode>(0)) has_else = 1;
 
       let more_then: int = 0;
       if (has_elif == 1 || has_else == 1) more_then = 1;
@@ -307,7 +307,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_LOOP -> {
-      let n: *LoopStmtNode = cast<*LoopStmtNode>(node);
+      let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Loop", col(_R, _R0));
@@ -317,8 +317,8 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
       let ic: int = n.init_count;
       let has_cond: int = 0;
       let has_step: int = 0;
-      if (n.condition != cast<*AstNode>(0)) has_cond = 1;
-      if (n.optional != cast<*AstNode>(0)) has_step = 1;
+      if (n.condition != cast<*AST::AstNode>(0)) has_cond = 1;
+      if (n.optional != cast<*AST::AstNode>(0)) has_step = 1;
       let remaining: int = ic + has_cond + has_step + 1;
       let idx2: int = 0;
 
@@ -350,7 +350,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_BREAK_CONTINUE -> {
-      let n: *BreakContinueNode = cast<*BreakContinueNode>(node);
+      let n: *AST::BreakContinueNode = cast<*AST::BreakContinueNode>(node);
       pf(flags, depth);
       cn(is_last);
       if (n.is_continue == 1) output(nc, "Continue", col(_R, _R0));
@@ -360,7 +360,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_DEFER -> {
-      let n: *DeferNode = cast<*DeferNode>(node);
+      let n: *AST::DeferNode = cast<*AST::DeferNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Defer", col(_R, _R0));
@@ -370,7 +370,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_SWITCH -> {
-      let n: *SwitchNode = cast<*SwitchNode>(node);
+      let n: *AST::SwitchNode = cast<*AST::SwitchNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Switch", col(_R, _R0));
@@ -379,7 +379,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
 
       let cc: int = n.case_count;
       let has_def: int = 0;
-      if (n.default_case != cast<*AstNode>(0)) has_def = 1;
+      if (n.default_case != cast<*AST::AstNode>(0)) has_def = 1;
 
       let cond_more: int = 0;
       if (cc > 0 || has_def == 1) cond_more = 1;
@@ -405,7 +405,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_CASE -> {
-      let n: *CaseNode = cast<*CaseNode>(node);
+      let n: *AST::CaseNode = cast<*AST::CaseNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Case", col(_R, _R0));
@@ -422,7 +422,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_DEFAULT -> {
-      let n: *DefaultNode = cast<*DefaultNode>(node);
+      let n: *AST::DefaultNode = cast<*AST::DefaultNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Default", col(_R, _R0));
@@ -432,7 +432,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_ENUM -> {
-      let n: *EnumDeclNode = cast<*EnumDeclNode>(node);
+      let n: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "EnumDecl", col(_R, _R0), ": ", n.name);
@@ -453,7 +453,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_STRUCT -> {
-      let n: *StructDeclNode = cast<*StructDeclNode>(node);
+      let n: *AST::StructDeclNode = cast<*AST::StructDeclNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "StructDecl", col(_R, _R0), ": ", n.name);
@@ -475,7 +475,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_FIELD_DECL -> {
-      let n: *FieldDeclNode = cast<*FieldDeclNode>(node);
+      let n: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(node);
       pf(flags, depth);
       cn(is_last);
       if (n.is_embedded == 1) output(nc, "Embed", col(_R, _R0), ": ", n.name);
@@ -485,8 +485,8 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
 
       let has_type: int = 0;
       let has_fn: int = 0;
-      if (n.type_node != cast<*AstNode>(0)) has_type = 1;
-      if (n.function != cast<*AstNode>(0)) has_fn = 1;
+      if (n.type_node != cast<*AST::AstNode>(0)) has_type = 1;
+      if (n.function != cast<*AST::AstNode>(0)) has_fn = 1;
 
       if (has_type == 1)
         field(cast<*byte>("type"), n.type_node, flags, depth, has_fn, _B);
@@ -495,7 +495,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::STMT_IMPL -> {
-      let n: *ImplNode = cast<*ImplNode>(node);
+      let n: *AST::ImplNode = cast<*AST::ImplNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Impl", col(_R, _R0));
@@ -535,7 +535,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
 
     // ── Expressions ───────────────────────────────────────────────────
     AST::NodeType::EXPR_LITERAL -> {
-      let n: *LiteralNode = cast<*LiteralNode>(node);
+      let n: *AST::LiteralNode = cast<*AST::LiteralNode>(node);
       pf(flags, depth);
       cn(is_last);
 
@@ -571,7 +571,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_IDENTIFIER -> {
-      let n: *IdentifierNode = cast<*IdentifierNode>(node);
+      let n: *AST::IdentifierNode = cast<*AST::IdentifierNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Ident", col(_R, _R0), ": ", n.name);
@@ -580,7 +580,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_BINARY -> {
-      let n: *BinaryNode = cast<*BinaryNode>(node);
+      let n: *AST::BinaryNode = cast<*AST::BinaryNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Binary", col(_R, _R0), ": ", col(_Y, _Y0));
@@ -618,7 +618,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_UNARY -> {
-      let n: *UnaryNode = cast<*UnaryNode>(node);
+      let n: *AST::UnaryNode = cast<*AST::UnaryNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Unary", col(_R, _R0), ": ", col(_Y, _Y0));
@@ -643,7 +643,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_DEREF -> {
-      let n: *UnaryNode = cast<*UnaryNode>(node);
+      let n: *AST::UnaryNode = cast<*AST::UnaryNode>(node);
       pf(flags, depth); cn(is_last);
       output(nc, "Deref", col(_R, _R0));
       ann_lc(node); output("\n");
@@ -651,7 +651,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_ADDR -> {
-      let n: *UnaryNode = cast<*UnaryNode>(node);
+      let n: *AST::UnaryNode = cast<*AST::UnaryNode>(node);
       pf(flags, depth); cn(is_last);
       output(nc, "Addr", col(_R, _R0));
       ann_lc(node); output("\n");
@@ -659,7 +659,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_GROUPING -> {
-      let n: *UnaryNode = cast<*UnaryNode>(node);
+      let n: *AST::UnaryNode = cast<*AST::UnaryNode>(node);
       pf(flags, depth); cn(is_last);
       output(nc, "Grouping", col(_R, _R0));
       ann_lc(node); output("\n");
@@ -667,7 +667,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_SYSTEM -> {
-      let n: *UnaryNode = cast<*UnaryNode>(node);
+      let n: *AST::UnaryNode = cast<*AST::UnaryNode>(node);
       pf(flags, depth); cn(is_last);
       output(nc, "System", col(_R, _R0));
       ann_lc(node); output("\n");
@@ -675,7 +675,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_CALL -> {
-      let n: *CallNode = cast<*CallNode>(node);
+      let n: *AST::CallNode = cast<*AST::CallNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Call", col(_R, _R0));
@@ -694,7 +694,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_ASSIGNMENT -> {
-      let n: *AssignNode = cast<*AssignNode>(node);
+      let n: *AST::AssignNode = cast<*AST::AssignNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Assign", col(_R, _R0));
@@ -706,7 +706,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_TERNARY -> {
-      let n: *TernaryNode = cast<*TernaryNode>(node);
+      let n: *AST::TernaryNode = cast<*AST::TernaryNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Ternary", col(_R, _R0));
@@ -719,7 +719,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_MEMBER -> {
-      let n: *MemberNode = cast<*MemberNode>(node);
+      let n: *AST::MemberNode = cast<*AST::MemberNode>(node);
       pf(flags, depth);
       cn(is_last);
       if (n.is_compiletime == 1) output(nc, "Member(::)", col(_R, _R0), ": ", n.member);
@@ -731,7 +731,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_INDEX -> {
-      let n: *IndexNode = cast<*IndexNode>(node);
+      let n: *AST::IndexNode = cast<*AST::IndexNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Index", col(_R, _R0));
@@ -745,7 +745,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_ARRAY -> {
-      let n: *ArrayNode = cast<*ArrayNode>(node);
+      let n: *AST::ArrayNode = cast<*AST::ArrayNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Array", col(_R, _R0));
@@ -763,7 +763,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_CAST -> {
-      let n: *CastNode = cast<*CastNode>(node);
+      let n: *AST::CastNode = cast<*AST::CastNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Cast", col(_R, _R0));
@@ -775,7 +775,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_INPUT -> {
-      let n: *CastNode = cast<*CastNode>(node);
+      let n: *AST::CastNode = cast<*AST::CastNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Input", col(_R, _R0));
@@ -783,14 +783,14 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
       output("\n");
 
       let has_msg2: int = 0;
-      if (n.castee != cast<*AstNode>(0)) has_msg2 = 1;
+      if (n.castee != cast<*AST::AstNode>(0)) has_msg2 = 1;
       field(cast<*byte>("type"), n.type_node, flags, depth, has_msg2, _B);
       if (has_msg2 == 1)
         field(cast<*byte>("msg"), n.castee, flags, depth, 0, _C);
     }
 
     AST::NodeType::EXPR_ALLOC -> {
-      let n: *AllocNode = cast<*AllocNode>(node);
+      let n: *AST::AllocNode = cast<*AST::AllocNode>(node);
       pf(flags, depth); cn(is_last);
       output(nc, "Alloc", col(_R, _R0));
       ann_lc(node); output("\n");
@@ -798,7 +798,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_FREE -> {
-      let n: *FreeNode = cast<*FreeNode>(node);
+      let n: *AST::FreeNode = cast<*AST::FreeNode>(node);
       pf(flags, depth); cn(is_last);
       output(nc, "Free", col(_R, _R0));
       ann_lc(node); output("\n");
@@ -806,7 +806,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_MEMCPY -> {
-      let n: *MemcpyNode = cast<*MemcpyNode>(node);
+      let n: *AST::MemcpyNode = cast<*AST::MemcpyNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Memcpy", col(_R, _R0));
@@ -819,7 +819,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_SIZEOF -> {
-      let n: *SizeofNode = cast<*SizeofNode>(node);
+      let n: *AST::SizeofNode = cast<*AST::SizeofNode>(node);
       pf(flags, depth);
       cn(is_last);
       if (n.is_type == 1) output(nc, "Sizeof(type)", col(_R, _R0));
@@ -830,7 +830,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_SYSCALL -> {
-      let n: *SyscallNode = cast<*SyscallNode>(node);
+      let n: *AST::SyscallNode = cast<*AST::SyscallNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Syscall", col(_R, _R0));
@@ -847,7 +847,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::EXPR_STRUCT -> {
-      let n: *StructExprNode = cast<*StructExprNode>(node);
+      let n: *AST::StructExprNode = cast<*AST::StructExprNode>(node);
       pf(flags, depth);
       cn(is_last);
       if (n.name != cast<*byte>(0)) output(nc, "StructExpr", col(_R, _R0), ": ", n.name);
@@ -871,7 +871,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
 
     // ── Types ─────────────────────────────────────────────────────────
     AST::NodeType::TYPE_BASIC -> {
-      let n: *BasicTypeNode = cast<*BasicTypeNode>(node);
+      let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Type", col(_R, _R0), ": ", col(_B, _B0), n.name, col(_R, _R0));
@@ -880,7 +880,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::TYPE_POINTER -> {
-      let n: *PointerTypeNode = cast<*PointerTypeNode>(node);
+      let n: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Type: *", col(_R, _R0));
@@ -890,7 +890,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::TYPE_ARRAY -> {
-      let n: *ArrayTypeNode = cast<*ArrayTypeNode>(node);
+      let n: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Type: []", col(_R, _R0));
@@ -902,7 +902,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::TYPE_FUNCTION -> {
-      let n: *FuncTypeNode = cast<*FuncTypeNode>(node);
+      let n: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Type: fn", col(_R, _R0));
@@ -919,7 +919,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
     }
 
     AST::NodeType::TYPE_RESOLUTION -> {
-      let n: *ResolutionNode = cast<*ResolutionNode>(node);
+      let n: *AST::ResolutionNode = cast<*AST::ResolutionNode>(node);
       pf(flags, depth);
       cn(is_last);
       output(nc, "Type", col(_R, _R0), ": ", col(_B, _B0));
@@ -941,7 +941,7 @@ const pn -> fn (node: *AstNode, flags: *int, depth: int, is_last: int, color: *b
   }
 }
 
-pub const print_node -> fn (node: *AstNode, indent: int) void {
+pub const print_node -> fn (node: *AST::AstNode, indent: int) void {
   let flags: *int = cast<*int>(alloc(MAX_DEPTH * sizeof<int>));
   loop [i: int = 0](i < MAX_DEPTH) : (++i) { flags[i] = 0; }
   pn(node, flags, indent, 1, _C);

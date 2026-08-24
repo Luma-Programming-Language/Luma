@@ -9,13 +9,13 @@
 @use "parser"       as PARS
 @use "ast"          as AST
 
-#returns_ownership const pointer_type    -> fn (p: *Parser) *AstNode;
-#returns_ownership const array_type      -> fn (p: *Parser) *AstNode;
-#returns_ownership const resolution_type -> fn (p: *Parser) *AstNode;
-#returns_ownership const function_type   -> fn (p: *Parser) *AstNode;
+#returns_ownership const pointer_type    -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const array_type      -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const function_type   -> fn (p: *PARS::Parser) *AST::AstNode;
 
 #returns_ownership
-const tnud -> fn (p: *Parser) *AstNode {
+const tnud -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().col;
   let kind: int = p.current().kind;
@@ -32,12 +32,12 @@ const tnud -> fn (p: *Parser) *AstNode {
     TOK::LumaTokenType::TOK_LBRACKET   -> { p.advance(); return array_type(p);      }
     TOK::LumaTokenType::TOK_FN         -> { p.advance(); return function_type(p);   }
     TOK::LumaTokenType::TOK_IDENTIFIER -> { return resolution_type(p);              }
-    _ -> { return cast<*AstNode>(0); }
+    _ -> { return cast<*AST::AstNode>(0); }
   }
 }
 
 #returns_ownership
-pub const parse_type -> fn (p: *Parser) *AstNode {
+pub const parse_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let kind: int = p.current().kind;
 
   if (kind == TOK::LumaTokenType::TOK_INT        ||
@@ -54,28 +54,28 @@ pub const parse_type -> fn (p: *Parser) *AstNode {
     return tnud(p);
   }
 
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership
-const array_type -> fn (p: *Parser) *AstNode {
+const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
 
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
-  let element_type: *AstNode = parse_type(p);
-  if (element_type == cast<*AstNode>(0)) {
+  let element_type: *AST::AstNode = parse_type(p);
+  if (element_type == cast<*AST::AstNode>(0)) {
     p.error("TypeError", "Expected type after '[' in array type.");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   if (p.current().kind != TOK::LumaTokenType::TOK_SEMI) {
     p.error("TypeError", "Array types must declare a size, expected ';' after element type.");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
   p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after array element type.");
 
-  let size: *AstNode = cast<*AstNode>(0);
+  let size: *AST::AstNode = cast<*AST::AstNode>(0);
   switch(PARS::search_literal_map(p.current().kind)) {
     AST::LiteralType::LITERAL_INT -> {
       let val: *byte = p.get_name();
@@ -94,25 +94,25 @@ const array_type -> fn (p: *Parser) *AstNode {
   p.consume(TOK::LumaTokenType::TOK_RBRACKET, "Expected ']' to close array type.");
 
   return TAST::make_array_type(element_type, size, line, col); 
-  return cast<*AstNode>(0);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership
-const pointer_type -> fn (p: *Parser) *AstNode {
+const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
 
-  let pointee: *AstNode = parse_type(p);
-  if (pointee == cast<*AstNode>(0)) {
+  let pointee: *AST::AstNode = parse_type(p);
+  if (pointee == cast<*AST::AstNode>(0)) {
     p.error("TypeError", "Expected type after '*' in pointer type.");
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
   return TAST::make_pointer_type(pointee, line, col);
 }
 
 #returns_ownership
-const resolution_type -> fn (p: *Parser) *AstNode {
+const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().whitespace_len;
 
@@ -125,7 +125,7 @@ const resolution_type -> fn (p: *Parser) *AstNode {
   }
 
   // namespace::Type or namespace::sub::Type
-  let parts: Vector = VEC::create_vector(sizeof<*byte>);
+  let parts: VEC::Vector = VEC::create_vector(sizeof<*byte>);
   parts.push_back(cast<*void>(&first_name));
 
   loop (p.current().kind == TOK::LumaTokenType::TOK_RESOLVE) {
@@ -134,7 +134,7 @@ const resolution_type -> fn (p: *Parser) *AstNode {
     if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
       p.error("SyntaxError", "Expected identifier after '::'.");
       VEC::free_vector(&parts);
-      return cast<*AstNode>(0);
+      return cast<*AST::AstNode>(0);
     }
 
     let part: *byte = p.get_name();
@@ -142,7 +142,7 @@ const resolution_type -> fn (p: *Parser) *AstNode {
     parts.push_back(cast<*void>(&part));
   }
 
-  let node: *AstNode = TAST::make_resolution_type(
+  let node: *AST::AstNode = TAST::make_resolution_type(
     PARS::vec_to_byte_array(&parts), parts.size, line, col
   );
   VEC::free_vector(&parts);
@@ -151,21 +151,21 @@ const resolution_type -> fn (p: *Parser) *AstNode {
 }
 
 #returns_ownership 
-const function_type   -> fn (p: *Parser) *AstNode {
+const function_type   -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' to start function parameter list.");
 
-  let param_types: Vector = VEC::create_vector(sizeof<*AstNode>);
+  let param_types: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   if (p.current().kind != TOK::LumaTokenType::TOK_RPAREN) {
     loop (p.has_tokens()) {
-      let param_type: *AstNode = tnud(p);
-      if (param_type == cast<*AstNode>(0)) {
+      let param_type: *AST::AstNode = tnud(p);
+      if (param_type == cast<*AST::AstNode>(0)) {
         p.error("TypeError", "Expected type in function parameter list.");
         VEC::free_vector(&param_types);
-        return cast<*AstNode>(0);
+        return cast<*AST::AstNode>(0);
       }
 
       param_types.push_back(cast<*void>(&param_type));
@@ -180,14 +180,14 @@ const function_type   -> fn (p: *Parser) *AstNode {
 
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close function parameter list.");
 
-  let return_type: *AstNode = tnud(p);
-  if (return_type == cast<*AstNode>(0)) {
+  let return_type: *AST::AstNode = tnud(p);
+  if (return_type == cast<*AST::AstNode>(0)) {
     p.error("TypeError", "Expected return type after function parameter list.");
     VEC::free_vector(&param_types);
-    return cast<*AstNode>(0);
+    return cast<*AST::AstNode>(0);
   }
 
-  let node: *AstNode = TAST::make_func_type(
+  let node: *AST::AstNode = TAST::make_func_type(
     PARS::vec_to_node_array(&param_types), param_types.size, return_type, line, col
   );
   VEC::free_vector(&param_types);

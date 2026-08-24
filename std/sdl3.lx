@@ -1,0 +1,188 @@
+@module "std_sdl3"
+
+@os {
+    "linux"   -> { @link("libSDL3.so") }
+    "macos"   -> { @link("libSDL3.dylib") }
+}
+
+// ============================================================================
+// INIT FLAGS
+// ============================================================================
+
+pub const SDL_INIT_VIDEO:  int = 32;
+pub const SDL_INIT_AUDIO:  int = 16;
+pub const SDL_INIT_EVENTS: int = 16384;
+
+// ============================================================================
+// WINDOW FLAGS
+// Windows are shown by default in SDL3 — SDL_WINDOW_SHOWN no longer exists.
+// ============================================================================
+
+pub const SDL_WINDOW_FULLSCREEN:  int = 1;
+pub const SDL_WINDOW_HIDDEN:      int = 8;
+pub const SDL_WINDOW_BORDERLESS:  int = 16;
+pub const SDL_WINDOW_RESIZABLE:   int = 32;
+pub const SDL_WINDOW_MINIMIZED:   int = 64;
+pub const SDL_WINDOW_MAXIMIZED:   int = 128;
+
+// ============================================================================
+// EVENT TYPES  (values unchanged from SDL2, names changed to SDL_EVENT_*)
+// ============================================================================
+
+pub const SDL_EVENT_QUIT:          int = 256;   // 0x100
+pub const SDL_EVENT_KEY_DOWN:      int = 768;   // 0x300
+pub const SDL_EVENT_KEY_UP:        int = 769;   // 0x301
+pub const SDL_EVENT_MOUSE_MOTION:  int = 1024;  // 0x400
+pub const SDL_EVENT_MOUSE_BUTTON_DOWN: int = 1025;
+pub const SDL_EVENT_MOUSE_BUTTON_UP:   int = 1026;
+pub const SDL_EVENT_WINDOW_RESIZED:    int = 2053;
+
+// ============================================================================
+// SCANCODES  (same as SDL2)
+// ============================================================================
+
+pub const SDL_SCANCODE_A:      int = 4;
+pub const SDL_SCANCODE_D:      int = 7;
+pub const SDL_SCANCODE_S:      int = 22;
+pub const SDL_SCANCODE_W:      int = 26;
+pub const SDL_SCANCODE_SPACE:  int = 44;
+pub const SDL_SCANCODE_ESCAPE: int = 41;
+pub const SDL_SCANCODE_LEFT:   int = 80;
+pub const SDL_SCANCODE_RIGHT:  int = 79;
+pub const SDL_SCANCODE_UP:     int = 82;
+pub const SDL_SCANCODE_DOWN:   int = 81;
+
+pub const SDL_FRect -> struct {
+    x: float,
+    y: float,
+    w: float,
+    h: float,
+};
+
+pub const make_rect -> fn (x: float, y: float, w: float, h: float) SDL_FRect {
+    return SDL_FRect { x: x, y: y, w: w, h: h };
+}
+
+// ============================================================================
+// FUNCTION IMPORTS
+// ============================================================================
+
+@os {
+    "linux" -> {
+        // Lifecycle
+        pub const SDL_Init          -> fn (flags: int) bool;
+        pub const SDL_Quit          -> fn () void;
+        pub const SDL_GetError      -> fn () *byte;
+
+        // Window
+        pub const SDL_CreateWindow      -> fn (title: *byte, w: int, h: int, flags: int) *void;
+        pub const SDL_DestroyWindow     -> fn (window: *void) void;
+        pub const SDL_SetWindowPosition -> fn (window: *void, x: int, y: int) int;
+        pub const SDL_GetWindowSize     -> fn (window: *void, w: *int, h: *int) void;
+        pub const SDL_SetWindowTitle    -> fn (window: *void, title: *byte) void;
+
+        // Renderer
+        pub const SDL_CreateRenderer  -> fn (window: *void, name: *byte) *void;
+        pub const SDL_DestroyRenderer -> fn (renderer: *void) void;
+        pub const SDL_SetRenderVSync  -> fn (renderer: *void, vsync: int) int;
+
+        // Draw state
+        pub const SDL_SetRenderDrawColor     -> fn (renderer: *void, r: int, g: int, b: int, a: int) int;
+        pub const SDL_SetRenderDrawBlendMode -> fn (renderer: *void, mode: int) int;
+
+        // Frame
+        pub const SDL_RenderClear   -> fn (renderer: *void) int;
+        pub const SDL_RenderPresent -> fn (renderer: *void) int;
+
+        // Primitives
+        pub const SDL_RenderFillRect -> fn (renderer: *void, rect: *void) int;
+        pub const SDL_RenderRect     -> fn (renderer: *void, rect: *void) int;
+        pub const SDL_RenderLine     -> fn (renderer: *void, x1: double, y1: double, x2: double, y2: double) int;
+        pub const SDL_RenderPoint    -> fn (renderer: *void, x: double, y: double) int;
+
+        // Events
+        pub const SDL_PollEvent -> fn (event: *void) int;
+
+        // Input
+        pub const SDL_GetKeyboardState -> fn (numkeys: *int) *bool;
+        pub const SDL_GetMouseState    -> fn (x: *double, y: *double) int;
+
+        // Timing
+        pub const SDL_GetTicks -> fn () int;
+        pub const SDL_Delay    -> fn (ms: int) void;
+    }
+    "macos" -> {
+        // Lifecycle
+        pub const SDL_Init          -> fn (flags: int) bool;
+        pub const SDL_Quit          -> fn () void;
+        pub const SDL_GetError      -> fn () *byte;
+
+        // Window
+        pub const SDL_CreateWindow      -> fn (title: *byte, w: int, h: int, flags: int) *void;
+        pub const SDL_DestroyWindow     -> fn (window: *void) void;
+        pub const SDL_SetWindowPosition -> fn (window: *void, x: int, y: int) int;
+        pub const SDL_GetWindowSize     -> fn (window: *void, w: *int, h: *int) void;
+        pub const SDL_SetWindowTitle    -> fn (window: *void, title: *byte) void;
+
+        // Renderer
+        pub const SDL_CreateRenderer  -> fn (window: *void, name: *byte) *void;
+        pub const SDL_DestroyRenderer -> fn (renderer: *void) void;
+        pub const SDL_SetRenderVSync  -> fn (renderer: *void, vsync: int) int;
+
+        // Draw state
+        pub const SDL_SetRenderDrawColor     -> fn (renderer: *void, r: int, g: int, b: int, a: int) int;
+        pub const SDL_SetRenderDrawBlendMode -> fn (renderer: *void, mode: int) int;
+
+        // Frame
+        pub const SDL_RenderClear   -> fn (renderer: *void) int;
+        pub const SDL_RenderPresent -> fn (renderer: *void) int;
+
+        // Primitives
+        pub const SDL_RenderFillRect -> fn (renderer: *void, rect: *void) int;
+        pub const SDL_RenderRect     -> fn (renderer: *void, rect: *void) int;
+        pub const SDL_RenderLine     -> fn (renderer: *void, x1: double, y1: double, x2: double, y2: double) int;
+        pub const SDL_RenderPoint    -> fn (renderer: *void, x: double, y: double) int;
+
+        // Events
+        pub const SDL_PollEvent -> fn (event: *void) int;
+
+        // Input
+        pub const SDL_GetKeyboardState -> fn (numkeys: *int) *byte;
+        pub const SDL_GetMouseState    -> fn (x: *double, y: *double) int;
+
+        // Timing
+        pub const SDL_GetTicks -> fn () int;
+        pub const SDL_Delay    -> fn (ms: int) void;
+    }
+}
+
+// ============================================================================
+// SDL_WINDOWPOS_CENTERED equivalent for SDL3
+// Use SDL_SetWindowPosition after creation. This constant asks SDL to centre.
+// ============================================================================
+
+pub const SDL_WINDOWPOS_CENTERED: int = 805240832;
+
+// ============================================================================
+// Event helpers  (layout unchanged from SDL2)
+// ============================================================================
+
+pub const event_type -> fn (buf: *byte) int {
+    let b0: int = cast<int>(buf[0]);
+    let b1: int = cast<int>(buf[1]);
+    let b2: int = cast<int>(buf[2]);
+    let b3: int = cast<int>(buf[3]);
+    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+}
+
+pub const key_scancode -> fn (buf: *byte) int {
+    let b0: int = cast<int>(buf[16]);
+    let b1: int = cast<int>(buf[17]);
+    let b2: int = cast<int>(buf[18]);
+    let b3: int = cast<int>(buf[19]);
+    return b0 | (b1 << 8) | (b2 << 16) | (b3 << 24);
+}
+
+pub const key_down -> fn (state: *byte, scancode: int) bool {
+    return state[scancode] != cast<byte>(0);
+}

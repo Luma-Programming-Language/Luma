@@ -8,13 +8,13 @@ const is_alpha -> fn (c: byte) bool {
 const is_digit -> fn (c: byte) bool { return (c >= '0' && c <= '9'); }
 const is_alnum -> fn (c: byte) bool { return is_alpha(c) || is_digit(c); }
 
-const skip_line_comment -> fn (lx: *Lexer) void {
+const skip_line_comment -> fn (lx: *sym::Lexer) void {
   loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
     lx.advance();
   }
 }
 
-const skip_block_comment -> fn (lx: *Lexer) void {
+const skip_block_comment -> fn (lx: *sym::Lexer) void {
   lx.advance(); // skip /
   lx.advance(); // skip *
   loop (lx.is_end() == 0) {
@@ -27,7 +27,7 @@ const skip_block_comment -> fn (lx: *Lexer) void {
   }
 }
 
-const skip_whitespace -> fn (lx: *Lexer) int {
+const skip_whitespace -> fn (lx: *sym::Lexer) int {
   let count: int = 0;
   loop (lx.is_end() == 0) {
     let c: byte = lx.peek(0);
@@ -55,12 +55,12 @@ const skip_whitespace -> fn (lx: *Lexer) int {
 }
 
 const make_token -> fn (val: *byte, kind: int, len: int, line: int, 
-                        col: int, whitespace_len: int) Token {
-  return Token { val: val, kind: kind, len: len, line: line, 
+                        col: int, whitespace_len: int) sym::Token {
+  return sym::Token { val: val, kind: kind, len: len, line: line, 
                  col: col, whitespace_len: whitespace_len };
 }
 
-pub const next_token -> fn (lx: *Lexer) Token {
+pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
   loop (1) {
     let ws: int = skip_whitespace(lx);
 

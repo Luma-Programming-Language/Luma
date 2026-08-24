@@ -1,9 +1,8 @@
 @module "constants"
 
-@use "std_cstring" as STRING
 @use "std_vector" as VEC
 
-pub const Luma_Compiler_version: *byte = "v0.1.0";
+pub const Luma_Compiler_version: *byte = "v0.3.0";
 
 pub const LumaErrorCode -> enum {
   Argc_Error,
@@ -31,7 +30,7 @@ pub const LumaBuildConfig -> struct {
   lsp_mode: bool,
   file_count: int,
   opt_level: int,
-  link_files: Vector,
+  link_files: VEC::Vector,
 };
 
 pub const init_build_config -> fn (filepath: *byte) LumaBuildConfig {
