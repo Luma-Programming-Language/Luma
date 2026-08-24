@@ -83,8 +83,11 @@ pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildCo
     print_commands(); 
     return 1;
   } elif (match_command(first, ["-l", "--license"], 2) == 1) {
-    print_license(); 
+    print_license();
     return 1;
+  } elif (match_command(first, ["-lsp", "--lsp"], 2) == 1) {
+    build_config.lsp_mode = true;
+    return 0;
   }
 
   loop [i: int = 1](i < args.len()) : (++i) {

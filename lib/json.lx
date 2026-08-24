@@ -1,0 +1,638 @@
+//! A small, self-contained JSON library.
+//!
+//! Parses JSON text into a `JsonValue` tree and serializes a `JsonValue` tree
+//! back into compact JSON text. Objects and arrays are backed by
+//! `std_vector::Vector` and preserve insertion order; object lookups are a
+//! linear scan over the keys (fine for message-sized documents like LSP
+//! payloads — not meant for huge documents).
+//!
+//! Every `*JsonValue` returned by a constructor or by `json_parse` is owned
+//! by the caller and must eventually be released with `json_free`, which
+//! recursively frees children, keys, and vectors.
+
+@module "json"
+
+@use "std_vector"  as VEC
+@use "std_cstring" as STR
+@use "std_memory"  as MEM
+
+pub const JsonType -> enum {
+  JSON_NULL,
+  JSON_BOOL,
+  JSON_NUMBER,
+  JSON_STRING,
+  JSON_ARRAY,
+  JSON_OBJECT,
+};
+
+pub const JsonValue -> struct {
+  kind: int,          // JsonType
+  b:    bool,          // JSON_BOOL payload
+  num:  double,         // JSON_NUMBER payload
+  str:  *byte,          // JSON_STRING payload (owned)
+  arr:  VEC::Vector,    // JSON_ARRAY payload: elements are *JsonValue
+  keys: VEC::Vector,    // JSON_OBJECT payload: *byte, owned, parallel to `vals`
+  vals: VEC::Vector,    // JSON_OBJECT payload: *JsonValue, parallel to `keys`
+};
+
+// Forward declaration: json_object_set (below) frees a replaced value, and
+// the parser (further below) frees partially-built trees on error — both
+// come before json_free's real definition in the "Destruction" section.
+pub const json_free -> fn (v: *JsonValue) void;
+
+// ============================================================================
+// Constructors
+// ============================================================================
+
+#returns_ownership
+pub const json_null -> fn () *JsonValue {
+  let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
+  v.kind = JsonType::JSON_NULL;
+  return v;
+}
+
+#returns_ownership
+pub const json_bool -> fn (val: bool) *JsonValue {
+  let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
+  v.kind = JsonType::JSON_BOOL;
+  v.b = val;
+  return v;
+}
+
+#returns_ownership
+pub const json_number -> fn (val: double) *JsonValue {
+  let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
+  v.kind = JsonType::JSON_NUMBER;
+  v.num = val;
+  return v;
+}
+
+#returns_ownership
+pub const json_int -> fn (val: int) *JsonValue {
+  return json_number(cast<double>(val));
+}
+
+#returns_ownership
+pub const json_string -> fn (s: *byte) *JsonValue {
+  let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
+  v.kind = JsonType::JSON_STRING;
+  if (s == cast<*byte>(0)) {
+    v.str = cast<*byte>(0);
+  } else {
+    let len: int = STR::strlen(s);
+    v.str = cast<*byte>(alloc(len + 1));
+    MEM::memcpy(cast<*void>(v.str), cast<*void>(s), len + 1);
+  }
+  return v;
+}
+
+#returns_ownership
+pub const json_array -> fn () *JsonValue {
+  let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
+  v.kind = JsonType::JSON_ARRAY;
+  v.arr = VEC::create_vector(sizeof<*JsonValue>);
+  return v;
+}
+
+#returns_ownership
+pub const json_object -> fn () *JsonValue {
+  let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
+  v.kind = JsonType::JSON_OBJECT;
+  v.keys = VEC::create_vector(sizeof<*byte>);
+  v.vals = VEC::create_vector(sizeof<*JsonValue>);
+  return v;
+}
+
+// ============================================================================
+// Mutators
+// ============================================================================
+
+pub const json_array_push -> fn (arr: *JsonValue, item: *JsonValue) void {
+  arr.arr.push_back(cast<*void>(&item));
+}
+
+// Overwrites the value if `key` is already present (freeing the old value),
+// otherwise appends a new key/value pair. Copies `key`; does not take
+// ownership of the caller's pointer.
+pub const json_object_set -> fn (obj: *JsonValue, key: *byte, val: *JsonValue) void {
+  let n: int = obj.keys.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let existing: *byte = cast<**byte>(obj.keys.data)[i];
+    if (STR::strcmp(existing, key) == 0) {
+      let old: *JsonValue = cast<**JsonValue>(obj.vals.data)[i];
+      json_free(old);
+      cast<**JsonValue>(obj.vals.data)[i] = val;
+      return;
+    }
+  }
+
+  let klen: int = STR::strlen(key);
+  let kcopy: *byte = cast<*byte>(alloc(klen + 1));
+  MEM::memcpy(cast<*void>(kcopy), cast<*void>(key), klen + 1);
+  obj.keys.push_back(cast<*void>(&kcopy));
+  obj.vals.push_back(cast<*void>(&val));
+}
+
+// ============================================================================
+// Accessors
+// ============================================================================
+
+pub const json_array_len -> fn (v: *JsonValue) int {
+  if (v == cast<*JsonValue>(0)) return 0;
+  return v.arr.size;
+}
+
+pub const json_array_get -> fn (v: *JsonValue, idx: int) *JsonValue {
+  if (v == cast<*JsonValue>(0)) return cast<*JsonValue>(0);
+  if (idx < 0 || idx >= v.arr.size) return cast<*JsonValue>(0);
+  return cast<**JsonValue>(v.arr.data)[idx];
+}
+
+pub const json_object_get -> fn (obj: *JsonValue, key: *byte) *JsonValue {
+  if (obj == cast<*JsonValue>(0)) return cast<*JsonValue>(0);
+  let n: int = obj.keys.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let k: *byte = cast<**byte>(obj.keys.data)[i];
+    if (STR::strcmp(k, key) == 0) return cast<**JsonValue>(obj.vals.data)[i];
+  }
+  return cast<*JsonValue>(0);
+}
+
+pub const json_is_null -> fn (v: *JsonValue) bool {
+  return v == cast<*JsonValue>(0) || v.kind == JsonType::JSON_NULL;
+}
+
+pub const json_get_string -> fn (v: *JsonValue) *byte {
+  if (v == cast<*JsonValue>(0) || v.kind != JsonType::JSON_STRING) return cast<*byte>(0);
+  return v.str;
+}
+
+pub const json_get_int -> fn (v: *JsonValue) int {
+  if (v == cast<*JsonValue>(0) || v.kind != JsonType::JSON_NUMBER) return 0;
+  return cast<int>(v.num);
+}
+
+pub const json_get_double -> fn (v: *JsonValue) double {
+  if (v == cast<*JsonValue>(0) || v.kind != JsonType::JSON_NUMBER) return 0.0;
+  return v.num;
+}
+
+pub const json_get_bool -> fn (v: *JsonValue) bool {
+  if (v == cast<*JsonValue>(0) || v.kind != JsonType::JSON_BOOL) return false;
+  return v.b;
+}
+
+// Convenience combo accessors — object lookup + payload extraction in one call.
+pub const json_object_get_string -> fn (obj: *JsonValue, key: *byte) *byte {
+  return json_get_string(json_object_get(obj, key));
+}
+
+pub const json_object_get_int -> fn (obj: *JsonValue, key: *byte) int {
+  return json_get_int(json_object_get(obj, key));
+}
+
+// ============================================================================
+// Destruction
+// ============================================================================
+
+pub const json_free -> fn (v: *JsonValue) void {
+  if (v == cast<*JsonValue>(0)) return;
+
+  switch (v.kind) {
+    JsonType::JSON_STRING -> {
+      if (v.str != cast<*byte>(0)) free(v.str);
+    }
+    JsonType::JSON_ARRAY -> {
+      let n: int = v.arr.size;
+      loop [i: int = 0](i < n) : (++i) {
+        json_free(cast<**JsonValue>(v.arr.data)[i]);
+      }
+      VEC::free_vector(&v.arr);
+    }
+    JsonType::JSON_OBJECT -> {
+      let n: int = v.keys.size;
+      loop [i: int = 0](i < n) : (++i) {
+        free(cast<**byte>(v.keys.data)[i]);
+        json_free(cast<**JsonValue>(v.vals.data)[i]);
+      }
+      VEC::free_vector(&v.keys);
+      VEC::free_vector(&v.vals);
+    }
+  }
+
+  free(v);
+}
+
+// ============================================================================
+// Parser
+// ============================================================================
+
+const JsonParser -> struct {
+  src: *byte,
+  pos: int,
+  len: int,
+  ok:  bool, // set to false the moment any parse error is hit
+};
+
+const jp_fail -> fn (p: *JsonParser) *JsonValue {
+  p.ok = false;
+  return cast<*JsonValue>(0);
+}
+
+const jp_skip_ws -> fn (p: *JsonParser) void {
+  loop (p.pos < p.len) {
+    let c: byte = p.src[p.pos];
+    if (c == ' ' || c == '\t' || c == '\n' || c == '\r') {
+      p.pos = p.pos + 1;
+    } else {
+      break;
+    }
+  }
+}
+
+const jp_match_lit -> fn (p: *JsonParser, lit: *byte) bool {
+  let n: int = STR::strlen(lit);
+  if (p.pos + n > p.len) return false;
+  loop [i: int = 0](i < n) : (++i) {
+    if (p.src[p.pos + i] != lit[i]) return false;
+  }
+  p.pos = p.pos + n;
+  return true;
+}
+
+const jp_hex_digit_value -> fn (c: byte) int {
+  if (c >= '0' && c <= '9') return cast<int>(c) - cast<int>('0');
+  if (c >= 'a' && c <= 'f') return cast<int>(c) - cast<int>('a') + 10;
+  if (c >= 'A' && c <= 'F') return cast<int>(c) - cast<int>('A') + 10;
+  return -1;
+}
+
+const jp_str_push -> fn (buf: **byte, len: *int, cap: *int, c: byte) void {
+  if (*len + 1 >= *cap) {
+    let old_cap: int = *cap;
+    let new_cap: int = old_cap * 2;
+    let grown: *byte = cast<*byte>(MEM::realloc(cast<*void>(*buf), old_cap, new_cap));
+    *buf = grown;
+    *cap = new_cap;
+  }
+  let b: *byte = *buf;
+  b[*len] = c;
+  *len = *len + 1;
+}
+
+// Appends the (naive, BMP-only) UTF-8 encoding of a \uXXXX codepoint.
+const jp_push_utf8 -> fn (out: **byte, len: *int, cap: *int, cp: int) void {
+  if (cp < 128) {
+    jp_str_push(out, len, cap, cast<byte>(cp));
+  } elif (cp < 2048) {
+    jp_str_push(out, len, cap, cast<byte>(192 | (cp / 64)));
+    jp_str_push(out, len, cap, cast<byte>(128 | (cp % 64)));
+  } else {
+    jp_str_push(out, len, cap, cast<byte>(224 | (cp / 4096)));
+    jp_str_push(out, len, cap, cast<byte>(128 | ((cp / 64) % 64)));
+    jp_str_push(out, len, cap, cast<byte>(128 | (cp % 64)));
+  }
+}
+
+// Parses a JSON string starting at the opening quote and returns the
+// unescaped, heap-owned bytes (NUL-terminated). Advances `p.pos` past the
+// closing quote. Sets `p.ok = false` and returns null on malformed input.
+#returns_ownership
+const jp_parse_string_raw -> fn (p: *JsonParser) *byte {
+  p.pos = p.pos + 1; // consume opening '"'
+
+  let cap: int = 16;
+  let out: *byte = cast<*byte>(alloc(cap));
+  let len: int = 0;
+
+  loop (1) {
+    if (p.pos >= p.len) { p.ok = false; free(out); return cast<*byte>(0); }
+    let c: byte = p.src[p.pos];
+
+    if (c == '"') { p.pos = p.pos + 1; break; }
+
+    if (c == '\\') {
+      p.pos = p.pos + 1;
+      if (p.pos >= p.len) { p.ok = false; free(out); return cast<*byte>(0); }
+      let e: byte = p.src[p.pos];
+
+      if (e == '"')       { jp_str_push(&out, &len, &cap, '"');  p.pos = p.pos + 1; }
+      elif (e == '\\')    { jp_str_push(&out, &len, &cap, '\\'); p.pos = p.pos + 1; }
+      elif (e == '/')     { jp_str_push(&out, &len, &cap, '/');  p.pos = p.pos + 1; }
+      elif (e == 'b')     { jp_str_push(&out, &len, &cap, cast<byte>(8));  p.pos = p.pos + 1; }
+      elif (e == 'f')     { jp_str_push(&out, &len, &cap, cast<byte>(12)); p.pos = p.pos + 1; }
+      elif (e == 'n')     { jp_str_push(&out, &len, &cap, '\n'); p.pos = p.pos + 1; }
+      elif (e == 'r')     { jp_str_push(&out, &len, &cap, '\r'); p.pos = p.pos + 1; }
+      elif (e == 't')     { jp_str_push(&out, &len, &cap, '\t'); p.pos = p.pos + 1; }
+      elif (e == 'u') {
+        p.pos = p.pos + 1;
+        let cp: int = 0;
+        loop [k: int = 0](k < 4) : (++k) {
+          if (p.pos >= p.len) { p.ok = false; free(out); return cast<*byte>(0); }
+          let digit: int = jp_hex_digit_value(p.src[p.pos]);
+          if (digit < 0) { p.ok = false; free(out); return cast<*byte>(0); }
+          cp = cp * 16 + digit;
+          p.pos = p.pos + 1;
+        }
+        jp_push_utf8(&out, &len, &cap, cp);
+      } else {
+        p.ok = false; free(out); return cast<*byte>(0);
+      }
+    } else {
+      jp_str_push(&out, &len, &cap, c);
+      p.pos = p.pos + 1;
+    }
+  }
+
+  jp_str_push(&out, &len, &cap, cast<byte>(0));
+  return out;
+}
+
+const jp_parse_number -> fn (p: *JsonParser) *JsonValue {
+  // Everything below is built from plain integer arithmetic with a single
+  // final division, never a fractional Luma *literal* like 0.1 — those are
+  // currently mis-parsed by the self-hosted compiler's own lexer (it drops
+  // the fractional digits when lowering a float literal), which would
+  // silently corrupt every parsed JSON number with a fractional part.
+  let neg: bool = false;
+  if (p.pos < p.len && p.src[p.pos] == '-') { neg = true; p.pos = p.pos + 1; }
+
+  let int_part: int = 0;
+  let any_digits: bool = false;
+  loop (p.pos < p.len && STR::is_digit(p.src[p.pos])) {
+    int_part = int_part * 10 + (cast<int>(p.src[p.pos]) - cast<int>('0'));
+    any_digits = true;
+    p.pos = p.pos + 1;
+  }
+  if (any_digits == false) return jp_fail(p);
+
+  let frac_digits: int = 0;
+  let frac_count: int = 0;
+  if (p.pos < p.len && p.src[p.pos] == '.') {
+    p.pos = p.pos + 1;
+    loop (p.pos < p.len && STR::is_digit(p.src[p.pos])) {
+      frac_digits = frac_digits * 10 + (cast<int>(p.src[p.pos]) - cast<int>('0'));
+      frac_count = frac_count + 1;
+      p.pos = p.pos + 1;
+    }
+  }
+
+  let denom: int = 1;
+  loop [i: int = 0](i < frac_count) : (++i) { denom = denom * 10; }
+
+  let value: double = cast<double>(int_part) + (cast<double>(frac_digits) / cast<double>(denom));
+
+  if (p.pos < p.len && (p.src[p.pos] == 'e' || p.src[p.pos] == 'E')) {
+    p.pos = p.pos + 1;
+    let exp_neg: bool = false;
+    if (p.pos < p.len && (p.src[p.pos] == '+' || p.src[p.pos] == '-')) {
+      exp_neg = (p.src[p.pos] == '-');
+      p.pos = p.pos + 1;
+    }
+    let exp_val: int = 0;
+    loop (p.pos < p.len && STR::is_digit(p.src[p.pos])) {
+      exp_val = exp_val * 10 + (cast<int>(p.src[p.pos]) - cast<int>('0'));
+      p.pos = p.pos + 1;
+    }
+    let mult: int = 1;
+    loop [i: int = 0](i < exp_val) : (++i) { mult = mult * 10; }
+    if (exp_neg) { value = value / cast<double>(mult); } else { value = value * cast<double>(mult); }
+  }
+
+  if (neg) { value = cast<double>(0) - value; }
+  return json_number(value);
+}
+
+#returns_ownership const jp_parse_value  -> fn (p: *JsonParser) *JsonValue;
+#returns_ownership const jp_parse_object -> fn (p: *JsonParser) *JsonValue;
+#returns_ownership const jp_parse_array  -> fn (p: *JsonParser) *JsonValue;
+
+#returns_ownership
+const jp_parse_object -> fn (p: *JsonParser) *JsonValue {
+  p.pos = p.pos + 1; // consume '{'
+  let obj: *JsonValue = json_object();
+  jp_skip_ws(p);
+  if (p.pos < p.len && p.src[p.pos] == '}') { p.pos = p.pos + 1; return obj; }
+
+  loop (1) {
+    jp_skip_ws(p);
+    if (p.pos >= p.len || p.src[p.pos] != '"') {
+      p.ok = false; json_free(obj); return cast<*JsonValue>(0);
+    }
+    let key: *byte = jp_parse_string_raw(p);
+    if (p.ok == false) { json_free(obj); return cast<*JsonValue>(0); }
+
+    jp_skip_ws(p);
+    if (p.pos >= p.len || p.src[p.pos] != ':') {
+      p.ok = false; free(key); json_free(obj); return cast<*JsonValue>(0);
+    }
+    p.pos = p.pos + 1;
+
+    let val: *JsonValue = jp_parse_value(p);
+    if (p.ok == false) { free(key); json_free(obj); return cast<*JsonValue>(0); }
+
+    json_object_set(obj, key, val);
+    free(key); // json_object_set copies the key itself
+
+    jp_skip_ws(p);
+    if (p.pos < p.len && p.src[p.pos] == ',') { p.pos = p.pos + 1; continue; }
+    if (p.pos < p.len && p.src[p.pos] == '}') { p.pos = p.pos + 1; break; }
+    p.ok = false; json_free(obj); return cast<*JsonValue>(0);
+  }
+
+  return obj;
+}
+
+#returns_ownership
+const jp_parse_array -> fn (p: *JsonParser) *JsonValue {
+  p.pos = p.pos + 1; // consume '['
+  let arr: *JsonValue = json_array();
+  jp_skip_ws(p);
+  if (p.pos < p.len && p.src[p.pos] == ']') { p.pos = p.pos + 1; return arr; }
+
+  loop (1) {
+    let val: *JsonValue = jp_parse_value(p);
+    if (p.ok == false) { json_free(arr); return cast<*JsonValue>(0); }
+    json_array_push(arr, val);
+
+    jp_skip_ws(p);
+    if (p.pos < p.len && p.src[p.pos] == ',') { p.pos = p.pos + 1; continue; }
+    if (p.pos < p.len && p.src[p.pos] == ']') { p.pos = p.pos + 1; break; }
+    p.ok = false; json_free(arr); return cast<*JsonValue>(0);
+  }
+
+  return arr;
+}
+
+#returns_ownership
+const jp_parse_value -> fn (p: *JsonParser) *JsonValue {
+  jp_skip_ws(p);
+  if (p.pos >= p.len) return jp_fail(p);
+  let c: byte = p.src[p.pos];
+
+  if (c == '"') {
+    let s: *byte = jp_parse_string_raw(p);
+    if (p.ok == false) return cast<*JsonValue>(0);
+    let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
+    v.kind = JsonType::JSON_STRING;
+    v.str = s;
+    return v;
+  }
+  if (c == '{') return jp_parse_object(p);
+  if (c == '[') return jp_parse_array(p);
+  if (c == 't') { if (jp_match_lit(p, "true"))  return json_bool(true);  return jp_fail(p); }
+  if (c == 'f') { if (jp_match_lit(p, "false")) return json_bool(false); return jp_fail(p); }
+  if (c == 'n') { if (jp_match_lit(p, "null"))  return json_null();      return jp_fail(p); }
+  if (c == '-' || STR::is_digit(c)) return jp_parse_number(p);
+
+  return jp_fail(p);
+}
+
+// Parses a complete, NUL-terminated JSON document. Returns null on any
+// malformed input (partial trees built along the way are cleaned up
+// internally — nothing leaks on failure).
+#returns_ownership
+pub const json_parse -> fn (src: *byte) *JsonValue {
+  if (src == cast<*byte>(0)) return cast<*JsonValue>(0);
+
+  let p: JsonParser = JsonParser { src: src, pos: 0, len: STR::strlen(src), ok: true };
+  let v: *JsonValue = jp_parse_value(&p);
+  if (p.ok == false) {
+    if (v != cast<*JsonValue>(0)) json_free(v);
+    return cast<*JsonValue>(0);
+  }
+  return v;
+}
+
+// ============================================================================
+// Serializer
+// ============================================================================
+
+const JsonBuf -> struct {
+  data: *byte,
+  len:  int,
+  cap:  int,
+};
+
+const jb_init -> fn () JsonBuf {
+  let cap: int = 256;
+  return JsonBuf { data: cast<*byte>(alloc(cap)), len: 0, cap: cap };
+}
+
+const jb_ensure -> fn (b: *JsonBuf, extra: int) void {
+  if (b.len + extra + 1 <= b.cap) return;
+  let old_cap: int = b.cap;
+  let new_cap: int = old_cap * 2;
+  loop (new_cap < b.len + extra + 1) { new_cap = new_cap * 2; }
+  b.data = cast<*byte>(MEM::realloc(cast<*void>(b.data), old_cap, new_cap));
+  b.cap = new_cap;
+}
+
+const jb_char -> fn (b: *JsonBuf, c: byte) void {
+  jb_ensure(b, 1);
+  b.data[b.len] = c;
+  b.len = b.len + 1;
+}
+
+const jb_str -> fn (b: *JsonBuf, s: *byte) void {
+  let n: int = STR::strlen(s);
+  jb_ensure(b, n);
+  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  b.len = b.len + n;
+}
+
+#returns_ownership
+const jb_finish -> fn (b: *JsonBuf) *byte {
+  jb_ensure(b, 0);
+  b.data[b.len] = cast<byte>(0);
+  return b.data;
+}
+
+const jb_hex_digit -> fn (v: int) byte {
+  if (v < 10) return cast<byte>(cast<int>('0') + v);
+  return cast<byte>(cast<int>('a') + (v - 10));
+}
+
+const jb_escaped_string -> fn (b: *JsonBuf, s: *byte) void {
+  jb_char(b, '"');
+  if (s != cast<*byte>(0)) {
+    let i: int = 0;
+    loop (s[i] != 0) {
+      let c: byte = s[i];
+      // `byte` is a plain (signed) C `char` — any byte >= 0x80 (i.e. every
+      // continuation/lead byte of a multi-byte UTF-8 character) would come
+      // out negative here and corrupt the "is this a control char" check
+      // and the \u00XX hex math below. Mask to its unsigned 0-255 value
+      // first; JSON strings can hold raw UTF-8 bytes as-is, so anything
+      // >= 32 (after masking) just gets passed through unescaped.
+      let code: int = cast<int>(c) & 255;
+      if (c == '"')       { jb_str(b, "\\\""); }
+      elif (c == '\\')    { jb_str(b, "\\\\"); }
+      elif (c == '\n')    { jb_str(b, "\\n"); }
+      elif (c == '\r')    { jb_str(b, "\\r"); }
+      elif (c == '\t')    { jb_str(b, "\\t"); }
+      elif (code < 32) {
+        jb_str(b, "\\u00");
+        jb_char(b, jb_hex_digit(code / 16));
+        jb_char(b, jb_hex_digit(code % 16));
+      } else {
+        jb_char(b, c);
+      }
+      i = i + 1;
+    }
+  }
+  jb_char(b, '"');
+}
+
+const jb_number -> fn (b: *JsonBuf, v: double) void {
+  let truncated: int = cast<int>(v);
+  if (cast<double>(truncated) == v) {
+    let s: *byte = STR::from_int(truncated);
+    jb_str(b, s);
+    free(s);
+  } else {
+    let s: *byte = STR::from_float(v, 6);
+    jb_str(b, s);
+    free(s);
+  }
+}
+
+const jb_value -> fn (b: *JsonBuf, v: *JsonValue) void {
+  if (v == cast<*JsonValue>(0)) { jb_str(b, "null"); return; }
+
+  switch (v.kind) {
+    JsonType::JSON_NULL   -> { jb_str(b, "null"); }
+    JsonType::JSON_BOOL   -> { if (v.b) { jb_str(b, "true"); } else { jb_str(b, "false"); } }
+    JsonType::JSON_NUMBER -> { jb_number(b, v.num); }
+    JsonType::JSON_STRING -> { jb_escaped_string(b, v.str); }
+    JsonType::JSON_ARRAY -> {
+      jb_char(b, '[');
+      let n: int = v.arr.size;
+      loop [i: int = 0](i < n) : (++i) {
+        if (i > 0) jb_char(b, ',');
+        jb_value(b, cast<**JsonValue>(v.arr.data)[i]);
+      }
+      jb_char(b, ']');
+    }
+    JsonType::JSON_OBJECT -> {
+      jb_char(b, '{');
+      let n: int = v.keys.size;
+      loop [i: int = 0](i < n) : (++i) {
+        if (i > 0) jb_char(b, ',');
+        jb_escaped_string(b, cast<**byte>(v.keys.data)[i]);
+        jb_char(b, ':');
+        jb_value(b, cast<**JsonValue>(v.vals.data)[i]);
+      }
+      jb_char(b, '}');
+    }
+  }
+}
+
+// Serializes `v` to compact JSON text. Returns a heap string owned by the
+// caller (free with the language's plain `free`, not `json_free`).
+#returns_ownership
+pub const json_stringify -> fn (v: *JsonValue) *byte {
+  let b: JsonBuf = jb_init();
+  jb_value(&b, v);
+  return jb_finish(&b);
+}

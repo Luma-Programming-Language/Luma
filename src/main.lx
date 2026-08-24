@@ -14,6 +14,7 @@
 
 @use "tc"           as TC
 @use "codegen"      as CODEGEN
+@use "lsp_main"     as LSP
 
 pub const main -> fn (argc: int, argv: **byte) int {
   let args: ARGS::Args = ARGS::init_args(argc, argv);
@@ -26,6 +27,12 @@ pub const main -> fn (argc: int, argv: **byte) int {
   if (args != 0) {
     VEC::free_vector(&modules);
     return args;
+  }
+
+  if (build_config.lsp_mode) {
+    VEC::free_vector(&modules);
+    VEC::free_vector(&build_config.link_files);
+    return LSP::lsp_run();
   }
 
   let main_module: *AST::AstNode = PFILE::parse_file(build_config.filepath);

@@ -1,0 +1,1605 @@
+//! Document tracking + single-file analysis for the Luma language server.
+//!
+//! Each open document is analyzed as its own scratch file, run through the
+//! normal parse/typecheck pipeline exactly as the CLI compiler would — but
+//! its `@use` imports are resolved transitively against a workspace/std
+//! registry first (see the Module Resolution section), so this isn't
+//! limited to single-file programs in practice.
+
+@module "lsp_document"
+
+@use "std_vector"  as VEC
+@use "std_cstring" as STR
+@use "std_memory"  as MEM
+@use "std_io"      as IO
+
+@use "ast"         as AST
+@use "ast_stmt"    as STMT
+@use "constants"   as CONST
+@use "parser_file" as PFILE
+@use "parser"      as PARS
+@use "tc"          as TC
+@use "tc_type"     as TYPE
+@use "error"       as ERO
+
+@use "json"          as J
+@use "lsp_transport" as T
+
+pub const LSPDocument -> struct {
+  uri:     *byte,        // owned
+  text:    *byte,        // owned, latest full content from didOpen/didChange
+  version: int,
+  ast:     *AST::AstNode, // cached ProgramNode from the last successful parse
+                          // (null if the current text doesn't even parse) —
+                          // used by position/structure queries (document
+                          // symbols, and future hover/go-to-definition) so
+                          // they don't need to re-parse on every request.
+};
+
+pub let g_documents: VEC::Vector;
+
+pub const lsp_document_init -> fn () void {
+  g_documents = VEC::create_vector(sizeof<LSPDocument>);
+}
+
+const find_index -> fn (uri: *byte) int {
+  let n: int = g_documents.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(i));
+    if (STR::strcmp(d.uri, uri) == 0) return i;
+  }
+  return -1;
+}
+
+#returns_ownership
+const dup_str -> fn (s: *byte) *byte {
+  if (s == cast<*byte>(0)) return cast<*byte>(0);
+  let len: int = STR::strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
+  return out;
+}
+
+pub const lsp_document_find -> fn (uri: *byte) *LSPDocument {
+  let idx: int = find_index(uri);
+  if (idx < 0) return cast<*LSPDocument>(0);
+  return cast<*LSPDocument>(g_documents.get(idx));
+}
+
+pub const lsp_document_open -> fn (uri: *byte, text: *byte, version: int) void {
+  let idx: int = find_index(uri);
+  if (idx >= 0) {
+    let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(idx));
+    free(d.text);
+    d.text = dup_str(text);
+    d.version = version;
+    return;
+  }
+
+  let doc: LSPDocument = LSPDocument {
+    uri: dup_str(uri), text: dup_str(text), version: version,
+    ast: cast<*AST::AstNode>(0),
+  };
+  g_documents.push_back(cast<*void>(&doc));
+}
+
+pub const lsp_document_update -> fn (uri: *byte, text: *byte, version: int) void {
+  let idx: int = find_index(uri);
+  if (idx < 0) { lsp_document_open(uri, text, version); return; }
+
+  let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(idx));
+  free(d.text);
+  d.text = dup_str(text);
+  d.version = version;
+}
+
+pub const lsp_document_close -> fn (uri: *byte) void {
+  let idx: int = find_index(uri);
+  if (idx < 0) return;
+
+  let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(idx));
+  free(d.uri);
+  free(d.text);
+  if (d.ast != cast<*AST::AstNode>(0)) AST::free_node(d.ast);
+  g_documents.remove_at(idx);
+}
+
+// ============================================================================
+// Module Resolution (workspace + std library)
+// ============================================================================
+//
+// Each open document is still analyzed as its own scratch file (see below),
+// but its `@use` imports are now resolved against a registry of every
+// `@module "name"` declaration found under the std library and the
+// workspace root, recursively pulling in whatever transitive imports those
+// need too — matching what `-l` does for the CLI compiler, just automated.
+//
+// There's no directory-listing primitive in std/ yet, so the scan shells
+// out to `find` (via the `system()` builtin) and reads its output back from
+// a scratch file — simplest thing that works without adding a new FFI
+// surface just for this.
+
+const ModuleRegistryEntry -> struct {
+  name: *byte, // owned — the @module name
+  path: *byte, // owned — absolute file path
+};
+
+let g_registry: VEC::Vector;
+let g_registry_built: bool = false;
+let g_workspace_root: *byte = cast<*byte>(0); // owned; set via lsp_set_workspace_root
+
+@os {
+  "linux"     -> { const STD_DIR: *byte = "/usr/local/lib/luma/std"; }
+  "macos"     -> { const STD_DIR: *byte = "/usr/local/lib/luma/std"; }
+  "windows64" -> { const STD_DIR: *byte = "C:\\Program Files\\luma\\std"; }
+  _ -> { const STD_DIR: *byte = "/usr/local/lib/luma/std"; }
+}
+
+const REGISTRY_LISTING_PATH: *byte = "/tmp/.luma-lsp-registry-listing.txt";
+
+// Call once at startup (from the `initialize` handler) with the client's
+// rootUri/workspaceFolder, if any — strips a leading "file://" if present.
+pub const lsp_set_workspace_root -> fn (uri: *byte) void {
+  if (uri == cast<*byte>(0)) return;
+  if (g_workspace_root != cast<*byte>(0)) { free(g_workspace_root); g_workspace_root = cast<*byte>(0); }
+
+  let prefix: *byte = "file://";
+  let plen: int = STR::strlen(prefix);
+  let ulen: int = STR::strlen(uri);
+  if (ulen >= plen) {
+    let matches: bool = true;
+    loop [i: int = 0](i < plen) : (++i) {
+      if (uri[i] != prefix[i]) { matches = false; break; }
+    }
+    if (matches) {
+      g_workspace_root = dup_str(cast<*byte>(cast<int>(uri) + plen));
+      return;
+    }
+  }
+  g_workspace_root = dup_str(uri);
+}
+
+// Returns the index of the first occurrence of `needle` in `haystack`, or
+// -1. std_cstring doesn't have a strstr equivalent yet.
+const find_substr -> fn (haystack: *byte, needle: *byte) int {
+  let hlen: int = STR::strlen(haystack);
+  let nlen: int = STR::strlen(needle);
+  if (nlen == 0 || nlen > hlen) return -1;
+
+  loop [i: int = 0](i <= hlen - nlen) : (++i) {
+    let matched: bool = true;
+    loop [j: int = 0](j < nlen) : (++j) {
+      if (haystack[i + j] != needle[j]) { matched = false; break; }
+    }
+    if (matched) return i;
+  }
+  return -1;
+}
+
+// `@module` is always the very first statement in a valid Luma file, so a
+// left-to-right scan for the first "@module" followed by a quoted string
+// is safe even if that same text also shows up later (e.g. inside a
+// keyword table's string literals, as lexer/tokens.lx's own does).
+#returns_ownership
+const extract_module_name -> fn (content: *byte) *byte {
+  let idx: int = find_substr(content, "@module");
+  if (idx < 0) return cast<*byte>(0);
+
+  let len: int = STR::strlen(content);
+  let i: int = idx + STR::strlen("@module");
+
+  loop (i < len && content[i] != '"') {
+    if (content[i] == '\n') return cast<*byte>(0);
+    i = i + 1;
+  }
+  if (i >= len) return cast<*byte>(0);
+  i = i + 1; // skip opening quote
+  let start: int = i;
+  loop (i < len && content[i] != '"') { i = i + 1; }
+  if (i >= len) return cast<*byte>(0);
+
+  let name_len: int = i - start;
+  let name: *byte = cast<*byte>(alloc(name_len + 1));
+  MEM::memcpy(cast<*void>(name), cast<*void>(cast<int>(content) + start), name_len);
+  name[name_len] = cast<byte>(0);
+  return name;
+}
+
+const registry_lookup -> fn (name: *byte) *byte {
+  let n: int = g_registry.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let e: *ModuleRegistryEntry = cast<*ModuleRegistryEntry>(g_registry.get(i));
+    if (STR::strcmp(e.name, name) == 0) return e.path;
+  }
+  return cast<*byte>(0);
+}
+
+// Doesn't dedup by name here — registry_lookup/registry_has already scan
+// from index 0, so if two files declare the same @module name the first
+// one registered simply wins there instead. Keeping this free of any
+// "conditionally free, conditionally use" branching sidesteps a static
+// analyzer limitation (a free() in one arm of an if/else was incorrectly
+// treated as applying to a later use of the same variable in the other
+// arm — a control-flow-merge bug, not a real double-free).
+const register_file -> fn (path: *byte) void {
+  let content: *byte = IO::read_file(path);
+  if (content == cast<*byte>(0)) return;
+
+  let name: *byte = extract_module_name(content);
+  free(content);
+
+  if (name != cast<*byte>(0)) {
+    let entry: ModuleRegistryEntry = ModuleRegistryEntry { name: name, path: dup_str(path) };
+    g_registry.push_back(cast<*void>(&entry));
+  }
+}
+
+const append_dir_listing -> fn (dir: *byte) void {
+  let mid: *byte = "' -name '*.lx' >> '";
+  let tail: *byte = "' 2>/dev/null";
+  let total: int = STR::strlen("find '") + STR::strlen(dir) + STR::strlen(mid)
+                  + STR::strlen(REGISTRY_LISTING_PATH) + STR::strlen(tail) + 1;
+  let cmd: *byte = cast<*byte>(alloc(total));
+  STR::cat(cmd, "find '", dir);
+  STR::cat(cmd, cmd, mid);
+  STR::cat(cmd, cmd, REGISTRY_LISTING_PATH);
+  STR::cat(cmd, cmd, tail);
+  system(cmd);
+  free(cmd);
+}
+
+const build_registry -> fn () void {
+  if (g_registry_built) return;
+  g_registry_built = true;
+  g_registry = VEC::create_vector(sizeof<ModuleRegistryEntry>);
+
+  let rm_cmd: *byte = cast<*byte>(alloc(STR::strlen(REGISTRY_LISTING_PATH) + 8));
+  STR::cat(rm_cmd, "rm -f '", REGISTRY_LISTING_PATH);
+  STR::cat(rm_cmd, rm_cmd, "'");
+  system(rm_cmd);
+  free(rm_cmd);
+
+  append_dir_listing(STD_DIR);
+  if (g_workspace_root != cast<*byte>(0)) { append_dir_listing(g_workspace_root); }
+
+  let listing: *byte = IO::read_file(REGISTRY_LISTING_PATH);
+  if (listing == cast<*byte>(0)) return;
+
+  let len: int = STR::strlen(listing);
+  let start: int = 0;
+  loop [i: int = 0](i <= len) : (++i) {
+    if (i == len || listing[i] == '\n') {
+      if (i > start) {
+        let path_len: int = i - start;
+        let path: *byte = cast<*byte>(alloc(path_len + 1));
+        MEM::memcpy(cast<*void>(path), cast<*void>(cast<int>(listing) + start), path_len);
+        path[path_len] = cast<byte>(0);
+        register_file(path);
+        free(path);
+      }
+      start = i + 1;
+    }
+  }
+
+  free(listing);
+}
+
+const name_seen -> fn (seen: *VEC::Vector, name: *byte) bool {
+  let n: int = seen.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let s: *byte = cast<**byte>(seen.data)[i];
+    if (STR::strcmp(s, name) == 0) return true;
+  }
+  return false;
+}
+
+// Parses `main_module`'s `@use` imports and, transitively, whatever those
+// import in turn, resolving each through the registry — the same closure
+// `-l` builds by hand for the CLI compiler. Modules the registry doesn't
+// know about are left alone; typecheck's own existing "module not found"
+// diagnostic still covers those.
+const collect_modules -> fn (main_module: *AST::AstNode) VEC::Vector {
+  build_registry();
+
+  let modules: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
+  modules.push_back(cast<*void>(&main_module));
+
+  let seen: VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  let main_mod: *AST::ModuleNode = cast<*AST::ModuleNode>(main_module);
+  seen.push_back(cast<*void>(&main_mod.name));
+
+  let work_idx: int = 0;
+  loop (work_idx < modules.size) {
+    let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(cast<**AST::AstNode>(modules.data)[work_idx]);
+    let bc: int = mod.body_count;
+
+    loop [i: int = 0](i < bc) : (++i) {
+      let bn: *AST::AstNode = mod.body[i];
+      if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
+        let u: *AST::UseNode = cast<*AST::UseNode>(bn);
+        if (name_seen(&seen, u.module_name) == false) {
+          seen.push_back(cast<*void>(&u.module_name));
+
+          let path: *byte = registry_lookup(u.module_name);
+          if (path != cast<*byte>(0)) {
+            let dep: *AST::AstNode = PFILE::parse_file(path);
+            if (dep != cast<*AST::AstNode>(0)) {
+              modules.push_back(cast<*void>(&dep));
+            }
+          }
+        }
+      }
+    }
+
+    work_idx = work_idx + 1;
+  }
+
+  VEC::free_vector(&seen);
+  return modules;
+}
+
+// ============================================================================
+// Analysis
+// ============================================================================
+
+const SCRATCH_PATH: *byte = "/tmp/.luma-lsp-scratch.lx";
+
+// std_io's write_buffer_to_file opens with local_open_write, which uses a
+// plain O_RDWR with no O_CREAT — it only ever writes to a file that already
+// exists. The scratch file needs to be created on first use, so write it
+// out ourselves via the create-capable primitive instead.
+const write_scratch_file -> fn (path: *byte, content: *byte) void {
+  let fd: int = IO::local_open_create(path);
+  if (IO::local_is_error(fd)) return;
+  let len: int = STR::strlen(content);
+  IO::local_write(fd, cast<*void>(content), len);
+  IO::local_close(fd);
+}
+
+pub const lsp_analyze -> fn (doc: *LSPDocument) void {
+  ERO::error_clear();
+
+  // The previous parse (if any) is about to be superseded — either by a
+  // fresh one below, or by nothing at all if this text fails to parse, in
+  // which case stale cached symbols would be worse than none.
+  if (doc.ast != cast<*AST::AstNode>(0)) {
+    AST::free_node(doc.ast);
+    doc.ast = cast<*AST::AstNode>(0);
+  }
+
+  write_scratch_file(SCRATCH_PATH, doc.text);
+
+  // error.lx's error_report (called internally by both parse_file and
+  // TC::typecheck on failure) writes straight to stdout — our JSON-RPC
+  // channel — so analysis has to run with stdout muted. See
+  // lsp_transport.lx's suppress_stdout_begin for why.
+  let saved_stdout: int = T::suppress_stdout_begin();
+
+  let build_config: CONST::LumaBuildConfig = CONST::init_build_config(SCRATCH_PATH);
+  // The static memory analyzer has known false-positive edge cases (see
+  // build_registry's comment on register_file) and live-as-you-type
+  // feedback is far more sensitive to that noise than a one-shot CLI
+  // build — matches --no-sanitize's effect on the compiled binary.
+  build_config.check_mem = false;
+  @os {
+    "linux"     -> { build_config.os = "linux";     }
+    "macos"     -> { build_config.os = "macos";     }
+    "windows64" -> { build_config.os = "windows64"; }
+    _ -> { build_config.os = "unknown"; }
+  }
+
+  let main_module: *AST::AstNode = PFILE::parse_file(SCRATCH_PATH);
+  if (main_module != cast<*AST::AstNode>(0)) {
+    let modules: VEC::Vector = collect_modules(main_module);
+
+    let program: *AST::AstNode = STMT::make_program(
+      PARS::vec_to_node_array(&modules), modules.size, 1, 0
+    );
+    VEC::free_vector(&modules);
+
+    TC::typecheck(program, build_config);
+
+    doc.ast = program;
+  }
+
+  VEC::free_vector(&build_config.link_files);
+
+  T::suppress_stdout_end(saved_stdout);
+}
+
+// ============================================================================
+// Diagnostics
+// ============================================================================
+
+#returns_ownership
+const build_message_with_help -> fn (message: *byte, help: *byte) *byte {
+  let sep: *byte = "\n\nHelp: ";
+  let total: int = STR::strlen(message) + STR::strlen(sep) + STR::strlen(help) + 1;
+  let out: *byte = cast<*byte>(alloc(total));
+  STR::cat(out, message, sep);
+  STR::cat(out, out, help);
+  return out;
+}
+
+#returns_ownership
+const diagnostics_array -> fn () *J::JsonValue {
+  let arr: *J::JsonValue = J::json_array();
+  let count: int = ERO::error_get_count();
+
+  loop [i: int = 0](i < count) : (++i) {
+    let e: *ERO::ErrorInformation = ERO::error_get_at_index(i);
+    if (e == cast<*ERO::ErrorInformation>(0)) continue;
+
+    // Now that imports get resolved and parsed/typechecked alongside the
+    // scratch file, error.lx's (global, shared) list can contain entries
+    // that belong to a *dependency* file, not the document being edited —
+    // don't surface those as if they were errors in the user's own buffer.
+    if (STR::strcmp(e.file_path, SCRATCH_PATH) != 0) continue;
+
+    // node.line is 1-indexed; node.col is already 0-indexed (confirmed
+    // against error.lx's own print_indicator, which pads with exactly
+    // `col` spaces before the caret with no adjustment) — only line needs
+    // the -1 here.
+    let start_line: int = 0;
+    if (e.line > 0) { start_line = e.line - 1; }
+    let start_col: int = e.col;
+    if (start_col < 0) { start_col = 0; }
+    let tlen: int = 1;
+    if (e.token_length > 0) { tlen = e.token_length; }
+
+    let start: *J::JsonValue = J::json_object();
+    J::json_object_set(start, "line", J::json_int(start_line));
+    J::json_object_set(start, "character", J::json_int(start_col));
+
+    let end: *J::JsonValue = J::json_object();
+    J::json_object_set(end, "line", J::json_int(start_line));
+    J::json_object_set(end, "character", J::json_int(start_col + tlen));
+
+    let range: *J::JsonValue = J::json_object();
+    J::json_object_set(range, "start", start);
+    J::json_object_set(range, "end", end);
+
+    let diag: *J::JsonValue = J::json_object();
+    J::json_object_set(diag, "range", range);
+    J::json_object_set(diag, "severity", J::json_int(1)); // Error — this checker doesn't emit warnings yet
+    J::json_object_set(diag, "source", J::json_string("luma-lsp"));
+
+    if (e.help != cast<*byte>(0)) {
+      let msg: *byte = build_message_with_help(e.message, e.help);
+      J::json_object_set(diag, "message", J::json_string(msg));
+      free(msg);
+    } else {
+      J::json_object_set(diag, "message", J::json_string(e.message));
+    }
+
+    J::json_array_push(arr, diag);
+  }
+
+  return arr;
+}
+
+pub const lsp_publish_diagnostics -> fn (uri: *byte) void {
+  let params: *J::JsonValue = J::json_object();
+  J::json_object_set(params, "uri", J::json_string(uri));
+  J::json_object_set(params, "diagnostics", diagnostics_array());
+
+  // send_notification takes ownership of `params` — it wraps it into its
+  // own envelope object and frees *that* (recursively freeing `params`
+  // along with it). Freeing `params` again here would double-free it.
+  T::send_notification("textDocument/publishDiagnostics", params);
+}
+
+// Analyzes `uri`'s current buffer and publishes fresh diagnostics for it.
+pub const lsp_analyze_and_publish -> fn (uri: *byte) void {
+  let doc: *LSPDocument = lsp_document_find(uri);
+  if (doc == cast<*LSPDocument>(0)) return;
+  lsp_analyze(doc);
+  lsp_publish_diagnostics(uri);
+}
+
+// ============================================================================
+// Document Symbols
+// ============================================================================
+
+const SK_FUNCTION: int = 12;
+const SK_STRUCT:   int = 23;
+const SK_ENUM:     int = 10;
+const SK_VARIABLE: int = 13;
+const SK_CONSTANT: int = 14;
+
+// `doc.ast` is the ProgramNode built for the single scratch file this
+// document was last analyzed as (see lsp_analyze) — unwrap to its one
+// ModuleNode, or null if the current text doesn't parse at all.
+const doc_module -> fn (doc: *LSPDocument) *AST::ModuleNode {
+  if (doc == cast<*LSPDocument>(0)) return cast<*AST::ModuleNode>(0);
+  if (doc.ast == cast<*AST::AstNode>(0)) return cast<*AST::ModuleNode>(0);
+  let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(doc.ast);
+  if (prog.module_count <= 0) return cast<*AST::ModuleNode>(0);
+  return cast<*AST::ModuleNode>(prog.modules[0]);
+}
+
+#returns_ownership
+const make_position -> fn (line: int, character: int) *J::JsonValue {
+  let pos: *J::JsonValue = J::json_object();
+  J::json_object_set(pos, "line", J::json_int(line));
+  J::json_object_set(pos, "character", J::json_int(character));
+  return pos;
+}
+
+// Declaration nodes only carry a single (line, col) — where the declaration
+// itself starts (e.g. at `pub`/`const`), not a separate position for the
+// name token — so `range`/`selectionRange` here are an approximation: a
+// span the length of the name, anchored at the declaration's start. Good
+// enough to navigate to; not pixel-accurate around the identifier.
+#returns_ownership
+const make_symbol -> fn (name: *byte, kind: int, line: int, col: int) *J::JsonValue {
+  // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
+  let start_line: int = 0;
+  if (line > 0) { start_line = line - 1; }
+  let start_col: int = col;
+  if (start_col < 0) { start_col = 0; }
+  let end_col: int = start_col + STR::strlen(name);
+
+  let range: *J::JsonValue = J::json_object();
+  J::json_object_set(range, "start", make_position(start_line, start_col));
+  J::json_object_set(range, "end", make_position(start_line, end_col));
+
+  // A JSON tree node can only ever have one parent (json_free recurses
+  // unconditionally) — selectionRange needs its own, separately-built copy
+  // rather than reusing `range`.
+  let selection_range: *J::JsonValue = J::json_object();
+  J::json_object_set(selection_range, "start", make_position(start_line, start_col));
+  J::json_object_set(selection_range, "end", make_position(start_line, end_col));
+
+  let sym: *J::JsonValue = J::json_object();
+  J::json_object_set(sym, "name", J::json_string(name));
+  J::json_object_set(sym, "kind", J::json_int(kind));
+  J::json_object_set(sym, "range", range);
+  J::json_object_set(sym, "selectionRange", selection_range);
+  return sym;
+}
+
+// Flat (non-nested) list of the document's top-level declarations — enough
+// for an editor outline/breadcrumb view. Struct fields, enum members, and
+// nested scopes aren't walked yet.
+#returns_ownership
+pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
+  let arr: *J::JsonValue = J::json_array();
+
+  let mod: *AST::ModuleNode = doc_module(lsp_document_find(uri));
+  if (mod == cast<*AST::ModuleNode>(0)) return arr;
+
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+      J::json_array_push(arr, make_symbol(fd.name, SK_FUNCTION, bn.line, bn.col));
+    } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      J::json_array_push(arr, make_symbol(sd.name, SK_STRUCT, bn.line, bn.col));
+    } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+      J::json_array_push(arr, make_symbol(ed.name, SK_ENUM, bn.line, bn.col));
+    } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+      // The parser always emits STMT_VAR_DECL for both `let` and `const` —
+      // is_mutable is what actually distinguishes them (STMT_CONST_DECL
+      // exists as a NodeType but the parser never produces it; kept here
+      // in case that changes).
+      let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+      let kind: int = SK_CONSTANT;
+      if (vd.is_mutable == 1) { kind = SK_VARIABLE; }
+      J::json_array_push(arr, make_symbol(vd.name, kind, bn.line, bn.col));
+    }
+  }
+
+  return arr;
+}
+
+// ============================================================================
+// Hover
+// ============================================================================
+//
+// No scope/symbol info survives typecheck (Scope lives and dies inside
+// TC::typecheck), and declaration AST nodes only carry a single (line, col)
+// rather than a span — so this doesn't do real scope-aware resolution.
+// Instead: pull the identifier word out of the live text buffer at the
+// requested position, then look that name up as a top-level declaration —
+// first in the document's own module, then as a *public* declaration in
+// each resolved dependency. Good enough for "what is this function/struct/
+// enum/const", not for locals or shadowed names.
+
+const StrBuf -> struct {
+  data: *byte,
+  len:  int,
+  cap:  int,
+};
+
+const sb_init -> fn () StrBuf {
+  let cap: int = 128;
+  return StrBuf { data: cast<*byte>(alloc(cap)), len: 0, cap: cap };
+}
+
+const sb_ensure -> fn (b: *StrBuf, extra: int) void {
+  if (b.len + extra + 1 <= b.cap) return;
+  let old_cap: int = b.cap;
+  let new_cap: int = old_cap * 2;
+  loop (new_cap < b.len + extra + 1) { new_cap = new_cap * 2; }
+  b.data = cast<*byte>(MEM::realloc(cast<*void>(b.data), old_cap, new_cap));
+  b.cap = new_cap;
+}
+
+const sb_str -> fn (b: *StrBuf, s: *byte) void {
+  let n: int = STR::strlen(s);
+  sb_ensure(b, n);
+  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  b.len = b.len + n;
+}
+
+#returns_ownership
+const sb_finish -> fn (b: *StrBuf) *byte {
+  sb_ensure(b, 0);
+  b.data[b.len] = cast<byte>(0);
+  return b.data;
+}
+
+const is_ident_char -> fn (c: byte) bool {
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+}
+
+// Extracts the identifier touching (line, character) in `text` — LSP
+// positions are 0-indexed lines with a UTF-16-code-unit character offset,
+// same convention used elsewhere in this file.
+#returns_ownership
+const word_at_position -> fn (text: *byte, line: int, character: int) *byte {
+  let len: int = STR::strlen(text);
+
+  let cur_line: int = 0;
+  let line_start: int = 0;
+  let i: int = 0;
+  loop (i < len && cur_line < line) {
+    if (text[i] == '\n') { cur_line = cur_line + 1; line_start = i + 1; }
+    i = i + 1;
+  }
+  if (cur_line != line) return cast<*byte>(0);
+
+  let line_end: int = line_start;
+  loop (line_end < len && text[line_end] != '\n') { line_end = line_end + 1; }
+
+  let col: int = line_start + character;
+  if (col > line_end) { col = line_end; }
+  if (col < line_start) { col = line_start; }
+
+  // If the cursor sits right after a word (not inside/before one), step
+  // back one so we land on the word instead of whatever follows it.
+  let s: int = col;
+  if (s > line_start) {
+    let at_word_char: bool = s < line_end && is_ident_char(text[s]);
+    if (at_word_char == false && is_ident_char(text[s - 1])) { s = s - 1; }
+  }
+  loop (s > line_start && is_ident_char(text[s - 1])) { s = s - 1; }
+
+  let e: int = s;
+  loop (e < line_end && is_ident_char(text[e])) { e = e + 1; }
+
+  if (e <= s) return cast<*byte>(0);
+
+  let wlen: int = e - s;
+  let word: *byte = cast<*byte>(alloc(wlen + 1));
+  MEM::memcpy(cast<*void>(word), cast<*void>(cast<int>(text) + s), wlen);
+  word[wlen] = cast<byte>(0);
+  return word;
+}
+
+#returns_ownership
+const format_func_signature -> fn (fd: *AST::FuncDeclNode) *byte {
+  let b: StrBuf = sb_init();
+  sb_str(&b, "fn ");
+  sb_str(&b, fd.name);
+  sb_str(&b, "(");
+  loop [i: int = 0](i < fd.param_count) : (++i) {
+    if (i > 0) { sb_str(&b, ", "); }
+    sb_str(&b, fd.param_names[i]);
+    sb_str(&b, ": ");
+    let t: *byte = TYPE::type_to_string(fd.param_types[i]);
+    sb_str(&b, t);
+    free(t);
+  }
+  sb_str(&b, ") ");
+  let rt: *byte = TYPE::type_to_string(fd.return_type);
+  sb_str(&b, rt);
+  free(rt);
+  return sb_finish(&b);
+}
+
+#returns_ownership
+const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
+  let b: StrBuf = sb_init();
+  sb_str(&b, "struct ");
+  sb_str(&b, sd.name);
+  sb_str(&b, " { ");
+
+  let field_count: int = 0;
+  loop [i: int = 0](i < sd.public_count) : (++i) {
+    let f: *AST::AstNode = sd.public_members[i];
+    if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
+      let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+      if (fld.function == cast<*AST::AstNode>(0)) { // plain data field, not a method
+        if (field_count > 0) { sb_str(&b, ", "); }
+        sb_str(&b, fld.name);
+        sb_str(&b, ": ");
+        let t: *byte = TYPE::type_to_string(fld.type_node);
+        sb_str(&b, t);
+        free(t);
+        field_count = field_count + 1;
+      }
+    }
+  }
+  sb_str(&b, " }");
+  return sb_finish(&b);
+}
+
+#returns_ownership
+const format_enum_signature -> fn (ed: *AST::EnumDeclNode) *byte {
+  let b: StrBuf = sb_init();
+  sb_str(&b, "enum ");
+  sb_str(&b, ed.name);
+  sb_str(&b, " { ");
+  loop [i: int = 0](i < ed.member_count) : (++i) {
+    if (i > 0) { sb_str(&b, ", "); }
+    sb_str(&b, ed.members[i]);
+  }
+  sb_str(&b, " }");
+  return sb_finish(&b);
+}
+
+#returns_ownership
+const format_var_signature -> fn (vd: *AST::VarDeclNode) *byte {
+  let b: StrBuf = sb_init();
+  if (vd.is_mutable == 1) { sb_str(&b, "let "); } else { sb_str(&b, "const "); }
+  sb_str(&b, vd.name);
+  if (vd.var_type != cast<*AST::AstNode>(0)) {
+    sb_str(&b, ": ");
+    let t: *byte = TYPE::type_to_string(vd.var_type);
+    sb_str(&b, t);
+    free(t);
+  }
+  return sb_finish(&b);
+}
+
+// ── Locals & parameters ──────────────────────────────────────────────────────
+//
+// Top-level declarations don't carry span info, but at the top level of a
+// module they're non-overlapping and in source order — so "which function
+// contains line L" can still be answered reasonably well as "the last
+// top-level function starting at or before L", without needing a real end
+// position. Once inside that function, a plain recursive statement walk
+// finds `let`/`const` locals (and loop init-bindings, which the parser
+// already represents as ordinary var-decl nodes) well enough for hover and
+// go-to-definition — not real lexical scoping (no shadowing precision), but
+// right in the common case.
+
+const find_enclosing_function -> fn (mod: *AST::ModuleNode, one_indexed_line: int) *AST::FuncDeclNode {
+  let best: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(0);
+  let best_line: int = -1;
+
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      if (bn.line <= one_indexed_line && bn.line > best_line) {
+        best = cast<*AST::FuncDeclNode>(bn);
+        best_line = bn.line;
+      }
+    }
+  }
+
+  return best;
+}
+
+// Recursively searches `stmt` for a `let`/`const` declaration named `name`,
+// returning the VarDeclNode (as a plain AstNode) or null.
+const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::AstNode {
+  if (stmt == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
+
+  if (stmt.kind == AST::NodeType::STMT_VAR_DECL || stmt.kind == AST::NodeType::STMT_CONST_DECL) {
+    let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(stmt);
+    if (STR::strcmp(vd.name, name) == 0) return stmt;
+    return cast<*AST::AstNode>(0);
+  }
+
+  if (stmt.kind == AST::NodeType::STMT_BLOCK) {
+    let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
+    loop [i: int = 0](i < blk.stmt_count) : (++i) {
+      let hit: *AST::AstNode = search_stmt_for_local_decl(blk.statements[i], name);
+      if (hit != cast<*AST::AstNode>(0)) return hit;
+    }
+    return cast<*AST::AstNode>(0);
+  }
+
+  if (stmt.kind == AST::NodeType::STMT_IF) {
+    let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
+    let hit: *AST::AstNode = search_stmt_for_local_decl(n.then_stmt, name);
+    if (hit != cast<*AST::AstNode>(0)) return hit;
+    loop [i: int = 0](i < n.elif_count) : (++i) {
+      hit = search_stmt_for_local_decl(n.elif_stmts[i], name);
+      if (hit != cast<*AST::AstNode>(0)) return hit;
+    }
+    return search_stmt_for_local_decl(n.else_stmt, name);
+  }
+
+  if (stmt.kind == AST::NodeType::STMT_LOOP) {
+    let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
+    loop [i: int = 0](i < n.init_count) : (++i) {
+      let hit: *AST::AstNode = search_stmt_for_local_decl(n.initializer[i], name);
+      if (hit != cast<*AST::AstNode>(0)) return hit;
+    }
+    return search_stmt_for_local_decl(n.body, name);
+  }
+
+  if (stmt.kind == AST::NodeType::STMT_SWITCH) {
+    let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
+    loop [i: int = 0](i < n.case_count) : (++i) {
+      let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
+      let hit: *AST::AstNode = search_stmt_for_local_decl(c.body, name);
+      if (hit != cast<*AST::AstNode>(0)) return hit;
+    }
+    if (n.default_case != cast<*AST::AstNode>(0)) {
+      let d: *AST::DefaultNode = cast<*AST::DefaultNode>(n.default_case);
+      return search_stmt_for_local_decl(d.body, name);
+    }
+    return cast<*AST::AstNode>(0);
+  }
+
+  if (stmt.kind == AST::NodeType::STMT_DEFER) {
+    let n: *AST::DeferNode = cast<*AST::DeferNode>(stmt);
+    return search_stmt_for_local_decl(n.statement, name);
+  }
+
+  return cast<*AST::AstNode>(0);
+}
+
+const LocalThing -> struct {
+  found:     bool,
+  is_param:  bool,
+  line:      int,
+  col:       int,
+  name_len:  int,
+  type_node: *AST::AstNode, // null is a valid "no annotation" case, not "not found"
+};
+
+const find_local_thing -> fn (mod: *AST::ModuleNode, one_indexed_line: int, name: *byte) LocalThing {
+  let miss: LocalThing = LocalThing {
+    found: false, is_param: false, line: 0, col: 0, name_len: 0,
+    type_node: cast<*AST::AstNode>(0),
+  };
+
+  let fd: *AST::FuncDeclNode = find_enclosing_function(mod, one_indexed_line);
+  if (fd == cast<*AST::FuncDeclNode>(0)) return miss;
+
+  loop [i: int = 0](i < fd.param_count) : (++i) {
+    if (STR::strcmp(fd.param_names[i], name) == 0) {
+      // Parameters have no position of their own — anchored at the
+      // function's own line/col, same caveat as everything else here.
+      let fn_node: *AST::AstNode = cast<*AST::AstNode>(fd);
+      return LocalThing {
+        found: true, is_param: true, line: fn_node.line, col: fn_node.col,
+        name_len: STR::strlen(fd.param_names[i]), type_node: fd.param_types[i],
+      };
+    }
+  }
+
+  let decl: *AST::AstNode = search_stmt_for_local_decl(fd.body, name);
+  if (decl != cast<*AST::AstNode>(0)) {
+    let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(decl);
+    return LocalThing {
+      found: true, is_param: false, line: decl.line, col: decl.col,
+      name_len: STR::strlen(vd.name), type_node: vd.var_type,
+    };
+  }
+
+  return miss;
+}
+
+#returns_ownership
+const format_local_hover -> fn (name: *byte, thing: LocalThing) *byte {
+  let b: StrBuf = sb_init();
+  if (thing.is_param) { sb_str(&b, "(parameter) "); } else { sb_str(&b, "let "); }
+  sb_str(&b, name);
+  if (thing.type_node != cast<*AST::AstNode>(0)) {
+    sb_str(&b, ": ");
+    let t: *byte = TYPE::type_to_string(thing.type_node);
+    sb_str(&b, t);
+    free(t);
+  }
+  return sb_finish(&b);
+}
+
+#returns_ownership
+const find_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: bool) *byte {
+  if (mod == cast<*AST::ModuleNode>(0)) return cast<*byte>(0);
+
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+      if (STR::strcmp(fd.name, name) == 0 && (public_only == false || fd.is_public == 1)) {
+        return format_func_signature(fd);
+      }
+    } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      if (STR::strcmp(sd.name, name) == 0 && (public_only == false || sd.is_public == 1)) {
+        return format_struct_signature(sd);
+      }
+    } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+      if (STR::strcmp(ed.name, name) == 0 && (public_only == false || ed.is_public == 1)) {
+        return format_enum_signature(ed);
+      }
+    } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+      let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+      if (STR::strcmp(vd.name, name) == 0 && (public_only == false || vd.is_public == 1)) {
+        return format_var_signature(vd);
+      }
+    }
+  }
+
+  return cast<*byte>(0);
+}
+
+#returns_ownership
+const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_indexed_line: int) *byte {
+  if (doc == cast<*LSPDocument>(0) || doc.ast == cast<*AST::AstNode>(0)) return cast<*byte>(0);
+
+  let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(doc.ast);
+  if (prog.module_count <= 0) return cast<*byte>(0);
+
+  let own_mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[0]);
+
+  // Locals/parameters shadow top-level names and only make sense within
+  // the document's own file — check them before anything else.
+  let local: LocalThing = find_local_thing(own_mod, zero_indexed_line + 1, name);
+  if (local.found) return format_local_hover(name, local);
+
+  let own: *byte = find_in_module(own_mod, name, false);
+  if (own != cast<*byte>(0)) return own;
+
+  loop [i: int = 1](i < prog.module_count) : (++i) {
+    let dep: *byte = find_in_module(cast<*AST::ModuleNode>(prog.modules[i]), name, true);
+    if (dep != cast<*byte>(0)) return dep;
+  }
+
+  return cast<*byte>(0);
+}
+
+// Returns a formatted signature string for the declaration named at
+// (line, character) in `uri`'s current buffer, or null if there's no
+// document, no word at that position, or no matching declaration.
+#returns_ownership
+pub const lsp_hover -> fn (uri: *byte, line: int, character: int) *byte {
+  let doc: *LSPDocument = lsp_document_find(uri);
+  if (doc == cast<*LSPDocument>(0)) return cast<*byte>(0);
+
+  let word: *byte = word_at_position(doc.text, line, character);
+  if (word == cast<*byte>(0)) return cast<*byte>(0);
+
+  let sig: *byte = resolve_symbol_signature(doc, word, line);
+  free(word);
+  return sig;
+}
+
+// ============================================================================
+// Go to Definition
+// ============================================================================
+//
+// Same word-at-cursor + same-file-then-dependencies resolution as hover,
+// just returning a Location (uri + range) instead of formatted text.
+
+const DefHit -> struct {
+  found:    bool,
+  line:     int,
+  col:      int,
+  name_len: int,
+};
+
+const find_definition_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: bool) DefHit {
+  let miss: DefHit = DefHit { found: false, line: 0, col: 0, name_len: 0 };
+  if (mod == cast<*AST::ModuleNode>(0)) return miss;
+
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    let decl_name: *byte = cast<*byte>(0);
+    let is_pub: bool = false;
+
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+      decl_name = fd.name; is_pub = fd.is_public == 1;
+    } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      decl_name = sd.name; is_pub = sd.is_public == 1;
+    } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+      decl_name = ed.name; is_pub = ed.is_public == 1;
+    } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+      let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+      decl_name = vd.name; is_pub = vd.is_public == 1;
+    }
+
+    if (decl_name != cast<*byte>(0) && STR::strcmp(decl_name, name) == 0 && (public_only == false || is_pub)) {
+      return DefHit { found: true, line: bn.line, col: bn.col, name_len: STR::strlen(decl_name) };
+    }
+  }
+
+  return miss;
+}
+
+#returns_ownership
+const path_to_uri -> fn (path: *byte) *byte {
+  let prefix: *byte = "file://";
+  let total: int = STR::strlen(prefix) + STR::strlen(path) + 1;
+  let out: *byte = cast<*byte>(alloc(total));
+  STR::cat(out, prefix, path);
+  return out;
+}
+
+#returns_ownership
+const make_location_json -> fn (uri: *byte, line: int, col: int, name_len: int) *J::JsonValue {
+  // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
+  let start_line: int = 0;
+  if (line > 0) { start_line = line - 1; }
+  let start_col: int = col;
+  if (start_col < 0) { start_col = 0; }
+  let end_col: int = start_col + name_len;
+
+  let range: *J::JsonValue = J::json_object();
+  J::json_object_set(range, "start", make_position(start_line, start_col));
+  J::json_object_set(range, "end", make_position(start_line, end_col));
+
+  let loc: *J::JsonValue = J::json_object();
+  J::json_object_set(loc, "uri", J::json_string(uri));
+  J::json_object_set(loc, "range", range);
+  return loc;
+}
+
+// Returns a Location for the declaration named at (line, character) in
+// `uri`'s current buffer, or null if there's no match.
+#returns_ownership
+pub const lsp_definition -> fn (uri: *byte, line: int, character: int) *J::JsonValue {
+  let doc: *LSPDocument = lsp_document_find(uri);
+  if (doc == cast<*LSPDocument>(0) || doc.ast == cast<*AST::AstNode>(0)) return cast<*J::JsonValue>(0);
+
+  let word: *byte = word_at_position(doc.text, line, character);
+  if (word == cast<*byte>(0)) return cast<*J::JsonValue>(0);
+
+  let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(doc.ast);
+  if (prog.module_count <= 0) { free(word); return cast<*J::JsonValue>(0); }
+
+  let own_mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[0]);
+
+  let local: LocalThing = find_local_thing(own_mod, line + 1, word);
+  if (local.found) {
+    free(word);
+    return make_location_json(doc.uri, local.line, local.col, local.name_len);
+  }
+
+  let own_hit: DefHit = find_definition_in_module(own_mod, word, false);
+  if (own_hit.found) {
+    free(word);
+    return make_location_json(doc.uri, own_hit.line, own_hit.col, own_hit.name_len);
+  }
+
+  loop [i: int = 1](i < prog.module_count) : (++i) {
+    let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[i]);
+    let hit: DefHit = find_definition_in_module(mod, word, true);
+    if (hit.found) {
+      free(word);
+      let target_uri: *byte = path_to_uri(mod.file_path);
+      let result: *J::JsonValue = make_location_json(target_uri, hit.line, hit.col, hit.name_len);
+      free(target_uri);
+      return result;
+    }
+  }
+
+  free(word);
+  return cast<*J::JsonValue>(0);
+}
+
+// ============================================================================
+// Completion
+// ============================================================================
+//
+// Not context-aware (doesn't distinguish "after a '.'" from "at statement
+// start", etc.) — offers keywords, everything visible at the top level
+// (own file + public declarations from every resolved dependency), and
+// locals/parameters in whichever function encloses the cursor. A client's
+// own fuzzy-filtering does the rest.
+
+const CK_FUNCTION: int = 3;
+const CK_VARIABLE: int = 6;
+const CK_ENUM:      int = 13;
+const CK_KEYWORD:   int = 14;
+const CK_CONSTANT:  int = 21;
+const CK_STRUCT:    int = 22;
+const CK_ENUM_MEMBER: int = 20;
+
+const KEYWORD_COUNT: int = 29;
+const KEYWORDS: [*byte; 29] = [
+  "let", "const", "pub", "fn", "struct", "enum", "if", "elif", "else",
+  "loop", "switch", "return", "break", "continue", "defer", "cast",
+  "sizeof", "output", "outputln", "true", "false", "null",
+  "int", "uint", "float", "double", "bool", "byte", "void"
+];
+
+#returns_ownership
+const make_completion_item -> fn (label: *byte, kind: int, detail: *byte) *J::JsonValue {
+  let item: *J::JsonValue = J::json_object();
+  J::json_object_set(item, "label", J::json_string(label));
+  J::json_object_set(item, "kind", J::json_int(kind));
+  if (detail != cast<*byte>(0)) {
+    J::json_object_set(item, "detail", J::json_string(detail));
+  }
+  return item;
+}
+
+const collect_module_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNode, public_only: bool) void {
+  if (mod == cast<*AST::ModuleNode>(0)) return;
+
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+      if (public_only == false || fd.is_public == 1) {
+        J::json_array_push(arr, make_completion_item(fd.name, CK_FUNCTION, cast<*byte>(0)));
+      }
+    } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      if (public_only == false || sd.is_public == 1) {
+        J::json_array_push(arr, make_completion_item(sd.name, CK_STRUCT, cast<*byte>(0)));
+      }
+    } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+      if (public_only == false || ed.is_public == 1) {
+        J::json_array_push(arr, make_completion_item(ed.name, CK_ENUM, cast<*byte>(0)));
+        loop [j: int = 0](j < ed.member_count) : (++j) {
+          J::json_array_push(arr, make_completion_item(ed.members[j], CK_ENUM_MEMBER, ed.name));
+        }
+      }
+    } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+      let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+      if (public_only == false || vd.is_public == 1) {
+        let kind: int = CK_CONSTANT;
+        if (vd.is_mutable == 1) { kind = CK_VARIABLE; }
+        J::json_array_push(arr, make_completion_item(vd.name, kind, cast<*byte>(0)));
+      }
+    }
+  }
+}
+
+// Same shape as search_stmt_for_local_decl, but collects every local
+// instead of stopping at the first name match.
+const collect_locals_completions -> fn (arr: *J::JsonValue, stmt: *AST::AstNode) void {
+  if (stmt == cast<*AST::AstNode>(0)) return;
+
+  if (stmt.kind == AST::NodeType::STMT_VAR_DECL || stmt.kind == AST::NodeType::STMT_CONST_DECL) {
+    let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(stmt);
+    let kind: int = CK_CONSTANT;
+    if (vd.is_mutable == 1) { kind = CK_VARIABLE; }
+    J::json_array_push(arr, make_completion_item(vd.name, kind, cast<*byte>(0)));
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_BLOCK) {
+    let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
+    loop [i: int = 0](i < blk.stmt_count) : (++i) { collect_locals_completions(arr, blk.statements[i]); }
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_IF) {
+    let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
+    collect_locals_completions(arr, n.then_stmt);
+    loop [i: int = 0](i < n.elif_count) : (++i) { collect_locals_completions(arr, n.elif_stmts[i]); }
+    collect_locals_completions(arr, n.else_stmt);
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_LOOP) {
+    let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
+    loop [i: int = 0](i < n.init_count) : (++i) { collect_locals_completions(arr, n.initializer[i]); }
+    collect_locals_completions(arr, n.body);
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_SWITCH) {
+    let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
+    loop [i: int = 0](i < n.case_count) : (++i) {
+      let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
+      collect_locals_completions(arr, c.body);
+    }
+    if (n.default_case != cast<*AST::AstNode>(0)) {
+      let d: *AST::DefaultNode = cast<*AST::DefaultNode>(n.default_case);
+      collect_locals_completions(arr, d.body);
+    }
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_DEFER) {
+    let n: *AST::DeferNode = cast<*AST::DeferNode>(stmt);
+    collect_locals_completions(arr, n.statement);
+    return;
+  }
+}
+
+#returns_ownership
+pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::JsonValue {
+  let arr: *J::JsonValue = J::json_array();
+
+  loop [i: int = 0](i < KEYWORD_COUNT) : (++i) {
+    J::json_array_push(arr, make_completion_item(KEYWORDS[i], CK_KEYWORD, cast<*byte>(0)));
+  }
+
+  let doc: *LSPDocument = lsp_document_find(uri);
+  if (doc == cast<*LSPDocument>(0) || doc.ast == cast<*AST::AstNode>(0)) return arr;
+
+  let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(doc.ast);
+  if (prog.module_count <= 0) return arr;
+
+  let own_mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[0]);
+  collect_module_completions(arr, own_mod, false);
+
+  loop [i: int = 1](i < prog.module_count) : (++i) {
+    collect_module_completions(arr, cast<*AST::ModuleNode>(prog.modules[i]), true);
+  }
+
+  let fd: *AST::FuncDeclNode = find_enclosing_function(own_mod, line + 1);
+  if (fd != cast<*AST::FuncDeclNode>(0)) {
+    loop [i: int = 0](i < fd.param_count) : (++i) {
+      J::json_array_push(arr, make_completion_item(fd.param_names[i], CK_VARIABLE, cast<*byte>(0)));
+    }
+    collect_locals_completions(arr, fd.body);
+  }
+
+  return arr;
+}
+
+// ============================================================================
+// Semantic Tokens (highlighting)
+// ============================================================================
+//
+// Declaration-site nodes only carry an approximate position (see Hover's
+// header comment), but *expression*-level identifier references carry
+// their own real (line, col) from the token they were parsed from — so
+// unlike hover/definition, this can be pixel-accurate. Scope: every
+// EXPR_IDENTIFIER reachable from a function body or a module-level
+// var/const initializer gets classified (parameter / local / function /
+// struct / enum, matching whichever resolves first — same precedence as
+// hover) and turned into a token. Struct fields and enum members accessed
+// via `.field`/`Enum::Member` aren't covered: MemberNode only stores the
+// member name as a plain string, with no position of its own to anchor a
+// token on.
+
+const TT_FUNCTION:  int = 0;
+const TT_VARIABLE:  int = 1;
+const TT_PARAMETER: int = 2;
+const TT_STRUCT:    int = 3;
+const TT_ENUM:      int = 4;
+
+const MOD_READONLY: int = 1;
+
+const SemToken -> struct {
+  line:     int,
+  col:      int,
+  length:   int,
+  type_idx: int,
+  mods:     int,
+};
+
+const push_token -> fn (tokens: *VEC::Vector, line: int, col: int, length: int, type_idx: int, mods: int) void {
+  if (length <= 0) return;
+  let t: SemToken = SemToken { line: line, col: col, length: length, type_idx: type_idx, mods: mods };
+  tokens.push_back(cast<*void>(&t));
+}
+
+// Simple insertion sort — semantic tokens must be emitted in position
+// order for the delta-encoding below to produce non-negative deltas.
+const sort_tokens -> fn (tokens: *VEC::Vector) void {
+  let arr: *SemToken = cast<*SemToken>(tokens.data);
+  let n: int = tokens.size;
+  loop [i: int = 1](i < n) : (++i) {
+    let key: SemToken = arr[i];
+    let j: int = i - 1;
+    loop (j >= 0 && (arr[j].line > key.line || (arr[j].line == key.line && arr[j].col > key.col))) {
+      arr[j + 1] = arr[j];
+      j = j - 1;
+    }
+    arr[j + 1] = key;
+  }
+}
+
+const lookup_public_kind -> fn (mod: *AST::ModuleNode, name: *byte) int {
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+      if (fd.is_public == 1 && STR::strcmp(fd.name, name) == 0) return TT_FUNCTION;
+    } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      if (sd.is_public == 1 && STR::strcmp(sd.name, name) == 0) return TT_STRUCT;
+    } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+      if (ed.is_public == 1 && STR::strcmp(ed.name, name) == 0) return TT_ENUM;
+    } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+      let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+      if (vd.is_public == 1 && STR::strcmp(vd.name, name) == 0) return TT_VARIABLE;
+    }
+  }
+  return -1;
+}
+
+const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, id: *AST::IdentifierNode, prog: *AST::ProgramNode) void {
+  let node: *AST::AstNode = cast<*AST::AstNode>(id);
+  let name: *byte = id.name;
+
+  if (fd != cast<*AST::FuncDeclNode>(0)) {
+    loop [i: int = 0](i < fd.param_count) : (++i) {
+      if (STR::strcmp(fd.param_names[i], name) == 0) {
+        push_token(tokens, node.line, node.col, STR::strlen(name), TT_PARAMETER, 0);
+        return;
+      }
+    }
+    let decl: *AST::AstNode = search_stmt_for_local_decl(fd.body, name);
+    if (decl != cast<*AST::AstNode>(0)) {
+      let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(decl);
+      let mods: int = 0;
+      if (vd.is_mutable == 0) { mods = MOD_READONLY; }
+      push_token(tokens, node.line, node.col, STR::strlen(name), TT_VARIABLE, mods);
+      return;
+    }
+  }
+
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      let f2: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+      if (STR::strcmp(f2.name, name) == 0) { push_token(tokens, node.line, node.col, STR::strlen(name), TT_FUNCTION, 0); return; }
+    } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      if (STR::strcmp(sd.name, name) == 0) { push_token(tokens, node.line, node.col, STR::strlen(name), TT_STRUCT, 0); return; }
+    } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+      if (STR::strcmp(ed.name, name) == 0) { push_token(tokens, node.line, node.col, STR::strlen(name), TT_ENUM, 0); return; }
+    } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+      let vd2: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+      if (STR::strcmp(vd2.name, name) == 0) {
+        let mods: int = 0;
+        if (vd2.is_mutable == 0) { mods = MOD_READONLY; }
+        push_token(tokens, node.line, node.col, STR::strlen(name), TT_VARIABLE, mods);
+        return;
+      }
+    }
+  }
+
+  loop [d: int = 1](d < prog.module_count) : (++d) {
+    let kind: int = lookup_public_kind(cast<*AST::ModuleNode>(prog.modules[d]), name);
+    if (kind >= 0) {
+      push_token(tokens, node.line, node.col, STR::strlen(name), kind, 0);
+      return;
+    }
+  }
+}
+
+const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, prog: *AST::ProgramNode, expr: *AST::AstNode) void {
+  if (expr == cast<*AST::AstNode>(0)) return;
+
+  if (expr.kind == AST::NodeType::EXPR_IDENTIFIER) {
+    emit_ident_token(tokens, mod, fd, cast<*AST::IdentifierNode>(expr), prog);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_BINARY || expr.kind == AST::NodeType::EXPR_RANGE) {
+    let n: *AST::BinaryNode = cast<*AST::BinaryNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.left);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.right);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_UNARY  || expr.kind == AST::NodeType::EXPR_DEREF ||
+      expr.kind == AST::NodeType::EXPR_ADDR   || expr.kind == AST::NodeType::EXPR_GROUPING ||
+      expr.kind == AST::NodeType::EXPR_SYSTEM) {
+    let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.operand);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_CALL) {
+    let n: *AST::CallNode = cast<*AST::CallNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.callee);
+    loop [i: int = 0](i < n.arg_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.args[i]); }
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_ASSIGNMENT) {
+    let n: *AST::AssignNode = cast<*AST::AssignNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.target);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.value);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_TERNARY) {
+    let n: *AST::TernaryNode = cast<*AST::TernaryNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.condition);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.then_expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.else_expr);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_MEMBER) {
+    let n: *AST::MemberNode = cast<*AST::MemberNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.object);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_INDEX) {
+    let n: *AST::IndexNode = cast<*AST::IndexNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.object);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.index);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_ARRAY) {
+    let n: *AST::ArrayNode = cast<*AST::ArrayNode>(expr);
+    loop [i: int = 0](i < n.element_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.elements[i]); }
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_CAST || expr.kind == AST::NodeType::EXPR_INPUT) {
+    let n: *AST::CastNode = cast<*AST::CastNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.castee);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_ALLOC) {
+    let n: *AST::AllocNode = cast<*AST::AllocNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.size);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_FREE) {
+    let n: *AST::FreeNode = cast<*AST::FreeNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.ptr);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_MEMCPY) {
+    let n: *AST::MemcpyNode = cast<*AST::MemcpyNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.to);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.from);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.size);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_SIZEOF) {
+    let n: *AST::SizeofNode = cast<*AST::SizeofNode>(expr);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.object);
+    return;
+  }
+  if (expr.kind == AST::NodeType::EXPR_STRUCT) {
+    let n: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
+    loop [i: int = 0](i < n.field_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.field_vals[i]); }
+    return;
+  }
+  // EXPR_LITERAL, EXPR_SYSCALL: leaves, nothing further to classify.
+}
+
+const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, prog: *AST::ProgramNode, stmt: *AST::AstNode) void {
+  if (stmt == cast<*AST::AstNode>(0)) return;
+
+  if (stmt.kind == AST::NodeType::STMT_VAR_DECL || stmt.kind == AST::NodeType::STMT_CONST_DECL) {
+    // No token for the declaration site itself: stmt.line/col anchors at
+    // the `let`/`const` keyword, not the name, so it would highlight the
+    // wrong span (e.g. "let re" instead of "result"). Usages still get
+    // pixel-accurate tokens via their own EXPR_IDENTIFIER position.
+    let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(stmt);
+    walk_expr_for_tokens(tokens, mod, fd, prog, vd.initializer);
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_EXPRESSION) {
+    let n: *AST::ExprStmtNode = cast<*AST::ExprStmtNode>(stmt);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.expression);
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_RETURN) {
+    let n: *AST::ReturnStmtNode = cast<*AST::ReturnStmtNode>(stmt);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.value);
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_BLOCK) {
+    let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
+    loop [i: int = 0](i < blk.stmt_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, blk.statements[i]); }
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_IF) {
+    let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.condition);
+    walk_stmt_for_tokens(tokens, mod, fd, prog, n.then_stmt);
+    loop [i: int = 0](i < n.elif_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, n.elif_stmts[i]); }
+    walk_stmt_for_tokens(tokens, mod, fd, prog, n.else_stmt);
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_LOOP) {
+    let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
+    loop [i: int = 0](i < n.init_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, n.initializer[i]); }
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.condition);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.optional);
+    walk_stmt_for_tokens(tokens, mod, fd, prog, n.body);
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_SWITCH) {
+    let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
+    walk_expr_for_tokens(tokens, mod, fd, prog, n.condition);
+    loop [i: int = 0](i < n.case_count) : (++i) {
+      let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
+      loop [j: int = 0](j < c.value_count) : (++j) { walk_expr_for_tokens(tokens, mod, fd, prog, c.values[j]); }
+      walk_stmt_for_tokens(tokens, mod, fd, prog, c.body);
+    }
+    if (n.default_case != cast<*AST::AstNode>(0)) {
+      let d: *AST::DefaultNode = cast<*AST::DefaultNode>(n.default_case);
+      walk_stmt_for_tokens(tokens, mod, fd, prog, d.body);
+    }
+    return;
+  }
+  if (stmt.kind == AST::NodeType::STMT_DEFER) {
+    let n: *AST::DeferNode = cast<*AST::DeferNode>(stmt);
+    walk_stmt_for_tokens(tokens, mod, fd, prog, n.statement);
+    return;
+  }
+}
+
+#returns_ownership
+pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
+  let result: *J::JsonValue = J::json_object();
+  let data: *J::JsonValue = J::json_array();
+
+  let doc: *LSPDocument = lsp_document_find(uri);
+  if (doc != cast<*LSPDocument>(0) && doc.ast != cast<*AST::AstNode>(0)) {
+    let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(doc.ast);
+    if (prog.module_count > 0) {
+      let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[0]);
+      let tokens: VEC::Vector = VEC::create_vector(sizeof<SemToken>);
+
+      let n: int = mod.body_count;
+      loop [i: int = 0](i < n) : (++i) {
+        let bn: *AST::AstNode = mod.body[i];
+        if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+          let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+          walk_stmt_for_tokens(&tokens, mod, fd, prog, fd.body);
+        } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+          let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+          walk_expr_for_tokens(&tokens, mod, cast<*AST::FuncDeclNode>(0), prog, vd.initializer);
+        }
+      }
+
+      sort_tokens(&tokens);
+
+      let arr: *SemToken = cast<*SemToken>(tokens.data);
+      let count: int = tokens.size;
+      let prev_line: int = 0;
+      let prev_col: int = 0;
+      loop [i: int = 0](i < count) : (++i) {
+        let t: SemToken = arr[i];
+        // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
+        let line0: int = 0;
+        if (t.line > 0) { line0 = t.line - 1; }
+        let col0: int = t.col;
+        if (col0 < 0) { col0 = 0; }
+
+        let delta_line: int = line0 - prev_line;
+        let delta_col: int = col0;
+        if (delta_line == 0) { delta_col = col0 - prev_col; }
+
+        J::json_array_push(data, J::json_int(delta_line));
+        J::json_array_push(data, J::json_int(delta_col));
+        J::json_array_push(data, J::json_int(t.length));
+        J::json_array_push(data, J::json_int(t.type_idx));
+        J::json_array_push(data, J::json_int(t.mods));
+
+        prev_line = line0;
+        prev_col = col0;
+      }
+
+      VEC::free_vector(&tokens);
+    }
+  }
+
+  J::json_object_set(result, "data", data);
+  return result;
+}

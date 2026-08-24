@@ -1,0 +1,26 @@
+//! Entry point for the self-hosted Luma language server.
+//!
+//! Speaks LSP over stdio: reads Content-Length-framed JSON-RPC messages
+//! from stdin and writes responses/notifications to stdout. Reached via
+//! the main `luma` binary's `-lsp`/`--lsp` flag (see src/main.lx) rather
+//! than being its own executable — an editor's LSP client config just
+//! points at `luma -lsp`.
+
+@module "lsp_main"
+
+@use "lsp_transport" as T
+@use "lsp_dispatch"  as D
+@use "lsp_document"  as DOC
+
+pub const lsp_run -> fn () int {
+  DOC::lsp_document_init();
+
+  loop (1) {
+    let msg: *byte = T::read_message();
+    if (msg == cast<*byte>(0)) break; // stdin closed or malformed header
+    D::handle_message(msg);
+    free(msg);
+  }
+
+  return 0;
+}

@@ -1,0 +1,221 @@
+//! JSON-RPC method dispatch for the Luma language server.
+
+@module "lsp_dispatch"
+
+@use "json"          as J
+@use "lsp_transport" as T
+@use "lsp_document"  as D
+@use "std_cstring"   as STR
+@use "std_sys"       as SYS
+
+#returns_ownership
+const wrap_code_block -> fn (sig: *byte) *byte {
+  let prefix: *byte = "```luma\n";
+  let suffix: *byte = "\n```";
+  let total: int = STR::strlen(prefix) + STR::strlen(sig) + STR::strlen(suffix) + 1;
+  let out: *byte = cast<*byte>(alloc(total));
+  STR::cat(out, prefix, sig);
+  STR::cat(out, out, suffix);
+  return out;
+}
+
+#returns_ownership
+const capabilities_result -> fn () *J::JsonValue {
+  let caps: *J::JsonValue = J::json_object();
+  J::json_object_set(caps, "textDocumentSync", J::json_int(1)); // Full
+  J::json_object_set(caps, "documentSymbolProvider", J::json_bool(true));
+  J::json_object_set(caps, "hoverProvider", J::json_bool(true));
+  J::json_object_set(caps, "definitionProvider", J::json_bool(true));
+
+  let completion_opts: *J::JsonValue = J::json_object();
+  let triggers: *J::JsonValue = J::json_array();
+  J::json_array_push(triggers, J::json_string("."));
+  J::json_array_push(triggers, J::json_string(":"));
+  J::json_object_set(completion_opts, "triggerCharacters", triggers);
+  J::json_object_set(caps, "completionProvider", completion_opts);
+
+  let legend: *J::JsonValue = J::json_object();
+  let types: *J::JsonValue = J::json_array();
+  J::json_array_push(types, J::json_string("function"));
+  J::json_array_push(types, J::json_string("variable"));
+  J::json_array_push(types, J::json_string("parameter"));
+  J::json_array_push(types, J::json_string("struct"));
+  J::json_array_push(types, J::json_string("enum"));
+  J::json_object_set(legend, "tokenTypes", types);
+  let modifiers: *J::JsonValue = J::json_array();
+  J::json_array_push(modifiers, J::json_string("readonly"));
+  J::json_object_set(legend, "tokenModifiers", modifiers);
+
+  let semantic_opts: *J::JsonValue = J::json_object();
+  J::json_object_set(semantic_opts, "legend", legend);
+  J::json_object_set(semantic_opts, "full", J::json_bool(true));
+  J::json_object_set(caps, "semanticTokensProvider", semantic_opts);
+
+  let server_info: *J::JsonValue = J::json_object();
+  J::json_object_set(server_info, "name", J::json_string("Luma LSP"));
+  J::json_object_set(server_info, "version", J::json_string("0.1.0"));
+
+  let result: *J::JsonValue = J::json_object();
+  J::json_object_set(result, "capabilities", caps);
+  J::json_object_set(result, "serverInfo", server_info);
+  return result;
+}
+
+pub const handle_message -> fn (raw: *byte) void {
+  let msg: *J::JsonValue = J::json_parse(raw);
+  if (msg == cast<*J::JsonValue>(0)) return;
+
+  let method: *byte = J::json_object_get_string(msg, "method");
+  if (method == cast<*byte>(0)) { J::json_free(msg); return; }
+
+  let id_val: *J::JsonValue = J::json_object_get(msg, "id");
+  let has_id: bool = J::json_is_null(id_val) == false;
+  let id: int = J::json_get_int(id_val);
+  let params: *J::JsonValue = J::json_object_get(msg, "params");
+
+  if (STR::strcmp(method, "initialize") == 0) {
+    let root_uri: *byte = J::json_object_get_string(params, "rootUri");
+    if (root_uri == cast<*byte>(0)) {
+      // Older field is absent (or a newer client only sent
+      // workspaceFolders) — fall back to the first workspace folder.
+      let folders: *J::JsonValue = J::json_object_get(params, "workspaceFolders");
+      if (J::json_array_len(folders) > 0) {
+        root_uri = J::json_object_get_string(J::json_array_get(folders, 0), "uri");
+      }
+    }
+    if (root_uri != cast<*byte>(0)) { D::lsp_set_workspace_root(root_uri); }
+
+    if (has_id) T::send_response(id, capabilities_result());
+  } elif (STR::strcmp(method, "initialized") == 0) {
+    // no-op
+  } elif (STR::strcmp(method, "shutdown") == 0) {
+    if (has_id) T::send_response(id, J::json_null());
+  } elif (STR::strcmp(method, "exit") == 0) {
+    J::json_free(msg);
+    SYS::exit(0);
+  } elif (STR::strcmp(method, "textDocument/didOpen") == 0) {
+    let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+    let uri: *byte = J::json_object_get_string(td, "uri");
+    let text: *byte = J::json_object_get_string(td, "text");
+    let version: int = J::json_object_get_int(td, "version");
+    if (uri != cast<*byte>(0) && text != cast<*byte>(0)) {
+      D::lsp_document_open(uri, text, version);
+      D::lsp_analyze_and_publish(uri);
+    }
+  } elif (STR::strcmp(method, "textDocument/didChange") == 0) {
+    let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+    let uri: *byte = J::json_object_get_string(td, "uri");
+    let version: int = J::json_object_get_int(td, "version");
+    let changes: *J::JsonValue = J::json_object_get(params, "contentChanges");
+    let change_count: int = J::json_array_len(changes);
+    if (uri != cast<*byte>(0) && change_count > 0) {
+      // Full sync: the last entry in contentChanges is the whole new text.
+      let last: *J::JsonValue = J::json_array_get(changes, change_count - 1);
+      let text: *byte = J::json_object_get_string(last, "text");
+      if (text != cast<*byte>(0)) {
+        D::lsp_document_update(uri, text, version);
+        D::lsp_analyze_and_publish(uri);
+      }
+    }
+  } elif (STR::strcmp(method, "textDocument/documentSymbol") == 0) {
+    if (has_id) {
+      let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+      let uri: *byte = J::json_object_get_string(td, "uri");
+      if (uri != cast<*byte>(0)) {
+        T::send_response(id, D::lsp_document_symbols(uri));
+      } else {
+        T::send_response(id, J::json_array());
+      }
+    }
+  } elif (STR::strcmp(method, "textDocument/hover") == 0) {
+    if (has_id) {
+      let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+      let uri: *byte = J::json_object_get_string(td, "uri");
+      let pos: *J::JsonValue = J::json_object_get(params, "position");
+      let line: int = J::json_object_get_int(pos, "line");
+      let character: int = J::json_object_get_int(pos, "character");
+
+      let sig: *byte = cast<*byte>(0);
+      if (uri != cast<*byte>(0)) { sig = D::lsp_hover(uri, line, character); }
+
+      if (sig == cast<*byte>(0)) {
+        T::send_response(id, J::json_null());
+      } else {
+        let code_block: *byte = wrap_code_block(sig);
+        free(sig);
+
+        let contents: *J::JsonValue = J::json_object();
+        J::json_object_set(contents, "kind", J::json_string("markdown"));
+        J::json_object_set(contents, "value", J::json_string(code_block));
+        free(code_block);
+
+        let result: *J::JsonValue = J::json_object();
+        J::json_object_set(result, "contents", contents);
+        T::send_response(id, result);
+      }
+    }
+  } elif (STR::strcmp(method, "textDocument/definition") == 0) {
+    if (has_id) {
+      let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+      let uri: *byte = J::json_object_get_string(td, "uri");
+      let pos: *J::JsonValue = J::json_object_get(params, "position");
+      let line: int = J::json_object_get_int(pos, "line");
+      let character: int = J::json_object_get_int(pos, "character");
+
+      if (uri != cast<*byte>(0)) {
+        T::send_response(id, D::lsp_definition(uri, line, character));
+      } else {
+        T::send_response(id, J::json_null());
+      }
+    }
+  } elif (STR::strcmp(method, "textDocument/completion") == 0) {
+    if (has_id) {
+      let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+      let uri: *byte = J::json_object_get_string(td, "uri");
+      let pos: *J::JsonValue = J::json_object_get(params, "position");
+      let line: int = J::json_object_get_int(pos, "line");
+      let character: int = J::json_object_get_int(pos, "character");
+
+      if (uri != cast<*byte>(0)) {
+        T::send_response(id, D::lsp_completions(uri, line, character));
+      } else {
+        T::send_response(id, J::json_array());
+      }
+    }
+  } elif (STR::strcmp(method, "textDocument/semanticTokens/full") == 0) {
+    if (has_id) {
+      let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+      let uri: *byte = J::json_object_get_string(td, "uri");
+
+      if (uri != cast<*byte>(0)) {
+        T::send_response(id, D::lsp_semantic_tokens(uri));
+      } else {
+        let empty: *J::JsonValue = J::json_object();
+        J::json_object_set(empty, "data", J::json_array());
+        T::send_response(id, empty);
+      }
+    }
+  } elif (STR::strcmp(method, "textDocument/didSave") == 0) {
+    let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+    let uri: *byte = J::json_object_get_string(td, "uri");
+    if (uri != cast<*byte>(0)) D::lsp_analyze_and_publish(uri);
+  } elif (STR::strcmp(method, "textDocument/didClose") == 0) {
+    let td: *J::JsonValue = J::json_object_get(params, "textDocument");
+    let uri: *byte = J::json_object_get_string(td, "uri");
+    if (uri != cast<*byte>(0)) {
+      D::lsp_document_close(uri);
+      let empty: *J::JsonValue = J::json_object();
+      J::json_object_set(empty, "uri", J::json_string(uri));
+      J::json_object_set(empty, "diagnostics", J::json_array());
+      // send_notification takes ownership of `empty` (see lsp_publish_diagnostics
+      // for the same note) — do not free it again here.
+      T::send_notification("textDocument/publishDiagnostics", empty);
+    }
+  } elif (has_id) {
+    // Unhandled request the client expects an answer to — respond rather
+    // than leaving it hanging forever.
+    T::send_error(id, -32601, "method not found");
+  }
+
+  J::json_free(msg);
+}

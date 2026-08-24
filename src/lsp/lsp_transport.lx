@@ -1,0 +1,168 @@
+//! JSON-RPC-over-stdio transport for the Luma language server.
+//!
+//! Frames messages the way LSP requires: `Content-Length: N\r\n\r\n` followed
+//! by exactly N bytes of UTF-8 JSON. Reading and writing both go through raw
+//! fd 0 / fd 1 syscalls (std_io::local_read/local_write) rather than
+//! buffered stdio, since the message loop needs to read exactly N bytes and
+//! nothing more.
+
+@module "lsp_transport"
+
+@use "std_io"      as IO
+@use "std_sys"     as SYS
+@use "std_memory"  as MEM
+@use "std_cstring" as STR
+@use "json"        as J
+
+const read_byte -> fn () int {
+  let c: byte;
+  let n: int = IO::local_read(0, cast<*void>(&c), 1);
+  if (n <= 0) return -1;
+  return cast<int>(c);
+}
+
+// Reads one full JSON-RPC message from stdin. Returns a heap-owned,
+// NUL-terminated JSON body, or null on EOF / a malformed header.
+#returns_ownership
+pub const read_message -> fn () *byte {
+  let content_length: int = -1;
+
+  loop (1) {
+    let cap: int = 256;
+    let line: *byte = cast<*byte>(alloc(cap));
+    let len: int = 0;
+
+    loop (1) {
+      let c: int = read_byte();
+      if (c < 0) { free(line); return cast<*byte>(0); }
+      if (c == cast<int>('\n')) break;
+      if (len + 1 >= cap) {
+        let old_cap: int = cap;
+        cap = cap * 2;
+        line = cast<*byte>(MEM::realloc(cast<*void>(line), old_cap, cap));
+      }
+      line[len] = cast<byte>(c);
+      len = len + 1;
+    }
+
+    if (len > 0 && line[len - 1] == '\r') { len = len - 1; }
+    line[len] = cast<byte>(0);
+
+    if (len == 0) { free(line); break; } // blank line — end of headers
+
+    let prefix: *byte = "Content-Length:";
+    let plen: int = STR::strlen(prefix);
+    if (len >= plen) {
+      let matches: bool = true;
+      loop [i: int = 0](i < plen) : (++i) {
+        if (line[i] != prefix[i]) { matches = false; break; }
+      }
+      if (matches) {
+        let j: int = plen;
+        loop (j < len && line[j] == ' ') { j = j + 1; }
+        let val: int = 0;
+        loop (j < len && line[j] >= '0' && line[j] <= '9') {
+          val = val * 10 + (cast<int>(line[j]) - cast<int>('0'));
+          j = j + 1;
+        }
+        content_length = val;
+      }
+    }
+
+    free(line);
+  }
+
+  if (content_length <= 0) return cast<*byte>(0);
+
+  let body: *byte = cast<*byte>(alloc(content_length + 1));
+  let got: int = 0;
+  loop (got < content_length) {
+    let n: int = IO::local_read(0, cast<*void>(cast<int>(body) + got), content_length - got);
+    if (n <= 0) { free(body); return cast<*byte>(0); }
+    got = got + n;
+  }
+  body[content_length] = cast<byte>(0);
+  return body;
+}
+
+// Writes one Content-Length-framed message to stdout.
+pub const send_raw -> fn (body: *byte) void {
+  if (body == cast<*byte>(0)) return;
+
+  let len: int = STR::strlen(body);
+  let len_str: *byte = STR::from_int(len);
+
+  let prefix: *byte = "Content-Length: ";
+  let suffix: *byte = "\r\n\r\n";
+  let total: int = STR::strlen(prefix) + STR::strlen(len_str) + STR::strlen(suffix);
+
+  let header: *byte = cast<*byte>(alloc(total + 1));
+  STR::cat(header, prefix, len_str);
+  STR::cat(header, header, suffix);
+
+  IO::local_write(1, cast<*void>(header), STR::strlen(header));
+  IO::local_write(1, cast<*void>(body), len);
+
+  free(header);
+  free(len_str);
+}
+
+pub const send_response -> fn (id: int, result: *J::JsonValue) void {
+  let msg: *J::JsonValue = J::json_object();
+  J::json_object_set(msg, "jsonrpc", J::json_string("2.0"));
+  J::json_object_set(msg, "id", J::json_int(id));
+  J::json_object_set(msg, "result", result);
+
+  let s: *byte = J::json_stringify(msg);
+  send_raw(s);
+  free(s);
+  J::json_free(msg);
+}
+
+pub const send_notification -> fn (method: *byte, params: *J::JsonValue) void {
+  let msg: *J::JsonValue = J::json_object();
+  J::json_object_set(msg, "jsonrpc", J::json_string("2.0"));
+  J::json_object_set(msg, "method", J::json_string(method));
+  J::json_object_set(msg, "params", params);
+
+  let s: *byte = J::json_stringify(msg);
+  send_raw(s);
+  free(s);
+  J::json_free(msg);
+}
+
+pub const send_error -> fn (id: int, code: int, message: *byte) void {
+  let err: *J::JsonValue = J::json_object();
+  J::json_object_set(err, "code", J::json_int(code));
+  J::json_object_set(err, "message", J::json_string(message));
+
+  let msg: *J::JsonValue = J::json_object();
+  J::json_object_set(msg, "jsonrpc", J::json_string("2.0"));
+  J::json_object_set(msg, "id", J::json_int(id));
+  J::json_object_set(msg, "error", err);
+
+  let s: *byte = J::json_stringify(msg);
+  send_raw(s);
+  free(s);
+  J::json_free(msg);
+}
+
+// Temporarily redirects fd 1 (stdout) to /dev/null and returns a saved copy
+// of the real stdout fd. The compiler's own error/diagnostic printer
+// (error.lx's error_report, called internally by both parse_file and
+// TC::typecheck on failure) writes straight to stdout — which is also our
+// JSON-RPC channel. Analysis must run with stdout muted so a stray print
+// never corrupts a Content-Length-framed message; restore with
+// suppress_stdout_end before sending anything ourselves.
+pub const suppress_stdout_begin -> fn () int {
+  let saved: int = SYS::dup(1);
+  let devnull: int = SYS::open("/dev/null", SYS::O_WRONLY, 0);
+  SYS::dup2(devnull, 1);
+  SYS::close(devnull);
+  return saved;
+}
+
+pub const suppress_stdout_end -> fn (saved: int) void {
+  SYS::dup2(saved, 1);
+  SYS::close(saved);
+}
