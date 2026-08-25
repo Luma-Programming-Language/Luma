@@ -13,6 +13,10 @@ set -euo pipefail
 
 cd "$(dirname "$0")/.."
 
+# Empty directories aren't tracked by git, so bin/ doesn't exist on a fresh
+# checkout — the linker needs it to exist before it can write bin/luma into it.
+mkdir -p bin
+
 SEED="${1:-}"
 if [ -z "$SEED" ]; then
   if [ -x "bootstrap/luma-seed" ]; then
