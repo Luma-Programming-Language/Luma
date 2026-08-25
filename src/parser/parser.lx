@@ -75,8 +75,14 @@ const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_TILDE,      unop: AST::UnaryType::UNOP_BIT_NOT  },
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_PLUS,       unop: AST::UnaryType::UNOP_POS      },
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUS,      unop: AST::UnaryType::UNOP_NEG      },
-  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_PLUSPLUS,   unop: AST::UnaryType::UNOP_POST_INC },
-  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUSMINUS, unop: AST::UnaryType::UNOP_POST_DEC },
+  // This map feeds `unary()` (nud — prefix position: `++i`), not the
+  // separate postfix-suffix code in expr.lx that handles `i++`. It must
+  // map to the PRE_ variants; it previously mapped to POST_, so `++i` was
+  // silently transpiled as `(i++)` — correct increment, wrong value used
+  // at the point of evaluation (prefix semantics require returning the
+  // *new* value, postfix the old one).
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_PLUSPLUS,   unop: AST::UnaryType::UNOP_PRE_INC },
+  TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUSMINUS, unop: AST::UnaryType::UNOP_PRE_DEC },
 ];
 
 pub const search_literal_map -> fn (kind: int) int {

@@ -1,0 +1,33 @@
+@module "prefix_increment_value"
+
+// Regression test: parser.lx's UNOP_MAP (used by unary()/nud, i.e. prefix
+// position) mapped TOK_PLUSPLUS/TOK_MINUSMINUS to UNOP_POST_INC/DEC instead
+// of UNOP_PRE_INC/DEC. Codegen's own prefix/postfix handling was correct —
+// the parser was simply labeling `++i` (prefix syntax) as if it were `i++`
+// (postfix), so it transpiled to `(i++)`: the increment happened, but the
+// *value produced* by the expression was the old one, not the new one.
+// Invisible in the extremely common `loop [...](...) : (++i) {}` idiom
+// (the produced value is discarded there either way) — only shows up when
+// something actually consumes the expression's value, e.g. as a function
+// argument.
+
+const get -> fn (arr: [int; 4], idx: int) int {
+  return arr[idx];
+}
+
+const main -> fn () int {
+  let arr: [int; 4] = [10, 20, 30, 40];
+  let i: int = 0;
+
+  // ++i must yield the NEW value (1), so this should read arr[1] == 20.
+  let r: int = get(arr, ++i);
+  if (r != 20) return 1;
+  if (i != 1) return 1;
+
+  let j: int = 5;
+  let pre: int = ++j;
+  if (pre != 6) return 1;
+  if (j != 6) return 1;
+
+  return 0;
+}
