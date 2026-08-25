@@ -12,6 +12,12 @@ autom4te.cache
 !*/
 !*.*
 
+# The one deliberate exception: the committed bootstrap seed binary used to
+# break the self-hosting chicken-and-egg (see scripts/bootstrap-build.sh and
+# .github/workflows/{ci,release}.yml). It has no extension, so the blanket
+# rule above would otherwise ignore it.
+!bootstrap/luma-seed
+
 # Ignore Windows executables
 *.exe
 

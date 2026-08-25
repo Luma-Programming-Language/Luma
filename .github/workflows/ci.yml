@@ -1,0 +1,16 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "self-hosted"]
+  pull_request:
+
+jobs:
+  bootstrap-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Bootstrap, self-verify, and test
+        run: ./scripts/bootstrap-build.sh bootstrap/luma-seed

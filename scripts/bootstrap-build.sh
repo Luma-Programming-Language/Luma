@@ -1,0 +1,95 @@
+#!/usr/bin/env bash
+# Builds bin/luma from src/ using an existing luma binary, then verifies the
+# result by having it compile itself again and diffing the two outputs — a
+# self-hosted compiler that can't reproduce itself byte-for-byte from its own
+# source is a compiler you shouldn't ship.
+#
+# Usage:
+#   scripts/bootstrap-build.sh [path-to-seed-compiler]
+#
+# If no seed is given, uses bootstrap/luma-seed if present, else falls back
+# to whatever `luma` is on PATH.
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+SEED="${1:-}"
+if [ -z "$SEED" ]; then
+  if [ -x "bootstrap/luma-seed" ]; then
+    SEED="bootstrap/luma-seed"
+  elif command -v luma >/dev/null 2>&1; then
+    SEED="$(command -v luma)"
+  else
+    echo "error: no seed compiler given, bootstrap/luma-seed not found, and no 'luma' on PATH" >&2
+    exit 1
+  fi
+fi
+
+# Keep this in sync with lumix.toml's [run].args — it's the authoritative
+# file list. Deliberately not shelling out to `lumix` here: it's an external
+# tool this repo doesn't control the install of, and it hardcodes
+# --no-sanitize -O0 for test compiles (see lumix.toml's [run] comment) —
+# not what a release build wants.
+SRC_FILES=(
+  src/ast/expr.lx src/ast/module.lx src/ast/type.lx src/ast/stmt.lx
+  src/ast/ast_print.lx src/ast/ast.lx
+  std/cstring.lx std/vector.lx src/constants.lx std/io.lx std/sys.lx
+  src/error/error.lx
+  src/lexer/tokens.lx src/lexer/lexer.lx std/memory.lx
+  src/parser/file.lx src/parser/type.lx src/parser/parser.lx
+  src/parser/expr.lx src/parser/stmt.lx
+  src/typechecker/core.lx src/typechecker/type.lx src/typechecker/scope.lx
+  src/typechecker/expr.lx src/typechecker/tc_error.lx src/typechecker/tc.lx
+  src/typechecker/stmt.lx
+  src/codegen/codegen_core.lx src/codegen/codegen_type.lx
+  src/codegen/codegen_expr.lx src/codegen/codegen_stmt.lx std/libc.lx
+  src/codegen/codegen.lx
+  std/args.lx src/commands.lx lib/color.lx lib/json.lx
+  src/lsp/lsp_transport.lx src/lsp/lsp_document.lx src/lsp/lsp_dispatch.lx
+  src/lsp/lsp_main.lx
+)
+
+build_with() {
+  local compiler="$1" out="$2"
+  "$compiler" src/main.lx -l "${SRC_FILES[@]}" -O2 -name "$out"
+}
+
+echo "==> Generation 1: building bin/luma with $SEED"
+build_with "$SEED" bin/luma
+
+echo "==> Generation 2: rebuilding with the gen1 output"
+cp bin/luma /tmp/luma-gen1
+build_with /tmp/luma-gen1 bin/luma
+
+if ! cmp -s /tmp/luma-gen1 bin/luma; then
+  echo "error: gen1 and gen2 differ — the seed compiler and current src/ don't" >&2
+  echo "       agree on how to compile this source. Do not ship this build." >&2
+  exit 1
+fi
+echo "==> Stable fixpoint confirmed (gen1 == gen2, byte-for-byte)"
+rm -f /tmp/luma-gen1
+
+echo "==> Running test suite directly (bypassing lumix's --no-sanitize default)"
+fail=0
+for f in test/valid/*.lx; do
+  if ! ./bin/luma "$f" -name /tmp/luma-test-out >/dev/null 2>&1; then
+    echo "FAIL (expected to compile): $f"
+    fail=1
+  fi
+done
+for f in test/errors/*.lx; do
+  expected="$(grep -m1 '// error-type:' "$f" | sed 's|// error-type: ||')"
+  out="$(./bin/luma "$f" -name /tmp/luma-test-out 2>&1 || true)"
+  if ! echo "$out" | grep -q "\[$expected\]"; then
+    echo "FAIL (expected [$expected]): $f"
+    fail=1
+  fi
+done
+rm -f /tmp/luma-test-out
+
+if [ "$fail" -ne 0 ]; then
+  echo "error: test suite failed against the freshly-built compiler" >&2
+  exit 1
+fi
+
+echo "==> bin/luma is bootstrapped, self-verified, and passes the test suite"
