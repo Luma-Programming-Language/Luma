@@ -13,16 +13,7 @@
 
 @module "std_cstring"
 
-// ============= Local System Call for putbyte =============
-
-const SYS_WRITE: int = 1;
-const STDOUT: int = 1;
-
-const local_write -> fn (fd: int, buf: *void, count: int) int {
-    return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
-}
-
-pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte; 
+pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte;
 
 // ============= Core String Types =============
 

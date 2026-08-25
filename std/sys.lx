@@ -95,6 +95,50 @@
         pub const SYS_GETTIMEOFDAY: int  = 116;
         pub const SYS_CLOCK_GETTIME: int = 427;
     }
+    "windows64" -> {
+        // Placeholder values only — Windows has no raw-syscall mechanism
+        // (see the file-level WARNING above), so every function below that
+        // uses these is POSIX-only and simply must never be called on this
+        // target. These exist purely so this file *compiles* when it's
+        // linked into a Windows build alongside code that only needs its
+        // linux/macos definitions (see lsp_transport.lx) — real calls into
+        // any of the wrapper functions below would be meaningless on
+        // Windows regardless of what these numbers are.
+        pub const SYS_READ: int          = -1;
+        pub const SYS_WRITE: int         = -1;
+        pub const SYS_OPEN: int          = -1;
+        pub const SYS_CLOSE: int         = -1;
+        pub const SYS_STAT: int          = -1;
+        pub const SYS_FSTAT: int         = -1;
+        pub const SYS_LSTAT: int         = -1;
+        pub const SYS_LSEEK: int         = -1;
+        pub const SYS_MMAP: int          = -1;
+        pub const SYS_MUNMAP: int        = -1;
+        pub const SYS_BRK: int           = -1;
+        pub const SYS_IOCTL: int         = -1;
+        pub const SYS_PREAD: int         = -1;
+        pub const SYS_PWRITE: int        = -1;
+        pub const SYS_PIPE: int          = -1;
+        pub const SYS_SELECT: int        = -1;
+        pub const SYS_DUP: int           = -1;
+        pub const SYS_DUP2: int          = -1;
+        pub const SYS_GETPID: int        = -1;
+        pub const SYS_FORK: int          = -1;
+        pub const SYS_EXECVE: int        = -1;
+        pub const SYS_EXIT: int          = -1;
+        pub const SYS_WAIT4: int         = -1;
+        pub const SYS_KILL: int          = -1;
+        pub const SYS_FCNTL: int         = -1;
+        pub const SYS_GETCWD: int        = -1;
+        pub const SYS_CHDIR: int         = -1;
+        pub const SYS_MKDIR: int         = -1;
+        pub const SYS_RMDIR: int         = -1;
+        pub const SYS_UNLINK: int        = -1;
+        pub const SYS_GETUID: int        = -1;
+        pub const SYS_GETGID: int        = -1;
+        pub const SYS_GETTIMEOFDAY: int  = -1;
+        pub const SYS_CLOCK_GETTIME: int = -1;
+    }
 }
 
 /// FILE FLAGS
@@ -125,6 +169,17 @@ pub const O_RDWR: int     = 2;
         pub const O_NONBLOCK: int  = 4;
         pub const O_DIRECTORY: int = 1048576;
         pub const O_CLOEXEC: int   = 16777216;
+    }
+    "windows64" -> {
+        // Placeholders — see the SYS_* windows64 arm above.
+        pub const O_CREAT: int     = -1;
+        pub const O_EXCL: int      = -1;
+        pub const O_NOCTTY: int    = -1;
+        pub const O_TRUNC: int     = -1;
+        pub const O_APPEND: int    = -1;
+        pub const O_NONBLOCK: int  = -1;
+        pub const O_DIRECTORY: int = -1;
+        pub const O_CLOEXEC: int   = -1;
     }
 }
 
@@ -184,6 +239,11 @@ pub const MAP_FIXED: int   = 16;
         pub const MAP_ANONYMOUS: int = 4096;
         pub const MAP_ANON: int      = 4096;
     }
+    "windows64" -> {
+        // Placeholders — see the SYS_* windows64 arm above.
+        pub const MAP_ANONYMOUS: int = -1;
+        pub const MAP_ANON: int      = -1;
+    }
 }
 
 /// SIGNALS  (mostly POSIX, but SIGBUS/SIGCHLD positions differ slightly)
@@ -209,6 +269,11 @@ pub const SIGTERM: int = 15;
     "macos" -> {
         pub const SIGBUS: int  = 10;
         pub const SIGCHLD: int = 20;
+    }
+    "windows64" -> {
+        // Placeholders — see the SYS_* windows64 arm above.
+        pub const SIGBUS: int  = -1;
+        pub const SIGCHLD: int = -1;
     }
 }
 
@@ -243,173 +308,357 @@ pub const EMFILE: int  = 24;
 pub const ENOSPC: int  = 28;
 pub const EPIPE: int   = 32;
 
-/// PROCESS MANAGEMENT
-
-/// Terminate the current process with the given exit code.
-pub const exit -> fn (code: int) void {
-    __syscall__(SYS_EXIT, code);
-}
-
-/// Fork the current process. Returns the child PID in the parent, 0 in the child.
-pub const fork -> fn () int {
-    return __syscall__(SYS_FORK);
-}
-
-/// Return the PID of the calling process.
-pub const getpid -> fn () int {
-    return __syscall__(SYS_GETPID);
-}
-
-/// Return the real user ID of the calling process.
-pub const getuid -> fn () int {
-    return __syscall__(SYS_GETUID);
-}
-
-/// Return the real group ID of the calling process.
-pub const getgid -> fn () int {
-    return __syscall__(SYS_GETGID);
-}
-
-/// Send signal `sig` to process `pid`.
-pub const kill -> fn (pid: int, sig: int) int {
-    return __syscall__(SYS_KILL, pid, sig);
-}
-
-/// Wait for a child process. Stores exit status in `status` if non-null.
-pub const wait4 -> fn (pid: int, status: *int, options: int, rusage: *void) int {
-    return __syscall__(SYS_WAIT4, pid, cast<int>(status), options, cast<int>(rusage));
-}
-
-/// Replace the current process image with a new one.
-pub const execve -> fn (path: *byte, argv: **byte, envp: **byte) int {
-    return __syscall__(SYS_EXECVE, cast<int>(path), cast<int>(argv), cast<int>(envp));
-}
-
-/// FILE OPERATIONS
-
-/// Read up to `count` bytes from `fd` into `buf`. Returns bytes read or a negative errno.
-pub const read -> fn (fd: int, buf: *void, count: int) int {
-    return __syscall__(SYS_READ, fd, cast<int>(buf), count);
-}
-
-/// Write up to `count` bytes from `buf` to `fd`. Returns bytes written or a negative errno.
-pub const write -> fn (fd: int, buf: *void, count: int) int {
-    return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
-}
-
-/// Open a file at `path` with the given `flags` and `mode`. Returns an fd or a negative errno.
-pub const open -> fn (path: *byte, flags: int, mode: int) int {
-    return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
-}
-
-/// Close the file descriptor `fd`.
-pub const close -> fn (fd: int) int {
-    return __syscall__(SYS_CLOSE, fd);
-}
-
-/// Reposition the file offset of `fd`. Returns the new offset or a negative errno.
-pub const lseek -> fn (fd: int, offset: int, whence: int) int {
-    return __syscall__(SYS_LSEEK, fd, offset, whence);
-}
-
-/// Read up to `count` bytes from `fd` at `offset` without changing the file position.
-pub const pread -> fn (fd: int, buf: *void, count: int, offset: int) int {
-    return __syscall__(SYS_PREAD, fd, cast<int>(buf), count, offset);
-}
-
-/// Write up to `count` bytes to `fd` at `offset` without changing the file position.
-pub const pwrite -> fn (fd: int, buf: *void, count: int, offset: int) int {
-    return __syscall__(SYS_PWRITE, fd, cast<int>(buf), count, offset);
-}
-
-/// Duplicate file descriptor `oldfd`. Returns the new fd or a negative errno.
-pub const dup -> fn (oldfd: int) int {
-    return __syscall__(SYS_DUP, oldfd);
-}
-
-/// Duplicate `oldfd` to `newfd`, closing `newfd` first if it is open.
-pub const dup2 -> fn (oldfd: int, newfd: int) int {
-    return __syscall__(SYS_DUP2, oldfd, newfd);
-}
-
-/// Create a pipe. Writes the read and write fds into `pipefd[0]` and `pipefd[1]`.
-pub const pipe -> fn (pipefd: *int) int {
-    return __syscall__(SYS_PIPE, cast<int>(pipefd));
-}
-
-/// Delete the file at `path`.
-pub const unlink -> fn (path: *byte) int {
-    return __syscall__(SYS_UNLINK, cast<int>(path));
-}
-
-/// DIRECTORY OPERATIONS
-
-/// Create a directory at `path` with the given `mode`.
-pub const mkdir -> fn (path: *byte, mode: int) int {
-    return __syscall__(SYS_MKDIR, cast<int>(path), mode);
-}
-
-/// Remove the empty directory at `path`.
-pub const rmdir -> fn (path: *byte) int {
-    return __syscall__(SYS_RMDIR, cast<int>(path));
-}
-
-/// Change the working directory to `path`.
-pub const chdir -> fn (path: *byte) int {
-    return __syscall__(SYS_CHDIR, cast<int>(path));
-}
-
-/// Get the current working directory into `buf`. Returns `buf` on success, null on failure.
-pub const getcwd -> fn (buf: *byte, size: int) *byte {
-    let result: int = __syscall__(SYS_GETCWD, cast<int>(buf), size);
-    if (result < 0) {
-        return cast<*byte>(0);
+@os {
+    "linux" -> {
+    /// PROCESS MANAGEMENT
+    
+    /// Terminate the current process with the given exit code.
+    pub const exit -> fn (code: int) void {
+        __syscall__(SYS_EXIT, code);
     }
-    return buf;
-}
-
-/// MEMORY MANAGEMENT
-
-/// Adjust the program break to `addr`. Returns the new break or a negative errno.
-pub const brk -> fn (addr: *void) int {
-    return __syscall__(SYS_BRK, cast<int>(addr));
-}
-
-/// Map memory. Returns a pointer to the mapped region, or a negative errno cast to *void.
-pub const mmap -> fn (addr: *void, length: int, prot: int, flags: int, fd: int, offset: int) *void {
-    let result: int = __syscall__(SYS_MMAP, cast<int>(addr), length, prot, flags, fd, offset);
-    return cast<*void>(result);
-}
-
-/// Unmap a previously mapped region.
-pub const munmap -> fn (addr: *void, length: int) int {
-    return __syscall__(SYS_MUNMAP, cast<int>(addr), length);
-}
-
-/// HELPER FUNCTIONS
-
-/// Returns true if `result` represents a syscall error (i.e. in the range [-4095, -1]).
-pub const is_error -> fn (result: int) bool {
-    return result < 0 && result >= -4095;
-}
-
-/// Extract the errno value from a failed syscall result. Returns 0 if not an error.
-pub const get_errno -> fn (result: int) int {
-    if (is_error(result)) {
-        return -result;
+    
+    /// Fork the current process. Returns the child PID in the parent, 0 in the child.
+    pub const fork -> fn () int {
+        return __syscall__(SYS_FORK);
     }
-    return 0;
+    
+    /// Return the PID of the calling process.
+    pub const getpid -> fn () int {
+        return __syscall__(SYS_GETPID);
+    }
+    
+    /// Return the real user ID of the calling process.
+    pub const getuid -> fn () int {
+        return __syscall__(SYS_GETUID);
+    }
+    
+    /// Return the real group ID of the calling process.
+    pub const getgid -> fn () int {
+        return __syscall__(SYS_GETGID);
+    }
+    
+    /// Send signal `sig` to process `pid`.
+    pub const kill -> fn (pid: int, sig: int) int {
+        return __syscall__(SYS_KILL, pid, sig);
+    }
+    
+    /// Wait for a child process. Stores exit status in `status` if non-null.
+    pub const wait4 -> fn (pid: int, status: *int, options: int, rusage: *void) int {
+        return __syscall__(SYS_WAIT4, pid, cast<int>(status), options, cast<int>(rusage));
+    }
+    
+    /// Replace the current process image with a new one.
+    pub const execve -> fn (path: *byte, argv: **byte, envp: **byte) int {
+        return __syscall__(SYS_EXECVE, cast<int>(path), cast<int>(argv), cast<int>(envp));
+    }
+    
+    /// FILE OPERATIONS
+    
+    /// Read up to `count` bytes from `fd` into `buf`. Returns bytes read or a negative errno.
+    pub const read -> fn (fd: int, buf: *void, count: int) int {
+        return __syscall__(SYS_READ, fd, cast<int>(buf), count);
+    }
+    
+    /// Write up to `count` bytes from `buf` to `fd`. Returns bytes written or a negative errno.
+    pub const write -> fn (fd: int, buf: *void, count: int) int {
+        return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
+    }
+    
+    /// Open a file at `path` with the given `flags` and `mode`. Returns an fd or a negative errno.
+    pub const open -> fn (path: *byte, flags: int, mode: int) int {
+        return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
+    }
+    
+    /// Close the file descriptor `fd`.
+    pub const close -> fn (fd: int) int {
+        return __syscall__(SYS_CLOSE, fd);
+    }
+    
+    /// Reposition the file offset of `fd`. Returns the new offset or a negative errno.
+    pub const lseek -> fn (fd: int, offset: int, whence: int) int {
+        return __syscall__(SYS_LSEEK, fd, offset, whence);
+    }
+    
+    /// Read up to `count` bytes from `fd` at `offset` without changing the file position.
+    pub const pread -> fn (fd: int, buf: *void, count: int, offset: int) int {
+        return __syscall__(SYS_PREAD, fd, cast<int>(buf), count, offset);
+    }
+    
+    /// Write up to `count` bytes to `fd` at `offset` without changing the file position.
+    pub const pwrite -> fn (fd: int, buf: *void, count: int, offset: int) int {
+        return __syscall__(SYS_PWRITE, fd, cast<int>(buf), count, offset);
+    }
+    
+    /// Duplicate file descriptor `oldfd`. Returns the new fd or a negative errno.
+    pub const dup -> fn (oldfd: int) int {
+        return __syscall__(SYS_DUP, oldfd);
+    }
+    
+    /// Duplicate `oldfd` to `newfd`, closing `newfd` first if it is open.
+    pub const dup2 -> fn (oldfd: int, newfd: int) int {
+        return __syscall__(SYS_DUP2, oldfd, newfd);
+    }
+    
+    /// Create a pipe. Writes the read and write fds into `pipefd[0]` and `pipefd[1]`.
+    pub const pipe -> fn (pipefd: *int) int {
+        return __syscall__(SYS_PIPE, cast<int>(pipefd));
+    }
+    
+    /// Delete the file at `path`.
+    pub const unlink -> fn (path: *byte) int {
+        return __syscall__(SYS_UNLINK, cast<int>(path));
+    }
+    
+    /// DIRECTORY OPERATIONS
+    
+    /// Create a directory at `path` with the given `mode`.
+    pub const mkdir -> fn (path: *byte, mode: int) int {
+        return __syscall__(SYS_MKDIR, cast<int>(path), mode);
+    }
+    
+    /// Remove the empty directory at `path`.
+    pub const rmdir -> fn (path: *byte) int {
+        return __syscall__(SYS_RMDIR, cast<int>(path));
+    }
+    
+    /// Change the working directory to `path`.
+    pub const chdir -> fn (path: *byte) int {
+        return __syscall__(SYS_CHDIR, cast<int>(path));
+    }
+    
+    /// Get the current working directory into `buf`. Returns `buf` on success, null on failure.
+    pub const getcwd -> fn (buf: *byte, size: int) *byte {
+        let result: int = __syscall__(SYS_GETCWD, cast<int>(buf), size);
+        if (result < 0) {
+            return cast<*byte>(0);
+        }
+        return buf;
+    }
+    
+    /// MEMORY MANAGEMENT
+    
+    /// Adjust the program break to `addr`. Returns the new break or a negative errno.
+    pub const brk -> fn (addr: *void) int {
+        return __syscall__(SYS_BRK, cast<int>(addr));
+    }
+    
+    /// Map memory. Returns a pointer to the mapped region, or a negative errno cast to *void.
+    pub const mmap -> fn (addr: *void, length: int, prot: int, flags: int, fd: int, offset: int) *void {
+        let result: int = __syscall__(SYS_MMAP, cast<int>(addr), length, prot, flags, fd, offset);
+        return cast<*void>(result);
+    }
+    
+    /// Unmap a previously mapped region.
+    pub const munmap -> fn (addr: *void, length: int) int {
+        return __syscall__(SYS_MUNMAP, cast<int>(addr), length);
+    }
+    
+    /// HELPER FUNCTIONS
+    
+    /// Returns true if `result` represents a syscall error (i.e. in the range [-4095, -1]).
+    pub const is_error -> fn (result: int) bool {
+        return result < 0 && result >= -4095;
+    }
+    
+    /// Extract the errno value from a failed syscall result. Returns 0 if not an error.
+    pub const get_errno -> fn (result: int) int {
+        if (is_error(result)) {
+            return -result;
+        }
+        return 0;
+    }
+    
+    /// Write a null-terminated string to `fd`. Returns bytes written or a negative errno.
+    pub const write_str -> fn (fd: int, s: *byte) int {
+        let len: int = 0;
+        loop (s[len] != cast<byte>(0)) : (++len) {}
+        return write(fd, cast<*void>(s), len);
+    }
+    
+    /// Write a null-terminated string to stderr.
+    pub const eprint -> fn (s: *byte) int {
+        return write_str(STDERR, s);
+    }
+    
+    }
+    "macos" -> {
+    /// PROCESS MANAGEMENT
+    
+    /// Terminate the current process with the given exit code.
+    pub const exit -> fn (code: int) void {
+        __syscall__(SYS_EXIT, code);
+    }
+    
+    /// Fork the current process. Returns the child PID in the parent, 0 in the child.
+    pub const fork -> fn () int {
+        return __syscall__(SYS_FORK);
+    }
+    
+    /// Return the PID of the calling process.
+    pub const getpid -> fn () int {
+        return __syscall__(SYS_GETPID);
+    }
+    
+    /// Return the real user ID of the calling process.
+    pub const getuid -> fn () int {
+        return __syscall__(SYS_GETUID);
+    }
+    
+    /// Return the real group ID of the calling process.
+    pub const getgid -> fn () int {
+        return __syscall__(SYS_GETGID);
+    }
+    
+    /// Send signal `sig` to process `pid`.
+    pub const kill -> fn (pid: int, sig: int) int {
+        return __syscall__(SYS_KILL, pid, sig);
+    }
+    
+    /// Wait for a child process. Stores exit status in `status` if non-null.
+    pub const wait4 -> fn (pid: int, status: *int, options: int, rusage: *void) int {
+        return __syscall__(SYS_WAIT4, pid, cast<int>(status), options, cast<int>(rusage));
+    }
+    
+    /// Replace the current process image with a new one.
+    pub const execve -> fn (path: *byte, argv: **byte, envp: **byte) int {
+        return __syscall__(SYS_EXECVE, cast<int>(path), cast<int>(argv), cast<int>(envp));
+    }
+    
+    /// FILE OPERATIONS
+    
+    /// Read up to `count` bytes from `fd` into `buf`. Returns bytes read or a negative errno.
+    pub const read -> fn (fd: int, buf: *void, count: int) int {
+        return __syscall__(SYS_READ, fd, cast<int>(buf), count);
+    }
+    
+    /// Write up to `count` bytes from `buf` to `fd`. Returns bytes written or a negative errno.
+    pub const write -> fn (fd: int, buf: *void, count: int) int {
+        return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
+    }
+    
+    /// Open a file at `path` with the given `flags` and `mode`. Returns an fd or a negative errno.
+    pub const open -> fn (path: *byte, flags: int, mode: int) int {
+        return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
+    }
+    
+    /// Close the file descriptor `fd`.
+    pub const close -> fn (fd: int) int {
+        return __syscall__(SYS_CLOSE, fd);
+    }
+    
+    /// Reposition the file offset of `fd`. Returns the new offset or a negative errno.
+    pub const lseek -> fn (fd: int, offset: int, whence: int) int {
+        return __syscall__(SYS_LSEEK, fd, offset, whence);
+    }
+    
+    /// Read up to `count` bytes from `fd` at `offset` without changing the file position.
+    pub const pread -> fn (fd: int, buf: *void, count: int, offset: int) int {
+        return __syscall__(SYS_PREAD, fd, cast<int>(buf), count, offset);
+    }
+    
+    /// Write up to `count` bytes to `fd` at `offset` without changing the file position.
+    pub const pwrite -> fn (fd: int, buf: *void, count: int, offset: int) int {
+        return __syscall__(SYS_PWRITE, fd, cast<int>(buf), count, offset);
+    }
+    
+    /// Duplicate file descriptor `oldfd`. Returns the new fd or a negative errno.
+    pub const dup -> fn (oldfd: int) int {
+        return __syscall__(SYS_DUP, oldfd);
+    }
+    
+    /// Duplicate `oldfd` to `newfd`, closing `newfd` first if it is open.
+    pub const dup2 -> fn (oldfd: int, newfd: int) int {
+        return __syscall__(SYS_DUP2, oldfd, newfd);
+    }
+    
+    /// Create a pipe. Writes the read and write fds into `pipefd[0]` and `pipefd[1]`.
+    pub const pipe -> fn (pipefd: *int) int {
+        return __syscall__(SYS_PIPE, cast<int>(pipefd));
+    }
+    
+    /// Delete the file at `path`.
+    pub const unlink -> fn (path: *byte) int {
+        return __syscall__(SYS_UNLINK, cast<int>(path));
+    }
+    
+    /// DIRECTORY OPERATIONS
+    
+    /// Create a directory at `path` with the given `mode`.
+    pub const mkdir -> fn (path: *byte, mode: int) int {
+        return __syscall__(SYS_MKDIR, cast<int>(path), mode);
+    }
+    
+    /// Remove the empty directory at `path`.
+    pub const rmdir -> fn (path: *byte) int {
+        return __syscall__(SYS_RMDIR, cast<int>(path));
+    }
+    
+    /// Change the working directory to `path`.
+    pub const chdir -> fn (path: *byte) int {
+        return __syscall__(SYS_CHDIR, cast<int>(path));
+    }
+    
+    /// Get the current working directory into `buf`. Returns `buf` on success, null on failure.
+    pub const getcwd -> fn (buf: *byte, size: int) *byte {
+        let result: int = __syscall__(SYS_GETCWD, cast<int>(buf), size);
+        if (result < 0) {
+            return cast<*byte>(0);
+        }
+        return buf;
+    }
+    
+    /// MEMORY MANAGEMENT
+    
+    /// Adjust the program break to `addr`. Returns the new break or a negative errno.
+    pub const brk -> fn (addr: *void) int {
+        return __syscall__(SYS_BRK, cast<int>(addr));
+    }
+    
+    /// Map memory. Returns a pointer to the mapped region, or a negative errno cast to *void.
+    pub const mmap -> fn (addr: *void, length: int, prot: int, flags: int, fd: int, offset: int) *void {
+        let result: int = __syscall__(SYS_MMAP, cast<int>(addr), length, prot, flags, fd, offset);
+        return cast<*void>(result);
+    }
+    
+    /// Unmap a previously mapped region.
+    pub const munmap -> fn (addr: *void, length: int) int {
+        return __syscall__(SYS_MUNMAP, cast<int>(addr), length);
+    }
+    
+    /// HELPER FUNCTIONS
+    
+    /// Returns true if `result` represents a syscall error (i.e. in the range [-4095, -1]).
+    pub const is_error -> fn (result: int) bool {
+        return result < 0 && result >= -4095;
+    }
+    
+    /// Extract the errno value from a failed syscall result. Returns 0 if not an error.
+    pub const get_errno -> fn (result: int) int {
+        if (is_error(result)) {
+            return -result;
+        }
+        return 0;
+    }
+    
+    /// Write a null-terminated string to `fd`. Returns bytes written or a negative errno.
+    pub const write_str -> fn (fd: int, s: *byte) int {
+        let len: int = 0;
+        loop (s[len] != cast<byte>(0)) : (++len) {}
+        return write(fd, cast<*void>(s), len);
+    }
+    
+    /// Write a null-terminated string to stderr.
+    pub const eprint -> fn (s: *byte) int {
+        return write_str(STDERR, s);
+    }
+    
+    }
+    // No "windows64" arm, deliberately: every function above wraps a raw
+    // POSIX syscall via __syscall__, which has no meaning on Windows (see
+    // the file-level WARNING at the top of this file). Not defining these
+    // at all for a Windows target — rather than defining them with bodies
+    // that would fail to compile/link (no syscall() on Windows) — matches
+    // how callers are expected to use this module: guard any call into it
+    // with its own "linux"/"macos" @os arms (see lsp_transport.lx for the
+    // pattern), never call it unconditionally.
 }
-
-/// Write a null-terminated string to `fd`. Returns bytes written or a negative errno.
-pub const write_str -> fn (fd: int, s: *byte) int {
-    let len: int = 0;
-    loop (s[len] != cast<byte>(0)) : (++len) {}
-    return write(fd, cast<*void>(s), len);
-}
-
-/// Write a null-terminated string to stderr.
-pub const eprint -> fn (s: *byte) int {
-    return write_str(STDERR, s);
-}
-

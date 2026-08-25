@@ -182,6 +182,9 @@ pub const SetCurrentDirectoryA -> fn (lpPathName: *byte) int;
 pub const GetStdHandle -> fn (nStdHandle: int) int;
 
 #dll_import("kernel32.dll", callconv: "stdcall")
+pub const SetStdHandle -> fn (nStdHandle: int, hHandle: int) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
 pub const SetConsoleOutputCP -> fn (wCodePageID: int) int;
 
 // ============================================================================

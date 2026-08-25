@@ -6,7 +6,7 @@
 @use "lsp_transport" as T
 @use "lsp_document"  as D
 @use "std_cstring"   as STR
-@use "std_sys"       as SYS
+@use "std_libc"      as LIBC
 
 #returns_ownership
 const wrap_code_block -> fn (sig: *byte) *byte {
@@ -111,7 +111,7 @@ pub const handle_message -> fn (raw: *byte) void {
     if (has_id) T::send_response(id, J::json_null());
   } elif (STR::strcmp(method, "exit") == 0) {
     J::json_free(msg);
-    SYS::exit(0);
+    LIBC::exit(0); // portable across linux/macos/windows — no raw syscall needed
   } elif (STR::strcmp(method, "textDocument/didOpen") == 0) {
     let td: *J::JsonValue = J::json_object_get(params, "textDocument");
     let uri: *byte = J::json_object_get_string(td, "uri");

@@ -94,15 +94,32 @@ const IOWRITE -> fn (out: *void, s: *byte) void {
   LIBC::fputs(s, out);
 }
 
-const write_preamble -> fn (out: *void) void {
+const write_preamble -> fn (out: *void, os: *byte) void {
   IOWRITE(out, "#include <stdio.h>\n");
   IOWRITE(out, "#include <stdlib.h>\n");
   IOWRITE(out, "#include <string.h>\n");
   IOWRITE(out, "#include <stdbool.h>\n");
   IOWRITE(out, "#include <math.h>\n");
   IOWRITE(out, "#include <time.h>\n");
-  IOWRITE(out, "#include <unistd.h>\n");
-  IOWRITE(out, "#include <sys/syscall.h>\n\n");
+
+  // <unistd.h> exists on Linux and macOS (both POSIX); Windows has no real
+  // equivalent (MinGW's shim doesn't cover what std_sys needs there —
+  // Windows code goes through std_win32's own Win32 API declarations
+  // instead, not this preamble).
+  //
+  // <sys/syscall.h> — declares SYS_* numbers for glibc's syscall(); it's a
+  // Linux-only header. It doesn't exist on macOS (syscall() itself is
+  // still declared via <unistd.h> there, just Apple-deprecated for
+  // anything beyond a small allowlist — see std/sys.lx's own platform
+  // note) and obviously not on Windows. Only pull it in for an actual
+  // Linux target so __syscall__ compiles at all cross-target.
+  let is_windows: bool = os != cast<*byte>(0) &&
+    (STR::strcmp(os, "windows64") == 0 || STR::strcmp(os, "windows32") == 0);
+  if (!is_windows) IOWRITE(out, "#include <unistd.h>\n");
+  if (os == cast<*byte>(0) || STR::strcmp(os, "linux") == 0) {
+    IOWRITE(out, "#include <sys/syscall.h>\n");
+  }
+  IOWRITE(out, "\n");
   IOWRITE(out, "typedef struct { long long lo; long long hi; } __luma_range_t;\n\n");
 }
 
@@ -579,7 +596,7 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
   run_pass_a(ctx, prog, config.os);
 
   let buf: *CG::Buf = CG::buf_init();
-  write_preamble(out);
+  write_preamble(out, config.os);
   emit_enums(ctx, buf);
   emit_struct_typedefs(ctx, buf);
   emit_all_struct_bodies(ctx, buf);

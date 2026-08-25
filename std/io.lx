@@ -73,6 +73,9 @@
 
         #dll_import("kernel32.dll", callconv: "stdcall")
         pub const GetStdHandle -> fn (nStdHandle: int) int;
+
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        pub const SetStdHandle -> fn (nStdHandle: int, hHandle: int) int;
     }
 }
 

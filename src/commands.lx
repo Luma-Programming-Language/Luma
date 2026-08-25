@@ -136,8 +136,21 @@ pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildCo
   "windows64" -> { const SYS_STD_PREFIX: *byte = "C:\\Program Files\\luma\\"; }
 }
 
+// Try `path` exactly as given first — relative to cwd, or absolute — and
+// only fall back to the system-installed copy under SYS_STD_PREFIX if that
+// fails to open. This used to be the other way around: the system prefix
+// was tried FIRST, so a locally-edited source file (e.g. a repo checkout's
+// own std/) was silently shadowed by whatever happened to be installed at
+// /usr/local/lib/luma/ — same relative path, different (possibly stale)
+// content, no error, no indication the local edit was never actually used.
 #returns_ownership
 pub const resolve_path -> fn (path: *byte) *byte {
+  let direct_fd: int = IO::local_open_read(path);
+  if (IO::local_is_error(direct_fd) == false) {
+    IO::local_close(direct_fd);
+    return path;
+  }
+
   let prefix_len: int = STRING::strlen(SYS_STD_PREFIX);
   let path_len:   int = STRING::strlen(path);
 

@@ -155,14 +155,55 @@ pub const send_error -> fn (id: int, code: int, message: *byte) void {
 // never corrupts a Content-Length-framed message; restore with
 // suppress_stdout_end before sending anything ourselves.
 pub const suppress_stdout_begin -> fn () int {
-  let saved: int = SYS::dup(1);
-  let devnull: int = SYS::open("/dev/null", SYS::O_WRONLY, 0);
-  SYS::dup2(devnull, 1);
-  SYS::close(devnull);
-  return saved;
+  @os {
+    "linux" -> {
+      let saved: int = SYS::dup(1);
+      let devnull: int = SYS::open("/dev/null", SYS::O_WRONLY, 0);
+      SYS::dup2(devnull, 1);
+      SYS::close(devnull);
+      return saved;
+    }
+    "macos" -> {
+      let saved: int = SYS::dup(1);
+      let devnull: int = SYS::open("/dev/null", SYS::O_WRONLY, 0);
+      SYS::dup2(devnull, 1);
+      SYS::close(devnull);
+      return saved;
+    }
+    "windows64" -> {
+      // No fd-table indirection on Windows to dup(2) — stdout *is* whatever
+      // handle GetStdHandle(STD_OUTPUT_HANDLE) currently resolves to, so
+      // save that handle value directly and point the std handle at NUL
+      // (the Windows equivalent of /dev/null) until restored below.
+      // These externs are std_io's own (declared in its windows64 @os arm
+      // for its own print/local_write use) — reused here rather than
+      // pulling in std_win32, which is a much larger, purely-Windows
+      // module not otherwise needed by this file.
+      let saved: int = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
+      let devnull: int = IO::CreateFileA(
+        "NUL", IO::GENERIC_WRITE, IO::FILE_SHARE_READ,
+        cast<*void>(0), IO::OPEN_EXISTING, 128, 0 // 128 = FILE_ATTRIBUTE_NORMAL
+      );
+      IO::SetStdHandle(IO::STD_OUTPUT_HANDLE, devnull);
+      return saved;
+    }
+  }
 }
 
 pub const suppress_stdout_end -> fn (saved: int) void {
-  SYS::dup2(saved, 1);
-  SYS::close(saved);
+  @os {
+    "linux" -> {
+      SYS::dup2(saved, 1);
+      SYS::close(saved);
+    }
+    "macos" -> {
+      SYS::dup2(saved, 1);
+      SYS::close(saved);
+    }
+    "windows64" -> {
+      let current: int = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
+      IO::SetStdHandle(IO::STD_OUTPUT_HANDLE, saved);
+      IO::CloseHandle(current); // the NUL handle opened above
+    }
+  }
 }

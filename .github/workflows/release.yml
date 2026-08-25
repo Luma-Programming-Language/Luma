@@ -42,3 +42,99 @@ jobs:
         with:
           files: luma-*-linux-x86_64.tar.gz
           generate_release_notes: true
+
+  build-cross-platform:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Bootstrap a native bin/luma
+        run: ./scripts/bootstrap-build.sh bootstrap/luma-seed
+
+      - name: Install zig (cross C toolchain)
+        run: |
+          ZIG_VERSION=0.16.0
+          curl -fsSL -o /tmp/zig.tar.xz \
+            "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
+          mkdir -p /tmp/zig-install
+          tar -xf /tmp/zig.tar.xz -C /tmp/zig-install --strip-components=1
+          echo "/tmp/zig-install" >> "$GITHUB_PATH"
+
+      - name: Cross-build for Windows x86_64
+        run: ./scripts/cross-build.sh windows64 dist-windows/luma
+
+      - name: Cross-build for macOS x86_64
+        run: ./scripts/cross-build.sh macos dist-macos/luma
+
+      - name: Package release archives
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+
+          WIN_STAGE="luma-${VERSION}-windows-x86_64"
+          mkdir -p "$WIN_STAGE"
+          cp dist-windows/luma.exe "$WIN_STAGE/luma.exe"
+          cp -r std "$WIN_STAGE/std"
+          cp scripts/install.bat "$WIN_STAGE/install.bat"
+          zip -r "${WIN_STAGE}.zip" "$WIN_STAGE"
+
+          MAC_STAGE="luma-${VERSION}-macos-x86_64"
+          mkdir -p "$MAC_STAGE"
+          cp dist-macos/luma "$MAC_STAGE/luma"
+          cp -r std "$MAC_STAGE/std"
+          cp scripts/install.sh "$MAC_STAGE/install.sh"
+          chmod +x "$MAC_STAGE/install.sh"
+          tar -czf "${MAC_STAGE}.tar.gz" "$MAC_STAGE"
+
+      - name: Upload Windows build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luma-windows-x86_64
+          path: luma-*-windows-x86_64.zip
+
+      - name: Upload macOS build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luma-macos-x86_64
+          path: luma-*-macos-x86_64.tar.gz
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            luma-*-windows-x86_64.zip
+            luma-*-macos-x86_64.tar.gz
+          generate_release_notes: true
+
+  smoke-test-windows:
+    needs: build-cross-platform
+    runs-on: windows-latest
+    steps:
+      - name: Download Windows build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: luma-windows-x86_64
+
+      - name: Extract and run --version
+        shell: bash
+        run: |
+          unzip luma-*-windows-x86_64.zip
+          cd luma-*-windows-x86_64
+          ./luma.exe --version
+
+  smoke-test-macos:
+    needs: build-cross-platform
+    runs-on: macos-latest
+    steps:
+      - name: Download macOS build artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: luma-macos-x86_64
+
+      - name: Extract and run --version
+        run: |
+          tar -xzf luma-*-macos-x86_64.tar.gz
+          cd luma-*-macos-x86_64
+          chmod +x luma
+          ./luma --version
