@@ -66,7 +66,22 @@ build_with() {
   # that -O2 optimizes differently across GCC versions. The bootstrap step
   # only needs a *correct* bin/luma, not a self-analysis of bin/luma's own
   # source — that's what the test suite below is for.
+  #
+  # Remove any stale $out (and a stray $out.exe from a compiler whose
+  # target-naming logic is buggy) *before* building: a compiler that
+  # silently writes its output somewhere other than $out must not be able
+  # to pass by leaving the previous generation's binary sitting at $out
+  # unchanged — that reads as a false "stable fixpoint" (this happened for
+  # real: a compiler bug once made every build append .exe regardless of
+  # target OS, and the comparison below quietly diffed generation N
+  # against itself instead of against a real generation N+1). Failing to
+  # produce $out is now a hard error, not a silent no-op.
+  rm -f "$out" "${out}.exe"
   "$compiler" src/main.lx -l "${SRC_FILES[@]}" -O2 --no-sanitize -name "$out"
+  if [ ! -x "$out" ]; then
+    echo "error: $compiler did not produce '$out' (check for a stray '${out}.exe' or similar — a target-naming bug, not just a missing file)" >&2
+    exit 1
+  fi
 }
 
 echo "==> Generation 1: building bin/luma with $SEED"

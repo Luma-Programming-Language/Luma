@@ -165,9 +165,9 @@ pub const create_lexer -> fn (src: *byte) Lexer {
   return Lexer { line: 1, col: 0, current: src, src: src };
 }
 
-const SINGLE_SYMBOL_COUNT: int = 23;
-const SingleSymbol -> struct { val: byte, kind: int }; 
-const single_symbol_map: [SingleSymbol; 23] = [
+const SINGLE_SYMBOL_COUNT: int = 24;
+const SingleSymbol -> struct { val: byte, kind: int };
+const single_symbol_map: [SingleSymbol; 24] = [
   SingleSymbol { val: '(', kind: LumaTokenType::TOK_LPAREN  },
   SingleSymbol { val: ')', kind: LumaTokenType::TOK_RPAREN  },
   SingleSymbol { val: ';', kind: LumaTokenType::TOK_SEMI    },
@@ -191,6 +191,7 @@ const single_symbol_map: [SingleSymbol; 23] = [
   SingleSymbol { val: '&', kind: LumaTokenType::TOK_AMP     },
   SingleSymbol { val: '|', kind: LumaTokenType::TOK_PIPE    },
   SingleSymbol { val: '~', kind: LumaTokenType::TOK_TILDE   },
+  SingleSymbol { val: '!', kind: LumaTokenType::TOK_BANG    },
 ];
 
 pub const lookup_single -> fn (val: byte) int {

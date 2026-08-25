@@ -528,6 +528,36 @@ const basename_of -> fn (path: *byte) *byte {
   return path;
 }
 
+// Which C compiler invocation to prefix the generated-C build command with,
+// based on the requested target. Anything other than an explicit
+// windows32/windows64/macos target falls back to the host's own `cc` — no
+// new dependency for the common (native-build) case.
+const target_cc_prefix -> fn (os: *byte) *byte {
+  if (os == cast<*byte>(0)) return "cc -w ";
+  if (STR::strcmp(os, "windows64") == 0) return "zig cc -target x86_64-windows-gnu -w ";
+  if (STR::strcmp(os, "windows32") == 0) return "zig cc -target x86-windows-gnu -w ";
+  if (STR::strcmp(os, "macos")     == 0) return "zig cc -target x86_64-macos -w ";
+  return "cc -w ";
+}
+
+// Windows binaries need a .exe suffix or the linker (correctly) writes an
+// extensionless file that Windows won't run. #returns_ownership: caller
+// frees the result.
+#returns_ownership
+const target_output_name -> fn (name: *byte, os: *byte) *byte {
+  let is_windows: bool = os != cast<*byte>(0) &&
+    (STR::strcmp(os, "windows64") == 0 || STR::strcmp(os, "windows32") == 0);
+  if (!is_windows) return STR::dup(name);
+
+  let nlen: int = STR::strlen(name);
+  if (nlen >= 4 && STR::strcmp(cast<*byte>(cast<int>(name) + nlen - 4), ".exe") == 0) {
+    return STR::dup(name);
+  }
+
+  let out: *byte = cast<*byte>(alloc(nlen + 5));
+  return STR::cat(out, name, ".exe");
+}
+
 pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBuildConfig) bool {
   if (program == cast<*AST::AstNode>(0)) return false;
   if (program.kind != AST::NodeType::PROGRAM) return false;
@@ -563,15 +593,24 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
   LIBC::fclose(out);
 
   // ── Compile & link ──────────────────────────────────────────────────────
+  // config.os only picks @os {} branches in the Luma source by default; it
+  // does not by itself change what compiles the generated C. When it names
+  // a target other than the host, route through `zig cc`, which bundles its
+  // own minimal libc/headers per target and can produce a Windows or macOS
+  // binary from Linux without mingw-w64/osxcross installed. Native builds
+  // (config.os == host, or unset) keep using the host's own `cc` unchanged.
+  let out_name: *byte = target_output_name(config.name, config.os);
+
   let cmd: *CG::Buf = CG::buf_init();
-  CG::buf_str(cmd, "cc -w ");
+  CG::buf_str(cmd, target_cc_prefix(config.os));
   if (config.debug) CG::buf_str(cmd, "-g ");
   if (config.opt_level > 0) { CG::buf_str(cmd, "-O"); CG::buf_int(cmd, config.opt_level); CG::buf_str(cmd, " "); }
   CG::buf_str(cmd, c_path);
   CG::buf_str(cmd, " -lm -o ");
-  CG::buf_str(cmd, config.name);
-  
+  CG::buf_str(cmd, out_name);
+
   let cmd_str: *byte = CG::buf_finish(cmd);
+  free(out_name);
 
   let rc: int = system(cmd_str);
   free(cmd_str);
