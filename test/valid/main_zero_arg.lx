@@ -1,0 +1,8 @@
+@module "main"
+
+// A zero-parameter main must still generate a C definition matching the
+// fixed `int main(int, char**)` prototype the runtime expects.
+pub const main -> fn () int {
+    output("ok\n");
+    return 0;
+}

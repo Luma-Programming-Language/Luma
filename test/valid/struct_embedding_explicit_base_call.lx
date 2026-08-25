@@ -1,0 +1,31 @@
+@module "main"
+
+const Entity -> struct {
+pub:
+    x: float,
+    y: float,
+
+    move -> fn (dx: float, dy: float) void {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    },
+};
+
+const Player -> struct {
+pub:
+    ...Entity,
+    name: *byte,
+
+    // Overrides Entity's move, but reaches back into it explicitly via
+    // `Entity.move(...)` instead of reimplementing the same logic.
+    move -> fn (dx: float, dy: float) void {
+        Entity.move(dx, dy);
+    },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let player: Player = Player { x: 0.0, y: 0.0, name: "Connor" };
+    player.move(10.0, 5.0);
+    output(player.x, " ", player.y, "\n"); // 10 5 — Entity's own move ran once
+    return 0;
+}

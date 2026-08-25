@@ -49,6 +49,8 @@ pub const LumaTokenType -> enum {
   TOK_DEFER,    /**< defer keyword */
   TOK_IN,       /**< in keyword */
   TOK_SWITCH,   /**< switch keyword */
+  TOK_USING,    /**< using keyword (scoped enum access in switch) */
+  TOK_STATIC,   /**< static keyword (struct methods with no implicit self) */
   TOK_SYSTEM,   /**< system keyword */
   TOK_IMPL,     /**< implement keyword */
   TOK_SYSCALL,
@@ -227,9 +229,9 @@ pub const lookup_double -> fn (c: byte, c2: byte) int {
   return -1;
 }
 
-const KEYWORD_COUNT: int = 44;
+const KEYWORD_COUNT: int = 46;
 const Keyword -> struct { val: *byte, kind: int };
-pub const keyword_map: [Keyword; 44] = [
+pub const keyword_map: [Keyword; 46] = [
   // Primitive Types
   Keyword { val: "int",    kind: LumaTokenType::TOK_INT },
   Keyword { val: "double", kind: LumaTokenType::TOK_DOUBLE },
@@ -269,6 +271,8 @@ pub const keyword_map: [Keyword; 44] = [
   Keyword { val: "break",    kind: LumaTokenType::TOK_BREAK },
   Keyword { val: "continue", kind: LumaTokenType::TOK_CONTINUE },
   Keyword { val: "switch",   kind: LumaTokenType::TOK_SWITCH },
+  Keyword { val: "using",    kind: LumaTokenType::TOK_USING },
+  Keyword { val: "static",   kind: LumaTokenType::TOK_STATIC },
   Keyword { val: "in",       kind: LumaTokenType::TOK_IN },
   Keyword { val: "defer",    kind: LumaTokenType::TOK_DEFER },
 

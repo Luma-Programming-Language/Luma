@@ -1,0 +1,41 @@
+@module "main"
+
+const Entity -> struct {
+pub:
+    x: float,
+    y: float,
+
+    move -> fn (dx: float, dy: float) void {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    },
+};
+
+const Player -> struct {
+pub:
+    ...Entity,
+    name: *byte,
+    health: int,
+
+    take_damage -> fn (amount: int) void {
+        self.health = self.health - amount;
+    },
+};
+
+// Promoted methods work identically through a pointer.
+const bump -> fn (p: *Player) void {
+    p.move(1.0, 1.0);
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    // Struct literal fields promoted from the embedded `Entity` (x, y)
+    // initialize alongside Player's own direct fields (name, health).
+    let player: Player = Player { x: 0.0, y: 0.0, name: "Connor", health: 100 };
+
+    player.move(10.0, 5.0);      // promoted method, from Entity
+    player.take_damage(25);      // direct method, on Player
+    bump(&player);                // promoted method, through a pointer
+
+    output(player.name, " ", player.health, " ", player.x, " ", player.y, "\n");
+    return 0;
+}

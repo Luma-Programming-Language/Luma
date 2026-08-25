@@ -213,6 +213,12 @@ const handle_var_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
       pos = pos + 1;
       msg[pos] = '\0';
 
+      // `tc_error_help` is #takes_ownership on `message` — it stashes `msg`
+      // in the queued ErrorInformation for error_report() to print later,
+      // so it outlives this call. Freeing it here was a use-after-free:
+      // error_report() would read `msg` after it had already been freed
+      // (usually silently "worked" by luck of heap layout — whatever
+      // reused that block hadn't landed yet — until it didn't).
       ERR::tc_error_help(init, "Type Mismatch", "Check that the initializer type matches the declared type", msg, "type mismatch");
       ok = false;
     }
@@ -334,7 +340,9 @@ const handle_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
       let f: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(m);
       if (f.function != cast<*AST::AstNode>(0)) {
         let mscope: *CORE::Scope = SCOPE::scope_create_child(scope, "method");
-        SCOPE::scope_add_symbol(mscope, "self", TYPE::make_pointer_to(stype), false, true);
+        if (f.is_static == 0) {
+          SCOPE::scope_add_symbol(mscope, "self", TYPE::make_pointer_to(stype), false, true);
+        }
         handle_func_decl(f.function, mscope);
       }
     }

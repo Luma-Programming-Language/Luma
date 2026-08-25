@@ -1,0 +1,24 @@
+@module "main"
+
+const Entity -> struct {
+pub:
+    x: float,
+
+    move -> fn (dx: float) void { self.x = self.x + dx; },
+};
+
+const Player -> struct {
+pub:
+    ...Entity,
+
+    // Shadows Entity's move — a direct member always wins over a promoted
+    // one of the same name.
+    move -> fn (dx: float) void { self.x = self.x + (dx * 2.0); },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let player: Player = Player { x: 0.0 };
+    player.move(5.0);
+    output(player.x, "\n"); // 10, not 5 — the override ran, not Entity's move
+    return 0;
+}

@@ -1,0 +1,33 @@
+@module "main"
+
+const Point -> struct {
+pub:
+    x: float,
+    y: float,
+
+    // A static method has no implicit `self` — called as `Point::origin()`,
+    // not `instance.origin()`.
+    static origin -> fn () Point {
+        return Point { x: 0.0, y: 0.0 };
+    },
+
+    static at -> fn (x: float, y: float) Point {
+        return Point { x: x, y: y };
+    },
+
+    move -> fn (dx: float, dy: float) void {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let a: Point = Point::origin();
+    let b: Point = Point::at(3.0, 4.0);
+
+    a.move(1.0, 1.0);
+
+    output(a.x, " ", a.y, "\n");
+    output(b.x, " ", b.y, "\n");
+    return 0;
+}

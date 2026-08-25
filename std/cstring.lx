@@ -111,6 +111,24 @@ pub const strlen -> fn (s: *byte) int {
   return length;
 }
 
+/// Allocates a fresh copy of a null-terminated string
+///
+/// Useful when two owners need independent copies of the same text
+/// (e.g. duplicating an AST name before attaching it to more than one node).
+///
+/// # Parameters
+/// * `s` - String to duplicate
+///
+/// # Returns
+/// Newly allocated copy of `s`; caller must free it
+#returns_ownership
+pub const dup -> fn (s: *byte) *byte {
+  let len: int = strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  copy(out, s);
+  return out;
+}
+
 /// Converts a single byte to a string
 ///
 /// Creates a 2-byte string containing the character and a null terminator.
@@ -391,7 +409,7 @@ pub const copy -> fn (dest: *byte, src: *byte) *byte {
 pub const n_copy -> fn (dest: *byte, src: *byte, n: int) *byte {
   let i: int = 0;
   loop(i < n && src[i] != cast<byte>(0)) : (++i) {
-    dest[i] = src[i]; 
+    dest[i] = src[i];
   }
   return dest;
 }

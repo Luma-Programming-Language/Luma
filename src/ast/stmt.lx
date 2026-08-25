@@ -128,7 +128,7 @@ pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_member
 #returns_ownership
 pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AST::AstNode,
                                  function: *AST::AstNode, is_public: int, is_embedded: int,
-                                 line: int, col: int) *AST::AstNode {
+                                 is_static: int, line: int, col: int) *AST::AstNode {
   let n: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(alloc(sizeof<AST::FieldDeclNode>));
 
   n.kind = AST::NodeType::STMT_FIELD_DECL;
@@ -142,6 +142,7 @@ pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AS
   n.function = function;
   n.is_public = is_public;
   n.is_embedded = is_embedded;
+  n.is_static = is_static;
 
   return cast<*AST::AstNode>(n);
 }

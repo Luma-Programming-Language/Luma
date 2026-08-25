@@ -1,0 +1,24 @@
+@module "main"
+
+const Color -> enum { Red, Green, Blue };
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let c: Color = Color::Red;
+    // `using` lets each case label be written bare instead of `Color::Red`,
+    // etc. — desugars to exactly the fully-qualified form, so exhaustiveness
+    // checking still applies.
+    switch using Color (c) {
+        Red -> { output("r\n"); }
+        Green -> { output("g\n"); }
+        Blue -> { output("b\n"); }
+    }
+
+    // A label can still be written fully qualified inside a `using` switch —
+    // the shorthand only applies to bare identifiers.
+    switch using Color (c) {
+        Red, Green -> { output("warm\n"); }
+        Color::Blue -> { output("cool\n"); }
+    }
+
+    return 0;
+}

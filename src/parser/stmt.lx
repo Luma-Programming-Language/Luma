@@ -10,6 +10,7 @@
 @use "ast_module"   as MAST
 @use "ast_stmt"     as SAST
 @use "ast_type"     as TAST
+@use "ast_expr"     as EAST
 @use "parser"       as PARS
 @use "ast"          as AST
 
@@ -35,6 +36,9 @@ const apply_lib_import      -> fn (node: *AST::AstNode, lib_name: *byte) void;
 #returns_ownership const _if         -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const _defer      -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const _switch     -> fn (p: *PARS::Parser) *AST::AstNode;
+#returns_ownership const parse_case_value  -> fn (p: *PARS::Parser, using_path: *VEC::Vector) *AST::AstNode;
+#returns_ownership const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: int, col: int) *AST::AstNode;
+const free_using_path -> fn (using_path: *VEC::Vector) void;
 #returns_ownership const _impl       -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const _loop       -> fn (p: *PARS::Parser) *AST::AstNode;
 
@@ -564,7 +568,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
       }
 
       let embed_decl: *AST::AstNode = SAST::make_field_decl(
-        name_copy, "", embed_type, cast<*AST::AstNode>(0), public_member, 1, embed_line, embed_col
+        name_copy, "", embed_type, cast<*AST::AstNode>(0), public_member, 1, 0, embed_line, embed_col
       );
 
       if (public_member == 1) {
@@ -578,14 +582,29 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
     let field_line: int = p.current().line;
     let field_col:  int = p.current().col;
 
+    // `static name -> fn (...) T { ... }` — a method with no implicit
+    // `self`, called as `Type::name(...)`. Only meaningful on a method
+    // (checked below once we know whether `-> fn` followed). `static` and
+    // `#returns_ownership`/`#takes_ownership` can appear in either order —
+    // looping here (instead of checking `static` once, up front) avoids
+    // misreading `static` as the field's own name when an attribute comes
+    // first, e.g. `#returns_ownership\nstatic create -> fn (...) *T { }`.
+    let field_is_static: int = 0;
     let field_returns_ownership: int = 0;
     let field_takes_ownership:   int = 0;
-    if (p.current().kind == TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP) {
-      field_returns_ownership = 1;
-      p.advance();
-    } elif (p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP) {
-      field_takes_ownership = 1;
-      p.advance();
+    loop (true) {
+      if (p.current().kind == TOK::LumaTokenType::TOK_STATIC) {
+        field_is_static = 1;
+        p.advance();
+      } elif (p.current().kind == TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP) {
+        field_returns_ownership = 1;
+        p.advance();
+      } elif (p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP) {
+        field_takes_ownership = 1;
+        p.advance();
+      } else {
+        break;
+      }
     }
 
     let field_name: *byte = p.get_name();
@@ -604,6 +623,12 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
       name_copy[len] = '\0';
       field_name = name_copy;
     } else {
+      if (field_is_static == 1) {
+        p.error("SyntaxError", "'static' is only valid on a method, not a data field.");
+        VEC::free_vector(&public_fields);
+        VEC::free_vector(&private_fields);
+        return cast<*AST::AstNode>(0);
+      }
       p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after field name.");
       field_type = PTYPE::parse_type(p);
     }
@@ -618,7 +643,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
     }
 
     let field_decl: *AST::AstNode = SAST::make_field_decl(
-      field_name, "", field_type, field_function, public_member, 0, field_line, field_col
+      field_name, "", field_type, field_function, public_member, 0, field_is_static, field_line, field_col
     );
 
     if (public_member == 1) {
@@ -860,10 +885,44 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
   let col:  int = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_SWITCH, "Expected 'switch' keyword.");
+
+  // Optional `using Path::To::Enum` — inside this switch's case labels,
+  // a bare identifier that isn't itself the start of a `::`/`(` chain
+  // resolves as a member of that path instead of requiring full
+  // qualification on every arm (e.g. `TOK_INT` instead of
+  // `TOK::LumaTokenType::TOK_INT`). Purely a parser-level rewrite: it
+  // desugars to the exact same AST a fully-qualified label would produce.
+  let using_path: VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  if (p.current().kind == TOK::LumaTokenType::TOK_USING) {
+    p.advance();
+
+    if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+      p.error("SyntaxError", "Expected a namespace path after 'using'.");
+      free_using_path(&using_path);
+      return cast<*AST::AstNode>(0);
+    }
+    let first: *byte = p.get_name();
+    p.advance();
+    using_path.push_back(cast<*void>(&first));
+
+    loop (p.current().kind == TOK::LumaTokenType::TOK_RESOLVE) {
+      p.advance(); // consume ::
+      if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+        p.error("SyntaxError", "Expected identifier after '::' in 'using' path.");
+        free_using_path(&using_path);
+        return cast<*AST::AstNode>(0);
+      }
+      let part: *byte = p.get_name();
+      p.advance();
+      using_path.push_back(cast<*void>(&part));
+    }
+  }
+
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'switch'.");
   let condition: *AST::AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
   if (condition == cast<*AST::AstNode>(0)) {
     p.error("SyntaxError", "Expected condition after '('.");
+    free_using_path(&using_path);
     return cast<*AST::AstNode>(0);
   }
   p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' after switch condition.");
@@ -895,6 +954,7 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
         if (default_body == cast<*AST::AstNode>(0)) {
           p.error("SyntaxError", "Expected block after default case.");
           VEC::free_vector(&cases);
+          free_using_path(&using_path);
           return cast<*AST::AstNode>(0);
         }
         default_case = SAST::make_default_stmt(default_body, case_line, case_col);
@@ -906,22 +966,24 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
     // Regular case: expr, expr -> { ... }
     let case_values: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
-    let case_expr: *AST::AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+    let case_expr: *AST::AstNode = parse_case_value(p, &using_path);
     if (case_expr == cast<*AST::AstNode>(0)) {
       p.error("SyntaxError", "Expected case value expression.");
       VEC::free_vector(&cases);
       VEC::free_vector(&case_values);
+      free_using_path(&using_path);
       return cast<*AST::AstNode>(0);
     }
     case_values.push_back(cast<*void>(&case_expr));
 
     loop (p.current().kind == TOK::LumaTokenType::TOK_COMMA) {
       p.advance();
-      let additional: *AST::AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+      let additional: *AST::AstNode = parse_case_value(p, &using_path);
       if (additional == cast<*AST::AstNode>(0)) {
         p.error("SyntaxError", "Expected case value after ','.");
         VEC::free_vector(&cases);
         VEC::free_vector(&case_values);
+        free_using_path(&using_path);
         return cast<*AST::AstNode>(0);
       }
       case_values.push_back(cast<*void>(&additional));
@@ -940,6 +1002,7 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
       p.error("SyntaxError", "Expected block after '->'.");
       VEC::free_vector(&cases);
       VEC::free_vector(&case_values);
+      free_using_path(&using_path);
       return cast<*AST::AstNode>(0);
     }
 
@@ -956,7 +1019,58 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
     condition, PARS::vec_to_node_array(&cases), cases.size, default_case, line, col
   );
   VEC::free_vector(&cases);
+  free_using_path(&using_path);
   return node;
+}
+
+// Parses one case-label expression. When `using_path` is non-empty and the
+// label is a bare identifier not itself starting a `::`/`(` chain, it's
+// sugar for `<using_path>::<identifier>` — expanded to the exact same
+// member-access AST a fully-qualified label would parse to. Anything else
+// (an explicit `::` chain, a call, a literal, ...) falls through to normal
+// expression parsing untouched, so `using` never shadows an intentionally
+// qualified or non-enum case value.
+#returns_ownership
+const parse_case_value -> fn (p: *PARS::Parser, using_path: *VEC::Vector) *AST::AstNode {
+  let line: int = p.current().line;
+  let col:  int = p.current().col;
+
+  if (using_path.size > 0 &&
+      p.current().kind == TOK::LumaTokenType::TOK_IDENTIFIER &&
+      p.peek(1).kind != TOK::LumaTokenType::TOK_RESOLVE &&
+      p.peek(1).kind != TOK::LumaTokenType::TOK_LPAREN) {
+    let member: *byte = p.get_name();
+    p.advance();
+    return scoped_member(using_path, member, line, col);
+  }
+
+  return PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
+}
+
+// Builds `<using_path[0]>::<using_path[1]>::...::<member>` as a chain of
+// EXPR_MEMBER nodes — identical in shape to what parsing that text directly
+// would produce. Each segment gets its own duplicated string, since
+// `using_path`'s strings are reused across every case label in the switch
+// and each resulting AST node owns its own name.
+#returns_ownership
+const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: int, col: int) *AST::AstNode {
+  let segments: **byte = cast<**byte>(using_path.data);
+
+  let root: *byte = STRING::dup(segments[0]);
+  let node: *AST::AstNode = EAST::make_identifier(root, line, col);
+
+  loop [i: int = 1](i < using_path.size) : (++i) {
+    let seg: *byte = STRING::dup(segments[i]);
+    node = EAST::make_member(node, seg, 1, line, col);
+  }
+
+  return EAST::make_member(node, member, 1, line, col);
+}
+
+const free_using_path -> fn (using_path: *VEC::Vector) void {
+  let segments: **byte = cast<**byte>(using_path.data);
+  loop [i: int = 0](i < using_path.size) : (++i) { free(segments[i]); }
+  VEC::free_vector(using_path);
 }
 
 #returns_ownership const _impl -> fn (p: *PARS::Parser) *AST::AstNode { return cast<*AST::AstNode>(0); }

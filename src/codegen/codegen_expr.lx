@@ -86,7 +86,23 @@ const resolve_field -> fn (ctx: *CG::CodegenContext, struct_name: *byte, member:
           if (f.is_embedded == 1) {
             let inner: FieldLookup = resolve_field(ctx, f.name, member);
             if (inner.found) {
-              if (inner.is_method) return inner;
+              if (inner.is_method) {
+                // `c_path` here is the dotted path down to the embedded
+                // sub-object that actually owns the method (e.g. "Entity"),
+                // so the caller can build `&(obj.Entity)` for `self` —
+                // distinct from `owner`, which is the struct *name* the
+                // method is defined on, used to look up the FuncInfo itself.
+                let self_path: *byte = cast<*byte>(0);
+                if (inner.c_path == cast<*byte>(0)) {
+                  self_path = CG::dup_str(f.name);
+                } else {
+                  let joined2: *byte = CG::strcat2(f.name, ".");
+                  self_path = CG::strcat2(joined2, inner.c_path);
+                  free(joined2);
+                  free(inner.c_path);
+                }
+                return FieldLookup { found: true, is_method: true, type_node: inner.type_node, c_path: self_path, owner: inner.owner };
+              }
               let joined: *byte = CG::strcat2(f.name, ".");
               let full: *byte = CG::strcat2(joined, inner.c_path);
               free(joined);
@@ -102,6 +118,53 @@ const resolve_field -> fn (ctx: *CG::CodegenContext, struct_name: *byte, member:
   }
 
   return not_found();
+}
+
+// Dotted C path from `struct_name` down to an `...target,` embedded member
+// of type `target` (direct or nested through further embedding), or null
+// if `struct_name` doesn't embed `target` anywhere. Drives explicit
+// base-method dispatch (`Embedded.method(...)`, bypassing an override) —
+// distinct from `resolve_field`, which looks a *member name* up, not a
+// *type name*.
+#returns_ownership
+const find_embedded_path -> fn (ctx: *CG::CodegenContext, struct_name: *byte, target: *byte) *byte {
+  let s: *CG::StructInfo = CG::find_struct(ctx, struct_name);
+  if (s == cast<*CG::StructInfo>(0)) return cast<*byte>(0);
+
+  let sd: *AST::StructDeclNode = s.decl;
+
+  let groups: int = 0;
+  loop (groups < 2) {
+    let members: **AST::AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AST::AstNode = members[i];
+      if (m != cast<*AST::AstNode>(0)) {
+        if (m.kind == AST::NodeType::STMT_FIELD_DECL) {
+          let f: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(m);
+          if (f.is_embedded == 1) {
+            if (STR::strcmp(f.name, target) == 0) return CG::dup_str(f.name);
+
+            let inner: *byte = find_embedded_path(ctx, f.name, target);
+            if (inner != cast<*byte>(0)) {
+              let joined: *byte = CG::strcat2(f.name, ".");
+              let full: *byte = CG::strcat2(joined, inner);
+              free(joined);
+              free(inner);
+              return full;
+            }
+          }
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+
+  return cast<*byte>(0);
 }
 
 // Static type of an arbitrary expression, used to drive member access and
@@ -316,9 +379,64 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
             return;
           }
         }
+
+        // Not a module alias — `Type::static_method(...)`, a static method
+        // call with no `self` argument.
+        let sfi: *CG::FuncInfo = CG::find_method(ctx, obj.name, mn.member);
+        if (sfi != cast<*CG::FuncInfo>(0)) {
+          if (sfi.is_static) {
+            let scname: *byte = CG::c_name_for_method(sfi);
+            CG::buf_str(buf, scname);
+            free(scname);
+            CG::buf_str(buf, "(");
+            let j: int = 0;
+            loop (j < n.arg_count) {
+              if (j > 0) CG::buf_str(buf, ", ");
+              gen_expr(ctx, buf, n.args[j]);
+              j = j + 1;
+            }
+            CG::buf_str(buf, ")");
+            return;
+          }
+        }
       }
       CG::buf_str(buf, "/* unresolved qualified call */ 0");
       return;
+    }
+
+    // `Embedded.method(args)` — explicit base-method dispatch. `Embedded`
+    // names a type, not a value, so it can only mean "call that type's own
+    // method on the sub-object `self` embeds of it", bypassing whatever
+    // override shadows it in the struct the current method belongs to.
+    // Only legal inside a method whose owning struct actually embeds
+    // `Embedded` somewhere; otherwise falls through to the normal
+    // instance-call handling below (and fails there, same as today).
+    if (mn.object.kind == AST::NodeType::EXPR_IDENTIFIER && ctx.current_struct_owner != cast<*byte>(0)) {
+      let base_obj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(mn.object);
+      if (CG::find_struct(ctx, base_obj.name) != cast<*CG::StructInfo>(0)) {
+        let base_path: *byte = find_embedded_path(ctx, ctx.current_struct_owner, base_obj.name);
+        if (base_path != cast<*byte>(0)) {
+          let base_fi: *CG::FuncInfo = CG::find_method(ctx, base_obj.name, mn.member);
+          if (base_fi != cast<*CG::FuncInfo>(0)) {
+            let base_cname: *byte = CG::c_name_for_method(base_fi);
+            CG::buf_str(buf, base_cname);
+            free(base_cname);
+            CG::buf_str(buf, "(&(self->");
+            CG::buf_str(buf, base_path);
+            free(base_path);
+            CG::buf_str(buf, ")");
+            let bi: int = 0;
+            loop (bi < n.arg_count) {
+              CG::buf_str(buf, ", ");
+              gen_expr(ctx, buf, n.args[bi]);
+              bi = bi + 1;
+            }
+            CG::buf_str(buf, ")");
+            return;
+          }
+          free(base_path);
+        }
+      }
     }
 
     // obj.method(args) — instance method call, self passed by pointer.
@@ -328,15 +446,41 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
       if (TCT::is_nominal_type(base)) {
         let sname: *byte = TCT::basic_name(base);
         let fi: *CG::FuncInfo = CG::find_method(ctx, sname, mn.member);
+        let self_path: *byte = cast<*byte>(0);
+
+        // Not defined directly on this struct — it may be promoted from an
+        // `...Embedded` member. Same lookup member access uses; `owner`
+        // gives the struct that actually defines it, `c_path` the dotted
+        // path down to the sub-object `self` should point at.
+        if (fi == cast<*CG::FuncInfo>(0)) {
+          let lookup: FieldLookup = resolve_field(ctx, sname, mn.member);
+          if (lookup.found && lookup.is_method) {
+            fi = CG::find_method(ctx, lookup.owner, mn.member);
+            self_path = lookup.c_path;
+          }
+        }
+
         if (fi != cast<*CG::FuncInfo>(0)) {
           let cname: *byte = CG::c_name_for_method(fi);
           CG::buf_str(buf, cname);
           free(cname);
           CG::buf_str(buf, "(");
           let is_ptr: bool = TCT::is_pointer_type(ot);
-          if (is_ptr == false) CG::buf_str(buf, "&(");
-          gen_expr(ctx, buf, mn.object);
-          if (is_ptr == false) CG::buf_str(buf, ")");
+          if (self_path != cast<*byte>(0)) {
+            // Routing through an embedded sub-object — always need `&`,
+            // whether `obj` itself is a pointer (`obj->Entity`) or a value
+            // (`obj.Entity`), since the sub-object access isn't a pointer.
+            CG::buf_str(buf, "&(");
+            gen_expr(ctx, buf, mn.object);
+            if (is_ptr) { CG::buf_str(buf, "->"); } else { CG::buf_str(buf, "."); }
+            CG::buf_str(buf, self_path);
+            free(self_path);
+            CG::buf_str(buf, ")");
+          } else {
+            if (is_ptr == false) CG::buf_str(buf, "&(");
+            gen_expr(ctx, buf, mn.object);
+            if (is_ptr == false) CG::buf_str(buf, ")");
+          }
           let i: int = 0;
           loop (i < n.arg_count) {
             CG::buf_str(buf, ", ");
@@ -469,7 +613,23 @@ const gen_struct_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *
   loop (i < n.field_count) {
     if (i > 0) CG::buf_str(buf, ", ");
     CG::buf_str(buf, ".");
-    CG::buf_str(buf, n.field_names[i]);
+
+    // A field promoted from an `...Embedded` member isn't a direct field of
+    // this struct in the generated C — it lives at e.g. `.Base.id`, not
+    // `.id`. Route through the same lookup member access uses so a struct
+    // literal can name a promoted field exactly like a direct one.
+    let path: *byte = cast<*byte>(0);
+    if (type_name != cast<*byte>(0)) {
+      let lookup: FieldLookup = resolve_field(ctx, type_name, n.field_names[i]);
+      if (lookup.found && lookup.is_method == false) path = lookup.c_path;
+    }
+    if (path != cast<*byte>(0)) {
+      CG::buf_str(buf, path);
+      free(path);
+    } else {
+      CG::buf_str(buf, n.field_names[i]);
+    }
+
     CG::buf_str(buf, " = ");
     gen_expr(ctx, buf, n.field_vals[i]);
     i = i + 1;

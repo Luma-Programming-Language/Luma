@@ -119,6 +119,7 @@ const register_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, struc
   let fi: CG::FuncInfo = CG::FuncInfo {
     name: fd.name, module_name: module_name, decl: fd,
     is_extern: fd.body == cast<*AST::AstNode>(0), is_main: false, owner: struct_name,
+    is_static: f.is_static == 1,
   };
   let v: *VEC::Vector = &ctx.funcs;
   v.push_back(cast<*void>(&fi));
@@ -185,6 +186,7 @@ const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *by
     let fi: CG::FuncInfo = CG::FuncInfo {
       name: fd.name, module_name: module_name, decl: fd,
       is_extern: has_body == false, is_main: is_main, owner: cast<*byte>(0),
+      is_static: false,
     };
     let fv: *VEC::Vector = &ctx.funcs;
     fv.push_back(cast<*void>(&fi));
@@ -364,7 +366,7 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
   let sig: *CG::Buf = CG::buf_init();
   CG::buf_str(sig, cname);
   CG::buf_str(sig, "(");
-  let has_self: bool = f.owner != cast<*byte>(0);
+  let has_self: bool = f.owner != cast<*byte>(0) && f.is_static == false;
   if (has_self) {
     let s: *CG::StructInfo = CG::find_struct(ctx, f.owner);
     let sname: *byte = CG::c_name_for_struct(s);
@@ -436,26 +438,23 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
 
   ctx.current_module = f.module_name;
   ctx.current_return_type = fd.return_type;
+  ctx.current_struct_owner = f.owner;
   let dv: *VEC::Vector = &ctx.defer_stack;
   dv.size = 0;
   let lv: *VEC::Vector = &ctx.locals;
   lv.size = 0;
 
-  // See emit_func_prototype: main's C signature is fixed by the runtime.
+  // See emit_func_prototype: main's C signature is fixed by the runtime —
+  // always `(int, char**)`, regardless of how many params the Luma
+  // declaration actually names. Declare under fixed internal C names and
+  // bind only as many of them to Luma-visible names as were declared, so
+  // the definition's signature always matches the prototype (a
+  // `pub const main -> fn () int` — 0 declared params — used to emit
+  // `int main(void)` here, conflicting with the prototype's 2-arg form).
   if (f.is_main) {
-    CG::buf_str(buf, "int main(");
-    if (fd.param_count >= 1) {
-      CG::buf_str(buf, "int ");
-      CG::buf_str(buf, fd.param_names[0]);
-      CG::local_bind_as(ctx, fd.param_names[0], fd.param_names[0]);
-    }
-    if (fd.param_count >= 2) {
-      CG::buf_str(buf, ", char **");
-      CG::buf_str(buf, fd.param_names[1]);
-      CG::local_bind_as(ctx, fd.param_names[1], fd.param_names[1]);
-    }
-    if (fd.param_count == 0) CG::buf_str(buf, "void");
-    CG::buf_str(buf, ") ");
+    CG::buf_str(buf, "int main(int __luma_argc, char **__luma_argv) ");
+    if (fd.param_count >= 1) CG::local_bind_as(ctx, fd.param_names[0], "__luma_argc");
+    if (fd.param_count >= 2) CG::local_bind_as(ctx, fd.param_names[1], "__luma_argv");
     CGS::gen_stmt(ctx, buf, fd.body);
     CG::buf_str(buf, "\n");
     return;
@@ -467,7 +466,7 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
   let sig: *CG::Buf = CG::buf_init();
   CG::buf_str(sig, cname);
   CG::buf_str(sig, "(");
-  let has_self: bool = f.owner != cast<*byte>(0);
+  let has_self: bool = f.owner != cast<*byte>(0) && f.is_static == false;
   if (has_self) {
     CG::local_bind_as(ctx, "self", "self");
     let s: *CG::StructInfo = CG::find_struct(ctx, f.owner);
@@ -565,11 +564,13 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
 
   // ── Compile & link ──────────────────────────────────────────────────────
   let cmd: *CG::Buf = CG::buf_init();
-  CG::buf_str(cmd, "cc ");
+  CG::buf_str(cmd, "cc -w ");
+  if (config.debug) CG::buf_str(cmd, "-g ");
   if (config.opt_level > 0) { CG::buf_str(cmd, "-O"); CG::buf_int(cmd, config.opt_level); CG::buf_str(cmd, " "); }
   CG::buf_str(cmd, c_path);
   CG::buf_str(cmd, " -lm -o ");
   CG::buf_str(cmd, config.name);
+  
   let cmd_str: *byte = CG::buf_finish(cmd);
 
   let rc: int = system(cmd_str);
@@ -580,6 +581,7 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
   } else {
     LIBC::remove(c_path);
   }
+
   free(c_path);
 
   return rc == 0;

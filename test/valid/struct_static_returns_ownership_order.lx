@@ -1,0 +1,29 @@
+@module "main"
+
+// `#returns_ownership` (or `#takes_ownership`) and `static` must parse in
+// either order — `static` used to only be recognized when it came first,
+// misreading itself as the field name otherwise.
+const Person -> struct {
+pub:
+    name: *byte,
+    age: int,
+
+    #returns_ownership
+    static create -> fn (name: *byte, age: int) *Person {
+        let p: *Person = cast<*Person>(alloc(sizeof<Person>));
+        p.name = name;
+        p.age = age;
+        return p;
+    },
+
+    destroy -> fn () void {
+        free(self.name);
+    },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let alice: *Person = Person::create(cast<*byte>(alloc(6)), 30);
+    defer { alice.destroy(); free(alice); }
+    output(alice.age, "\n");
+    return 0;
+}

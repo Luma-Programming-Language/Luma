@@ -352,6 +352,9 @@ pub const FieldDeclNode -> struct {
   // about embedding keep working; is_embedded distinguishes it from a
   // same-named regular data field.
   is_embedded: int,
+  // `static name -> fn (...) T { ... }` — a method with no implicit `self`,
+  // called as `Type::name(...)` instead of `instance.name(...)`.
+  is_static: int,
 };
 
 pub const EnumDeclNode -> struct {

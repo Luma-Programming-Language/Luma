@@ -29,7 +29,8 @@ const buf_ensure -> fn (b: *Buf, extra: int) void {
   let nd: *byte = cast<*byte>(alloc(ncap));
   MEM::memcpy(cast<*void>(nd), cast<*void>(b.data), b.len);
   free(b.data);
-  b.data = nd;
+  b.data = nd;  // ownership transferred to b.data — do not also free(nd) here,
+                // that would immediately dangle the buffer it just took over
   b.cap  = ncap;
 }
 
@@ -148,6 +149,7 @@ pub const FuncInfo -> struct {
   is_extern:   bool,    // body-less (FFI) => keep the bare C name
   is_main:     bool,
   owner:       *byte,   // struct name if this is a method, else null
+  is_static:   bool,    // method with no implicit `self` (called as Type::name(...))
 };
 
 pub const GlobalInfo -> struct {
@@ -183,6 +185,10 @@ pub const CodegenContext -> struct {
   locals:         VEC::Vector,  // of LocalBinding — current function's live locals/params
   current_module: *byte,
   current_return_type: *AST::AstNode, // return type of the function body being emitted
+  // Struct name owning the method body currently being emitted, else null.
+  // Lets `Embedded.method(...)` (explicit base-method dispatch, bypassing
+  // an override) find `self`'s embedded sub-object of that type.
+  current_struct_owner: *byte,
   label_counter:  int,
   os:             *byte, // target platform (config.os) — resolves `@os {}` arms
 
@@ -204,6 +210,7 @@ pub const ctx_init -> fn (out: *void) *CodegenContext {
   c.locals         = VEC::create_vector(sizeof<LocalBinding>);
   c.current_module = "";
   c.current_return_type = cast<*AST::AstNode>(0);
+  c.current_struct_owner = cast<*byte>(0);
   c.label_counter  = 0;
   c.os             = cast<*byte>(0);
   c.defer_stack    = VEC::create_vector(sizeof<*AST::AstNode>);
