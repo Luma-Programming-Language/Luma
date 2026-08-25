@@ -121,6 +121,8 @@ pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildCo
       build_config.save = true; // keep the generated intermediate (.c) file
     } elif (match_command(arg, ["--target-os", "-t"], 2) == 1) {
       build_config.os = args.get(++i);
+    } elif (match_command(arg, ["-debug"], 1) == 1) {
+      build_config.debug = true;
     }
   }
 
