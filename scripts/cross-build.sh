@@ -29,6 +29,10 @@ if ! command -v zig >/dev/null 2>&1; then
   exit 1
 fi
 
+# Empty directories aren't tracked by git, so a fresh checkout won't have
+# $OUT's parent dir — same lesson as bootstrap-build.sh's `mkdir -p bin`.
+mkdir -p "$(dirname "$OUT")"
+
 # Same false-target-naming trap bootstrap-build.sh guards against: remove
 # any stale output (and a stray .exe) before building, and hard-fail if the
 # compiler didn't produce what was asked for.
