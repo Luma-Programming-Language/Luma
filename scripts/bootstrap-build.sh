@@ -104,6 +104,7 @@ fail=0
 for f in test/valid/*.lx; do
   if ! run_valid "$f" && ! run_valid "$f"; then
     echo "FAIL (expected to compile, twice): $f"
+    ./bin/luma "$f" -name /tmp/luma-test-out || true
     fail=1
   fi
 done
