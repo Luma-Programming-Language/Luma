@@ -2,35 +2,6 @@
 
 Luma is a statically typed, compiled programming language designed for systems programming. It combines the low-level control of C with a strong type system and modern safety features that eliminate many common runtime errors.
 
-## Table of Contents
-
-- [Language Philosophy](#language-philosophy)
-- [Quick Start](#quick-start)
-- [Type System](#type-system)
-- [Generics](#generics)
-- [Top-Level Bindings with `const`](#top-level-bindings-with-const)
-- [Variables and Mutability](#variables-and-mutability)
-- [Functions](#functions)
-- [Name Resolution](#name-resolution)
-- [Control Flow](#control-flow)
-- [Switch Statements](#switch-statements)
-- [Module System](#module-system)
-- [Built-in Functions](#built-in-functions)
-- [Type Casting System](#type-casting-system)
-- [Array Types](#array-types)
-- [String Literals and String Types](#string-literals-and-string-types)
-- [Pointer Arithmetic](#pointer-arithmetic)
-- [Visibility and Access Control](#visibility-and-access-control)
-- [Memory Management](#memory-management)
-- [Error Handling](#error-handling)
-- [Performance](#performance)
-- [Standard Library](#standard-library)
-- [Safety Features](#safety-features)
-
----
-
-## Language Philosophy
-
 Luma is built on three core principles:
 
 - **Simplicity**: Minimal syntax with consistent patterns
@@ -47,14 +18,15 @@ Here's a complete Luma program that demonstrates the core language features:
 @module "main"
 
 const Point -> struct {
+pub:
     x: int,
     y: int,
-    
+
     distance_to -> fn (other: Point) float {
-        let dx: int = other.x - x;
-        let dy: int = other.y - y;
-        return sqrt(cast(dx * dx + dy * dy));
-    }
+        let dx: int = other.x - self.x;
+        let dy: int = other.y - self.y;
+        return cast<float>(sqrt(cast<double>(dx * dx + dy * dy)));
+    },
 };
 
 const Status -> enum {
@@ -63,7 +35,7 @@ const Status -> enum {
     Pending,
 };
 
-pub const main -> fn () int {
+pub const main -> fn (argc: int, argv: **byte) int {
     let origin: Point = Point { x: 0, y: 0 };
     let destination: Point = Point { x: 3, y: 4 };
     let current_status: Status = Status::Active;
@@ -71,9 +43,9 @@ pub const main -> fn () int {
     outputln("Distance: ", origin.distance_to(destination));
     
     switch (current_status) {
-        Status::Active => outputln("System is running");
-        Status::Inactive => outputln("System is stopped");
-        Status::Pending => outputln("System is starting");
+        Status::Active -> outputln("System is running");
+        Status::Inactive -> outputln("System is stopped");
+        Status::Pending -> outputln("System is starting");
     }
     
     return 0;
@@ -96,67 +68,302 @@ This example shows:
 Luma provides a straightforward type system with both primitive and compound types.
 
 ### Primitive Types
+```
+int      - Signed integer (64-bit)
+uint     - Unsigned integer (64-bit)
+float    - Floating point (32-bit)
+double   - Floating point (64-bit)
+bool     - Boolean (1 byte)
+byte     - Single byte (1 byte)
+*byte    - Character pointer / C-style string
+void     - No value (used for function return types and generic pointers)
+```
 
-| Type | Description | Size |
-|------|-------------|------|
-| `int` | Signed integer | 64-bit |
-| `uint` | Unsigned integer | 64-bit | (not yet added)
-| `float` | Floating point | 32-bit |
-| `double` | Floating point | 64-bit |
-| `bool` | Boolean | 1 byte |
-| `byte` | Unicode byteacter| 1 byte |
-| `str` | String | Variable |
+**Note on String Types:**
+- String literals like `"hello"` are of type `*byte` (null-terminated character arrays)
+- All string operations in the standard library use `*byte`
+- There is no separate `str` type in Luma
+
+### Type Modifiers & Operators
+```
+*T       - Pointer type (declares a pointer to type T)
+[T; N]   - Array type (fixed-size array of N elements of type T)
+```
+
+**Pointer Operators:**
+```
+*expr    - Dereference operator (access value pointed to)
+&expr    - Address-of operator (get pointer to value)
+```
+
+**Example:**
+```luma
+let x: int = 42;           // x is an int
+let ptr: *int = &x;        // ptr is a pointer to int, holds address of x
+let value: int = *ptr;     // value is 42 (dereferenced ptr)
+```
 
 ### Enumerations
 
-Enums provide type-safe constants with clean syntax:
-
+Enums provide type-safe constants with underlying integer values:
 ```luma
 const Direction -> enum {
-    North,
-    South,
-    East,
-    West
+    North,    // = 0
+    South,    // = 1
+    East,     // = 2
+    West      // = 3
 };
 
 const current_direction: Direction = Direction::North;
+
+// Can cast to int if needed
+let dir_value: int = cast<int>(Direction::North);  // 0
 ```
 
 ### Structures
 
 Structures group related data with optional access control:
-
 ```luma
 const Point -> struct {
     x: int,
     y: int
 };
 
-// With explicit access modifiers
+// With explicit access modifiers and methods
 const Player -> struct {
 pub:
-    name: str,
+    name: *byte,
     score: int,
+
+    // Methods can be defined inside structs — fields are reached through
+    // `self`, never as bare names. Currently, a method must be declared in
+    // the `pub:` group to typecheck correctly — one declared after `priv:`
+    // doesn't get `self` resolved (a known compiler bug).
+    get_info -> fn () void {
+        outputln("Player: ", self.name, " Score: ", self.score);
+    },
 priv:
-    internal_id: uint,
-    
-    // Methods can be defined inside structs
-    get_display_name -> fn () str {
-        return name + " (" + str(score) + " pts)";
-    }
+    internal_id: int,
 };
 ```
 
 ### Using Types
-
 ```luma
 const origin: Point = Point { x: 0, y: 0 };
+
 const player: Player = Player { 
     name: "Alice", 
     score: 100,
     internal_id: 12345 
 };
+
+// Access fields
+outputln(origin.x);           // 0
+outputln(player.name);        // Alice
+
+// Call methods
+player.get_info();            // Player: Alice Score: 100
 ```
+
+### Pointers to Structs
+
+Unlike C, there's no separate `->` operator — `.` works the same way whether you have a struct value or a pointer to one, auto-dereferencing either way:
+
+```luma
+const move_point -> fn (p: *Point, dx: int, dy: int) void {
+    p.x = p.x + dx;   // not p->x
+    p.y = p.y + dy;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: Point = Point { x: 1, y: 2 };
+    let ptr: *Point = &p;
+
+    move_point(ptr, 10, 10);
+    outputln(p.x, " ", p.y);     // 11 12
+    outputln(ptr.x, " ", ptr.y); // same values, through the pointer
+
+    return 0;
+}
+```
+
+This is also why a method's `self` (always `*Self` under the hood) reads no differently from a plain struct field access — `self.x` inside a method and `p.x` on a local value use identical syntax.
+
+### Struct Composition vs. Embedding
+
+A struct-typed field declared normally (without `...`) is composition, not embedding — it's a nested value, and its fields are **not** promoted. You reach them through the field name, same as any other member:
+
+```luma
+const Line -> struct {
+pub:
+    start: Point,
+    end: Point,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let line: Line = Line {
+        start: Point { x: 0, y: 0 },
+        end: Point { x: 5, y: 5 },
+    };
+
+    outputln(line.start.x);  // 0 — through `.start`, not promoted
+    outputln(line.end.y);    // 5
+    return 0;
+}
+```
+
+Compare this to [Struct Embedding](#struct-embedding) below, where `...Point,` would make `line.x` and `line.y` valid directly. Use composition when the nested struct is conceptually a distinct part (a `Line` *has a* `start` and an `end`); use embedding when the outer struct *is a kind of* the inner one and should expose its interface directly (a `Player` *is an* `Entity`).
+
+**Structs don't support `==`** — comparing two struct values field-by-field isn't generated automatically; compare the fields you care about individually instead.
+
+### Struct Embedding
+
+A struct can embed another by value with `...Type,` as a member. The embedded struct's fields and methods are promoted onto the outer struct — accessible and initializable as if they were declared directly on it, with no runtime indirection (the embedded value is laid out inline, not behind a pointer):
+
+```luma
+const Entity -> struct {
+pub:
+    x: float,
+    y: float,
+
+    move -> fn (dx: float, dy: float) void {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    },
+};
+
+const Player -> struct {
+pub:
+    ...Entity,
+    name: *byte,
+
+    // Defining `move` here shadows Entity's — a direct member always wins
+    // over a promoted one of the same name.
+    move -> fn (dx: float, dy: float) void {
+        self.x = self.x + (dx * 2.0);
+        self.y = self.y + (dy * 2.0);
+    },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    // `x`/`y` are promoted fields — the literal initializes them exactly
+    // like `name`, even though they live on the embedded `Entity`.
+    let player: Player = Player { x: 0.0, y: 0.0, name: "Connor" };
+    player.move(10.0, 5.0);           // Player's own move — doubled deltas
+    outputln(player.x, " ", player.y);
+    return 0;
+}
+```
+
+Promoted members resolve through as many embedding levels as needed, and work identically through a pointer (`p.move(...)` where `p: *Player`).
+
+An override can still reach the shadowed base method explicitly, by naming the embedded type directly with `.` — `Entity.move(dx, dy)` inside `Player::move` calls `Entity`'s own implementation on `self`'s embedded `Entity`, bypassing the override it's written inside of:
+
+```luma
+const Player -> struct {
+pub:
+    ...Entity,
+    name: *byte,
+
+    move -> fn (dx: float, dy: float) void {
+        Entity.move(dx, dy);  // delegates to Entity's own move, unmodified
+    },
+};
+```
+
+This only resolves inside a method whose owning struct actually embeds the named type somewhere; `Entity.move(...)` written elsewhere doesn't mean anything.
+
+### Static Methods
+
+A method declared `static` has no implicit `self` and is called on the type itself with `::`, not on an instance with `.` — useful for constructors and other functions that logically belong to a type but don't operate on an existing value of it:
+
+```luma
+const Point -> struct {
+pub:
+    x: float,
+    y: float,
+
+    static origin -> fn () Point {
+        return Point { x: 0.0, y: 0.0 };
+    },
+
+    static at -> fn (x: float, y: float) Point {
+        return Point { x: x, y: y };
+    },
+
+    move -> fn (dx: float, dy: float) void {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let a: Point = Point::origin();   // static — no instance needed
+    let b: Point = Point::at(3.0, 4.0);
+    a.move(1.0, 1.0);                 // instance method — needs `a`
+    return 0;
+}
+```
+
+Inside a `static` method's body, `self` isn't in scope — there's no instance to refer to. `static` is only valid on a method (`name -> fn (...) T { ... }`), not on a data field.
+
+`#returns_ownership`/`#takes_ownership` can be combined with `static` in either order:
+
+```luma
+#returns_ownership
+static create -> fn (...) *T { ... }
+```
+
+### Heap-Allocated Structs
+
+A `static` "constructor" returning a pointer, paired with an instance "destructor" method, is the idiomatic way to give a struct manual, class-like lifetime management — the same ownership rules from [Memory Management](#memory-management) apply, just wrapped in methods instead of loose functions:
+
+```luma
+const Person -> struct {
+pub:
+    name: *byte,  // owned
+    age: int,
+
+    #returns_ownership
+    static create -> fn (name: *byte, age: int) *Person {
+        let p: *Person = cast<*Person>(alloc(sizeof<Person>));
+        p.name = name;
+        p.age = age;
+        return p;
+    },
+
+    destroy -> fn () void {
+        free(self.name);
+    },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let alice: *Person = Person::create(cast<*byte>(alloc(6)), 30);
+    defer { alice.destroy(); free(alice); }
+
+    outputln(alice.age);
+    return 0;
+}
+```
+
+`destroy` only frees what the struct itself owns (`name`) — the struct's own allocation (`alice` the pointer) is a separate responsibility, freed by whoever called `create`, same as any other `#returns_ownership` pointer. Nothing in Luma calls `destroy` automatically; there's no destructor-on-scope-exit — pair it with `defer` explicitly, as shown.
+
+### Type Compatibility
+```luma
+// Same types
+let x: int = 42;
+let y: int = x;  // OK
+
+// Different types require explicit cast
+let f: float = cast<float>(x);  // OK
+let z: int = f;  // ERROR: must use cast<int>(f)
+
+// Pointer type safety
+let int_ptr: *int = &x;
+let void_ptr: *void = cast<*void>(int_ptr);  // Explicit cast required
+```
+
+See [Type Casting System](#type-casting-system) for full details on conversions.
 
 ---
 
@@ -245,7 +452,7 @@ const main = fn() int {
     let float_box: Box<float> = Box { value: 3.14 };
     
     // Pair with different types
-    let pair: Pair<int, str> = Pair { 
+    let pair: Pair<int, *byte> = Pair { 
         first: 1, 
         second: "hello" 
     };
@@ -274,7 +481,7 @@ const identity = fn<T>(x: T) T {
 // These calls generate separate functions in the compiled binary:
 let a: int = identity<int>(42);        // Generates identity_int
 let b: float = identity<float>(3.14);  // Generates identity_float
-let c: str = identity<str>("hello");   // Generates identity_str
+let c: *byte = identity<*byte>("hello"); // Generates identity_str
 ```
 
 ---
@@ -289,15 +496,12 @@ Luma uses the `const` keyword as a **unified declaration mechanism** for all top
 const NUM: int = 42;                                  // Immutable variable
 const Direction -> enum { North, South, East, West };  // Enum definition
 const Point -> struct { x: int, y: int };              // Struct definition
-const Box -> struct<T> { value: T };                   // Generic struct
 const add -> fn (a: int, b: int) int {                 // Function definition
-    return a + b; 
-};
-const max = fn<T>(a: T, b: T) T {                     // Generic function
-    if (a > b) { return a; }
-    return b;
-};
+    return a + b;
+}
 ```
+
+(Generic bindings like `struct<T>`/`fn<T>` are aspirational syntax — see [Generics](#generics-not-yet-supported), which isn't implemented yet.)
 
 ### Why This Design?
 
@@ -315,7 +519,7 @@ const max = fn<T>(a: T, b: T) T {                     // Generic function
 const x: int = 5;
 x = 10; // Error: `x` is immutable
 
-const add -> fn (a: int, b: int) int { return a + b; };
+const add -> fn (a: int, b: int) int { return a + b; }
 add = something_else; // Error: cannot reassign function binding
 ```
 
@@ -326,7 +530,7 @@ add = something_else; // Error: cannot reassign function binding
 Inside functions, use `let` to declare local variables:
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let x: int = 10;        // Mutable local variable
     x = 20;                 // Can be reassigned
     
@@ -358,23 +562,43 @@ Functions are first-class values in Luma.
 // Basic function
 const add -> fn (a: int, b: int) int {
     return a + b;
-};
+}
 
 // Function with no parameters
 const greet -> fn () void {
     outputln("Hello!");
-};
+}
 
 // Function with no return value
 const print_number -> fn (n: int) void {
     outputln("Number: ", n);
-};
+}
+```
+
+A function declaration's closing `}` never takes a trailing `;` — that's only for `struct`/`enum` declarations and ordinary statements (see [Top-Level Bindings with `const`](#top-level-bindings-with-const)).
+
+### main()
+
+`main` can declare zero, one, or two parameters — `argc: int` and `argv: **byte`, in that order. Its C-level signature is always `int main(int, char**)` regardless; declaring fewer just leaves the rest unnamed on the Luma side.
+
+```luma
+pub const main -> fn () int {
+    return 0;
+}
+
+pub const main -> fn (argc: int) int {
+    return 0;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    return 0;
+}
 ```
 
 ### Function Calls
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let result: int = add(5, 3);
     outputln("5 + 3 = ", result);
     
@@ -392,9 +616,9 @@ Parameters are passed by value by default:
 ```luma
 const modify -> fn (x: int) void {
     x = 100;  // Modifies local copy only
-};
+}
 
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let num: int = 10;
     modify(num);
     outputln(num);  // Still 10
@@ -407,9 +631,9 @@ To modify the caller's variable, use pointers:
 ```luma
 const modify_ptr -> fn (x: *int) void {
     *x = 100;  // Modifies original value
-};
+}
 
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let num: int = 10;
     modify_ptr(&num);  // Pass address
     outputln(num);     // Now 100
@@ -423,7 +647,7 @@ const main -> fn () int {
 // Single return value
 const square -> fn (x: int) int {
     return x * x;
-};
+}
 
 // Multiple return values via struct
 const DivResult -> struct {
@@ -436,9 +660,9 @@ const divide -> fn (a: int, b: int) DivResult {
         quotient: a / b,
         remainder: a % b
     };
-};
+}
 
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let result: DivResult = divide(17, 5);
     outputln("17 / 5 = ", result.quotient, " R ", result.remainder);
     return 0;
@@ -455,7 +679,7 @@ const find_positive -> fn (numbers: *int, size: int) int {
         }
     }
     return -1;  // Not found
-};
+}
 ```
 
 ---
@@ -475,9 +699,11 @@ const day: WeekDay = WeekDay::Monday;
 // Module/namespace access
 math::sqrt(16.0)
 
-// Associated functions (if added later)
-Point::new(10, 20)
+// Static methods — no implicit `self`, called on the type itself
+Point::at(10, 20)
 ```
+
+(See [Static Methods](#static-methods) for how `Point::at` is declared.)
 
 ### Runtime Member Access with `.`
 
@@ -490,10 +716,6 @@ outputln(point.x);  // Access field at runtime
 
 // Method calls on instances
 let distance: float = origin.distance_to(destination);
-
-// Generic struct field access
-let box: Box<int> = Box { value: 42 };
-outputln(box.value);
 ```
 
 ### Benefits of This Distinction
@@ -543,8 +765,13 @@ loop [i: int = 0](i < 10) : (++i) {
     outputln("i = ", i);
 }
 
-// Multiple loop variables
-loop [i: int = 0, j: int = 0](i < 10) : (++i) {
+```
+
+**Not currently working**: multiple loop-init variables (`loop [i: int = 0, j: int = 0](...) ...`) parse but generate invalid C (`for (long long i = 0, long long j = 0; ...)`, which repeats the type where C expects a bare `j = 0`) — the build fails at the C compile step. For now, declare the second counter with `let` above the loop instead:
+
+```luma
+let j: int = 0;
+loop [i: int = 0](i < 10) : (++i) {
     outputln("i = ", i, ", j = ", j);
     ++j;
 }
@@ -623,14 +850,14 @@ const WeekDay -> enum {
 const classify_day -> fn (day: WeekDay) void {
     switch (day) {
         WeekDay::Monday, WeekDay::Tuesday, WeekDay::Wednesday, 
-        WeekDay::Thursday, WeekDay::Friday =>
+        WeekDay::Thursday, WeekDay::Friday ->
             outputln("Weekday => ", day);
-        WeekDay::Saturday, WeekDay::Sunday =>
+        WeekDay::Saturday, WeekDay::Sunday ->
             outputln("Weekend => ", day);
     }
 }
 
-pub const main -> fn () int {
+pub const main -> fn (argc: int, argv: **byte) int {
     classify_day(WeekDay::Monday);   // Output: Weekday => 1
     classify_day(WeekDay::Saturday); // Output: Weekend => 6
     return 0;
@@ -644,12 +871,12 @@ When you need to handle unexpected values or want a catch-all case, use the defa
 ```luma
 const handle_status_code -> fn (code: int) void {
     switch (code) {
-        200 => outputln("OK");
-        404 => outputln("Not Found");
-        500 => outputln("Internal Server Error");
-        _   => outputln("Unknown status code");
+        200 -> outputln("OK");
+        404 -> outputln("Not Found");
+        500 -> outputln("Internal Server Error");
+        _   -> outputln("Unknown status code");
     }
-};
+}
 ```
 
 ### Switch Features
@@ -658,6 +885,25 @@ const handle_status_code -> fn (code: int) void {
 - **Exhaustiveness**: All possible values must be covered (or use `_` for default)
 - **Compile-time constants**: All case values must be compile-time constants
 - **No fallthrough**: Each case is automatically contained (no `break` needed)
+
+### Scoped Enum Access with `using`
+
+Fully-qualified case labels (`WeekDay::Monday`) get repetitive once an enum has more than a couple of members. `switch using <Path::To::Enum> (expr)` lets every case label in that switch be written as a bare member name instead:
+
+```luma
+const classify_day -> fn (day: WeekDay) void {
+    switch using WeekDay (day) {
+        Monday, Tuesday, Wednesday, Thursday, Friday -> {
+            outputln("Weekday => ", day);
+        }
+        Saturday, Sunday -> {
+            outputln("Weekend => ", day);
+        }
+    }
+}
+```
+
+This is pure sugar, resolved entirely while parsing: `Monday` inside this switch expands to exactly the same `WeekDay::Monday` node a fully-qualified label would produce, so exhaustiveness checking, duplicate-case detection, and codegen all behave identically to the fully-qualified form. A label can still be written fully qualified (or reference a different enum entirely) inside a `using` switch — `using` only applies to bare identifiers, so an explicit `Other::Value` label is left untouched. The shorthand is scoped to the one `switch` block it's declared on; it never leaks into surrounding code.
 
 ---
 
@@ -682,18 +928,47 @@ Use the `@use` directive to import other modules:
 ```luma
 @module "main"
 
-@use "math" as math
-@use "string" as str
+@use "std_libc" as c
+@use "std_cstring" as string
 
-const main -> fn () int {
+pub const main -> fn (argc: int, argv: **byte) int {
     // Access imported functions with namespace
-    let result: double = math::sqrt(25.0);
-    let len: int = str::strlen("hello");
-    
-    outputln("Square root: ", result);
+    let result: double = c::sqrt(16.0);
+    let len: int = string::strlen("hello");
+
+    outputln("sqrt(16): ", result);
     outputln("Length: ", len);
     return 0;
 }
+```
+
+`@use` only declares the dependency — it doesn't locate the file. Every module you `@use` also has to be passed to the compiler explicitly with `-l`:
+
+```
+luma main.lx -l std/libc.lx std/cstring.lx -name main
+```
+
+### Standard Library Module Names
+
+All standard library modules use the `std_` prefix:
+
+```
+std_math      - Mathematical functions and constants
+std_memory    - Low-level memory operations
+std_cstring   - Null-terminated (*byte) string utilities: strlen, strcmp, copy, dup, ...
+std_string    - Growable String struct built on top of std_cstring
+std_io        - High-level I/O with formatted output
+std_sys       - POSIX system calls (Linux/macOS)
+std_win32     - Windows Win32 API
+std_termfx    - Terminal colors and formatting
+std_terminal  - Terminal input/raw mode control
+std_time      - Time and timing operations
+std_vector    - Dynamic array
+std_hashmap   - Hash map
+std_arena     - Arena allocator
+std_args      - Command-line argument parsing
+std_libc      - C standard library bindings
+std_thread    - Threading
 ```
 
 ### Module Features
@@ -702,6 +977,149 @@ const main -> fn () int {
 - **Namespace isolation**: Imported modules are accessed through their aliases
 - **Static resolution**: All module access is resolved at compile time using `::`
 - **Clean syntax**: Simple `@use "module" as alias` pattern
+
+---
+
+## Platform Directives
+
+### `@os` — Conditional Compilation
+
+The `@os` block selects code based on the target operating system. This is how the standard library handles platform differences for things like syscall numbers and flags:
+
+```luma
+@os {
+    "linux" -> {
+        pub const SYS_WRITE: int = 1;
+        pub const O_CREAT: int   = 64;
+    }
+    "macos" -> {
+        pub const SYS_WRITE: int = 4;
+        pub const O_CREAT: int   = 512;
+    }
+    "windows" -> {
+        // Windows-specific declarations...
+    }
+}
+```
+
+You can also use `@os` inline inside function bodies:
+
+```luma
+const write_out -> fn (s: *byte) int {
+    @os {
+        "linux"   -> { return __syscall__(1, 1, cast<int>(s), len); }
+        "macos"   -> { return __syscall__(4, 1, cast<int>(s), len); }
+        "windows" -> { /* use WriteFile */ }
+    }
+}
+```
+
+Valid platform strings are `"linux"`, `"macos"`, and `"windows"`.
+
+---
+
+## Foreign Function Interface (FFI)
+
+Luma can call into native shared libraries and DLLs through two complementary directives.
+
+### `@link` — Shared Library Linking (POSIX)
+
+`@link` declares that the entire module links against a shared library. Place it at the top of your module, before any function declarations:
+
+```luma
+@module "std_libc"
+
+@link("libc.so.6")
+
+pub const puts    -> fn (s: *byte) int;
+pub const printf  -> fn (fmt: *byte, val: *byte) int;
+pub const malloc  -> fn (size: int) *void;
+// ...
+```
+
+The function body is omitted — the linker resolves it from the named library at link time. Only one `@link` per module is needed; it applies to all subsequent `pub const` declarations that have no body.
+
+### `#lib_import` — Per-Function Library Override
+
+When individual functions within a module come from a *different* library than the module-level `@link`, use `#lib_import` as a per-declaration attribute:
+
+```luma
+@module "std_libc"
+
+@link("libc.so.6")
+
+// Most functions come from libc.so.6 via @link above:
+pub const malloc -> fn (size: int) *void;
+pub const free   -> fn (ptr: *void) void;
+
+// Math functions need libm — override per-function:
+#lib_import("libm.so")
+pub const sqrt -> fn (x: double) double;
+
+#lib_import("libm.so")
+pub const pow  -> fn (base: double, exp: double) double;
+
+#lib_import("libm.so")
+pub const sin  -> fn (x: double) double;
+```
+
+Place `#lib_import(...)` on the line immediately before the `pub const` it applies to.
+
+### `#dll_import` — Windows DLL Imports
+
+On Windows, use `#dll_import` instead. It accepts the DLL name and an optional calling convention:
+
+```luma
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const CreateFileA -> fn (
+    lpFileName: *byte,
+    dwDesiredAccess: int,
+    dwShareMode: int,
+    lpSecurityAttributes: *void,
+    dwCreationDisposition: int,
+    dwFlagsAndAttributes: int,
+    hTemplateFile: int
+) int;
+
+#dll_import("kernel32.dll", callconv: "stdcall")
+pub const WriteFile -> fn (
+    hFile: int,
+    lpBuffer: *void,
+    nNumberOfBytesToWrite: int,
+    lpNumberOfBytesWritten: *int,
+    lpOverlapped: *void
+) int;
+```
+
+`#dll_import` can also appear inside `@os { "windows" -> { ... } }` blocks so the same source file compiles cross-platform:
+
+```luma
+@os {
+    "windows" -> {
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        pub const GetStdHandle -> fn (nStdHandle: int) int;
+    }
+}
+```
+
+### Using libc
+
+The `std_libc` module wraps the C standard library (stdio, stdlib, string, and math) and is the easiest way to call into libc from Luma:
+
+```luma
+@module "main"
+
+@use "std_libc" as c
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    c::puts("hello from libc");
+
+    let n: int = c::atoi("42");
+    let r: double = c::sqrt(144.0);
+
+    return 0;
+}
+```
 
 ---
 
@@ -719,7 +1137,7 @@ outputln(...)    // Print values with newline
 Both functions are **variadic** - they accept any number of arguments of any type:
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     output("Hello", " ", "World");           // Hello World
     outputln("The answer is:", 42);          // The answer is: 42\n
     
@@ -737,21 +1155,23 @@ const main -> fn () int {
 input<T>(prompt: *byte) -> T    // Read typed input
 ```
 
-The `input` function is generic and reads a value of the specified type:
+`input<T>` parses and typechecks — the intended shape is generic, reading a value of the specified type:
 
 ```luma
-const main -> fn () int {
+pub const main -> fn (argc: int, argv: **byte) int {
     let name: *byte = input<*byte>("Enter your name: ");
     let age: int = input<int>("Enter your age: ");
     let height: double = input<double>("Enter height (meters): ");
-    
+
     outputln("Name: ", name);
     outputln("Age: ", age);
     outputln("Height: ", height);
-    
+
     return 0;
 }
 ```
+
+**Not implemented yet**: codegen currently ignores the prompt and stdin entirely and evaluates every `input<T>(...)` to a zeroed `T` — the program above compiles but `age`/`height` will read as `0`, not whatever's typed.
 
 ### System Commands
 
@@ -762,7 +1182,7 @@ system(command: *byte) -> int    // Execute system command
 Execute shell commands from your program:
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     system("clear");  // Clear terminal (Linux/Mac)
     system("stty -icanon -echo");  // Configure terminal
     return 0;
@@ -778,7 +1198,7 @@ sizeof<T> -> int    // Size of type in bytes
 Get the size of any type at compile time:
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     outputln("int: ", sizeof<int>);           // 8
     outputln("byte: ", sizeof<byte>);         // 1
     outputln("double: ", sizeof<double>);     // 8
@@ -806,7 +1226,7 @@ cast<TargetType>(expression)
 ### Numeric Conversions
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     // Integer to float
     let i: int = 42;
     let f: float = cast<float>(i);        // 42.0
@@ -826,7 +1246,7 @@ const main -> fn () int {
 ### Pointer Casting
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     // void* to typed pointer
     let raw: *void = alloc(sizeof<int>);
     let typed: *int = cast<*int>(raw);
@@ -845,7 +1265,7 @@ const main -> fn () int {
 ### Pointer to Integer (and back)
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let ptr: *byte = cast<*byte>(alloc(10));
     defer free(ptr);
     
@@ -873,7 +1293,7 @@ Luma supports fixed-size arrays with compile-time known sizes.
 ```luma
 // Syntax: [Type; Size]
 let numbers: [int; 10];           // Array of 10 integers
-let bytes: [byte; 256];           // Array of 256 byteacters
+let bytes: [byte; 256];           // Array of 256 bytes
 let buffer: [double; 100];        // Array of 100 doubles
 
 // Constants can be arrays too
@@ -883,7 +1303,7 @@ const PRIMES: [int; 5] = [2, 3, 5, 7, 11];
 ### Array Initialization
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     // Uninitialized (contains garbage)
     let data: [int; 5];
     
@@ -903,7 +1323,7 @@ const main -> fn () int {
 ### Array Access
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let numbers: [int; 5] = [10, 20, 30, 40, 50];
     
     // Read elements
@@ -928,10 +1348,10 @@ const main -> fn () int {
 
 ### String Literals
 
-String literals are null-terminated byteacter arrays:
+String literals are null-terminated byte arrays:
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     // String literal - type is *byte
     let message: *byte = "Hello, World!";
     outputln(message);
@@ -940,15 +1360,15 @@ const main -> fn () int {
 }
 ```
 
-### byteacter Literals
+### Character Literals
 
-Single byteacters use single quotes:
+Single characters use single quotes:
 
 ```luma
-const main -> fn () int {
-    let letter: byte = 'A';           // byteacter literal
+const main -> fn (argc: int, argv: **byte) int {
+    let letter: byte = 'A';           // Character literal
     let newline: byte = '\n';         // Escape sequence
-    let tab: byte = '\t';             // Tab byteacter
+    let tab: byte = '\t';             // Tab character
     
     return 0;
 }
@@ -963,9 +1383,10 @@ const main -> fn () int {
 '\\'   // Backslash
 '\''   // Single quote
 '\"'   // Double quote
-'\0'   // Null byteacter
-'\xHH' // Hexadecimal byte (e.g., '\x1b' for ESC)
+'\0'   // Null character
 ```
+
+`\xHH` (hexadecimal byte, e.g. `"\x1b"` for ESC) is supported in **string** literals but not in single-quoted character literals yet — `let esc: byte = '\x1b';` fails to parse; use a string (`"\x1b"`) and index into it, or write the decimal/`cast<byte>(...)` form instead.
 
 ---
 
@@ -976,7 +1397,7 @@ Luma supports pointer arithmetic for low-level memory manipulation.
 ### Basic Pattern
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let arr: *int = cast<*int>(alloc(5 * sizeof<int>));
     defer free(arr);
     
@@ -1049,7 +1470,7 @@ sizeof<T> -> int             // Size of type
 ### Example Usage
 
 ```luma
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     // Allocate memory
     let ptr: *int = cast<*int>(alloc(sizeof<int>));
     
@@ -1116,7 +1537,7 @@ const create_buffer -> fn (size: int) *int {
     return buffer;  // Caller now owns this memory
 }
 
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let data: *int = create_buffer(100);
     defer free(data);  // Caller must free
     return 0;
@@ -1134,12 +1555,12 @@ const consume_buffer -> fn (buffer: *int) void {
     free(buffer);  // Function owns and frees the buffer
 }
 
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let data: *int = cast<*int>(alloc(sizeof<int>));
     *data = 42;
     
     consume_buffer(data);  // Ownership transferred
-    // Error: data was freed inside consume_buffer
+    // Note: do not use `data` after this point
     
     return 0;
 }
@@ -1179,7 +1600,7 @@ const create_buffer -> fn (size: int) *int {
     return buffer;  // Ownership transferred to caller
 }  // No leak reported - caller is responsible
 
-const main -> fn () int {
+const main -> fn (argc: int, argv: **byte) int {
     let data: *int = create_buffer(100);
     defer free(data);  // Caller properly handles ownership
     return 0;
@@ -1296,22 +1717,22 @@ Understanding performance is crucial for systems programming.
 
 Luma follows the "zero-cost abstraction" principle: abstractions should have no runtime overhead.
 
-**Generics are zero-cost:**
+**Generics are designed to be zero-cost** (see [Generics](#generics-not-yet-supported) — this is the design intent, not implemented yet):
 ```luma
 const add = fn<T>(a: T, b: T) T {
     return a + b;
 }
 
-// These calls compile to separate, optimized functions:
+// These calls would compile to separate, optimized functions:
 let x: int = add<int>(1, 2);        // Same as: x = 1 + 2
 let y: float = add<float>(1.0, 2.0); // Same as: y = 1.0 + 2.0
 ```
 
-**No runtime dispatch** - all generic instantiations are resolved at compile time through monomorphization.
+**No runtime dispatch** - once implemented, generic instantiations are meant to be resolved at compile time through monomorphization, the same way it already works for structs and switch cases today.
 
 ### Monomorphization
 
-Luma generates specialized code for each type:
+The plan is for Luma to generate specialized code per type, the same way C++ templates or Rust generics do (also not implemented yet):
 
 ```luma
 const max = fn<T>(a: T, b: T) T {
@@ -1319,7 +1740,7 @@ const max = fn<T>(a: T, b: T) T {
     return b;
 }
 
-// Compiler generates:
+// Compiler would generate:
 // max_int(a: int, b: int) -> int { ... }
 // max_float(a: float, b: float) -> float { ... }
 ```
@@ -1419,268 +1840,6 @@ const process_fast -> fn (data: *LargeStruct) void { }
 
 ---
 
-## Standard Library
-
-Luma's standard library provides essential functionality for systems programming.
-
-### Module: `math`
-
-Mathematical operations and constants.
-
-```luma
-@use "math" as math
-
-// Constants
-math::PI           // 3.14159...
-math::TWO_PI       // 6.28318...
-math::HALF_PI      // 1.57079...
-
-// Arithmetic
-math::add(x, y)
-math::subtract(x, y)
-math::multiply(x, y)
-math::divide(x, y)
-math::mod(x, y)
-math::power(base, exponent)
-
-// Min/Max
-math::max_size(a, b)
-math::min_size(a, b)
-
-// Trigonometry
-math::sin(angle)
-math::cos(angle)
-math::tan(angle)
-math::sec(angle)
-math::csc(angle)
-math::cot(angle)
-
-// Other
-math::fib(n, a, b)  // Fibonacci
-```
-
-**Example:**
-```luma
-@use "math" as math
-
-const main -> fn () int {
-    let angle: double = math::PI / 4.0;
-    let sine: double = math::sin(angle);
-    outputln("sin(π/4) = ", sine);
-    return 0;
-}
-```
-
-### Module: `memory`
-
-Low-level memory operations.
-
-```luma
-@use "memory" as mem
-
-// Basic operations
-mem::memcpy(dest, src, n)       // Copy memory
-mem::memcmp(a, b, n)            // Compare memory
-mem::memset(dest, value, n)     // Fill memory
-mem::memmove(dest, src, n)      // Move (handles overlap)
-mem::memzero(dest, n)           // Zero memory
-
-// Search
-mem::memchr(ptr, value, n)      // Find byte
-
-// Allocation helpers
-mem::calloc(count, size)        // Allocate + zero
-mem::realloc(ptr, new_size)     // Reallocate
-
-// Utilities
-mem::memswap(a, b, n)           // Swap regions
-mem::memrev(ptr, n)             // Reverse bytes
-mem::memcount(ptr, value, n)    // Count occurrences
-mem::memdup(src, n)             // Duplicate region
-mem::memeq(a, b, n)             // Check equality
-```
-
-**Example:**
-```luma
-@use "memory" as mem
-
-const main -> fn () int {
-    let buffer: *void = mem::calloc(10, sizeof<byte>);
-    defer free(buffer);
-    
-    mem::memset(buffer, 65, 10);  // Fill with 'A'
-    outputln("Buffer filled");
-    
-    return 0;
-}
-```
-
-### Module: `string`
-
-String manipulation functions.
-
-```luma
-@use "string" as string
-
-// Creation
-string::from_byte(c)            // Create string from byte
-string::from_int(n)             // Convert int to string
-
-// Measurement
-string::strlen(s)               // Get length
-
-// Comparison
-string::strcmp(s1, s2)          // Compare strings
-
-// Search
-string::s_byte(s, c)            // Find byteacter
-
-// Manipulation
-string::copy(dest, src)         // Copy string
-string::n_copy(dest, src, n)    // Copy n byteacters
-string::cat(dest, s1, s2)       // Concatenate
-```
-
-**Example:**
-```luma
-@use "string" as string
-
-const main -> fn () int {
-    let name: *byte = "Alice";
-    let len: int = string::strlen(name);
-    outputln("Length: ", len);
-    
-    let num_str: *byte = string::from_int(42);
-    defer free(num_str);
-    outputln("Number: ", num_str);
-    
-    return 0;
-}
-```
-
-### Module: `termfx`
-
-Terminal formatting and colors (ANSI escape codes).
-
-```luma
-@use "termfx" as fx
-
-// Basic colors
-fx::RED, fx::GREEN, fx::BLUE, fx::YELLOW
-fx::MAGENTA, fx::CYAN, fx::WHITE, fx::BLACK
-
-// Bright colors
-fx::BRIGHT_RED, fx::BRIGHT_GREEN, fx::BRIGHT_BLUE
-
-// Background colors
-fx::BG_RED, fx::BG_GREEN, fx::BG_BLUE
-
-// Text styles
-fx::BOLD, fx::UNDERLINE, fx::ITALIC
-
-// Screen control
-fx::CLEAR_SCREEN
-fx::CLEAR_LINE
-fx::CURSOR_HOME
-fx::CURSOR_HIDE
-fx::CURSOR_SHOW
-
-// Functions
-fx::fg_rgb(r, g, b)          // Custom foreground color
-fx::bg_rgb(r, g, b)          // Custom background color
-fx::move_cursor(row, col)    // Move cursor
-
-// Reset
-fx::RESET
-```
-
-**Example:**
-```luma
-@use "termfx" as fx
-
-const main -> fn () int {
-    output(fx::CLEAR_SCREEN, fx::CURSOR_HOME);
-    output(fx::BOLD, fx::RED, "ERROR: ", fx::RESET);
-    outputln("Something went wrong!");
-    output(fx::GREEN, "✓ Success", fx::RESET, "\n");
-    return 0;
-}
-```
-
-### Module: `terminal`
-
-Interactive terminal input functions.
-
-```luma
-@use "terminal" as term
-
-term::getch()              // Get single byte (no echo, no enter)
-term::getch_silent()       // Get byte silently
-term::getche()             // Get byte with echo
-term::kbhit()              // Check if key pressed
-term::wait_for_key()       // Wait for any key
-term::clear_input_buffer() // Clear input buffer
-term::getpass(prompt)      // Get password (hidden input)
-```
-
-**Example:**
-```luma
-@use "terminal" as term
-@use "string" as string
-
-const main -> fn () int {
-    outputln("Press any key...");
-    let key: byte = term::getch();
-    outputln("You pressed: ", string::from_byte(key));
-    
-    let password: *byte = term::getpass("Enter password: ");
-    defer free(password);
-    outputln("Password entered");
-    
-    return 0;
-}
-```
-
-### Creating Your Own Modules
-
-**Module structure:**
-```luma
-// File: mymodule.lx
-@module "mymodule"
-
-// Private helper
-const helper -> fn (x: int) int {
-    return x * 2;
-}
-
-// Public function
-pub const process -> fn (data: *int, size: int) void {
-    loop [i: int = 0](i < size) : (++i) {
-        data[i] = helper(data[i]);
-    }
-}
-
-// Public constant
-pub const VERSION: int = 1;
-```
-
-**Using your module:**
-```luma
-// File: main.lx
-@module "main"
-
-@use "mymodule" as mm
-
-const main -> fn () int {
-    let data: [int; 5] = [1, 2, 3, 4, 5];
-    mm::process(cast<*int>(&data), 5);
-    outputln("Version: ", mm::VERSION);
-    return 0;
-}
-```
-
----
-
 ## Safety Features
 
 Luma provides several safety features to prevent common bugs:
@@ -1728,6 +1887,25 @@ const      let        if         elif       else
 loop       break      continue   return     defer
 struct     enum       pub        priv       cast
 sizeof     alloc      free       switch     fn
+using      static     input      system     as
+```
+
+### Directives
+
+```
+@module "name"              // Declare module name
+@use "name" as alias        // Import module
+@os { "linux" -> { } }      // Platform-conditional code
+@link("lib.so")             // Link against shared library (module-level)
+```
+
+### Attributes
+
+```
+#returns_ownership          // Function returns allocated memory (caller must free)
+#takes_ownership            // Function takes ownership of a pointer argument
+#lib_import("lib.so")       // Per-function library override (POSIX)
+#dll_import("dll", callconv: "stdcall")  // Per-function DLL import (Windows)
 ```
 
 ### Operators
@@ -1745,7 +1923,7 @@ Access:      .   ::  []  *  &
 
 ```
 int     double    bool    *T      [T; N]
-uint    float     byte    str     void
+uint    float     byte    void
 ```
 
 ### Common Patterns
@@ -1766,12 +1944,27 @@ if (ptr == cast<*T>(0)) {
 }
 
 // Module usage
-@use "module" as m
+@use "std_module" as m
 let x: int = m::function();
 
-// String operations
-let s: *byte = string::from_int(42);
-defer free(s);
+// FFI — link a shared library (POSIX)
+@link("libsomething.so")
+pub const some_fn -> fn (x: int) int;
+
+// FFI — per-function library override
+#lib_import("libm.so")
+pub const sqrt -> fn (x: double) double;
+
+// FFI — Windows DLL
+#dll_import("user32.dll", callconv: "stdcall")
+pub const MessageBoxA -> fn (hwnd: int, text: *byte, caption: *byte, utype: int) int;
+
+// Platform-conditional code
+@os {
+    "linux"   -> { outputln("Linux"); }
+    "macos"   -> { outputln("macOS"); }
+    "windows" -> { outputln("Windows"); }
+}
 ```
 
 ---
@@ -1784,6 +1977,8 @@ Luma is a modern systems programming language that provides:
 - **Safety**: Static analysis and ownership tracking
 - **Performance**: Zero-cost abstractions and predictable behavior
 - **Control**: Manual memory management with safety nets
+- **Interoperability**: First-class FFI via `@link`, `#lib_import`, and `#dll_import`
+- **Portability**: `@os` blocks for clean cross-platform code
 
 The language is designed for programmers who want the performance and control of C with modern safety features and ergonomics.
 
