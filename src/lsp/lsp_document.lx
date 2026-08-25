@@ -13,14 +13,15 @@
 @use "std_memory"  as MEM
 @use "std_io"      as IO
 
-@use "ast"         as AST
-@use "ast_stmt"    as STMT
-@use "constants"   as CONST
-@use "parser_file" as PFILE
-@use "parser"      as PARS
-@use "tc"          as TC
-@use "tc_type"     as TYPE
-@use "error"       as ERO
+@use "ast"          as AST
+@use "ast_stmt"     as STMT
+@use "constants"    as CONST
+@use "parser_file"  as PFILE
+@use "parser"       as PARS
+@use "tc"           as TC
+@use "tc_type"      as TYPE
+@use "error"        as ERO
+@use "lexer_tokens" as TOK
 
 @use "json"          as J
 @use "lsp_transport" as T
@@ -133,6 +134,16 @@ let g_workspace_root: *byte = cast<*byte>(0); // owned; set via lsp_set_workspac
   "macos"     -> { const STD_DIR: *byte = "/usr/local/lib/luma/std"; }
   "windows64" -> { const STD_DIR: *byte = "C:\\Program Files\\luma\\std"; }
   _ -> { const STD_DIR: *byte = "/usr/local/lib/luma/std"; }
+}
+
+// Same platform string lsp_analyze feeds into build_config.os, which is
+// what the typechecker matches `@os {}` arms against (see resolve_os_body_
+// for_tokens's note on why semantic tokens needs this too).
+@os {
+  "linux"     -> { const CURRENT_OS: *byte = "linux";     }
+  "macos"     -> { const CURRENT_OS: *byte = "macos";     }
+  "windows64" -> { const CURRENT_OS: *byte = "windows64"; }
+  _ -> { const CURRENT_OS: *byte = "unknown"; }
 }
 
 const REGISTRY_LISTING_PATH: *byte = "/tmp/.luma-lsp-registry-listing.txt";
@@ -1145,6 +1156,146 @@ const make_completion_item -> fn (label: *byte, kind: int, detail: *byte) *J::Js
   return item;
 }
 
+// ── Snippets ─────────────────────────────────────────────────────────────────
+//
+// Tab-stop templates for the shapes of code that show up constantly in
+// real Luma (`${1:...}` placeholders, `$0` for where the cursor lands
+// last) — mirrors the old C LSP's completion snippet table, minus its
+// `fn<T>`/`struct<T>` generic-syntax entries, since this grammar doesn't
+// have generics (no TYPE_PARAMETER production anywhere in the parser).
+// Every snippet here is real, verified syntax — lifted from or checked
+// against actual working code in this repo (e.g. #dll_import's exact
+// shape from std/io.lx, @link's from parser/stmt.lx's link_stmt).
+
+const CK_SNIPPET: int = 15;
+
+const SnippetDef -> struct { label: *byte, snippet: *byte, detail: *byte, filter: *byte };
+
+// The block below adds patterns pulled from grepping this actual codebase
+// for what's repeated constantly, not just generic language shapes —
+// e.g. the AST-node-kind dispatch `if (x.kind == ...) { let n: *T =
+// cast<*T>(x); ... }` shows up ~190 times across src/, the null-guard
+// early-return ~95 times, `alloc(sizeof<T>)` node construction ~70 times.
+const SNIPPET_COUNT: int = 42;
+const SNIPPETS: [SnippetDef; 42] = [
+  SnippetDef { label: "const fn", snippet: "const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Function declaration", filter: "const fn" },
+  SnippetDef { label: "pub const fn", snippet: "pub const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Public function declaration", filter: "pub const fn" },
+  SnippetDef { label: "const struct", snippet: "const ${1:Name} -> struct {\n\t${2:field}: ${3:Type},$0\n};", detail: "Struct definition", filter: "const struct" },
+  SnippetDef { label: "pub const struct", snippet: "pub const ${1:Name} -> struct {\n\t${2:field}: ${3:Type},$0\n};", detail: "Public struct definition", filter: "pub const struct" },
+  SnippetDef { label: "const enum", snippet: "const ${1:Name} -> enum {\n\t${2:Variant},$0\n};", detail: "Enum definition", filter: "const enum" },
+  SnippetDef { label: "pub const enum", snippet: "pub const ${1:Name} -> enum {\n\t${2:Variant},$0\n};", detail: "Public enum definition", filter: "pub const enum" },
+  SnippetDef { label: "const var", snippet: "const ${1:name}: ${2:Type} = ${3:value};$0", detail: "Top-level constant", filter: "const" },
+  SnippetDef { label: "let", snippet: "let ${1:name}: ${2:Type} = ${3:value};$0", detail: "Variable declaration", filter: "let" },
+  SnippetDef { label: "if", snippet: "if (${1:condition}) {\n\t$0\n}", detail: "If statement", filter: "if" },
+  SnippetDef { label: "if else", snippet: "if (${1:condition}) {\n\t${2}\n} else {\n\t$0\n}", detail: "If-else statement", filter: "if else" },
+  SnippetDef { label: "elif", snippet: "elif (${1:condition}) {\n\t$0\n}", detail: "Elif clause", filter: "elif" },
+  SnippetDef { label: "switch", snippet: "switch (${1:value}) {\n\t${2:case} -> {\n\t\t$0\n\t}\n}", detail: "Switch statement", filter: "switch" },
+  SnippetDef { label: "switch default", snippet: "switch (${1:value}) {\n\t${2:case} -> {\n\t\t$3\n\t}\n\t_ -> {\n\t\t$0\n\t}\n}", detail: "Switch with default case", filter: "switch default" },
+  SnippetDef { label: "loop", snippet: "loop (1) {\n\t$0\n}", detail: "Infinite loop", filter: "loop" },
+  SnippetDef { label: "loop while", snippet: "loop (${1:condition}) {\n\t$0\n}", detail: "While-style loop", filter: "loop while" },
+  SnippetDef { label: "loop for", snippet: "loop [${1:i}: int = 0](${1:i} < ${2:10}) : (++${1:i}) {\n\t$0\n}", detail: "For-style loop", filter: "loop for" },
+  SnippetDef { label: "defer", snippet: "defer ${1:statement};$0", detail: "Defer statement", filter: "defer" },
+  SnippetDef { label: "defer block", snippet: "defer {\n\t${1:cleanup()};$0\n}", detail: "Defer block", filter: "defer block" },
+  SnippetDef { label: "return", snippet: "return ${1:value};$0", detail: "Return statement", filter: "return" },
+  SnippetDef { label: "main", snippet: "const main -> fn (argc: int, argv: **byte) int {\n\t$0\n\treturn 0;\n}", detail: "Main function", filter: "main" },
+  SnippetDef { label: "outputln", snippet: "outputln(${1:message});$0", detail: "Output with newline", filter: "outputln" },
+  SnippetDef { label: "output", snippet: "output(${1:message});$0", detail: "Output without newline", filter: "output" },
+  SnippetDef { label: "system", snippet: "system(\"${1:command}\");$0", detail: "Execute a system command", filter: "system" },
+  SnippetDef { label: "cast", snippet: "cast<${1:Type}>(${2:value})$0", detail: "Type cast", filter: "cast" },
+  SnippetDef { label: "sizeof", snippet: "sizeof<${1:Type}>$0", detail: "Size of type", filter: "sizeof" },
+  SnippetDef { label: "alloc defer", snippet: "let ${1:ptr}: ${2:*Type} = cast<${2:*Type}>(alloc(${3:size}));\ndefer free(${1:ptr});$0", detail: "Allocate with defer cleanup", filter: "alloc" },
+  SnippetDef { label: "@module", snippet: "@module \"${1:name}\"$0", detail: "Module declaration", filter: "@module" },
+  SnippetDef { label: "@use", snippet: "@use \"${1:module}\" as ${2:alias}$0", detail: "Import a module", filter: "@use" },
+  SnippetDef { label: "@os", snippet: "@os {\n\t\"${1:linux}\" -> { $0 }\n\t_ -> {  }\n}", detail: "Platform-conditional block", filter: "@os" },
+  SnippetDef { label: "@link", snippet: "@link(\"${1:lib.so}\")$0", detail: "Link a shared library", filter: "@link" },
+  SnippetDef { label: "struct method", snippet: "${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Method inside a struct body", filter: "method fn" },
+  SnippetDef { label: "#returns_ownership", snippet: "#returns_ownership\nconst ${1:name} -> fn (${2:params}) ${3:*Type} {\n\t$0\n}", detail: "Function that returns an owned pointer", filter: "#returns_ownership" },
+  SnippetDef { label: "#dll_import", snippet: "#dll_import(\"${1:kernel32.dll}\", callconv: \"${2:stdcall}\")\npub const ${3:name} -> fn (${4:params}) ${5:Type};$0", detail: "Per-function DLL import (Windows)", filter: "#dll_import" },
+  SnippetDef { label: "null guard", snippet: "if (${1:x} == cast<*${2:Type}>(0)) return ${3:cast<*${2:Type}>(0)};$0", detail: "Early-return on a null pointer (~95x across src/)", filter: "if null return guard" },
+  SnippetDef { label: "kind dispatch", snippet: "if (${1:node}.kind == ${2:AST::NodeType::KIND}) {\n\tlet ${3:n}: *${4:Type} = cast<*${4:Type}>(${1:node});\n\t$0\n}", detail: "AST node-kind check + cast (~190x across src/)", filter: "if kind cast dispatch" },
+  SnippetDef { label: "kind dispatch elif", snippet: "elif (${1:node}.kind == ${2:AST::NodeType::KIND}) {\n\tlet ${3:n}: *${4:Type} = cast<*${4:Type}>(${1:node});\n\t$0\n}", detail: "Additional arm for a node-kind dispatch chain", filter: "elif kind cast dispatch" },
+  SnippetDef { label: "alloc struct", snippet: "let ${1:node}: *${2:Type} = cast<*${2:Type}>(alloc(sizeof<${2:Type}>));$0", detail: "Heap-allocate one struct (~70x across src/)", filter: "alloc sizeof struct" },
+  SnippetDef { label: "vector iterate", snippet: "loop [${1:i}: int = 0](${1:i} < ${2:vec}.size) : (++${1:i}) {\n\tlet ${3:item}: *${4:Type} = cast<*${4:Type}>(${2:vec}.get(${1:i}));\n\t$0\n}", detail: "Walk a std_vector's elements by index", filter: "loop vector get cast iterate" },
+  SnippetDef { label: "push_back", snippet: "${1:vec}.push_back(cast<*void>(&${2:item}));$0", detail: "Append a value onto a std_vector (~60x across src/)", filter: "push_back vector" },
+  SnippetDef { label: "vector create defer", snippet: "let ${1:vec}: VEC::Vector = VEC::create_vector(sizeof<${2:Type}>);\ndefer VEC::free_vector(&${1:vec});$0", detail: "New vector with matching cleanup", filter: "vector create_vector defer free" },
+  SnippetDef { label: "doc comment", snippet: "/// $0", detail: "Item doc comment", filter: "/// doc comment" },
+  SnippetDef { label: "module doc header", snippet: "//! ${1:One-line summary.}\n//!\n//! $0", detail: "Module-level doc header (top of file)", filter: "//! module doc header" },
+];
+
+#returns_ownership
+const make_snippet_item -> fn (def: SnippetDef) *J::JsonValue {
+  let item: *J::JsonValue = J::json_object();
+  J::json_object_set(item, "label", J::json_string(def.label));
+  J::json_object_set(item, "kind", J::json_int(CK_SNIPPET));
+  J::json_object_set(item, "insertText", J::json_string(def.snippet));
+  J::json_object_set(item, "insertTextFormat", J::json_int(2)); // Snippet
+  J::json_object_set(item, "detail", J::json_string(def.detail));
+  J::json_object_set(item, "filterText", J::json_string(def.filter));
+  // Real symbols/keywords should outrank template snippets in the list.
+  J::json_object_set(item, "sortText", J::json_string("zzz_snippet"));
+  return item;
+}
+
+// ── `alias::name` import completions ────────────────────────────────────────
+//
+// collect_module_completions (below) already lists a resolved dependency's
+// *public* symbols under their own bare name — good the moment a symbol
+// name itself is being typed. This adds the same symbols again, labeled
+// and inserted as `alias::name`, for the (very common, given this
+// codebase's own style) case of having just typed the module alias and
+// wanting to see what hangs off it.
+
+#returns_ownership
+const make_prefixed_completion_item -> fn (alias: *byte, name: *byte, kind: int) *J::JsonValue {
+  let b: StrBuf = sb_init();
+  sb_str(&b, alias);
+  sb_str(&b, "::");
+  sb_str(&b, name);
+  let label: *byte = sb_finish(&b);
+
+  let item: *J::JsonValue = J::json_object();
+  J::json_object_set(item, "label", J::json_string(label));
+  J::json_object_set(item, "kind", J::json_int(kind));
+  J::json_object_set(item, "insertText", J::json_string(label));
+  J::json_object_set(item, "filterText", J::json_string(label));
+  free(label);
+  return item;
+}
+
+const collect_prefixed_import_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNode, prog: *AST::ProgramNode) void {
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    if (bn.kind != AST::NodeType::PREPROCESSOR_USE) continue;
+
+    let u: *AST::UseNode = cast<*AST::UseNode>(bn);
+    let target: *AST::ModuleNode = resolve_use_alias(mod, prog, u.alias);
+    if (target == cast<*AST::ModuleNode>(0)) continue;
+
+    let tn: int = target.body_count;
+    loop [j: int = 0](j < tn) : (++j) {
+      let tbn: *AST::AstNode = target.body[j];
+      if (tbn.kind == AST::NodeType::STMT_FUNCTION) {
+        let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(tbn);
+        if (fd.is_public == 1) J::json_array_push(arr, make_prefixed_completion_item(u.alias, fd.name, CK_FUNCTION));
+      } elif (tbn.kind == AST::NodeType::STMT_STRUCT) {
+        let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(tbn);
+        if (sd.is_public == 1) J::json_array_push(arr, make_prefixed_completion_item(u.alias, sd.name, CK_STRUCT));
+      } elif (tbn.kind == AST::NodeType::STMT_ENUM) {
+        let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(tbn);
+        if (ed.is_public == 1) J::json_array_push(arr, make_prefixed_completion_item(u.alias, ed.name, CK_ENUM));
+      } elif (tbn.kind == AST::NodeType::STMT_VAR_DECL || tbn.kind == AST::NodeType::STMT_CONST_DECL) {
+        let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(tbn);
+        if (vd.is_public == 1) {
+          let kind: int = CK_CONSTANT;
+          if (vd.is_mutable == 1) { kind = CK_VARIABLE; }
+          J::json_array_push(arr, make_prefixed_completion_item(u.alias, vd.name, kind));
+        }
+      }
+    }
+  }
+}
+
 const collect_module_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNode, public_only: bool) void {
   if (mod == cast<*AST::ModuleNode>(0)) return;
 
@@ -1238,6 +1389,10 @@ pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::Json
     J::json_array_push(arr, make_completion_item(KEYWORDS[i], CK_KEYWORD, cast<*byte>(0)));
   }
 
+  loop [i: int = 0](i < SNIPPET_COUNT) : (++i) {
+    J::json_array_push(arr, make_snippet_item(SNIPPETS[i]));
+  }
+
   let doc: *LSPDocument = lsp_document_find(uri);
   if (doc == cast<*LSPDocument>(0) || doc.ast == cast<*AST::AstNode>(0)) return arr;
 
@@ -1250,6 +1405,8 @@ pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::Json
   loop [i: int = 1](i < prog.module_count) : (++i) {
     collect_module_completions(arr, cast<*AST::ModuleNode>(prog.modules[i]), true);
   }
+
+  collect_prefixed_import_completions(arr, own_mod, prog);
 
   let fd: *AST::FuncDeclNode = find_enclosing_function(own_mod, line + 1);
   if (fd != cast<*AST::FuncDeclNode>(0)) {
@@ -1266,25 +1423,64 @@ pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::Json
 // Semantic Tokens (highlighting)
 // ============================================================================
 //
-// Declaration-site nodes only carry an approximate position (see Hover's
-// header comment), but *expression*-level identifier references carry
-// their own real (line, col) from the token they were parsed from — so
-// unlike hover/definition, this can be pixel-accurate. Scope: every
-// EXPR_IDENTIFIER reachable from a function body or a module-level
-// var/const initializer gets classified (parameter / local / function /
-// struct / enum, matching whichever resolves first — same precedence as
-// hover) and turned into a token. Struct fields and enum members accessed
-// via `.field`/`Enum::Member` aren't covered: MemberNode only stores the
-// member name as a plain string, with no position of its own to anchor a
-// token on.
+// Two passes, merged — same shape as the old C LSP's lsp_semantic_tokens.c:
+//
+//   1. AST pass (walk_module_decl_for_tokens / walk_stmt_for_tokens /
+//      walk_expr_for_tokens / emit_member_token below): precise,
+//      scope-aware classification for the identifiers the AST walk
+//      actually reaches — parameter / local / self / function / struct /
+//      enum / namespace-qualified member / struct field or method access.
+//   2. Raw lexical pass (classify_raw_token, in lsp_semantic_tokens
+//      itself): walks the module's actual token stream (mod.tokens —
+//      already retained from parsing, see ModuleNode) and classifies
+//      *everything* by lexical shape alone — keywords, types, strings,
+//      numbers, operators, booleans, and identifiers the AST pass didn't
+//      already resolve (declaration sites, struct field names, anything
+//      the AST walk doesn't reach). This is what gives every token *some*
+//      color instead of only the subset the AST walk happens to visit.
+//
+// The merge (see lsp_semantic_tokens) walks both in position order and
+// prefers the AST pass's answer wherever it has one for that exact
+// (line, col); the raw pass only fills gaps.
 
-const TT_FUNCTION:  int = 0;
-const TT_VARIABLE:  int = 1;
-const TT_PARAMETER: int = 2;
-const TT_STRUCT:    int = 3;
-const TT_ENUM:      int = 4;
+const TT_NAMESPACE:      int = 0;
+const TT_TYPE:            int = 1;
+const TT_TYPE_PARAMETER:  int = 2;
+const TT_FUNCTION:        int = 3;
+const TT_METHOD:          int = 4;
+const TT_PROPERTY:        int = 5;
+const TT_VARIABLE:        int = 6;
+const TT_PARAMETER:       int = 7;
+const TT_KEYWORD:         int = 8;
+const TT_MODIFIER:        int = 9;
+const TT_COMMENT:         int = 10;
+const TT_STRING:          int = 11;
+const TT_NUMBER:          int = 12;
+const TT_OPERATOR:        int = 13;
+const TT_STRUCT:          int = 14;
+const TT_ENUM:            int = 15;
+const TT_ENUM_MEMBER:     int = 16;
 
-const MOD_READONLY: int = 1;
+const MOD_DECLARATION: int = 1;
+const MOD_DEFINITION:  int = 2;
+const MOD_READONLY:    int = 4;
+const MOD_STATIC:      int = 8;
+const MOD_DEFAULT_LIB: int = 16;
+
+// The live text buffer being walked for the current lsp_semantic_tokens
+// call — needed by find_member_position below to recover a `::`/`.`
+// member name's own position (MemberNode doesn't carry one; see its note).
+// Set once at the top of lsp_semantic_tokens; safe as a global since
+// requests are handled one at a time.
+let g_sem_text: *byte = cast<*byte>(0);
+
+// True while walk_field_for_tokens is walking a struct *method*'s body.
+// `self` inside a method is never a declared AST parameter — it's added
+// straight into the typecheck-time scope (see stmt.lx's typecheck_impl,
+// `scope_add_symbol(mscope, "self", ...)`), so it's otherwise invisible to
+// this file's param/local lookups and would get no token at all despite
+// being one of the most common identifiers in method bodies.
+let g_sem_in_method: bool = false;
 
 const SemToken -> struct {
   line:     int,
@@ -1337,6 +1533,205 @@ const lookup_public_kind -> fn (mod: *AST::ModuleNode, name: *byte) int {
   return -1;
 }
 
+// Converts a declaration-style position (1-indexed line, 0-indexed col —
+// the convention every *AstNode here uses) into a byte offset into `text`.
+const line_col_to_offset -> fn (text: *byte, one_indexed_line: int, col: int) int {
+  let len: int = STR::strlen(text);
+  let cur_line: int = 1;
+  let i: int = 0;
+  loop (i < len && cur_line < one_indexed_line) {
+    if (text[i] == '\n') { cur_line = cur_line + 1; }
+    i = i + 1;
+  }
+  let offset: int = i + col;
+  if (offset > len) { offset = len; }
+  return offset;
+}
+
+const MemberPos -> struct {
+  found: bool,
+  line:  int,
+  col:   int,
+};
+
+// A MemberNode's own (line, col) is where the `.`/`::` operator token sits,
+// not the member name that follows it — there's no field for that (see
+// MemberNode's definition). Recover it by scanning forward in the live
+// text buffer past the operator and any whitespace, then confirming what's
+// there actually reads as `member` — if the buffer has since drifted from
+// what was parsed (edit mid-keystroke), this bails out rather than guessing.
+const find_member_position -> fn (text: *byte, dot_line: int, dot_col: int, is_compiletime: int, member: *byte) MemberPos {
+  let miss: MemberPos = MemberPos { found: false, line: 0, col: 0 };
+  let len: int = STR::strlen(text);
+
+  let op_len: int = 1;
+  if (is_compiletime == 1) { op_len = 2; }
+
+  let off: int = line_col_to_offset(text, dot_line, dot_col) + op_len;
+  let line: int = dot_line;
+  let col: int = dot_col + op_len;
+
+  loop (off < len && (text[off] == ' ' || text[off] == '\t' || text[off] == '\r' || text[off] == '\n')) {
+    if (text[off] == '\n') { line = line + 1; col = 0; } else { col = col + 1; }
+    off = off + 1;
+  }
+
+  let mlen: int = STR::strlen(member);
+  if (off + mlen > len) return miss;
+  loop [k: int = 0](k < mlen) : (++k) {
+    if (text[off + k] != member[k]) return miss;
+  }
+
+  return MemberPos { found: true, line: line, col: col };
+}
+
+// Resolves a `@use "..." as ALIAS` alias declared in `mod` back to the
+// matching ModuleNode already resolved into `prog`, or null if `alias`
+// isn't actually an import alias (e.g. it's an enum/struct name instead —
+// `NodeType::PROGRAM` within the module that declares NodeType itself).
+const resolve_use_alias -> fn (mod: *AST::ModuleNode, prog: *AST::ProgramNode, alias: *byte) *AST::ModuleNode {
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
+      let u: *AST::UseNode = cast<*AST::UseNode>(bn);
+      if (STR::strcmp(u.alias, alias) == 0) {
+        loop [d: int = 0](d < prog.module_count) : (++d) {
+          let dm: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[d]);
+          if (STR::strcmp(dm.name, u.module_name) == 0) return dm;
+        }
+        return cast<*AST::ModuleNode>(0);
+      }
+    }
+  }
+  return cast<*AST::ModuleNode>(0);
+}
+
+// Unwraps pointer/array wrappers to find the underlying named type — e.g.
+// both `*Counter` and `[Counter; 4]` resolve to "Counter". Null for
+// anything that doesn't bottom out at a named (TYPE_BASIC) type.
+const resolve_type_name -> fn (t: *AST::AstNode) *byte {
+  if (t == cast<*AST::AstNode>(0)) return cast<*byte>(0);
+  if (t.kind == AST::NodeType::TYPE_POINTER) {
+    let n: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
+    return resolve_type_name(n.pointee_type);
+  }
+  if (t.kind == AST::NodeType::TYPE_ARRAY) {
+    let n: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(t);
+    return resolve_type_name(n.element_type);
+  }
+  if (t.kind == AST::NodeType::TYPE_BASIC) {
+    let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(t);
+    return n.name;
+  }
+  return cast<*byte>(0);
+}
+
+// Finds a struct declaration named `name` — first among `mod`'s own
+// top-level declarations (any visibility, since it's the doc's own file),
+// then among each resolved dependency module's *public* declarations.
+// Same precedence hover/go-to-definition use elsewhere in this file.
+const find_struct_decl -> fn (mod: *AST::ModuleNode, prog: *AST::ProgramNode, name: *byte) *AST::StructDeclNode {
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    if (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      if (STR::strcmp(sd.name, name) == 0) return sd;
+    }
+  }
+  loop [d: int = 1](d < prog.module_count) : (++d) {
+    let dm: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[d]);
+    let dn: int = dm.body_count;
+    loop [i: int = 0](i < dn) : (++i) {
+      let bn: *AST::AstNode = dm.body[i];
+      if (bn.kind == AST::NodeType::STMT_STRUCT) {
+        let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+        if (sd.is_public == 1 && STR::strcmp(sd.name, name) == 0) return sd;
+      }
+    }
+  }
+  return cast<*AST::StructDeclNode>(0);
+}
+
+// Looks a member name up among a struct's fields (data or method — see
+// walk_field_for_tokens's note on how methods are represented). Checks
+// public members before private; there's no encapsulation enforcement
+// here, just a search order.
+const find_field_in_struct -> fn (sd: *AST::StructDeclNode, name: *byte) *AST::FieldDeclNode {
+  loop [i: int = 0](i < sd.public_count) : (++i) {
+    let f: *AST::AstNode = sd.public_members[i];
+    if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
+      let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+      if (STR::strcmp(fld.name, name) == 0) return fld;
+    }
+  }
+  loop [i: int = 0](i < sd.private_count) : (++i) {
+    let f: *AST::AstNode = sd.private_members[i];
+    if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
+      let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+      if (STR::strcmp(fld.name, name) == 0) return fld;
+    }
+  }
+  return cast<*AST::FieldDeclNode>(0);
+}
+
+// Classifies and tokenizes the *member* half of a `object::member` or
+// `object.member` access — the half nothing previously tokenized at all
+// (MemberNode has no position of its own for it; see find_member_position).
+// Two mutually exclusive ways to classify `member`, matching tc_member's
+// own split in typechecker/expr.lx (see the note on `n.is_compiletime`
+// below — this isn't just a style choice, it's load-bearing):
+//   1. is_compiletime (`::`) — `object` is a bare identifier resolving to
+//      an `@use` alias: a module-qualified call/type like `STR::strlen`,
+//      `AST::NodeType`.
+//   2. Otherwise (`.`) — `object`'s own typechecked static type (chains
+//      work too — `a.b.c` resolves `a.b`'s type same as any other
+//      expression) names a known struct, and `member` is one of its
+//      fields/methods.
+// These can't be tried as a fallback chain: tc_member only ever calls
+// typecheck_expression(n.object, ...) — which is what populates
+// AstNode.resolved_type — on the `.` (runtime) path. For `::`, `object`
+// is inspected directly by kind and never independently typechecked, so
+// its resolved_type is left as whatever garbage was already sitting in
+// that allocation — not null, garbage — and dereferencing it segfaults.
+// Concretely: `AST::NodeType::PROGRAM` has an inner MemberNode
+// (`AST::NodeType`) whose resolved_type was never touched. Plain
+// enum-member/struct-static access (`object` resolves to a type name, not
+// a module or a value) still isn't covered either way — no token type for
+// that in the legend, and no scope info to disambiguate it cheaply.
+const emit_member_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, prog: *AST::ProgramNode, member_node: *AST::AstNode, n: *AST::MemberNode) void {
+  if (n.object == cast<*AST::AstNode>(0) || g_sem_text == cast<*byte>(0)) return;
+
+  let kind: int = -1;
+
+  if (n.is_compiletime == 1) {
+    if (n.object.kind == AST::NodeType::EXPR_IDENTIFIER) {
+      let alias_id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(n.object);
+      let target: *AST::ModuleNode = resolve_use_alias(mod, prog, alias_id.name);
+      if (target != cast<*AST::ModuleNode>(0)) { kind = lookup_public_kind(target, n.member); }
+    }
+  } else {
+    let type_name: *byte = resolve_type_name(n.object.resolved_type);
+    if (type_name != cast<*byte>(0)) {
+      let sd: *AST::StructDeclNode = find_struct_decl(mod, prog, type_name);
+      if (sd != cast<*AST::StructDeclNode>(0)) {
+        let fld: *AST::FieldDeclNode = find_field_in_struct(sd, n.member);
+        if (fld != cast<*AST::FieldDeclNode>(0)) {
+          if (fld.function != cast<*AST::AstNode>(0)) { kind = TT_FUNCTION; } else { kind = TT_PROPERTY; }
+        }
+      }
+    }
+  }
+
+  if (kind < 0) return;
+
+  let pos: MemberPos = find_member_position(g_sem_text, member_node.line, member_node.col, n.is_compiletime, n.member);
+  if (pos.found == false) return;
+
+  push_token(tokens, pos.line, pos.col, STR::strlen(n.member), kind, 0);
+}
+
 const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, id: *AST::IdentifierNode, prog: *AST::ProgramNode) void {
   let node: *AST::AstNode = cast<*AST::AstNode>(id);
   let name: *byte = id.name;
@@ -1347,6 +1742,13 @@ const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *
         push_token(tokens, node.line, node.col, STR::strlen(name), TT_PARAMETER, 0);
         return;
       }
+    }
+    // `self` is an implicit receiver (see g_sem_in_method's note) — there's
+    // no declaration node to match against, so it needs its own check
+    // ahead of the local-decl search below (which would never find it).
+    if (g_sem_in_method && STR::strcmp(name, "self") == 0) {
+      push_token(tokens, node.line, node.col, STR::strlen(name), TT_VARIABLE, MOD_READONLY);
+      return;
     }
     let decl: *AST::AstNode = search_stmt_for_local_decl(fd.body, name);
     if (decl != cast<*AST::AstNode>(0)) {
@@ -1388,6 +1790,58 @@ const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *
       return;
     }
   }
+}
+
+// Type annotations (`let p: Point`, a parameter's `: T`, a field's `: T`,
+// a return type, `cast<T>`, `sizeof<T>`) are a completely separate node
+// family (TYPE_BASIC/TYPE_POINTER/...) from expressions, so walking
+// expressions alone never reaches them. Unlike declaration names, a
+// TYPE_BASIC leaf *does* carry the real position of the type name token
+// itself (make_basic_type is always given the actual token's line/col),
+// so this is pixel-accurate, same as expression identifiers.
+const walk_type_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, prog: *AST::ProgramNode, t: *AST::AstNode) void {
+  if (t == cast<*AST::AstNode>(0)) return;
+
+  if (t.kind == AST::NodeType::TYPE_POINTER) {
+    let n: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
+    walk_type_for_tokens(tokens, mod, prog, n.pointee_type);
+    return;
+  }
+  if (t.kind == AST::NodeType::TYPE_ARRAY) {
+    let n: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(t);
+    walk_type_for_tokens(tokens, mod, prog, n.element_type);
+    return;
+  }
+  if (t.kind == AST::NodeType::TYPE_FUNCTION) {
+    let n: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
+    loop [i: int = 0](i < n.param_count) : (++i) { walk_type_for_tokens(tokens, mod, prog, n.param_types[i]); }
+    walk_type_for_tokens(tokens, mod, prog, n.return_type);
+    return;
+  }
+  if (t.kind == AST::NodeType::TYPE_BASIC) {
+    let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(t);
+
+    let mn: int = mod.body_count;
+    loop [i: int = 0](i < mn) : (++i) {
+      let bn: *AST::AstNode = mod.body[i];
+      if (bn.kind == AST::NodeType::STMT_STRUCT) {
+        let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+        if (STR::strcmp(sd.name, n.name) == 0) { push_token(tokens, t.line, t.col, STR::strlen(n.name), TT_STRUCT, 0); return; }
+      } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+        let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+        if (STR::strcmp(ed.name, n.name) == 0) { push_token(tokens, t.line, t.col, STR::strlen(n.name), TT_ENUM, 0); return; }
+      }
+    }
+
+    loop [d: int = 1](d < prog.module_count) : (++d) {
+      let kind: int = lookup_public_kind(cast<*AST::ModuleNode>(prog.modules[d]), n.name);
+      if (kind == TT_STRUCT || kind == TT_ENUM) { push_token(tokens, t.line, t.col, STR::strlen(n.name), kind, 0); return; }
+    }
+    return;
+  }
+  // TYPE_RESOLUTION doesn't appear here: by the time typecheck has run,
+  // doc.ast's types are already normalized to bare TYPE_BASIC (see
+  // tc_type.lx's resolve_type_ref) — nothing further to resolve.
 }
 
 const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, prog: *AST::ProgramNode, expr: *AST::AstNode) void {
@@ -1432,6 +1886,7 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   if (expr.kind == AST::NodeType::EXPR_MEMBER) {
     let n: *AST::MemberNode = cast<*AST::MemberNode>(expr);
     walk_expr_for_tokens(tokens, mod, fd, prog, n.object);
+    emit_member_token(tokens, mod, prog, expr, n);
     return;
   }
   if (expr.kind == AST::NodeType::EXPR_INDEX) {
@@ -1447,6 +1902,7 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   }
   if (expr.kind == AST::NodeType::EXPR_CAST || expr.kind == AST::NodeType::EXPR_INPUT) {
     let n: *AST::CastNode = cast<*AST::CastNode>(expr);
+    walk_type_for_tokens(tokens, mod, prog, n.type_node);
     walk_expr_for_tokens(tokens, mod, fd, prog, n.castee);
     return;
   }
@@ -1469,7 +1925,11 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   }
   if (expr.kind == AST::NodeType::EXPR_SIZEOF) {
     let n: *AST::SizeofNode = cast<*AST::SizeofNode>(expr);
-    walk_expr_for_tokens(tokens, mod, fd, prog, n.object);
+    if (n.is_type == 1) {
+      walk_type_for_tokens(tokens, mod, prog, n.object);
+    } else {
+      walk_expr_for_tokens(tokens, mod, fd, prog, n.object);
+    }
     return;
   }
   if (expr.kind == AST::NodeType::EXPR_STRUCT) {
@@ -1478,6 +1938,49 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
     return;
   }
   // EXPR_LITERAL, EXPR_SYSCALL: leaves, nothing further to classify.
+}
+
+// A struct field is either plain data (just a type to walk) or a method —
+// `name -> fn (...) T { ... }` declared inline in the struct body, stored
+// as the same FieldDeclNode with `function` set (see format_struct_signature's
+// note). Methods have their own params/return type/body just like a
+// top-level function, so they need the same treatment lsp_semantic_tokens
+// already gives STMT_FUNCTION — otherwise every local/parameter reference
+// inside a method silently gets no token at all.
+const walk_field_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, prog: *AST::ProgramNode, fld: *AST::AstNode) void {
+  if (fld == cast<*AST::AstNode>(0) || fld.kind != AST::NodeType::STMT_FIELD_DECL) return;
+  let f: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(fld);
+
+  if (f.function != cast<*AST::AstNode>(0)) {
+    let mfd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(f.function);
+    loop [p: int = 0](p < mfd.param_count) : (++p) {
+      walk_type_for_tokens(tokens, mod, prog, mfd.param_types[p]);
+    }
+    walk_type_for_tokens(tokens, mod, prog, mfd.return_type);
+    g_sem_in_method = true;
+    walk_stmt_for_tokens(tokens, mod, mfd, prog, mfd.body);
+    g_sem_in_method = false;
+    return;
+  }
+
+  walk_type_for_tokens(tokens, mod, prog, f.type_node);
+}
+
+// Mirrors typecheck's own arm selection for `@os {}` (resolve_os_body in
+// typechecker/stmt.lx) exactly — matching platform arm, else the `_ ->`
+// default, else nothing. This has to match, not just "walk every arm":
+// only the arm typecheck actually picked for CURRENT_OS had
+// typecheck_expression run over it, which is what populates
+// AstNode.resolved_type. Any other arm's nodes carry whatever garbage was
+// already in that allocation — not null, garbage — and emit_member_token's
+// type-based lookup segfaults the moment it dereferences one. Walking only
+// the selected arm keeps everything this file ever inspects trustworthy.
+const resolve_os_body_for_tokens -> fn (n: *AST::OsNode) *AST::AstNode {
+  loop [i: int = 0](n.platforms[i] != cast<*byte>(0)) : (++i) {
+    if (STR::strcmp(n.platforms[i], CURRENT_OS) == 0) return n.bodies[i];
+  }
+  if (n.has_default == 1) return n.default_body;
+  return cast<*AST::AstNode>(0);
 }
 
 const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, prog: *AST::ProgramNode, stmt: *AST::AstNode) void {
@@ -1489,6 +1992,7 @@ const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
     // wrong span (e.g. "let re" instead of "result"). Usages still get
     // pixel-accurate tokens via their own EXPR_IDENTIFIER position.
     let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(stmt);
+    walk_type_for_tokens(tokens, mod, prog, vd.var_type);
     walk_expr_for_tokens(tokens, mod, fd, prog, vd.initializer);
     return;
   }
@@ -1542,6 +2046,262 @@ const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
     walk_stmt_for_tokens(tokens, mod, fd, prog, n.statement);
     return;
   }
+  if (stmt.kind == AST::NodeType::STMT_PRINT) {
+    // `output`/`outputln` — easy to miss since it's not a plain
+    // STMT_EXPRESSION wrapping a call, it's its own statement kind.
+    let n: *AST::PrintStmtNode = cast<*AST::PrintStmtNode>(stmt);
+    loop [i: int = 0](i < n.expr_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.expressions[i]); }
+    return;
+  }
+  if (stmt.kind == AST::NodeType::PREPROCESSOR_OS) {
+    // `@os {}` is also legal *inside* a function body (std/io.lx's syscall
+    // wrappers) — here the selected arm's block holds ordinary statements,
+    // unlike the module-scope case (see walk_module_decl_for_tokens), so
+    // this just recurses through the normal statement walker. Only the
+    // arm typecheck actually picked, though — see resolve_os_body_for_
+    // tokens's note.
+    let n: *AST::OsNode = cast<*AST::OsNode>(stmt);
+    walk_stmt_for_tokens(tokens, mod, fd, prog, resolve_os_body_for_tokens(n));
+    return;
+  }
+}
+
+// Handles one top-level-shaped declaration for lsp_semantic_tokens — pulled
+// out of the main loop below so PREPROCESSOR_OS can recurse into it. `@os {
+// "linux" -> { ... } }` is legal directly at module scope (see e.g. this
+// file's own STD_DIR just above), and every arm's body is a parsed
+// STMT_BLOCK holding ordinary top-level declarations, not statements — so
+// it needs this module-decl dispatch, not walk_stmt_for_tokens (which is
+// for *inside* a function body, where `@os {}` is also legal but holds
+// regular statements instead; see its own PREPROCESSOR_OS case).
+const walk_module_decl_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, prog: *AST::ProgramNode, bn: *AST::AstNode) void {
+  if (bn == cast<*AST::AstNode>(0)) return;
+
+  if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+    let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+    loop [p: int = 0](p < fd.param_count) : (++p) {
+      walk_type_for_tokens(tokens, mod, prog, fd.param_types[p]);
+    }
+    walk_type_for_tokens(tokens, mod, prog, fd.return_type);
+    walk_stmt_for_tokens(tokens, mod, fd, prog, fd.body);
+  } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+    let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+    loop [f: int = 0](f < sd.public_count) : (++f) {
+      walk_field_for_tokens(tokens, mod, prog, sd.public_members[f]);
+    }
+    loop [f: int = 0](f < sd.private_count) : (++f) {
+      walk_field_for_tokens(tokens, mod, prog, sd.private_members[f]);
+    }
+  } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
+    let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
+    walk_type_for_tokens(tokens, mod, prog, vd.var_type);
+    walk_expr_for_tokens(tokens, mod, cast<*AST::FuncDeclNode>(0), prog, vd.initializer);
+  } elif (bn.kind == AST::NodeType::PREPROCESSOR_OS) {
+    // Only the arm typecheck actually selected for CURRENT_OS — see
+    // resolve_os_body_for_tokens's note — and recurse its statements back
+    // through this same dispatch, since at module scope they're
+    // declarations, not statements.
+    let n: *AST::OsNode = cast<*AST::OsNode>(bn);
+    let body: *AST::AstNode = resolve_os_body_for_tokens(n);
+    if (body != cast<*AST::AstNode>(0) && body.kind == AST::NodeType::STMT_BLOCK) {
+      let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
+      loop [j: int = 0](j < blk.stmt_count) : (++j) {
+        walk_module_decl_for_tokens(tokens, mod, prog, blk.statements[j]);
+      }
+    }
+  }
+}
+
+// ── Raw lexical pass ─────────────────────────────────────────────────────────
+//
+// See the "Semantic Tokens" header above: this classifies a token purely by
+// its lexer kind (plus a little surrounding context for identifiers), no
+// AST needed — the fallback layer that gives every token *some* color.
+
+const TokenClass -> struct { type_idx: int, mods: int };
+
+// Token.val points into the source buffer and isn't null-terminated (its
+// length is the separate `len` field) — a *byte string constant is, so an
+// equality check needs both the length and the bytes to match.
+const token_text_equals -> fn (tok: TOK::Token, s: *byte) bool {
+  if (STR::strlen(s) != tok.len) return false;
+  return STR::strncmp(tok.val, s, tok.len) == 0;
+}
+
+const is_use_alias -> fn (mod: *AST::ModuleNode, tok: TOK::Token) bool {
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+    if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
+      let u: *AST::UseNode = cast<*AST::UseNode>(bn);
+      if (token_text_equals(tok, u.alias)) return true;
+    }
+  }
+  return false;
+}
+
+// Classifies a TOK_IDENTIFIER the AST pass didn't already resolve. Tried in
+// order: `@use` alias (namespace) — ` -> fn/struct/enum` immediately after
+// it (Luma's decl arrow puts the name *before* the keyword, unlike most
+// languages: `name -> fn (...)`/`name -> struct {...}` — this has to come
+// before the plain `let`/`const` check below, since `pub const Name ->
+// struct` would otherwise match that first and misclassify every
+// top-level fn/struct/enum name as a plain readonly variable) — `let`/
+// `const` immediately before it (a declaration site: locals never get an
+// AST token for their own name, see walk_stmt_for_tokens's note, and
+// neither do top-level decl names) — then the same blunt heuristic the
+// old C LSP used as its final fallback: capitalized → type, followed by
+// `(` → function, followed by `::` → namespace, else → variable.
+const classify_raw_identifier -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count: int, idx: int) TokenClass {
+  let tok: TOK::Token = toks[idx];
+
+  if (is_use_alias(mod, tok)) return TokenClass { type_idx: TT_NAMESPACE, mods: 0 };
+
+  if (idx + 2 < count && toks[idx + 1].kind == TOK::LumaTokenType::TOK_RIGHT_ARROW) {
+    let after: TOK::Token = toks[idx + 2];
+    if (after.kind == TOK::LumaTokenType::TOK_FN) {
+      return TokenClass { type_idx: TT_FUNCTION, mods: MOD_DECLARATION };
+    }
+    if (after.kind == TOK::LumaTokenType::TOK_STRUCT) {
+      return TokenClass { type_idx: TT_STRUCT, mods: MOD_DECLARATION + MOD_DEFINITION };
+    }
+    if (after.kind == TOK::LumaTokenType::TOK_ENUM) {
+      return TokenClass { type_idx: TT_ENUM, mods: MOD_DECLARATION + MOD_DEFINITION };
+    }
+  }
+
+  if (idx > 0) {
+    let prev: TOK::Token = toks[idx - 1];
+    if (prev.kind == TOK::LumaTokenType::TOK_VAR) {
+      return TokenClass { type_idx: TT_VARIABLE, mods: MOD_DECLARATION };
+    }
+    if (prev.kind == TOK::LumaTokenType::TOK_CONST) {
+      let m: int = MOD_DECLARATION;
+      return TokenClass { type_idx: TT_VARIABLE, mods: m + MOD_READONLY };
+    }
+  }
+
+  if (tok.val[0] >= 'A' && tok.val[0] <= 'Z') return TokenClass { type_idx: TT_TYPE, mods: 0 };
+
+  if (idx + 1 < count) {
+    let nxt: TOK::Token = toks[idx + 1];
+    if (nxt.kind == TOK::LumaTokenType::TOK_LPAREN) return TokenClass { type_idx: TT_FUNCTION, mods: 0 };
+    if (nxt.kind == TOK::LumaTokenType::TOK_RESOLVE) return TokenClass { type_idx: TT_NAMESPACE, mods: 0 };
+  }
+
+  return TokenClass { type_idx: TT_VARIABLE, mods: 0 };
+}
+
+// Mirrors the old C LSP's classify_token switch, adapted to this lexer's
+// actual token kinds (see lexer_tokens.lx) — including that its lexer
+// strips comments/whitespace before they ever become tokens (see
+// lexer.lx's skip_whitespace/next_token), so TOK_COMMENT et al. are dead
+// cases here, kept only so the legend and this switch stay obviously
+// paired. `output`/`outputln` have no dedicated token kind in this lexer
+// (they're plain TOK_IDENTIFIER, recognized by name only where they're
+// actually called — see typechecker/expr.lx's tc_call) — the identifier
+// fallback's "followed by `(`" rule classifies them as functions anyway.
+const classify_raw_token -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count: int, idx: int) TokenClass {
+  let none: TokenClass = TokenClass { type_idx: -1, mods: 0 };
+  let tok: TOK::Token = toks[idx];
+  let k: int = tok.kind;
+
+  if (k == TOK::LumaTokenType::TOK_EOF || k == TOK::LumaTokenType::TOK_ERROR ||
+      k == TOK::LumaTokenType::TOK_WHITESPACE || k == TOK::LumaTokenType::TOK_LPAREN ||
+      k == TOK::LumaTokenType::TOK_RPAREN || k == TOK::LumaTokenType::TOK_LBRACE ||
+      k == TOK::LumaTokenType::TOK_RBRACE || k == TOK::LumaTokenType::TOK_LBRACKET ||
+      k == TOK::LumaTokenType::TOK_RBRACKET || k == TOK::LumaTokenType::TOK_SEMI ||
+      k == TOK::LumaTokenType::TOK_COMMA || k == TOK::LumaTokenType::TOK_AT ||
+      k == TOK::LumaTokenType::TOK_COLON || k == TOK::LumaTokenType::TOK_QUESTION ||
+      k == TOK::LumaTokenType::TOK_BANG || k == TOK::LumaTokenType::TOK_SYMBOL) {
+    return none;
+  }
+
+  if (k == TOK::LumaTokenType::TOK_COMMENT || k == TOK::LumaTokenType::TOK_DOC_COMMENT ||
+      k == TOK::LumaTokenType::TOK_MODULE_DOC || k == TOK::LumaTokenType::TOK_DOCUMENT) {
+    return TokenClass { type_idx: TT_COMMENT, mods: 0 };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_STRING || k == TOK::LumaTokenType::TOK_CHAR_LITERAL) {
+    return TokenClass { type_idx: TT_STRING, mods: 0 };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_NUMBER || k == TOK::LumaTokenType::TOK_NUM_FLOAT) {
+    return TokenClass { type_idx: TT_NUMBER, mods: 0 };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_INT || k == TOK::LumaTokenType::TOK_DOUBLE ||
+      k == TOK::LumaTokenType::TOK_UINT || k == TOK::LumaTokenType::TOK_FLOAT ||
+      k == TOK::LumaTokenType::TOK_BOOL || k == TOK::LumaTokenType::TOK_VOID ||
+      k == TOK::LumaTokenType::TOK_CHAR) {
+    return TokenClass { type_idx: TT_TYPE, mods: MOD_DEFAULT_LIB };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_IF || k == TOK::LumaTokenType::TOK_ELIF ||
+      k == TOK::LumaTokenType::TOK_ELSE || k == TOK::LumaTokenType::TOK_LOOP ||
+      k == TOK::LumaTokenType::TOK_RETURN || k == TOK::LumaTokenType::TOK_BREAK ||
+      k == TOK::LumaTokenType::TOK_CONTINUE || k == TOK::LumaTokenType::TOK_SWITCH ||
+      k == TOK::LumaTokenType::TOK_DEFER || k == TOK::LumaTokenType::TOK_IN) {
+    return TokenClass { type_idx: TT_KEYWORD, mods: 0 };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_VAR || k == TOK::LumaTokenType::TOK_CONST ||
+      k == TOK::LumaTokenType::TOK_PUBLIC || k == TOK::LumaTokenType::TOK_PRIVATE ||
+      k == TOK::LumaTokenType::TOK_IMPL) {
+    return TokenClass { type_idx: TT_KEYWORD, mods: MOD_STATIC };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_FN || k == TOK::LumaTokenType::TOK_STRUCT ||
+      k == TOK::LumaTokenType::TOK_ENUM) {
+    return TokenClass { type_idx: TT_KEYWORD, mods: 0 };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_MODULE || k == TOK::LumaTokenType::TOK_USE ||
+      k == TOK::LumaTokenType::TOK_OS || k == TOK::LumaTokenType::TOK_LINK ||
+      k == TOK::LumaTokenType::TOK_IMPORT || k == TOK::LumaTokenType::TOK_AS ||
+      k == TOK::LumaTokenType::TOK_MOD) {
+    return TokenClass { type_idx: TT_KEYWORD, mods: MOD_STATIC };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_ALLOC || k == TOK::LumaTokenType::TOK_FREE ||
+      k == TOK::LumaTokenType::TOK_SYSTEM || k == TOK::LumaTokenType::TOK_SYSCALL ||
+      k == TOK::LumaTokenType::TOK_CAST || k == TOK::LumaTokenType::TOK_SIZE_OF ||
+      k == TOK::LumaTokenType::TOK_INPUT) {
+    return TokenClass { type_idx: TT_FUNCTION, mods: MOD_DEFAULT_LIB };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_TRUE || k == TOK::LumaTokenType::TOK_FALSE) {
+    let m: int = MOD_READONLY;
+    return TokenClass { type_idx: TT_ENUM_MEMBER, mods: m + MOD_DEFAULT_LIB };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP || k == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP ||
+      k == TOK::LumaTokenType::TOK_DLL_IMPORT || k == TOK::LumaTokenType::TOK_LIB_IMPORT) {
+    return TokenClass { type_idx: TT_MODIFIER, mods: MOD_DEFAULT_LIB };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_EQUAL || k == TOK::LumaTokenType::TOK_PLUS ||
+      k == TOK::LumaTokenType::TOK_MINUS || k == TOK::LumaTokenType::TOK_STAR ||
+      k == TOK::LumaTokenType::TOK_SLASH || k == TOK::LumaTokenType::TOK_MODL ||
+      k == TOK::LumaTokenType::TOK_LT || k == TOK::LumaTokenType::TOK_GT ||
+      k == TOK::LumaTokenType::TOK_LE || k == TOK::LumaTokenType::TOK_GE ||
+      k == TOK::LumaTokenType::TOK_EQEQ || k == TOK::LumaTokenType::TOK_NEQ ||
+      k == TOK::LumaTokenType::TOK_AMP || k == TOK::LumaTokenType::TOK_PIPE ||
+      k == TOK::LumaTokenType::TOK_CARET || k == TOK::LumaTokenType::TOK_TILDE ||
+      k == TOK::LumaTokenType::TOK_AND || k == TOK::LumaTokenType::TOK_OR ||
+      k == TOK::LumaTokenType::TOK_PLUSPLUS || k == TOK::LumaTokenType::TOK_MINUSMINUS ||
+      k == TOK::LumaTokenType::TOK_SHIFT_LEFT || k == TOK::LumaTokenType::TOK_SHIFT_RIGHT ||
+      k == TOK::LumaTokenType::TOK_RANGE || k == TOK::LumaTokenType::TOK_ELLIPSIS ||
+      k == TOK::LumaTokenType::TOK_RIGHT_ARROW || k == TOK::LumaTokenType::TOK_LEFT_ARROW ||
+      k == TOK::LumaTokenType::TOK_DOT || k == TOK::LumaTokenType::TOK_RESOLVE) {
+    return TokenClass { type_idx: TT_OPERATOR, mods: 0 };
+  }
+
+  if (k == TOK::LumaTokenType::TOK_KEYWORD) { return TokenClass { type_idx: TT_KEYWORD, mods: 0 }; }
+
+  if (k == TOK::LumaTokenType::TOK_IDENTIFIER) { return classify_raw_identifier(mod, toks, count, idx); }
+
+  return none;
 }
 
 #returns_ownership
@@ -1555,23 +2315,59 @@ pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
     if (prog.module_count > 0) {
       let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[0]);
       let tokens: VEC::Vector = VEC::create_vector(sizeof<SemToken>);
+      g_sem_text = doc.text;
 
       let n: int = mod.body_count;
       loop [i: int = 0](i < n) : (++i) {
-        let bn: *AST::AstNode = mod.body[i];
-        if (bn.kind == AST::NodeType::STMT_FUNCTION) {
-          let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
-          walk_stmt_for_tokens(&tokens, mod, fd, prog, fd.body);
-        } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
-          let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
-          walk_expr_for_tokens(&tokens, mod, cast<*AST::FuncDeclNode>(0), prog, vd.initializer);
-        }
+        walk_module_decl_for_tokens(&tokens, mod, prog, mod.body[i]);
       }
 
       sort_tokens(&tokens);
 
-      let arr: *SemToken = cast<*SemToken>(tokens.data);
-      let count: int = tokens.size;
+      // Merge the precise AST-pass tokens with the raw lexical pass over
+      // the module's actual token stream (mod.tokens — retained from
+      // parsing, see ModuleNode) — see this section's header comment.
+      // Both sequences are already in position order (the AST list by the
+      // sort just above; the raw stream inherently, since the lexer emits
+      // it left-to-right), so a single two-pointer walk merges them: at
+      // each raw token's position, prefer the AST pass's classification if
+      // it has one there, otherwise classify the raw token lexically.
+      let final_tokens: VEC::Vector = VEC::create_vector(sizeof<SemToken>);
+      let ast_arr: *SemToken = cast<*SemToken>(tokens.data);
+      let ast_count: int = tokens.size;
+      let ai: int = 0;
+
+      let raw_toks: *TOK::Token = mod.tokens;
+      let raw_count: int = mod.token_count;
+
+      loop [ti: int = 0](ti < raw_count) : (++ti) {
+        let tok: TOK::Token = raw_toks[ti];
+
+        loop (ai < ast_count && (ast_arr[ai].line < tok.line ||
+              (ast_arr[ai].line == tok.line && ast_arr[ai].col < tok.col))) {
+          ai = ai + 1;
+        }
+
+        if (ai < ast_count && ast_arr[ai].line == tok.line && ast_arr[ai].col == tok.col) {
+          push_token(&final_tokens, ast_arr[ai].line, ast_arr[ai].col, ast_arr[ai].length, ast_arr[ai].type_idx, ast_arr[ai].mods);
+          ai = ai + 1;
+        } else {
+          let cls: TokenClass = classify_raw_token(mod, raw_toks, raw_count, ti);
+          if (cls.type_idx >= 0) {
+            // TOK_STRING's `len`/`val` exclude the surrounding quotes (see
+            // lexer.lx) — extend the span to cover them so the whole
+            // literal highlights, not just its inner text.
+            let length: int = tok.len;
+            if (tok.kind == TOK::LumaTokenType::TOK_STRING) { length = tok.len + 2; }
+            push_token(&final_tokens, tok.line, tok.col, length, cls.type_idx, cls.mods);
+          }
+        }
+      }
+
+      VEC::free_vector(&tokens);
+
+      let arr: *SemToken = cast<*SemToken>(final_tokens.data);
+      let count: int = final_tokens.size;
       let prev_line: int = 0;
       let prev_col: int = 0;
       loop [i: int = 0](i < count) : (++i) {
@@ -1596,7 +2392,8 @@ pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
         prev_col = col0;
       }
 
-      VEC::free_vector(&tokens);
+      VEC::free_vector(&final_tokens);
+      g_sem_text = cast<*byte>(0);
     }
   }
 

@@ -34,21 +34,40 @@ const capabilities_result -> fn () *J::JsonValue {
   J::json_object_set(completion_opts, "triggerCharacters", triggers);
   J::json_object_set(caps, "completionProvider", completion_opts);
 
+  // Indices here MUST match lsp_document.lx's TT_*/MOD_* constants exactly
+  // — the wire format is positional (see lsp_semantic_tokens).
   let legend: *J::JsonValue = J::json_object();
   let types: *J::JsonValue = J::json_array();
-  J::json_array_push(types, J::json_string("function"));
-  J::json_array_push(types, J::json_string("variable"));
-  J::json_array_push(types, J::json_string("parameter"));
-  J::json_array_push(types, J::json_string("struct"));
-  J::json_array_push(types, J::json_string("enum"));
+  J::json_array_push(types, J::json_string("namespace"));     // 0
+  J::json_array_push(types, J::json_string("type"));          // 1
+  J::json_array_push(types, J::json_string("typeParameter")); // 2
+  J::json_array_push(types, J::json_string("function"));      // 3
+  J::json_array_push(types, J::json_string("method"));        // 4
+  J::json_array_push(types, J::json_string("property"));      // 5
+  J::json_array_push(types, J::json_string("variable"));      // 6
+  J::json_array_push(types, J::json_string("parameter"));     // 7
+  J::json_array_push(types, J::json_string("keyword"));       // 8
+  J::json_array_push(types, J::json_string("modifier"));      // 9
+  J::json_array_push(types, J::json_string("comment"));       // 10
+  J::json_array_push(types, J::json_string("string"));        // 11
+  J::json_array_push(types, J::json_string("number"));        // 12
+  J::json_array_push(types, J::json_string("operator"));      // 13
+  J::json_array_push(types, J::json_string("struct"));        // 14
+  J::json_array_push(types, J::json_string("enum"));          // 15
+  J::json_array_push(types, J::json_string("enumMember"));    // 16
   J::json_object_set(legend, "tokenTypes", types);
   let modifiers: *J::JsonValue = J::json_array();
-  J::json_array_push(modifiers, J::json_string("readonly"));
+  J::json_array_push(modifiers, J::json_string("declaration"));   // bit 0
+  J::json_array_push(modifiers, J::json_string("definition"));    // bit 1
+  J::json_array_push(modifiers, J::json_string("readonly"));      // bit 2
+  J::json_array_push(modifiers, J::json_string("static"));        // bit 3
+  J::json_array_push(modifiers, J::json_string("defaultLibrary")); // bit 4
   J::json_object_set(legend, "tokenModifiers", modifiers);
 
   let semantic_opts: *J::JsonValue = J::json_object();
   J::json_object_set(semantic_opts, "legend", legend);
   J::json_object_set(semantic_opts, "full", J::json_bool(true));
+  J::json_object_set(semantic_opts, "range", J::json_bool(false));
   J::json_object_set(caps, "semanticTokensProvider", semantic_opts);
 
   let server_info: *J::JsonValue = J::json_object();

@@ -100,7 +100,7 @@ const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership
 const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   let pointee: *AST::AstNode = parse_type(p);
   if (pointee == cast<*AST::AstNode>(0)) {
@@ -114,7 +114,7 @@ const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership
 const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: int = p.current().line;
-  let col:  int = p.current().whitespace_len;
+  let col:  int = p.current().col;
 
   let first_name: *byte = p.get_name();
   p.advance();
