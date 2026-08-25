@@ -121,7 +121,12 @@ jobs:
         run: |
           unzip luma-*-windows-x86_64.zip
           cd luma-*-windows-x86_64
-          ./luma.exe --version
+          # --version exits 1 by this compiler's existing convention (same
+          # as --help/--license) — that's not a smoke-test failure, so
+          # check the output rather than the exit code.
+          out="$(./luma.exe --version || true)"
+          echo "$out"
+          echo "$out" | grep -q "Luma Compiler"
 
   smoke-test-macos:
     needs: build-cross-platform
@@ -137,4 +142,9 @@ jobs:
           tar -xzf luma-*-macos-x86_64.tar.gz
           cd luma-*-macos-x86_64
           chmod +x luma
-          ./luma --version
+          # --version exits 1 by this compiler's existing convention (same
+          # as --help/--license) — that's not a smoke-test failure, so
+          # check the output rather than the exit code.
+          out="$(./luma --version || true)"
+          echo "$out"
+          echo "$out" | grep -q "Luma Compiler"
