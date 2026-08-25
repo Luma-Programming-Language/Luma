@@ -1,0 +1,29 @@
+@module "logical_not_operator"
+
+// Regression test: single_symbol_map (src/lexer/tokens.lx) was missing an
+// entry for '!'. lookup_double only matches "!=", so a lone '!' fell
+// through both lookup tables and the lexer silently skipped it with no
+// token and no error — `!expr` lexed as plain `expr` everywhere: in an
+// assignment, directly inside an `if` condition, and applied to a literal.
+// All three are checked here so a regression trips at least one of them.
+
+const is_false -> fn (a: bool) bool {
+  let x: bool = !a;
+  return x;
+}
+
+const guard -> fn (a: bool) int {
+  if (!a) return 1;
+  return 0;
+}
+
+const main -> fn () int {
+  if (is_false(false) != true)  return 1;
+  if (is_false(true)  != false) return 1;
+  if (guard(false) != 1)        return 1;
+  if (guard(true)  != 0)        return 1;
+  if (!false != true)           return 1;
+  if (!true  != false)          return 1;
+
+  return 0;
+}
