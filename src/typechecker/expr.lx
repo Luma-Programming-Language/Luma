@@ -106,6 +106,32 @@ const call_is_returns_ownership -> fn (call_expr: *AST::AstNode, scope: *CORE::S
   return false;
 }
 
+const call_is_takes_ownership -> fn (callee: *AST::AstNode, scope: *CORE::Scope) bool {
+  if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
+    let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, id.name);
+    if (sym == cast<*CORE::Symbol>(0)) return false;
+    return sym.takes_ownership;
+  }
+
+  // `Module::func(...)` — a qualified call into another module. Unlike
+  // `resolve_callee_type` (which only needs the function's *type*), this
+  // needs the Symbol itself to read its ownership flag.
+  if (callee.kind == AST::NodeType::EXPR_MEMBER) {
+    let mn: *AST::MemberNode = cast<*AST::MemberNode>(callee);
+    if (mn.is_compiletime == 1 && mn.object.kind == AST::NodeType::EXPR_IDENTIFIER) {
+      let obj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(mn.object);
+      let imp: *CORE::ModuleImport = SCOPE::find_module_import(scope, obj.name);
+      if (imp != cast<*CORE::ModuleImport>(0)) {
+        let msym: *CORE::Symbol = SCOPE::scope_lookup_in_module(imp.module_scope, mn.member);
+        if (msym != cast<*CORE::Symbol>(0)) return msym.takes_ownership;
+      }
+    }
+  }
+
+  return false;
+}
+
 pub const track_pointer_source -> fn (name: *byte, value_expr: *AST::AstNode, scope: *CORE::Scope) void {
   if (value_expr == cast<*AST::AstNode>(0)) return;
 
@@ -523,6 +549,13 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     if (n.arg_count != pcount) {
       ERR::tc_error(expr, "Call Error", "wrong number of arguments in function call", "wrong argument count");
     }
+
+    // A `#takes_ownership` callee is responsible for whatever pointers it's
+    // handed — an identifier argument naming a locally tracked allocation
+    // is satisfied here the same way passing it to `free()` would be,
+    // rather than reported as never freed in this function.
+    let consumes: bool = call_is_takes_ownership(n.callee, scope);
+
     loop [i: int = 0](i < n.arg_count) : (++i) {
       let pexp: *AST::AstNode = cast<*AST::AstNode>(0);
       if (i < pcount) pexp = ft.param_types[i];
@@ -532,6 +565,7 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
           ERR::tc_error(n.args[i], "Type Error", "argument type does not match parameter type", "type mismatch");
         }
       }
+      if (consumes) { track_free(n.args[i], scope); }
     }
     let rett: *AST::AstNode = ft.return_type;
     return rett;
@@ -558,7 +592,32 @@ const tc_assign -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
         ERR::tc_error_id(n.target, id.name, "Type Error", "cannot assign to immutable binding", "immutable");
       }
     }
-    track_pointer_source(id.name, n.value, scope);
+
+    // A global/module-level binding outlives any one function — reassigning
+    // it isn't a local allocation site the leak-checker can reason about
+    // (its real lifetime is "the rest of the program"), so don't track it
+    // as one. Without this, `g_x = alloc(...)` at module scope was reported
+    // as a leak inside whichever function happened to run the assignment.
+    let fscope: *CORE::Scope = SCOPE::get_enclosing_function(scope);
+    let is_local: bool = true;
+    if (fscope != cast<*CORE::Scope>(0) && sym != cast<*CORE::Symbol>(0)) {
+      if (sym.scope_depth < fscope.depth) { is_local = false; }
+    }
+    if (is_local) { track_pointer_source(id.name, n.value, scope); }
+  } elif (target.kind == AST::NodeType::EXPR_MEMBER) {
+    // `obj.field = value` — if `value` is a tracked local allocation, it
+    // now escapes into the target's own storage (e.g. `b.data = alloc(...)`
+    // in a buffer-growing helper, where `b` is owned by the caller) and is
+    // no longer this function's responsibility to free. Treat it the same
+    // as an explicit free rather than reporting it never freed.
+    let escaped: *AST::AstNode = n.value;
+    loop (true) {
+      if (escaped == cast<*AST::AstNode>(0)) break;
+      if (escaped.kind != AST::NodeType::EXPR_CAST) break;
+      let cn: *AST::CastNode = cast<*AST::CastNode>(escaped);
+      escaped = cn.castee;
+    }
+    track_free(escaped, scope);
   }
 
   if (tt != cast<*AST::AstNode>(0) && vt != cast<*AST::AstNode>(0)) {

@@ -1,0 +1,21 @@
+@module "main"
+
+const Box -> struct {
+pub:
+    data: *byte,
+};
+
+// Assigning an allocation into a struct field (rather than initializing it
+// in a struct literal, or freeing it directly) hands it off to whatever
+// owns that field — not a leak in *this* function.
+const fill -> fn (b: *Box) void {
+    let nd: *byte = cast<*byte>(alloc(8));
+    b.data = nd;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let b: Box = Box { data: cast<*byte>(0) };
+    fill(&b);
+    free(b.data);
+    return 0;
+}

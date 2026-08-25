@@ -1,0 +1,15 @@
+@module "main"
+
+// Passing an allocated pointer as an argument to a #takes_ownership
+// function satisfies its allocation, the same way free(ptr) would —
+// the callee is responsible for it from here on.
+#takes_ownership
+const consume -> fn (p: *byte) void {
+    free(p);
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let p: *byte = cast<*byte>(alloc(8));
+    consume(p);
+    return 0;
+}

@@ -240,7 +240,12 @@ const register_file -> fn (path: *byte) void {
   free(content);
 
   if (name != cast<*byte>(0)) {
-    let entry: ModuleRegistryEntry = ModuleRegistryEntry { name: name, path: dup_str(path) };
+    // `name` assigned as its own statement (not inline in the struct
+    // literal) so the analyzer's field-assignment escape tracking sees it
+    // hand off into `entry.name` — it's about to be pushed by value into
+    // the global registry and live for the rest of the process.
+    let entry: ModuleRegistryEntry = ModuleRegistryEntry { name: cast<*byte>(0), path: dup_str(path) };
+    entry.name = name;
     g_registry.push_back(cast<*void>(&entry));
   }
 }

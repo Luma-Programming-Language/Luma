@@ -1,0 +1,22 @@
+@module "main"
+
+#returns_ownership
+const dup_str -> fn (s: *byte) *byte {
+    let out: *byte = cast<*byte>(alloc(8));
+    return out;
+}
+
+// A global/module-level binding outlives any one function — reassigning it
+// isn't a local allocation site the leak-checker can reason about, so it
+// shouldn't be reported as a leak inside whichever function runs the
+// assignment (previously false-positived here).
+let g_cache: *byte = cast<*byte>(0);
+
+const set_cache -> fn (s: *byte) void {
+    g_cache = dup_str(s);
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    set_cache("hi");
+    return 0;
+}

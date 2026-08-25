@@ -40,14 +40,25 @@ const do_error -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, he
   ERR::error_add(err);
 }
 
+// `message` is handed to `error_add`, which stashes it on the queued
+// ErrorInformation for `error_report()` to print later — it outlives this
+// call, so the caller doesn't (and can't) free it itself. Marking these
+// #takes_ownership lets the static analyzer treat passing an allocated
+// `message` here the same as an explicit `free()`, instead of reporting it
+// as a leak (the message is never freed explicitly, since the compiler
+// exits shortly after printing — the same accepted "process-lifetime
+// allocation" pattern #returns_ownership already covers for callers).
+#takes_ownership
 pub const tc_error -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, label: *byte) void {
   do_error(node, error_type, message, cast<*byte>(0), 1, label);
 }
 
+#takes_ownership
 pub const tc_error_help -> fn (node: *AST::AstNode, error_type: *byte, help: *byte, message: *byte, label: *byte) void {
   do_error(node, error_type, message, help, 1, label);
 }
 
+#takes_ownership
 pub const tc_error_id -> fn (node: *AST::AstNode, identifier: *byte, error_type: *byte, message: *byte, label: *byte) void {
   let len: int = 1;
   if (identifier != cast<*byte>(0)) {
@@ -59,6 +70,7 @@ pub const tc_error_id -> fn (node: *AST::AstNode, identifier: *byte, error_type:
 // Like tc_error, but with an explicit caret width instead of the default 1
 // — for pointing at something wider than a single token, e.g. a quoted
 // string literal (whose reconstructed line text includes the quotes).
+#takes_ownership
 pub const tc_error_len -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, token_len: int, label: *byte) void {
   do_error(node, error_type, message, cast<*byte>(0), token_len, label);
 }
