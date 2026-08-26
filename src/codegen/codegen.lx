@@ -95,6 +95,16 @@ const IOWRITE -> fn (out: *void, s: *byte) void {
 }
 
 const write_preamble -> fn (out: *void, os: *byte) void {
+  // Must come before ANY system header: glibc gates syscall()'s prototype
+  // in <unistd.h> behind _GNU_SOURCE (or _DEFAULT_SOURCE, depending on
+  // version) — without it, whether syscall() is visible at all is purely
+  // a function of the host's default feature-test-macro configuration.
+  // That's environment-dependent in practice, not just in theory: it
+  // compiled fine as-is on one machine and failed with "implicit
+  // declaration of function 'syscall'" on another (Arch) with the exact
+  // same source. Windows has no glibc/syscall() at all, so this is
+  // harmless-but-pointless there rather than defining it conditionally.
+  IOWRITE(out, "#define _GNU_SOURCE\n");
   IOWRITE(out, "#include <stdio.h>\n");
   IOWRITE(out, "#include <stdlib.h>\n");
   IOWRITE(out, "#include <string.h>\n");
