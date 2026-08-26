@@ -18,8 +18,10 @@ autom4te.cache
 # rule above would otherwise ignore it.
 !bootstrap/luma-seed
 
-# Ignore Windows executables
+# Ignore Windows executables and their debug-info files (zig cc emits a
+# .pdb alongside cross-compiled .exe binaries)
 *.exe
+*.pdb
 
 # Ignore Doxygen output
 docs/doxygen/

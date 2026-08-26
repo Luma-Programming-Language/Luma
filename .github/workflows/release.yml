@@ -36,13 +36,6 @@ jobs:
           name: luma-linux-x86_64
           path: luma-*-linux-x86_64.tar.gz
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: luma-*-linux-x86_64.tar.gz
-          generate_release_notes: true
-
   build-cross-platform:
     runs-on: ubuntu-latest
     steps:
@@ -98,15 +91,6 @@ jobs:
           name: luma-macos-x86_64
           path: luma-*-macos-x86_64.tar.gz
 
-      - name: Publish GitHub Release
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            luma-*-windows-x86_64.zip
-            luma-*-macos-x86_64.tar.gz
-          generate_release_notes: true
-
   smoke-test-windows:
     needs: build-cross-platform
     runs-on: windows-latest
@@ -148,3 +132,46 @@ jobs:
           out="$(./luma --version || true)"
           echo "$out"
           echo "$out" | grep -q "Luma Compiler"
+
+  # One job, after everything else has actually passed, publishes exactly one
+  # release with all three archives attached. Previously each build job
+  # published on its own — two concurrent "create/update this tag's release"
+  # calls racing each other, neither one gated on the cross-compiled binaries
+  # having been proven to actually run. Also the only place a version's
+  # written release notes (docs/releases/vX.Y.Z.md, if present) become the
+  # release body instead of GitHub's auto-generated commit list.
+  publish-release:
+    if: startsWith(github.ref, 'refs/tags/')
+    needs:
+      - build-linux-x86_64
+      - build-cross-platform
+      - smoke-test-windows
+      - smoke-test-macos
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          pattern: luma-*
+          merge-multiple: true
+
+      - name: Resolve release notes
+        id: notes
+        run: |
+          NOTES_FILE="docs/releases/${GITHUB_REF_NAME}.md"
+          if [ -f "$NOTES_FILE" ]; then
+            echo "path=$NOTES_FILE" >> "$GITHUB_OUTPUT"
+          else
+            echo "path=" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/luma-*
+          body_path: ${{ steps.notes.outputs.path }}
+          generate_release_notes: ${{ steps.notes.outputs.path == '' }}
