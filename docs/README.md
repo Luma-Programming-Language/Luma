@@ -123,7 +123,7 @@ Releases are cross-compiled from that same self-hosted compiler: a single Linux 
 
 ## Project Status
 
-Latest release: **[v0.3.4](releases/v0.3.4.md)**
+Latest release: **[v0.3.5](releases/v0.3.5.md)**
 
 **What's working:**
 
@@ -134,7 +134,7 @@ Latest release: **[v0.3.4](releases/v0.3.4.md)**
 - A language server (`luma --lsp`) with diagnostics, hover, and completion
 - Cross-platform builds for Linux, Windows, and macOS, verified in CI
 
-**What's not there yet:** generics, and a few rough edges in the static analyzer around conditional allocation paths. See the Known Limitations section of the [latest release notes](releases/v0.3.4.md) for the current honest list.
+**What's not there yet:** generics, and a few rough edges in the static analyzer around conditional allocation paths. See the Known Limitations section of the [latest release notes](releases/v0.3.5.md) for the current honest list.
 
 ---
 
@@ -152,7 +152,7 @@ sudo ./scripts/install.sh
 
 `bootstrap-build.sh` handles the chicken-and-egg problem of a self-hosted compiler for you: it ships with a prebuilt seed binary, uses it to build the current source, then rebuilds itself with its own output and checks the two match before calling it done.
 
-Prefer a prebuilt binary? Grab one from the [latest release](releases/v0.3.4.md) instead.
+Prefer a prebuilt binary? Grab one from the [latest release](releases/v0.3.5.md) instead.
 
 ### Hello, World
 

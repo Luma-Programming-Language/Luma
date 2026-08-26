@@ -4,13 +4,13 @@ Luma is a self-hosted compiler — it transpiles to C and just needs a C compile
 
 ## Quick Start (prebuilt binary)
 
-Grab the archive for your platform from the [latest release](releases/v0.3.4.md).
+Grab the archive for your platform from the [latest release](releases/v0.3.5.md).
 
 ### Linux / macOS
 
 ```bash
-tar -xzf luma-v0.3.4-linux-x86_64.tar.gz    # or luma-v0.3.4-macos-x86_64.tar.gz
-cd luma-v0.3.4-linux-x86_64
+tar -xzf luma-v0.3.5-linux-x86_64.tar.gz    # or luma-v0.3.5-macos-x86_64.tar.gz
+cd luma-v0.3.5-linux-x86_64
 
 sudo ./install.sh   # system-wide, requires sudo
 # or
@@ -19,7 +19,7 @@ sudo ./install.sh   # system-wide, requires sudo
 
 ### Windows
 
-1. Extract `luma-v0.3.4-windows-x86_64.zip`.
+1. Extract `luma-v0.3.5-windows-x86_64.zip`.
 2. Run `install.bat` — as Administrator for a system-wide install, or without for a user-local one.
 
 ## Building from Source
@@ -106,7 +106,7 @@ luma --version
 ```
 
 ```
-Luma Compiler v0.3.4
+Luma Compiler v0.3.5
 ```
 
 ---
