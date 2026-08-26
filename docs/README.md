@@ -1,300 +1,198 @@
 # Luma
 
-*A low-level compiled alternative to C, C++, and more!*
+*A low-level compiled language for people who want C's control without giving up their afternoon to memory bugs.*
 
 <p align="center">
   <img src="../assets/luma.png" alt="Luma Logo" width="160"/>
 </p>
 
-[Why?](#why) • [Goals](#language-goals) • [Performance](#performance) • [Static Analysis & Ownership](#static-analysis-and-ownership) • [Status](#project-status) • [Getting Started](#getting-started) • [Join Us](#join-us)
+[Why?](#why) • [Language Tour](#language-tour) • [Self-Hosted](#self-hosted) • [Getting Started](#getting-started) • [Join Us](#join-us)
 
 ---
 
 ## Introduction
 
-Luma is a modern systems programming language focused on **explicit control, fast compilation, and static verification**.
+Luma is a systems programming language built around one bet: you can catch most of the memory bugs that matter at compile time without a borrow checker, without lifetimes, and without a garbage collector.
 
-It is designed for developers who want C-level performance and transparency, but with stronger compile-time tooling to catch common memory errors early — **without a borrow checker, lifetimes, or runtime overhead**.
+Memory management stays manual. You call `alloc()` and `free()` yourself, same as C. What's different is that the compiler watches you do it. As part of type checking, Luma's static analyzer tracks ownership through your code and flags use-after-free, double-frees, and leaked allocations before you ever get to run the program.
 
-Luma uses **manual memory management with static analysis**. Memory allocation and deallocation are always explicit, while the compiler performs ownership-aware checks during type checking to detect common classes of bugs before code generation.
-
-> Luma is intentionally **memory-unsafe by design**, but provides static checks for specific error patterns such as use-after-free, double-free, and forgotten deallocations.
+Luma doesn't pretend to be memory-safe. Out-of-bounds access, uninitialized reads, and raw pointer misuse are all still on you. What it does promise is that the specific, common mistake of losing track of an allocation gets caught early, for free, with syntax you can read at a glance.
 
 ---
 
 ## Why?
 
-Modern systems programming often involves a trade-off between performance, safety, and developer experience.  
-Luma aims to bridge that gap by providing:
+Most languages ask you to pick a side: manual memory management with C, or safety with something that takes memory management away from you. Luma's trying to split the difference a little differently:
 
-- **Manual memory control** with **compile-time static analysis**  
-  — The type checker validates use-after-free, double-free, and unfreed allocations before codegen.
-- **Direct hardware access** and predictable performance  
-- **Readable, minimal syntax** that doesn't hide control flow or introduce lifetimes
-- **Zero runtime overhead** — all verification is done statically
-- **Fast, transparent tooling** that stays close to the metal
+- Ownership hints instead of lifetimes. Annotate a function with `#returns_ownership` or `#takes_ownership` and the analyzer understands who's responsible for freeing what, no lifetime syntax anywhere in your code.
+- No runtime cost. All of this happens at compile time. There's no garbage collector, no reference counting, nothing running behind your back.
+- Small, direct syntax. Control flow and memory operations are always visible in the source, nothing is implicit.
 
-Unlike Rust, Luma doesn't use lifetimes or a borrow checker. Instead, developers can annotate functions with lightweight ownership hints like `#returns_ownership` and `#takes_ownership` so the analyzer can reason about ownership transfers — for example, when returning an allocated pointer.
-
-The result: C-level control with targeted compile-time checks, and no runtime or hidden semantics.
+It's not trying to out-safety Rust. It's trying to give you most of the "wait, did I free that?" coverage without asking you to learn an entirely new mental model to get it.
 
 ---
 
-## Language Goals
+## Language Tour
 
-- **Minimal & Explicit Syntax** – No hidden control flow or implicit behavior  
-- **Lightning-Fast Compilation** – Sub-100ms builds for rapid iteration  
-- **Zero-Cost Abstractions** – No runtime overhead for safety or ergonomics  
-- **Tiny Binaries** – Comparable to C in size and efficiency  
-- **Manual Memory Control** – You decide when to `alloc()` and `free()`  
-- **Static Verification** – The type checker validates common memory errors (use-after-free, double-free, leaks) before codegen 
-- **Optional Ownership Annotations** – Use `#returns_ownership` and `#takes_ownership` to make ownership transfer explicit  
+A few of the things Luma actually looks like, pulled straight from the test suite so they're guaranteed to compile.
+
+**Structs and methods:**
+
+```lx
+const Point -> struct {
+pub:
+    x: float,
+    y: float,
+
+    distance_to -> fn (other: Point) float {
+        let dx: float = other.x - self.x;
+        let dy: float = other.y - self.y;
+        return sqrt(dx * dx + dy * dy);
+    },
+};
+```
+
+**Struct embedding**, for when composition beats inheritance-shaped code:
+
+```lx
+const Entity -> struct {
+pub:
+    x: float,
+    y: float,
+    move -> fn (dx: float, dy: float) void {
+        self.x = self.x + dx;
+        self.y = self.y + dy;
+    },
+};
+
+const Player -> struct {
+pub:
+    ...Entity,
+    health: int,
+};
+
+let p: Player = Player { x: 0.0, y: 0.0, health: 100 };
+p.move(1.0, 1.0); // promoted straight from Entity
+```
+
+**Scoped `switch`**, so you're not writing `Color::Red` on every arm:
+
+```lx
+switch using Color (c) {
+    Red   -> { output("stop\n"); }
+    Green -> { output("go\n"); }
+}
+```
+
+**Ownership annotations**, so the analyzer knows what a function does with what you hand it:
+
+```lx
+#returns_ownership
+const make_counter -> fn () *int {
+    let p: *int = cast<*int>(alloc(sizeof<int>));
+    *p = 0;
+    return p;
+}
+
+#takes_ownership
+const print_and_free -> fn (counter: *int) void {
+    output(*counter, "\n");
+    free(counter);
+}
+```
+
+**FFI**, straight to a C library, no bindings generator involved:
+
+```lx
+@link("libc.so.6")
+
+pub const malloc -> fn (size: int) *void;
+```
+
+That's a small slice. The full language reference is in [`docs/docs.md`](https://luma-website-mu.vercel.app/html/docs.html).
 
 ---
 
-## Static Analysis and Ownership
+## Self-Hosted
 
-Luma performs **ownership-aware static analysis** at the end of type checking to detect common memory management errors — without introducing runtime overhead.
+The compiler is written in Luma. It compiles itself, and every commit proves it can: an existing `luma` binary builds the current compiler source, that output builds the same source again, and the two results are diffed byte-for-byte. If a compiler can't reproduce itself exactly from its own source, something's wrong, so that check runs before anything else does, on every push and every PR.
 
-### What Luma *does* check
-
-- Use-after-free
-- Double free
-- Memory allocated but never freed
-- Ownership transfer across function boundaries (when annotated)
-
-### What Luma does *not* guarantee
-
-Luma does **not** claim full memory safety. The following are currently **not prevented**:
-
-- Out-of-bounds memory access
-- Uninitialized memory reads
-- Pointer arithmetic misuse
-- Aliasing violations
-- Invalid pointer dereference
-
-These are deliberate design trade-offs to preserve simplicity, performance, and low-level control.
+Releases are cross-compiled from that same self-hosted compiler: a single Linux CI run produces Linux, Windows, and macOS binaries, and the Windows/macOS ones actually get downloaded and executed on real runners before a release goes out. See [`docs/releases/`](releases/) for what's shipped and when.
 
 ---
 
 ## Project Status
 
-**Current Phase:** Early Development
+Latest release: **[v0.3.4](releases/v0.3.4.md)**
 
-Luma is currently in active development. Core language features are being implemented and the compiler architecture is being established.
+**What's working:**
 
-**What Works:**
+- Full lexer, parser, type checker, and C-transpiling codegen, self-hosted
+- Static ownership analysis: use-after-free, double-free, and leak detection
+- Structs, enums, struct embedding, static methods, scoped `switch`
+- FFI via `@link` (any C/POSIX shared library) and `#dll_import` (Windows DLLs)
+- A language server (`luma --lsp`) with diagnostics, hover, and completion
+- Cross-platform builds for Linux, Windows, and macOS, verified in CI
 
-- Complete lexer and parser
-- Full type system with structs, enums, functions
-- Static memory analysis with ownership tracking
-- LLVM backend for native code generation
-- Standard library (math, memory, strings, terminal effects)
-- Real-world applications (3D graphics, memory management)
-
-Check out the [todo](todo.md) to see what is being worked on or that is done.
+**What's not there yet:** generics, and a few rough edges in the static analyzer around conditional allocation paths. See the Known Limitations section of the [latest release notes](releases/v0.3.4.md) for the current honest list.
 
 ---
 
 ## Getting Started
 
-### Prerequisites
-
-You'll need the following tools installed:
-
-- **[Make](https://www.gnu.org/software/make/)** - Build automation
-- **[GCC](https://gcc.gnu.org/)** - GNU Compiler Collection
-- **[LLVM](https://releases.llvm.org/download.html)** - Compiler infrastructure (**Version 20.0+ required**)
-- **[Valgrind](https://valgrind.org/)** *(optional)* - Memory debugging
-
-### LLVM Version Requirements
-
-**Important:** Luma requires LLVM 20.0 or higher due to critical bug fixes in the constant generation system.
-
-**Known Issues:**
-
-- **LLVM 19.1.x**: Contains a regression that causes crashes during code generation (`illegal hardware instruction` errors)
-- **LLVM 18.x and older**: Not tested, may have compatibility issues
-
-If you encounter crashes during the "LLVM IR" compilation stage (typically at 60% progress), this is likely due to an incompatible LLVM version.
-
-#### Checking Your LLVM Version
+Building from source just needs a C compiler no LLVM, no Meson, nothing else to install first:
 
 ```bash
-llvm-config --version
+git clone https://github.com/Luma-Programming-Language/Luma.git
+cd Luma
+
+./scripts/bootstrap-build.sh
+sudo ./scripts/install.sh
 ```
 
-#### Linux Install
+`bootstrap-build.sh` handles the chicken-and-egg problem of a self-hosted compiler for you: it ships with a prebuilt seed binary, uses it to build the current source, then rebuilds itself with its own output and checks the two match before calling it done.
 
-**Arch Linux:**
+Prefer a prebuilt binary? Grab one from the [latest release](releases/v0.3.4.md) instead.
 
-```bash
-sudo pacman -S llvm
-# For development headers:
-sudo pacman -S llvm-libs
-```
+### Hello, World
 
-**Fedora/RHEL:**
-
-```bash
-sudo dnf update llvm llvm-devel llvm-libs
-# Or install specific version:
-sudo dnf install llvm20-devel llvm20-libs
-```
-
-**Ubuntu/Debian:**
-
-```bash
-sudo apt update
-sudo apt install llvm-20-dev
-```
-If that does not work take a look at this as well
-``https://blog.wellosoft.net/update-llvm-from-18-to-21-in-ubuntu-24``
-
-**macOS (Homebrew):**
-
-```bash
-brew install llvm
-```
-
-### Common Issues
-
-**"illegal hardware instruction" during compilation:**
-
-- This indicates an LLVM version incompatibility
-- Upgrade to LLVM 20.0+ to resolve this issue
-- See [LLVM Version Requirements](#llvm-version-requirements) above
-
-**Missing LLVM development headers:**
-
-```bash
-# Install development packages
-sudo dnf install llvm-devel        # Fedora/RHEL
-sudo apt install llvm-dev          # Ubuntu/Debian
-```
-
-## Building LLVM on Windows
-
-### Windows Prerequisites
-
-Install the required tools using Scoop:
-
-```bash
-# Install Scoop package manager first if you haven't: https://scoop.sh/
-scoop install python ninja cmake mingw
-```
-
-### Build Steps
-
-1. Clone the LLVM repository:
-
-```bash
-git clone https://github.com/llvm/llvm-project.git
-cd llvm-project
-```
-
-2. Configure the build:
-
-```bash
-cmake -S llvm -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DLLVM_ENABLE_PROJECTS="clang;lld" -DCMAKE_C_COMPILER=gcc -DCMAKE_CXX_COMPILER=g++ -DCMAKE_ASM_COMPILER=gcc
-```
-
-3. Build LLVM (adjust `-j8` based on your CPU cores):
-
-```bash
-ninja -C build -j8
-```
-
-### Notes
-
-- Build time: 30 minutes to several hours depending on hardware
-- RAM usage: Can use 8+ GB during compilation
-- If you encounter memory issues, reduce parallelism: `ninja -C build -j4` or `ninja -C build -j1`
-
-### After Build
-
-The compiled binaries will be located in `build/bin/`
-
-#### Add to PATH (Optional but Recommended)
-
-To use `clang`, `lld`, and other LLVM tools from anywhere, add the build directory to your PATH:
-
-##### Option 1: Temporary (current session only)
-
-```cmd
-set PATH=%PATH%;C:\path\to\your\llvm-project\build\bin
-```
-
-##### Option 2: Permanent
-
-1. Open System Properties → Advanced → Environment Variables
-2. Edit the `PATH` variable for your user or system
-3. Add the full path to your `build\bin` directory (e.g., `C:\Users\yourname\Desktop\llvm-project\build\bin`)
-
-##### Option 3: Using PowerShell (permanent)
-
-```powershell
-[Environment]::SetEnvironmentVariable("PATH", $env:PATH + ";C:\path\to\your\llvm-project\build\bin", "User")
-```
-
-#### Verify Installation
-
-After adding to PATH, open a new command prompt and test:
-
-```bash
-clang --version
-lld --version
-llvm-config --version
-```
-
----
-
-### Examples
-
-#### Hello World
-
-```luma
+```lx
 @module "main"
 
-pub const main = fn () int {
+pub const main -> fn () int {
     output("Hello, World!\n");
     return 0;
 }
 ```
 
-Compile and run:
-
 ```bash
-$ luma hello.lx
-[========================================] 100% - Completed (15ms)
-Build succeeded! Written to 'output' (15ms)
-
-$ ./output
+$ luma hello.lx -name hello
+$ ./hello
 Hello, World!
 ```
 
-#### 3D Graphics (Real Example)
+### Cross-compiling
 
-See [tests/3d_spinning_cube.lx](tests/3d_spinning_cube.lx) for a complete 3D graphics application that:
+`luma` can target Windows and macOS from Linux directly, as long as [`zig`](https://ziglang.org) is on your `PATH` (it's the C toolchain that actually builds the foreign binary):
 
-- Renders rotating 3D cubes
-- Uses sine/cosine lookup tables for performance
-- Uses `defer` and ownership annotations for correct memory cleanup
-- Compiles in **51ms** to a **24KB** binary
+```bash
+luma main.lx -t windows64 -name main.exe
+luma main.lx -t macos     -name main
+```
 
 ---
 
-### Join Us
+## Join Us
 
-Interested in contributing to Luma? We'd love to have you!
-
-- Check out our [GitHub repository](https://github.com/TheDevConnor/luma)
-- Join our [Discord community](https://bit.ly/lux-discord)
-- Look at the [doxygen-generated](https://luma-programming-language.github.io/Luma/) docs for architecture details
-- If you would like to contribute, please read our [contribution guidelines](CONTRIBUTING.md).
+- [GitHub repository](https://github.com/Luma-Programming-Language/Luma)
+- [Luma Website](https://luma-website-mu.vercel.app/index.html)
+- [Discord community](https://discord.gg/gqnwasvqd9)
+- [Language reference](docs.md)
+- [Contributing guidelines](CONTRIBUTING.md)
 
 ---
 
 <p align="center">
   <strong>Built with ❤️ by the Luma community</strong>
 </p>
+
