@@ -4,6 +4,7 @@
 @use "std_memory" as MEM
 @use "std_args"   as ARGS
 @use "std_io"     as IO
+@use "std_libc"   as LIBC
 
 @use "constants"  as CONST
 
@@ -136,13 +137,41 @@ pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildCo
   "windows64" -> { const SYS_STD_PREFIX: *byte = "C:\\Program Files\\luma\\"; }
 }
 
-// Try `path` exactly as given first — relative to cwd, or absolute — and
-// only fall back to the system-installed copy under SYS_STD_PREFIX if that
-// fails to open. This used to be the other way around: the system prefix
-// was tried FIRST, so a locally-edited source file (e.g. a repo checkout's
-// own std/) was silently shadowed by whatever happened to be installed at
-// /usr/local/lib/luma/ — same relative path, different (possibly stale)
-// content, no error, no indication the local edit was never actually used.
+// install.sh/install.bat's non-root install writes to ~/.luma/ (or
+// %USERPROFILE%\.luma\ on Windows) — this is the env var and path-join
+// piece resolve_path needs to actually find that install, which it
+// couldn't before: it only ever knew about SYS_STD_PREFIX, so a non-root
+// install produced a `luma` that couldn't find its own std lib unless you
+// ran it from a directory with a local std/ or passed explicit -l paths.
+@os {
+  "linux"     -> { const HOME_ENV_VAR: *byte = "HOME"; const USER_STD_SUFFIX: *byte = "/.luma/"; }
+  "macos"     -> { const HOME_ENV_VAR: *byte = "HOME"; const USER_STD_SUFFIX: *byte = "/.luma/"; }
+  "windows32" -> { const HOME_ENV_VAR: *byte = "USERPROFILE"; const USER_STD_SUFFIX: *byte = "\\.luma\\"; }
+  "windows64" -> { const HOME_ENV_VAR: *byte = "USERPROFILE"; const USER_STD_SUFFIX: *byte = "\\.luma\\"; }
+}
+
+// Returns an allocated "$HOME/.luma/" (or NULL if HOME/USERPROFILE isn't
+// set in the environment at all).
+#returns_ownership
+const build_user_prefix -> fn () *byte {
+  let home: *byte = LIBC::getenv(HOME_ENV_VAR);
+  if (home == cast<*byte>(0)) return cast<*byte>(0);
+
+  let home_len:   int = STRING::strlen(home);
+  let suffix_len: int = STRING::strlen(USER_STD_SUFFIX);
+  let out: *byte = cast<*byte>(alloc(home_len + suffix_len + 1));
+  return STRING::cat(out, home, USER_STD_SUFFIX);
+}
+
+// Three tiers, in order: `path` exactly as given (relative to cwd, or
+// absolute) — then a non-root install under $HOME/.luma/ — then the
+// system-wide install under SYS_STD_PREFIX. The given path deliberately
+// wins over both installed locations: it used to be the other way around
+// (system prefix tried first), so a locally-edited source file (e.g. a
+// repo checkout's own std/) was silently shadowed by whatever happened to
+// be installed system-wide — same relative path, different (possibly
+// stale) content, no error, no indication the local edit was never
+// actually used.
 #returns_ownership
 pub const resolve_path -> fn (path: *byte) *byte {
   let direct_fd: int = IO::local_open_read(path);
@@ -151,8 +180,26 @@ pub const resolve_path -> fn (path: *byte) *byte {
     return path;
   }
 
+  let path_len: int = STRING::strlen(path);
+
+  let user_prefix: *byte = build_user_prefix();
+  if (user_prefix != cast<*byte>(0)) {
+    let uprefix_len: int = STRING::strlen(user_prefix);
+    let user_path: *byte = cast<*byte>(alloc(uprefix_len + path_len + 1));
+    MEM::memcpy(cast<*void>(user_path), cast<*void>(user_prefix), uprefix_len);
+    MEM::memcpy(cast<*void>(cast<int>(user_path) + uprefix_len), cast<*void>(path), path_len);
+    user_path[uprefix_len + path_len] = '\0';
+    free(user_prefix);
+
+    let ufd: int = IO::local_open_read(user_path);
+    if (IO::local_is_error(ufd) == false) {
+      IO::local_close(ufd);
+      return user_path;
+    }
+    free(user_path);
+  }
+
   let prefix_len: int = STRING::strlen(SYS_STD_PREFIX);
-  let path_len:   int = STRING::strlen(path);
 
   let std_path: *byte = cast<*byte>(alloc(prefix_len + path_len + 1));
   MEM::memcpy(cast<*void>(std_path), cast<*void>(SYS_STD_PREFIX), prefix_len);
