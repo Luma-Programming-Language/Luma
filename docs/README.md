@@ -173,11 +173,18 @@ Hello, World!
 
 ### Cross-compiling
 
-`luma` can target Windows and macOS from Linux directly, as long as [`zig`](https://ziglang.org) is on your `PATH` (it's the C toolchain that actually builds the foreign binary):
+`luma` can target Windows from Linux directly, as long as [mingw-w64](https://www.mingw-w64.org) is installed (`mingw-w64-gcc` on Arch, `gcc-mingw-w64-x86-64` on Debian/Ubuntu):
 
 ```bash
 luma main.lx -t windows64 -name main.exe
-luma main.lx -t macos     -name main
+```
+
+macOS doesn't have an equivalent cross-compiler — `-t macos` on Linux will emit correct macOS-flavored C, but there's nothing on Linux that can link it into a working binary. Use `-c`/`--no-compile` to stop after emitting the C, and hand that off to an actual Mac's own `cc`:
+
+```bash
+luma main.lx -t macos -c -name main   # writes output/main.c, doesn't try to link it
+# ... transfer output/main.c to a Mac ...
+cc output/main.c -lm -o main
 ```
 
 ---

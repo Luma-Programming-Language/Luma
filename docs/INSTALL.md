@@ -36,11 +36,18 @@ sudo ./scripts/install.sh
 
 ### Cross-compiling
 
-`luma` can target another OS directly, as long as [`zig`](https://ziglang.org) is on your `PATH` — it's the actual C toolchain used to build the foreign binary:
+Windows, from Linux, with [mingw-w64](https://www.mingw-w64.org) installed (`mingw-w64-gcc` on Arch, `gcc-mingw-w64-x86-64` on Debian/Ubuntu) — a real GNU cross-compiler, no separate build system or language involved:
 
 ```bash
 ./scripts/cross-build.sh windows64 dist/luma
-./scripts/cross-build.sh macos     dist/luma
+```
+
+macOS has no equivalent cross-compiler package (only osxcross, which needs Apple's SDK extracted from a real Xcode install). `scripts/transpile.sh` emits the C without trying to link it, for an actual Mac to compile with its own `cc`:
+
+```bash
+./scripts/transpile.sh macos dist/luma.c
+# ... on an actual Mac ...
+cc dist/luma.c -lm -o luma
 ```
 
 ---

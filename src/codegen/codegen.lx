@@ -543,8 +543,6 @@ const emit_all_func_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void 
   }
 }
 
-// ─── Entry point ─────────────────────────────────────────────────────────────
-
 const basename_of -> fn (path: *byte) *byte {
   let len: int = STR::strlen(path);
   let i: int = len - 1;
@@ -555,21 +553,37 @@ const basename_of -> fn (path: *byte) *byte {
   return path;
 }
 
-// Which C compiler invocation to prefix the generated-C build command with,
-// based on the requested target. Anything other than an explicit
-// windows32/windows64/macos target falls back to the host's own `cc` — no
-// new dependency for the common (native-build) case.
-const target_cc_prefix -> fn (os: *byte) *byte {
-  if (os == cast<*byte>(0)) return "cc -w ";
-  if (STR::strcmp(os, "windows64") == 0) return "zig cc -target x86_64-windows-gnu -w ";
-  if (STR::strcmp(os, "windows32") == 0) return "zig cc -target x86-windows-gnu -w ";
-  if (STR::strcmp(os, "macos")     == 0) return "zig cc -target x86_64-macos -w ";
+// Which C compiler invocation to prefix the generated-C build command with.
+// Only routes through a cross-compiler when `-t`/`--target-os` was actually
+// given on this invocation — i.e. a genuine cross-compile. Without that
+// check, a Windows-native build of luma (itself cross-compiled from Linux,
+// so its own auto-detected `os` is permanently "windows64") would go
+// looking for a cross-compiler on every single ordinary native build it
+// ever does, since `os` alone can't tell "genuinely cross-compiling" apart
+// from "this just happens to match the host". A plain native build always
+// uses the host's own `cc` — no new dependency for the common case.
+//
+// Windows: mingw-w64 (x86_64-w64-mingw32-gcc / i686-w64-mingw32-gcc) is a
+// real GNU cross-compiler — a normal package, not a separate language or
+// build system, and it's what std_win32.lx's kernel32 imports are built
+// against.
+//
+// macOS: there's no equivalent cross-compiler available as a plain package
+// (only osxcross, which needs Apple's actual SDK extracted from a real
+// Xcode install — not something to depend on here). A -t macos build on a
+// non-macOS host without -c/--no-compile will still get to this branch,
+// still emit correctly macOS-flavored C, and then fail here at the actual
+// compile/link step — loudly, with whatever error the host's own `cc`
+// gives it, not silently. -c/--no-compile is the supported way to cross
+// this gap: emit the C on any host, then hand it to an actual macOS
+// machine's own `cc` to link.
+const target_cc_prefix -> fn (os: *byte, target_explicit: bool) *byte {
+  if (!target_explicit || os == cast<*byte>(0)) return "cc -w ";
+  if (STR::strcmp(os, "windows64") == 0) return "x86_64-w64-mingw32-gcc -w ";
+  if (STR::strcmp(os, "windows32") == 0) return "i686-w64-mingw32-gcc -w ";
   return "cc -w ";
 }
 
-// Windows binaries need a .exe suffix or the linker (correctly) writes an
-// extensionless file that Windows won't run. #returns_ownership: caller
-// frees the result.
 #returns_ownership
 const target_output_name -> fn (name: *byte, os: *byte) *byte {
   let is_windows: bool = os != cast<*byte>(0) &&
@@ -619,17 +633,16 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
   free(src);
   LIBC::fclose(out);
 
-  // ── Compile & link ──────────────────────────────────────────────────────
-  // config.os only picks @os {} branches in the Luma source by default; it
-  // does not by itself change what compiles the generated C. When it names
-  // a target other than the host, route through `zig cc`, which bundles its
-  // own minimal libc/headers per target and can produce a Windows or macOS
-  // binary from Linux without mingw-w64/osxcross installed. Native builds
-  // (config.os == host, or unset) keep using the host's own `cc` unchanged.
+  if (config.no_compile) {
+    output("Saved generated C source to '", c_path, "'\n");
+    free(c_path);
+    return true;
+  }
+
   let out_name: *byte = target_output_name(config.name, config.os);
 
   let cmd: *CG::Buf = CG::buf_init();
-  CG::buf_str(cmd, target_cc_prefix(config.os));
+  CG::buf_str(cmd, target_cc_prefix(config.os, config.target_explicit));
   if (config.debug) CG::buf_str(cmd, "-g ");
   if (config.opt_level > 0) { CG::buf_str(cmd, "-O"); CG::buf_int(cmd, config.opt_level); CG::buf_str(cmd, " "); }
   CG::buf_str(cmd, c_path);

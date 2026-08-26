@@ -36,7 +36,10 @@ jobs:
           name: luma-linux-x86_64
           path: luma-*-linux-x86_64.tar.gz
 
-  build-cross-platform:
+  # Windows: mingw-w64 is a real GNU cross-compiler (a normal package, not
+  # a separate language/toolchain), so this cross-builds a linked binary
+  # directly on Linux — see src/codegen/codegen.lx's target_cc_prefix.
+  build-windows:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo
@@ -45,54 +48,30 @@ jobs:
       - name: Bootstrap a native bin/luma
         run: ./scripts/bootstrap-build.sh bootstrap/luma-seed
 
-      - name: Install zig (cross C toolchain)
-        run: |
-          ZIG_VERSION=0.16.0
-          curl -fsSL -o /tmp/zig.tar.xz \
-            "https://ziglang.org/download/${ZIG_VERSION}/zig-x86_64-linux-${ZIG_VERSION}.tar.xz"
-          mkdir -p /tmp/zig-install
-          tar -xf /tmp/zig.tar.xz -C /tmp/zig-install --strip-components=1
-          echo "/tmp/zig-install" >> "$GITHUB_PATH"
+      - name: Install mingw-w64
+        run: sudo apt-get update && sudo apt-get install -y gcc-mingw-w64-x86-64
 
       - name: Cross-build for Windows x86_64
         run: ./scripts/cross-build.sh windows64 dist-windows/luma
 
-      - name: Cross-build for macOS x86_64
-        run: ./scripts/cross-build.sh macos dist-macos/luma
-
-      - name: Package release archives
+      - name: Package release archive
         run: |
           VERSION="${GITHUB_REF_NAME:-dev}"
+          STAGE="luma-${VERSION}-windows-x86_64"
+          mkdir -p "$STAGE"
+          cp dist-windows/luma.exe "$STAGE/luma.exe"
+          cp -r std "$STAGE/std"
+          cp scripts/install.bat "$STAGE/install.bat"
+          zip -r "${STAGE}.zip" "$STAGE"
 
-          WIN_STAGE="luma-${VERSION}-windows-x86_64"
-          mkdir -p "$WIN_STAGE"
-          cp dist-windows/luma.exe "$WIN_STAGE/luma.exe"
-          cp -r std "$WIN_STAGE/std"
-          cp scripts/install.bat "$WIN_STAGE/install.bat"
-          zip -r "${WIN_STAGE}.zip" "$WIN_STAGE"
-
-          MAC_STAGE="luma-${VERSION}-macos-x86_64"
-          mkdir -p "$MAC_STAGE"
-          cp dist-macos/luma "$MAC_STAGE/luma"
-          cp -r std "$MAC_STAGE/std"
-          cp scripts/install.sh "$MAC_STAGE/install.sh"
-          chmod +x "$MAC_STAGE/install.sh"
-          tar -czf "${MAC_STAGE}.tar.gz" "$MAC_STAGE"
-
-      - name: Upload Windows build artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: luma-windows-x86_64
           path: luma-*-windows-x86_64.zip
 
-      - name: Upload macOS build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: luma-macos-x86_64
-          path: luma-*-macos-x86_64.tar.gz
-
   smoke-test-windows:
-    needs: build-cross-platform
+    needs: build-windows
     runs-on: windows-latest
     steps:
       - name: Download Windows build artifact
@@ -112,41 +91,83 @@ jobs:
           echo "$out"
           echo "$out" | grep -q "Luma Compiler"
 
-  smoke-test-macos:
-    needs: build-cross-platform
+  # macOS: no real cross-compiler package exists for it (only osxcross,
+  # which needs Apple's SDK extracted from a real Xcode install — not
+  # something to depend on here). Transpile to C on Linux with
+  # -t macos -c/--no-compile, then hand that C to a macos-latest runner's
+  # own preinstalled clang to actually build and link.
+  transpile-macos:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Bootstrap a native bin/luma
+        run: ./scripts/bootstrap-build.sh bootstrap/luma-seed
+
+      - name: Transpile to C for macOS
+        run: ./scripts/transpile.sh macos dist-macos-src/luma.c
+
+      - name: Upload transpiled source
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos-transpiled-source
+          path: dist-macos-src/luma.c
+
+  build-macos:
+    needs: transpile-macos
     runs-on: macos-latest
     steps:
-      - name: Download macOS build artifact
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Download transpiled source
         uses: actions/download-artifact@v4
         with:
-          name: luma-macos-x86_64
+          name: macos-transpiled-source
+          path: dist-macos-src
 
-      - name: Extract and run --version
+      - name: Compile and link with the native toolchain
         run: |
-          tar -xzf luma-*-macos-x86_64.tar.gz
-          cd luma-*-macos-x86_64
-          chmod +x luma
-          # --version exits 1 by this compiler's existing convention (same
-          # as --help/--license) — that's not a smoke-test failure, so
-          # check the output rather than the exit code.
-          out="$(./luma --version || true)"
+          mkdir -p dist-macos
+          cc -w -O2 dist-macos-src/luma.c -lm -o dist-macos/luma
+
+      - name: Smoke test — run it right here, on real macOS
+        run: |
+          out="$(./dist-macos/luma --version || true)"
           echo "$out"
           echo "$out" | grep -q "Luma Compiler"
 
+      - name: Package release archive
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          STAGE="luma-${VERSION}-macos-x86_64"
+          mkdir -p "$STAGE"
+          cp dist-macos/luma "$STAGE/luma"
+          cp -r std "$STAGE/std"
+          cp scripts/install.sh "$STAGE/install.sh"
+          chmod +x "$STAGE/install.sh"
+          tar -czf "${STAGE}.tar.gz" "$STAGE"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: luma-macos-x86_64
+          path: luma-*-macos-x86_64.tar.gz
+
   # One job, after everything else has actually passed, publishes exactly one
-  # release with all three archives attached. Previously each build job
-  # published on its own — two concurrent "create/update this tag's release"
-  # calls racing each other, neither one gated on the cross-compiled binaries
-  # having been proven to actually run. Also the only place a version's
-  # written release notes (docs/releases/vX.Y.Z.md, if present) become the
-  # release body instead of GitHub's auto-generated commit list.
+  # release with all three archives attached — not the intermediate
+  # macos-transpiled-source artifact (excluded by the luma-* pattern below).
+  # Also the only place a version's written release notes
+  # (docs/releases/vX.Y.Z.md, if present) become the release body instead of
+  # GitHub's auto-generated commit list.
   publish-release:
     if: startsWith(github.ref, 'refs/tags/')
     needs:
       - build-linux-x86_64
-      - build-cross-platform
+      - build-windows
       - smoke-test-windows
-      - smoke-test-macos
+      - build-macos
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repo

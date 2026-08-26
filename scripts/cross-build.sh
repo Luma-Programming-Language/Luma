@@ -1,31 +1,39 @@
 #!/usr/bin/env bash
-# Cross-compiles the luma compiler ITSELF for another OS, using a native
-# bin/luma (already built by bootstrap-build.sh) plus `zig cc` as the
+# Cross-compiles the luma compiler ITSELF for Windows, using a native
+# bin/luma (already built by bootstrap-build.sh) plus mingw-w64 as the
 # actual C toolchain — see src/codegen/codegen.lx's target_cc_prefix.
 #
-# Usage:
-#   scripts/cross-build.sh <windows64|windows32|macos> <output-path>
+# Windows-only: there's no equivalent real cross-compiler package for
+# macOS (only osxcross, which needs Apple's SDK extracted from a real
+# Xcode install). For macOS, see scripts/transpile.sh instead — it emits
+# the C on any host, for an actual macOS machine's own `cc` to link.
 #
-# Requires: bin/luma already built, and `zig` on PATH.
+# Usage:
+#   scripts/cross-build.sh <windows64|windows32> <output-path>
+#
+# Requires: bin/luma already built, and mingw-w64 on PATH
+# (x86_64-w64-mingw32-gcc / i686-w64-mingw32-gcc — package name is
+# mingw-w64-gcc on Arch, gcc-mingw-w64-x86-64 on Debian/Ubuntu).
 set -euo pipefail
 
 cd "$(dirname "$0")/.."
 source "scripts/lib-src-files.sh"
 
-TARGET="${1:?usage: cross-build.sh <windows64|windows32|macos> <output-path>}"
-OUT="${2:?usage: cross-build.sh <windows64|windows32|macos> <output-path>}"
+TARGET="${1:?usage: cross-build.sh <windows64|windows32> <output-path>}"
+OUT="${2:?usage: cross-build.sh <windows64|windows32> <output-path>}"
 
 case "$TARGET" in
-  windows64|windows32|macos) ;;
-  *) echo "error: unknown target '$TARGET' (expected windows64, windows32, or macos)" >&2; exit 1 ;;
+  windows64) COMPILER="x86_64-w64-mingw32-gcc" ;;
+  windows32) COMPILER="i686-w64-mingw32-gcc" ;;
+  *) echo "error: unknown target '$TARGET' (expected windows64 or windows32 — see scripts/transpile.sh for macos)" >&2; exit 1 ;;
 esac
 
 if [ ! -x "bin/luma" ]; then
   echo "error: bin/luma not found — run scripts/bootstrap-build.sh first" >&2
   exit 1
 fi
-if ! command -v zig >/dev/null 2>&1; then
-  echo "error: zig not found on PATH — required for cross-compiling to $TARGET" >&2
+if ! command -v "$COMPILER" >/dev/null 2>&1; then
+  echo "error: $COMPILER not found on PATH — required for cross-compiling to $TARGET (mingw-w64-gcc on Arch, gcc-mingw-w64-x86-64 on Debian/Ubuntu)" >&2
   exit 1
 fi
 
