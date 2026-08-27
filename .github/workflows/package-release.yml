@@ -1,0 +1,37 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Bootstrap, self-verify, and test
+        run: ./scripts/bootstrap-build.sh bootstrap/luma-seed
+
+      - name: Package archive
+        run: |
+          VERSION="${GITHUB_REF_NAME:-dev}"
+          STAGE="luma-${VERSION}-linux-x86_64"
+          mkdir -p "$STAGE"
+          cp bin/luma "$STAGE/luma"
+          cp -r std "$STAGE/std"
+          cp scripts/install.sh "$STAGE/install.sh"
+          chmod +x "$STAGE/install.sh"
+          tar -czf "${STAGE}.tar.gz" "$STAGE"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/')
+        with:
+          files: luma-*.tar.gz
