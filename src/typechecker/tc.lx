@@ -139,10 +139,12 @@ const report_module_allocations -> fn (analyzer: *CORE::StaticMemoryAnalyzer, fi
 pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) bool {
   if (node == cast<*AST::AstNode>(0)) return true;
 
+  SCOPE::scope_arena_init();
   let root: *CORE::Scope = SCOPE::scope_init("global", config.check_mem, config.os);
 
   if (node.kind != AST::NodeType::PROGRAM) {
     STMT::typecheck_statement(node, root);
+    SCOPE::scope_arena_teardown();
     if (ERO::error_has_errors() != 0) { ERO::error_report(); return false; }
     return true;
   }
@@ -214,6 +216,7 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
   }
 
   VEC::free_vector(&registry);
+  SCOPE::scope_arena_teardown();
 
   if (ERO::error_has_errors() != 0) {
     ERO::error_report();

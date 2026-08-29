@@ -399,6 +399,34 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
             return;
           }
         }
+      } elif (mn_object_kind == AST::NodeType::EXPR_MEMBER) {
+        // ALIAS::Type::static_method(...) — a static method on a struct
+        // reached through a module alias, e.g. PBAR::ProgressBar::new(...).
+        // `find_method` looks up by struct name alone (methods aren't
+        // module-scoped in the registry — same as the same-module case
+        // just above), so all that's needed here is pulling the struct
+        // name out of the inner `ALIAS::Type` member expression; the ALIAS
+        // itself doesn't need re-resolving for this lookup to work.
+        let inner: *AST::MemberNode = cast<*AST::MemberNode>(mn_object);
+        if (inner.is_compiletime == 1) {
+          let sfi: *CG::FuncInfo = CG::find_method(ctx, inner.member, mn.member);
+          if (sfi != cast<*CG::FuncInfo>(0)) {
+            if (sfi.is_static) {
+              let scname: *byte = CG::c_name_for_method(sfi);
+              CG::buf_str(buf, scname);
+              free(scname);
+              CG::buf_str(buf, "(");
+              let k: int = 0;
+              loop (k < n.arg_count) {
+                if (k > 0) CG::buf_str(buf, ", ");
+                gen_expr(ctx, buf, n.args[k]);
+                k = k + 1;
+              }
+              CG::buf_str(buf, ")");
+              return;
+            }
+          }
+        }
       }
       CG::buf_str(buf, "/* unresolved qualified call */ 0");
       return;

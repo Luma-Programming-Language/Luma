@@ -2,15 +2,77 @@
 
 @use "std_vector" as VEC
 @use "std_cstring" as STR
+@use "std_arena"   as ARENA
 
 @use "tc_core" as CORE
 @use "ast"     as AST
 
 const SCOPE_VEC_CAPACITY: int = 64;
 
+// Every Scope/StaticMemoryAnalyzer struct created during a single
+// `TC::typecheck()` call comes from this bump arena instead of a one-off
+// `alloc()`. Their backing vectors (`symbols`, `imported_modules`,
+// `deferred_frees`, `memory_analyzer.allocations`) still grow via realloc
+// on the heap — an arena can't realloc — so they're tracked in
+// `g_all_scopes` and freed individually in `scope_arena_teardown`, right
+// before the whole arena is released in one call. 64MB is generous
+// headroom (each struct is under 150 bytes; even a huge multi-module
+// program is a few hundred KB of scopes) and is only a virtual-memory
+// reservation until touched.
+const SCOPE_ARENA_SIZE: int = 64 * 1024 * 1024;
+
+let g_scope_arena:       ARENA::Arena;
+let g_scope_arena_ready: bool = false;
+let g_all_scopes:        VEC::Vector;
+let g_root_analyzer:     *CORE::StaticMemoryAnalyzer = cast<*CORE::StaticMemoryAnalyzer>(0);
+
+// Call once before typechecking starts (pairs with scope_arena_teardown).
+// Safe to call repeatedly — e.g. once per LSP analysis pass — because
+// teardown always resets g_scope_arena_ready before returning.
+pub const scope_arena_init -> fn () void {
+  if (g_scope_arena_ready) return;
+  g_scope_arena_ready = true;
+  g_scope_arena   = ARENA::create_arena_sized(SCOPE_ARENA_SIZE);
+  g_all_scopes    = VEC::create_vector(sizeof<*CORE::Scope>);
+  g_root_analyzer = cast<*CORE::StaticMemoryAnalyzer>(0);
+}
+
+// Frees every scope's heap-backed vectors, then the arena holding the
+// Scope/StaticMemoryAnalyzer structs themselves. Call once after
+// typechecking finishes — nothing may dereference a *Scope afterward.
+pub const scope_arena_teardown -> fn () void {
+  if (g_scope_arena_ready == false) return;
+
+  let n: int = g_all_scopes.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let s: *CORE::Scope = cast<**CORE::Scope>(g_all_scopes.data)[i];
+    VEC::free_vector(s.symbols);
+    VEC::free_vector(s.imported_modules);
+    VEC::free_vector(s.deferred_frees);
+  }
+
+  // memory_analyzer is shared by every scope in the tree (scope_create_child
+  // just copies the parent's pointer down) — free its vector exactly once.
+  if (g_root_analyzer != cast<*CORE::StaticMemoryAnalyzer>(0)) {
+    VEC::free_vector(g_root_analyzer.allocations);
+    g_root_analyzer = cast<*CORE::StaticMemoryAnalyzer>(0);
+  }
+
+  VEC::free_vector(&g_all_scopes);
+  ARENA::free_arena(&g_scope_arena);
+  g_scope_arena_ready = false;
+}
+
+const track_scope -> fn (s: *CORE::Scope) void {
+  g_all_scopes.push_back(cast<*void>(&s));
+}
+
 #returns_ownership
 const new_vector -> fn (elem_size: int) *VEC::Vector {
-  let v: *VEC::Vector = cast<*VEC::Vector>(alloc(sizeof<VEC::Vector>));
+  // The Vector struct is fixed-size (unlike .data, it never grows/reallocs)
+  // so it comes from the arena too — scope_arena_teardown only needs to
+  // free .data via VEC::free_vector, not the struct itself.
+  let v: *VEC::Vector = cast<*VEC::Vector>(ARENA::alloc_arena(&g_scope_arena, sizeof<VEC::Vector>));
   v.data         = cast<*void>(alloc(SCOPE_VEC_CAPACITY * elem_size));
   v.capacity     = SCOPE_VEC_CAPACITY;
   v.size         = 0;
@@ -20,7 +82,7 @@ const new_vector -> fn (elem_size: int) *VEC::Vector {
 
 #returns_ownership
 pub const scope_init -> fn (name: *byte, check_mem: bool, os: *byte) *CORE::Scope {
-  let s: *CORE::Scope = cast<*CORE::Scope>(alloc(sizeof<CORE::Scope>));
+  let s: *CORE::Scope = cast<*CORE::Scope>(ARENA::alloc_arena(&g_scope_arena, sizeof<CORE::Scope>));
 
   s.parent            = cast<*CORE::Scope>(0);
   s.symbols           = new_vector(sizeof<CORE::Symbol>);
@@ -37,17 +99,19 @@ pub const scope_init -> fn (name: *byte, check_mem: bool, os: *byte) *CORE::Scop
   s.check_mem         = check_mem;
   s.os                = os;
 
-  let analyzer: *CORE::StaticMemoryAnalyzer = cast<*CORE::StaticMemoryAnalyzer>(alloc(sizeof<CORE::StaticMemoryAnalyzer>));
+  let analyzer: *CORE::StaticMemoryAnalyzer = cast<*CORE::StaticMemoryAnalyzer>(ARENA::alloc_arena(&g_scope_arena, sizeof<CORE::StaticMemoryAnalyzer>));
   analyzer.allocations          = new_vector(sizeof<CORE::StaticAllocation>);
   analyzer.skip_memory_tracking = false;
   s.memory_analyzer = analyzer;
+  g_root_analyzer   = analyzer;
 
+  track_scope(s);
   return s;
 }
 
 #returns_ownership
 pub const scope_create_child -> fn (parent: *CORE::Scope, name: *byte) *CORE::Scope {
-  let s: *CORE::Scope = cast<*CORE::Scope>(alloc(sizeof<CORE::Scope>));
+  let s: *CORE::Scope = cast<*CORE::Scope>(ARENA::alloc_arena(&g_scope_arena, sizeof<CORE::Scope>));
 
   s.parent            = parent;
   s.symbols           = new_vector(sizeof<CORE::Symbol>);
@@ -65,6 +129,7 @@ pub const scope_create_child -> fn (parent: *CORE::Scope, name: *byte) *CORE::Sc
   s.os                = parent.os;
   s.memory_analyzer   = parent.memory_analyzer;  // shared across the module
 
+  track_scope(s);
   return s;
 }
 

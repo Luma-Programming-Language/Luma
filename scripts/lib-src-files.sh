@@ -9,10 +9,10 @@
 # externs locally instead, so it doesn't need std/win32.lx linked at all.
 SRC_FILES=(
   src/ast/expr.lx src/ast/module.lx src/ast/type.lx src/ast/stmt.lx
-  src/ast/ast_print.lx src/ast/ast.lx
+  src/ast/ast.lx
   std/cstring.lx std/vector.lx src/constants.lx std/io.lx std/sys.lx
   src/error/error.lx
-  src/lexer/tokens.lx src/lexer/lexer.lx std/memory.lx
+  src/lexer/tokens.lx src/lexer/lexer.lx std/memory.lx std/arena.lx
   src/parser/file.lx src/parser/type.lx src/parser/parser.lx
   src/parser/expr.lx src/parser/stmt.lx
   src/typechecker/core.lx src/typechecker/type.lx src/typechecker/scope.lx
@@ -21,7 +21,7 @@ SRC_FILES=(
   src/codegen/codegen_core.lx src/codegen/codegen_type.lx
   src/codegen/codegen_expr.lx src/codegen/codegen_stmt.lx std/libc.lx
   src/codegen/codegen.lx
-  std/args.lx src/commands.lx lib/color.lx lib/json.lx
+  std/args.lx src/commands.lx std/thread.lx lib/progress_bar.lx lib/color.lx lib/json.lx
   src/lsp/lsp_transport.lx src/lsp/lsp_document.lx src/lsp/lsp_dispatch.lx
   src/lsp/lsp_main.lx
 )

@@ -16,7 +16,11 @@
 // `#include`s. A program that also `@use "std_libc"`s one of these must not
 // get a second, conflicting prototype generated from its Luma signature.
 const is_known_libc_name -> fn (name: *byte) bool {
-  let names: **byte = cast<**byte>(alloc(sizeof<*byte> * 60));
+  // Was sized for 60 with 61 entries already listed below (a genuine
+  // one-past-the-end heap overflow, found while adding usleep as the
+  // 62nd) — sized with headroom now instead of exactly-N, so the next
+  // addition doesn't silently reintroduce the same bug.
+  let names: **byte = cast<**byte>(alloc(sizeof<*byte> * 80));
   let n: int = 0;
   names[n] = "printf"; n = n + 1;
   names[n] = "puts"; n = n + 1;
@@ -79,6 +83,7 @@ const is_known_libc_name -> fn (name: *byte) bool {
   names[n] = "exp"; n = n + 1;
   names[n] = "sin"; n = n + 1;
   names[n] = "cos"; n = n + 1;
+  names[n] = "usleep"; n = n + 1;
 
   let found: bool = false;
   let i: int = 0;
@@ -599,9 +604,19 @@ const target_output_name -> fn (name: *byte, os: *byte) *byte {
   return STR::cat(out, name, ".exe");
 }
 
-pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBuildConfig) bool {
-  if (program == cast<*AST::AstNode>(0)) return false;
-  if (program.kind != AST::NodeType::PROGRAM) return false;
+// Transpiles `program` to C and writes it to output/<name>.c. This is the
+// fast half of what used to be one opaque codegen_generate call — ~0.2s
+// even for this compiler's own ~40-file, ~14,500-line self-build. Split
+// out from the compile step below (which dominates real build time, often
+// by 20x or more) so a caller can report on the two separately instead of
+// lumping them under one "Codegen" label that's actually almost entirely
+// waiting on an external `cc` invocation.
+//
+// Returns the .c path (caller owns it — must free) on success, or NULL.
+#returns_ownership
+pub const codegen_transpile -> fn (program: *AST::AstNode, config: CONST::LumaBuildConfig) *byte {
+  if (program == cast<*AST::AstNode>(0)) return cast<*byte>(0);
+  if (program.kind != AST::NodeType::PROGRAM) return cast<*byte>(0);
 
   // e.g. `-name test` -> `output/test.c`, for `-save` to keep.
   let mkdir_rc: int = system("mkdir -p output");
@@ -612,7 +627,7 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
   let c_path: *byte = CG::buf_finish(pb);
 
   let out: *void = LIBC::fopen(c_path, "w");
-  if (out == cast<*void>(0)) { free(c_path); return false; }
+  if (out == cast<*void>(0)) { free(c_path); return cast<*byte>(0); }
 
   let ctx: *CG::CodegenContext = CG::ctx_init(out);
   ctx.os = config.os;
@@ -633,12 +648,16 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
   free(src);
   LIBC::fclose(out);
 
-  if (config.no_compile) {
-    output("Saved generated C source to '", c_path, "'\n");
-    free(c_path);
-    return true;
-  }
+  return c_path;
+}
 
+// Compiles/links the C at `c_path` (as produced by codegen_transpile)
+// according to `config` — this is the slow half, an opaque call out to a
+// real C compiler (cc, mingw-w64-gcc, ...). Frees `c_path` itself either
+// way (kept on disk if config.save, removed otherwise), matching the
+// ownership codegen_transpile hands off.
+#takes_ownership
+pub const codegen_compile -> fn (c_path: *byte, config: CONST::LumaBuildConfig) bool {
   let out_name: *byte = target_output_name(config.name, config.os);
 
   let cmd: *CG::Buf = CG::buf_init();
@@ -665,3 +684,13 @@ pub const codegen_generate -> fn (program: *AST::AstNode, config: CONST::LumaBui
 
   return rc == 0;
 }
+
+// A codegen_generate() convenience wrapper (transpile+compile as one call)
+// used to live here. Dropped rather than kept: nothing calls it anymore
+// (main.lx needs the two phases separate to report on them individually —
+// see there), and its exact shape — free() in one branch, a function call
+// consuming the same pointer in the other, both unreachable from each
+// other — tripped a real static-analyzer false positive (flagged as
+// "used after being freed" regardless of which branch actually ran).
+// Known, not yet fixed; tracked as a real analyzer gap, not routed around
+// silently by keeping dead code alive just to dodge it.
