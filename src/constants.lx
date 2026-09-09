@@ -17,7 +17,7 @@ pub const LumaErrorCode -> enum {
 
 pub const LumaErrorMessage -> struct {
   message: *byte,
-  code: int, 
+  code: int,
 };
 
 pub const LumaBuildConfig -> struct {
@@ -31,6 +31,7 @@ pub const LumaBuildConfig -> struct {
   check_mem: bool,
   lsp_mode: bool,
   debug: bool,
+  anim: bool,
   file_count: int,
   opt_level: int,
   link_files: VEC::Vector,
@@ -47,6 +48,8 @@ pub const init_build_config -> fn (filepath: *byte) LumaBuildConfig {
     clean: false,
     check_mem: true,
     lsp_mode: false,
+    debug: false,
+    anim: true,
     file_count: 0,
     opt_level: 2,
     link_files: VEC::create_vector(sizeof<*byte>),

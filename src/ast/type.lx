@@ -9,6 +9,15 @@ pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AST::AstNode
   n.category = AST::NodeCategory::Node_Category_TYPE;
   n.line = line;
   n.col = col;
+  // let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(
+  //   make_node<AST::BasicTypeNode>(
+  //     AST::BasicTypeNode,
+  //     AST::NodeCategory::Node_Category_TYPE,
+  //     line,
+  //     col,
+  //   )
+  // );
+
   n.name = name;
   n.type_args = cast<**AST::AstNode>(0);
   n.type_arg_count = 0;

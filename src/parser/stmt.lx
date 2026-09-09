@@ -60,14 +60,10 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
         p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP   ||
         p.current().kind == TOK::LumaTokenType::TOK_DLL_IMPORT        ||
         p.current().kind == TOK::LumaTokenType::TOK_LIB_IMPORT        ) {
-    switch(p.current().kind) {
-      TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP -> {
-        returns_ownership = 1; p.advance();
-      }
-      TOK::LumaTokenType::TOK_TAKES_OWNERSHIP -> {
-        takes_ownership = 1; p.advance();
-      }
-      TOK::LumaTokenType::TOK_DLL_IMPORT -> {
+    switch using TOK::LumaTokenType (p.current().kind) {
+      TOK_RETURNS_OWNERSHIP -> { returns_ownership = 1; p.advance(); }
+      TOK_TAKES_OWNERSHIP   -> { takes_ownership   = 1; p.advance(); }
+      TOK_DLL_IMPORT -> {
         is_dll_import = 1; p.advance();
 
         p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after #dll_import");
@@ -109,7 +105,7 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
 
         p.consume(TOK::LumaTokenType::TOK_RPAREN, "Expected ')' to close #dll_import");
       }
-      TOK::LumaTokenType::TOK_LIB_IMPORT -> {
+      TOK_LIB_IMPORT -> {
         is_lib_import = 1; p.advance();
 
         p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after #lib_import");
@@ -127,12 +123,12 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
     }
   }
 
-  switch(p.current().kind) {
-    TOK::LumaTokenType::TOK_PRIVATE -> {
+  switch using TOK::LumaTokenType (p.current().kind) {
+    TOK_PRIVATE -> {
       is_public = 0;
       p.advance();
     }
-    TOK::LumaTokenType::TOK_PUBLIC -> {
+    TOK_PUBLIC -> {
       is_public = 1;
       p.advance();
     }
@@ -140,21 +136,21 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
 
   let node: *AST::AstNode = cast<*AST::AstNode>(0);
 
-  switch(p.current().kind) {
-    TOK::LumaTokenType::TOK_CONTINUE, TOK::LumaTokenType::TOK_BREAK 
+  switch using TOK::LumaTokenType (p.current().kind) {
+    TOK_CONTINUE, TOK_BREAK 
       -> node = break_continue_stmt(p, -cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
-    TOK::LumaTokenType::TOK_CONST  -> node = _const(p, is_public, returns_ownership, takes_ownership);
-    TOK::LumaTokenType::TOK_VAR    -> node = var(p, is_public);
-    TOK::LumaTokenType::TOK_USE    -> node = use(p);
-    TOK::LumaTokenType::TOK_RETURN -> node = return_stmt(p);
-    TOK::LumaTokenType::TOK_LBRACE -> node = block(p);
-    TOK::LumaTokenType::TOK_IF     -> node = _if(p);
-    TOK::LumaTokenType::TOK_LOOP   -> node = _loop(p);
-    TOK::LumaTokenType::TOK_DEFER  -> node = _defer(p);
-    TOK::LumaTokenType::TOK_SWITCH -> node = _switch(p);
-    TOK::LumaTokenType::TOK_IMPL   -> node = _impl(p);
-    TOK::LumaTokenType::TOK_OS     -> node = os_stmt(p);
-    TOK::LumaTokenType::TOK_LINK   -> node = link_stmt(p);
+    TOK_CONST  -> node = _const(p, is_public, returns_ownership, takes_ownership);
+    TOK_VAR    -> node = var(p, is_public);
+    TOK_USE    -> node = use(p);
+    TOK_RETURN -> node = return_stmt(p);
+    TOK_LBRACE -> node = block(p);
+    TOK_IF     -> node = _if(p);
+    TOK_LOOP   -> node = _loop(p);
+    TOK_DEFER  -> node = _defer(p);
+    TOK_SWITCH -> node = _switch(p);
+    TOK_IMPL   -> node = _impl(p);
+    TOK_OS     -> node = os_stmt(p);
+    TOK_LINK   -> node = link_stmt(p);
     _ -> node = expr(p); 
   }
 

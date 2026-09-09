@@ -119,41 +119,36 @@ const EOF_TOK: TOK::Token = {
 }; 
 
 pub const get_bp -> fn (kind: int) int {
-  switch (kind) {
-    TOK::LumaTokenType::TOK_EQUAL    -> return BindingPower::BP_ASSIGN;
-    TOK::LumaTokenType::TOK_QUESTION -> return BindingPower::BP_TERNARY;
+  switch using TOK::LumaTokenType (kind) {
+    TOK_EQUAL    -> return BindingPower::BP_ASSIGN;
+    TOK_QUESTION -> return BindingPower::BP_TERNARY;
 
-    TOK::LumaTokenType::TOK_OR       -> return BindingPower::BP_LOGICAL_OR;
-    TOK::LumaTokenType::TOK_AND      -> return BindingPower::BP_LOGICAL_AND;
+    TOK_OR       -> return BindingPower::BP_LOGICAL_OR;
+    TOK_AND      -> return BindingPower::BP_LOGICAL_AND;
 
-    TOK::LumaTokenType::TOK_PIPE     -> return BindingPower::BP_BITWISE_OR;
-    TOK::LumaTokenType::TOK_CARET    -> return BindingPower::BP_BITWISE_XOR;
-    TOK::LumaTokenType::TOK_AMP      -> return BindingPower::BP_BITWISE_AND;
-    TOK::LumaTokenType::TOK_RANGE    -> return BindingPower::BP_RANGE;
+    TOK_PIPE     -> return BindingPower::BP_BITWISE_OR;
+    TOK_CARET    -> return BindingPower::BP_BITWISE_XOR;
+    TOK_AMP      -> return BindingPower::BP_BITWISE_AND;
+    TOK_RANGE    -> return BindingPower::BP_RANGE;
 
-    TOK::LumaTokenType::TOK_EQEQ, TOK::LumaTokenType::TOK_NEQ 
-      -> return BindingPower::BP_EQUALITY;
+    TOK_EQEQ, TOK_NEQ -> return BindingPower::BP_EQUALITY;
 
-    TOK::LumaTokenType::TOK_LT, TOK::LumaTokenType::TOK_LE,
-    TOK::LumaTokenType::TOK_GT, TOK::LumaTokenType::TOK_GE 
+    TOK_LT, TOK_LE, TOK_GT, TOK_GE 
       -> return BindingPower::BP_RELATIONAL;
 
-    TOK::LumaTokenType::TOK_SHIFT_LEFT, TOK::LumaTokenType::TOK_SHIFT_RIGHT 
+    TOK_SHIFT_LEFT, TOK_SHIFT_RIGHT 
       -> return BindingPower::BP_SHIFT;
 
-    TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_MINUS 
+    TOK_PLUS, TOK_MINUS 
       -> return BindingPower::BP_SUM;
 
-    TOK::LumaTokenType::TOK_STAR, TOK::LumaTokenType::TOK_SLASH,
-    TOK::LumaTokenType::TOK_MODL 
+    TOK_STAR, TOK_SLASH, TOK_MODL 
       -> return BindingPower::BP_PRODUCT;
 
-    TOK::LumaTokenType::TOK_PLUSPLUS, TOK::LumaTokenType::TOK_MINUSMINUS
+    TOK_PLUSPLUS, TOK_MINUSMINUS
       -> return BindingPower::BP_POSTFIX;
 
-    TOK::LumaTokenType::TOK_LPAREN, TOK::LumaTokenType::TOK_LBRACKET,
-    TOK::LumaTokenType::TOK_LBRACE, TOK::LumaTokenType::TOK_DOT, 
-    TOK::LumaTokenType::TOK_RESOLVE 
+    TOK_LPAREN, TOK_LBRACKET, TOK_LBRACE, TOK_DOT, TOK_RESOLVE 
       -> return BindingPower::BP_CALL;
 
     _ -> return BindingPower::BP_NONE;

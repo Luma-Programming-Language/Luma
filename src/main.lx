@@ -38,9 +38,11 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
   let bar: PBAR::ProgressBar = PBAR::ProgressBar::new(6);
   defer bar.free_bar();
-
-  bar.update("Parsing", "|");
-  bar.render();
+  
+  if (build_config.anim) {
+    bar.update("Parsing", "|");
+    bar.render();
+  }
 
   let main_module: *AST::AstNode = PFILE::parse_file(build_config.filepath);
   let program: *AST::AstNode;
@@ -50,9 +52,11 @@ pub const main -> fn (argc: int, argv: **byte) int {
     return 1;
   }
   modules.push_back(cast<*void>(&main_module));
-
-  bar.update("Parsing linked modules", "/");
-  bar.render();
+  
+  if (build_config.anim) {
+    bar.update("Parsing linked modules", "/");
+    bar.render();
+  }
 
   let it: VEC::VectorIter = build_config.link_files.iter();
   loop {
@@ -65,8 +69,10 @@ pub const main -> fn (argc: int, argv: **byte) int {
       modules.push_back(cast<*void>(&linked_module));
   }
   
-  bar.update("Building AST", "-");
-  bar.render();
+  if (build_config.anim) {
+    bar.update("Building AST", "-");
+    bar.render();
+  }
 
   program = STMT::make_program(
     PARS::vec_to_node_array(&modules),
@@ -76,15 +82,21 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
   VEC::free_vector(&modules);
   VEC::free_vector(&build_config.link_files);
+  
+  if (build_config.anim) {
+    bar.update("Typechecking", "\\");
+    bar.render();
+  }
 
-  bar.update("Typechecking", "\\");
-  bar.render();
   let tc: bool = TC::typecheck(program, build_config);
 
   let ok: bool = tc;
   if (tc) {
-    bar.update("Generating C", "|");
-    bar.render();
+    if (build_config.anim) {
+      bar.update("Generating C", "|");
+      bar.render();
+    }
+
     let c_path: *byte = CODEGEN::codegen_transpile(program, build_config);
 
     if (c_path == cast<*byte>(0)) ok = false;
@@ -93,10 +105,14 @@ pub const main -> fn (argc: int, argv: **byte) int {
       free(c_path);
       ok = true;
     } else {
-      bar.update("Compiling", "|");
-      let cg_tid: int = PBAR::start(&bar);
-      ok = CODEGEN::codegen_compile(c_path, build_config);
-      PBAR::stop(cg_tid, &bar);
+      if (build_config.anim) {
+        bar.update("Compiling", "|");
+        let cg_tid: int = PBAR::start(&bar);
+        ok = CODEGEN::codegen_compile(c_path, build_config);
+        PBAR::stop(cg_tid, &bar);
+      } else {
+        ok = CODEGEN::codegen_compile(c_path, build_config);
+      }
     }
 
     if (ok == false) {
@@ -105,8 +121,10 @@ pub const main -> fn (argc: int, argv: **byte) int {
   }
 
   AST::free_node(program);
-
-  if (ok) bar.finish();
+  
+  if (build_config.anim) {
+    if (ok) bar.finish();
+  }
 
   if (ok == false) return CONST::LumaErrorCode::Runtime_Error;
   return 0;

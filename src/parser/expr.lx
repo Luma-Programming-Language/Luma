@@ -100,26 +100,25 @@ const unescape_str -> fn (s: *byte) *byte {
 
 #returns_ownership
 const nud -> fn (p: *PARS::Parser) *AST::AstNode { 
-  switch (p.current().kind) {
-    TOK::LumaTokenType::TOK_NUMBER, TOK::LumaTokenType::TOK_NUM_FLOAT, TOK::LumaTokenType::TOK_STRING,
-    TOK::LumaTokenType::TOK_CHAR_LITERAL, TOK::LumaTokenType::TOK_IDENTIFIER,
-    TOK::LumaTokenType::TOK_TRUE, TOK::LumaTokenType::TOK_FALSE
+  switch using TOK::LumaTokenType (p.current().kind) {
+    TOK_NUMBER,     TOK_NUM_FLOAT, TOK_STRING, TOK_CHAR_LITERAL, 
+    TOK_IDENTIFIER, TOK_TRUE,      TOK_FALSE
       -> return primary(p);
-    TOK::LumaTokenType::TOK_MINUS, TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_BANG,
-    TOK::LumaTokenType::TOK_TILDE, TOK::LumaTokenType::TOK_PLUSPLUS, TOK::LumaTokenType::TOK_MINUSMINUS
+    TOK_MINUS, TOK_PLUS,     TOK_BANG,
+    TOK_TILDE, TOK_PLUSPLUS, TOK_MINUSMINUS
       -> return unary(p);
-    TOK::LumaTokenType::TOK_LPAREN   -> return group(p);
-    TOK::LumaTokenType::TOK_LBRACKET -> return array(p);
-    TOK::LumaTokenType::TOK_LBRACE   -> return estruct(p);
-    TOK::LumaTokenType::TOK_STAR     -> return deref(p);
-    TOK::LumaTokenType::TOK_AMP      -> return addr(p);
-    TOK::LumaTokenType::TOK_ALLOC    -> return _alloc(p);
-    TOK::LumaTokenType::TOK_FREE     -> return _free(p);
-    TOK::LumaTokenType::TOK_CAST     -> return _cast(p);
-    TOK::LumaTokenType::TOK_INPUT    -> return _input(p);
-    TOK::LumaTokenType::TOK_SYSTEM   -> return _system(p);
-    TOK::LumaTokenType::TOK_SYSCALL  -> return syscall(p);
-    TOK::LumaTokenType::TOK_SIZE_OF  -> return _sizeof(p);
+    TOK_LPAREN   -> return group(p);
+    TOK_LBRACKET -> return array(p);
+    TOK_LBRACE   -> return estruct(p);
+    TOK_STAR     -> return deref(p);
+    TOK_AMP      -> return addr(p);
+    TOK_ALLOC    -> return _alloc(p);
+    TOK_FREE     -> return _free(p);
+    TOK_CAST     -> return _cast(p);
+    TOK_INPUT    -> return _input(p);
+    TOK_SYSTEM   -> return _system(p);
+    TOK_SYSCALL  -> return syscall(p);
+    TOK_SIZE_OF  -> return _sizeof(p);
     _ -> {
       p.error("Syntax Error", "Expected an expression.");
       p.advance();
@@ -130,32 +129,21 @@ const nud -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
-  switch(p.current().kind) {
-    // `<` is ambiguous: `add<int>(1, 2)` (generic call) vs. `a < b` (a real
-    // comparison) parse identically up to this point — no symbol table
-    // exists yet to tell "add" apart from an ordinary variable. Try the
-    // generic-instantiation reading first (speculative — rolls itself back
-    // cleanly if it doesn't pan out) and only fall back to plain `<` if
-    // that fails. See try_generic_instantiation below.
-    TOK::LumaTokenType::TOK_LT -> {
+  switch using TOK::LumaTokenType (p.current().kind) {
+    TOK_LT -> {
       let generic: *AST::AstNode = try_generic_instantiation(p, left, bp);
       if (generic != cast<*AST::AstNode>(0)) return generic;
       return binary(p, left, bp);
     }
-    TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_MINUS, TOK::LumaTokenType::TOK_STAR,
-    TOK::LumaTokenType::TOK_SLASH, TOK::LumaTokenType::TOK_MODL, TOK::LumaTokenType::TOK_EQEQ,
-    TOK::LumaTokenType::TOK_NEQ,  TOK::LumaTokenType::TOK_LE,
-    TOK::LumaTokenType::TOK_GT,   TOK::LumaTokenType::TOK_GE,    TOK::LumaTokenType::TOK_AMP,
-    TOK::LumaTokenType::TOK_PIPE, TOK::LumaTokenType::TOK_CARET, TOK::LumaTokenType::TOK_AND,
-    TOK::LumaTokenType::TOK_OR,   TOK::LumaTokenType::TOK_RANGE,
-    TOK::LumaTokenType::TOK_SHIFT_LEFT, TOK::LumaTokenType::TOK_SHIFT_RIGHT
+    TOK_PLUS,  TOK_MINUS, TOK_STAR, TOK_SLASH, TOK_MODL,       TOK_EQEQ,
+    TOK_NEQ,   TOK_LE,    TOK_GT,   TOK_GE,    TOK_AMP,        TOK_PIPE,  
+    TOK_CARET, TOK_AND,   TOK_OR,   TOK_RANGE, TOK_SHIFT_LEFT, TOK_SHIFT_RIGHT
       -> return binary(p, left, bp);
-    TOK::LumaTokenType::TOK_DOT, TOK::LumaTokenType::TOK_RESOLVE, TOK::LumaTokenType::TOK_PLUSPLUS,
-    TOK::LumaTokenType::TOK_MINUSMINUS, TOK::LumaTokenType::TOK_LBRACKET 
+    TOK_DOT, TOK_RESOLVE, TOK_PLUSPLUS, TOK_MINUSMINUS, TOK_LBRACKET 
       -> return prefix(p, left, bp);
-    TOK::LumaTokenType::TOK_LBRACE -> return enstruct(p, left, bp);
-    TOK::LumaTokenType::TOK_LPAREN -> return call(p, left, bp);
-    TOK::LumaTokenType::TOK_EQUAL  -> return assign(p, left, bp);
+    TOK_LBRACE -> return enstruct(p, left, bp);
+    TOK_LPAREN -> return call(p, left, bp);
+    TOK_EQUAL  -> return assign(p, left, bp);
     _ -> {
       p.advance();
       return left;
@@ -220,10 +208,8 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
   }
 
   // Not a generic instantiation after all — undo everything.
-  let i: int = 0;
-  loop (i < targs.size) {
+  loop [i: int = 0](i < targs.size) : (i++) {
     AST::free_node(cast<**AST::AstNode>(targs.data)[i]);
-    i = i + 1;
   }
   VEC::free_vector(&targs);
   p.restore(sp);
@@ -233,12 +219,16 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
 #returns_ownership
 pub const parse_expr -> fn (p: *PARS::Parser, bp: int) *AST::AstNode {
   let left: *AST::AstNode = nud(p);
-  if (left == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
+
+  if (left == cast<*AST::AstNode>(0)) 
+      return cast<*AST::AstNode>(0);
 
   loop (p.has_tokens() && (PARS::get_bp(p.current().kind) > bp)) {
     let c_bp: int = PARS::get_bp(p.current().kind);
     left = led(p, left, c_bp);
-    if (left == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
+
+    if (left == cast<*AST::AstNode>(0)) 
+      return cast<*AST::AstNode>(0);
   }
 
   return left;
