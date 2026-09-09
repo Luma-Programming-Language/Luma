@@ -134,7 +134,7 @@ Latest release: **[v0.3.5](releases/v0.3.5.md)**
 - A language server (`luma --lsp`) with diagnostics, hover, and completion
 - Cross-platform builds for Linux, Windows, and macOS, verified in CI
 
-**What's not there yet:** generics, and a few rough edges in the static analyzer around conditional allocation paths. See the Known Limitations section of the [latest release notes](releases/v0.3.5.md) for the current honest list.
+**What's not there yet:** generic structs (generic *functions* — `fn<T>` — are implemented, see [docs.md's Generics section](docs.md#generics)), and a few rough edges in the static analyzer around conditional allocation paths. See the Known Limitations section of the [latest release notes](releases/v0.3.5.md) for the current honest list.
 
 ---
 

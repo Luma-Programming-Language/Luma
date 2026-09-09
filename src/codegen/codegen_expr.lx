@@ -19,6 +19,24 @@ const strip_ptr -> fn (t: *AST::AstNode) *AST::AstNode {
   return t;
 }
 
+// Picks the write_input_helpers() runtime function backing `input<T>(...)`
+// for a given T, or NULL if T isn't one of the types input<T> can read yet.
+const input_helper_name -> fn (t: *AST::AstNode) *byte {
+  if (t == cast<*AST::AstNode>(0)) return cast<*byte>(0);
+
+  if (TCT::is_pointer_type(t) && TCT::is_basic_named(strip_ptr(t), "byte")) {
+    return "__luma_input_string"; // *byte, i.e. string
+  }
+  if (TCT::is_basic_named(t, "int"))    return "__luma_input_int";
+  if (TCT::is_basic_named(t, "uint"))   return "__luma_input_uint";
+  if (TCT::is_basic_named(t, "float"))  return "__luma_input_float";
+  if (TCT::is_basic_named(t, "double")) return "__luma_input_double";
+  if (TCT::is_basic_named(t, "bool"))   return "__luma_input_bool";
+  if (TCT::is_basic_named(t, "byte"))   return "__luma_input_byte";
+
+  return cast<*byte>(0);
+}
+
 // ─── Field/method resolution through `...Type,` embedding ───────────────────
 // The typechecker leaves `AstNode.resolved_type` null for promoted-field
 // accesses (it never registers promoted names in its own symbol table), so
@@ -996,13 +1014,28 @@ pub const gen_expr -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::A
     return;
   }
   if (k == AST::NodeType::EXPR_INPUT) {
-    // Not fully supported yet — emit a zeroed value of the requested type.
     let n: *AST::CastNode = cast<*AST::CastNode>(expr);
-    let ts: *byte = CGT::c_type_string(ctx, n.type_node);
-    CG::buf_str(buf, "((");
-    CG::buf_str(buf, ts);
-    CG::buf_str(buf, "){0})");
-    free(ts);
+    let helper: *byte = input_helper_name(n.type_node);
+
+    if (helper == cast<*byte>(0)) {
+      // Not a type input<T> knows how to read yet (struct, enum, ...) —
+      // fall back to the previous "zeroed value" behavior.
+      let ts: *byte = CGT::c_type_string(ctx, n.type_node);
+      CG::buf_str(buf, "((");
+      CG::buf_str(buf, ts);
+      CG::buf_str(buf, "){0})");
+      free(ts);
+      return;
+    }
+
+    CG::buf_str(buf, helper);
+    CG::buf_str(buf, "(");
+    if (n.castee != cast<*AST::AstNode>(0)) {
+      gen_expr(ctx, buf, n.castee);
+    } else {
+      CG::buf_str(buf, "\"\"");
+    }
+    CG::buf_str(buf, ")");
     return;
   }
   if (k == AST::NodeType::EXPR_STRUCT) { gen_struct_literal(ctx, buf, expr); return; }

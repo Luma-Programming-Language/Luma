@@ -1,0 +1,16 @@
+// error-type: Type Error
+@module "main"
+
+// Generics are unconstrained/duck-typed (like C++ templates): a generic
+// body is only fully typechecked once concrete types are substituted in,
+// at the specific instantiation that needs it — not at the generic
+// declaration itself. `+` isn't defined for *byte, so this fails right
+// here, at add<*byte>'s instantiation, not earlier.
+const add -> fn<T> (a: T, b: T) T {
+    return a + b;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let r: *byte = add<*byte>("a", "b");
+    return 0;
+}

@@ -55,11 +55,23 @@ pub const c_base_type_string -> fn (ctx: *CG::CodegenContext, t: *AST::AstNode) 
 #returns_ownership
 pub const c_type_string -> fn (ctx: *CG::CodegenContext, t: *AST::AstNode) *byte;
 
+pub const emit_value_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AST::AstNode, name: *byte) void;
+
 // Handles the common array-bound shapes (`[int; 10]`, `[int; size]`, simple
 // arithmetic on those) without depending on the full expression codegen —
 // cg_expr already depends on cg_type, so pulling it in here would be
 // circular. A non-literal size becomes a plain C VLA, valid for a local decl.
-const emit_array_size -> fn (buf: *CG::Buf, node: *AST::AstNode) void {
+//
+// The EXPR_IDENTIFIER case duplicates (a subset of) gen_expr's own
+// identifier resolution in codegen_expr.lx rather than calling it (that's
+// the circular dependency above) — local shadow, then same-module func,
+// then same-module global, mangled the same way gen_expr would. Emitting
+// the bare Luma name here instead used to compile to a raw C identifier
+// that only accidentally matched a real symbol for locals/params (whose
+// Luma and C names happen to be the same); for a module-level global —
+// mangled to `<module>__<name>` everywhere else — it produced an
+// `undeclared identifier` error instead.
+const emit_array_size -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, node: *AST::AstNode) void {
   if (node == cast<*AST::AstNode>(0)) return;
   let k: int = node.kind;
 
@@ -70,24 +82,47 @@ const emit_array_size -> fn (buf: *CG::Buf, node: *AST::AstNode) void {
   }
   if (k == AST::NodeType::EXPR_IDENTIFIER) {
     let idn: *AST::IdentifierNode = cast<*AST::IdentifierNode>(node);
+
+    let local_c_name: *byte = CG::local_lookup(ctx, idn.name);
+    if (local_c_name != cast<*byte>(0)) {
+      CG::buf_str(buf, local_c_name);
+      return;
+    }
+
+    let fi: *CG::FuncInfo = CG::find_func_in_module(ctx, ctx.current_module, idn.name);
+    if (fi != cast<*CG::FuncInfo>(0)) {
+      let cname: *byte = CG::c_name_for_func(fi);
+      CG::buf_str(buf, cname);
+      free(cname);
+      return;
+    }
+
+    let gi: *CG::GlobalInfo = CG::find_global_in_module(ctx, ctx.current_module, idn.name);
+    if (gi != cast<*CG::GlobalInfo>(0)) {
+      let cname: *byte = CG::mangle2(gi.module_name, gi.name);
+      CG::buf_str(buf, cname);
+      free(cname);
+      return;
+    }
+
     CG::buf_str(buf, idn.name);
     return;
   }
   if (k == AST::NodeType::EXPR_BINARY) {
     let bn: *AST::BinaryNode = cast<*AST::BinaryNode>(node);
     CG::buf_str(buf, "(");
-    emit_array_size(buf, bn.left);
+    emit_array_size(ctx, buf, bn.left);
     if (bn.op == AST::BinaryOp::BINOP_ADD) CG::buf_str(buf, " + ");
     if (bn.op == AST::BinaryOp::BINOP_SUB) CG::buf_str(buf, " - ");
     if (bn.op == AST::BinaryOp::BINOP_MUL) CG::buf_str(buf, " * ");
     if (bn.op == AST::BinaryOp::BINOP_DIV) CG::buf_str(buf, " / ");
-    emit_array_size(buf, bn.right);
+    emit_array_size(ctx, buf, bn.right);
     CG::buf_str(buf, ")");
     return;
   }
   if (k == AST::NodeType::EXPR_GROUPING) {
     let un: *AST::UnaryNode = cast<*AST::UnaryNode>(node);
-    emit_array_size(buf, un.operand);
+    emit_array_size(ctx, buf, un.operand);
     return;
   }
 
@@ -129,15 +164,24 @@ pub const emit_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AS
     CG::buf_str(inner, name);
     CG::buf_str(inner, "[");
     let asize: *AST::AstNode = a.size;
-    if (asize != cast<*AST::AstNode>(0)) emit_array_size(inner, asize);
+    if (asize != cast<*AST::AstNode>(0)) emit_array_size(ctx, inner, asize);
     CG::buf_str(inner, "]");
     let inner_name: *byte = CG::buf_finish(inner);
-    emit_declarator(ctx, buf, a.element_type, inner_name);
+    // An element that's itself a bare function type (`[fn(int)int; 4]`) is a
+    // value position, same as a field or variable — route through
+    // emit_value_declarator so it picks up the implicit pointer (see there).
+    emit_value_declarator(ctx, buf, a.element_type, inner_name);
     free(inner_name);
     return;
   }
 
   if (t.kind == AST::NodeType::TYPE_FUNCTION) {
+    // Reached two ways: (a) emit_value_declarator already wrapped `name` in
+    // `(*name)` for a bare `fn (...) T` value, or (b) the TYPE_POINTER case
+    // above wrapped it the same way for an explicit `*fn (...) T`. Either
+    // way `name` is already a complete declarator for "pointer to this
+    // function" — just append the parameter list and recurse on the return
+    // type (itself a value position, in case it's a function type too).
     let f: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
     let inner: *CG::Buf = CG::buf_init();
     CG::buf_str(inner, name);
@@ -153,7 +197,7 @@ pub const emit_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AS
     if (f.param_count == 0) CG::buf_str(inner, "void");
     CG::buf_str(inner, ")");
     let inner_name: *byte = CG::buf_finish(inner);
-    emit_declarator(ctx, buf, f.return_type, inner_name);
+    emit_value_declarator(ctx, buf, f.return_type, inner_name);
     free(inner_name);
     return;
   }
@@ -165,11 +209,39 @@ pub const emit_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AS
   free(base);
 }
 
+// Entry point for any "value" declarator: a struct field, a variable, a
+// parameter, an array element, or a function's return type. A bare
+// `fn (...) T` has no C equivalent there without a pointer — C has no
+// first-class function values, only function pointers, and Luma's own
+// value semantics already treat a bare function name as its address (e.g.
+// `Commands { execute: echo }` needs no `&`). Without this, emit_declarator
+// would emit `T name(...)` — a plain function declaration, invalid as a
+// struct field (`error: field 'x' declared as a function`) and silently
+// wrong (a redeclaration, not a variable) anywhere else.
+//
+// An explicit `*fn (...) T` is left alone: it already reaches
+// emit_declarator's TYPE_POINTER case directly, which adds the same
+// `(*name)` wrap itself before recursing into TYPE_FUNCTION — routing it
+// through here too would wrap it a second time.
+pub const emit_value_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AST::AstNode, name: *byte) void {
+  if (t != cast<*AST::AstNode>(0) && t.kind == AST::NodeType::TYPE_FUNCTION) {
+    let inner: *CG::Buf = CG::buf_init();
+    CG::buf_str(inner, "(*");
+    CG::buf_str(inner, name);
+    CG::buf_str(inner, ")");
+    let wrapped_name: *byte = CG::buf_finish(inner);
+    emit_declarator(ctx, buf, t, wrapped_name);
+    free(wrapped_name);
+    return;
+  }
+  emit_declarator(ctx, buf, t, name);
+}
+
 // Full type string with no variable name attached (casts, sizeof, param lists).
 #returns_ownership
 pub const c_type_string -> fn (ctx: *CG::CodegenContext, t: *AST::AstNode) *byte {
   let b: *CG::Buf = CG::buf_init();
-  emit_declarator(ctx, b, t, "");
+  emit_value_declarator(ctx, b, t, "");
   let s: *byte = CG::buf_finish(b);
 
   // Trim the trailing space emit_declarator leaves before an empty name.

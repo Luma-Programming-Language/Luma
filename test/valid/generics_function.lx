@@ -1,0 +1,46 @@
+@module "main"
+
+// Regression test for generic functions (`fn<T>`) — monomorphization: each
+// distinct call-site type argument list gets its own concrete, separately
+// codegen'd function (main__identity__int, main__identity___byte, ...),
+// synthesized by tc_generics and picked up by codegen via tc_core's
+// generated-decl registry. See docs/docs.md's Generics section.
+
+const identity -> fn<T> (x: T) T { return x; }
+
+const add -> fn<T> (a: T, b: T) T {
+    return a + b;
+}
+
+const swap -> fn<T> (a: *T, b: *T) void {
+    let temp: T = *a;
+    *a = *b;
+    *b = temp;
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    // Same template, two different concrete instantiations.
+    if (add<int>(1, 2) != 3) return 1;
+    if (add<float>(1.0, 2.0) != 3.0) return 1;
+
+    let x: int = 5;
+    let y: int = 10;
+    swap<int>(&x, &y);
+    if (x != 10 || y != 5) return 1;
+
+    if (identity<int>(42) != 42) return 1;
+
+    let s: *byte = identity<*byte>("hello");
+    outputln(s);
+
+    // Plain `<`/`>` comparisons must keep working right alongside
+    // generic-call syntax in the same file (the parser disambiguates
+    // `ident<Type,...>(` from `ident < expr` speculatively — see
+    // parser_expr.lx's try_generic_instantiation).
+    if (x < y) return 1;
+    if (y > x) {
+        outputln("ordinary comparison still works");
+    }
+
+    return 0;
+}

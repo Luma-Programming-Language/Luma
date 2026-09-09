@@ -99,6 +99,8 @@ pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **
   n.dll_callconv = cast<*byte>(0);
   n.lib_import = 0;
   n.lib_name = cast<*byte>(0);
+  n.type_params = cast<**byte>(0);
+  n.type_param_count = 0;
 
   return cast<*AST::AstNode>(n);
 }
@@ -121,6 +123,8 @@ pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_member
   n.private_members = private_members;
   n.private_count = private_count;
   n.is_public = is_public;
+  n.type_params = cast<**byte>(0);
+  n.type_param_count = 0;
 
   return cast<*AST::AstNode>(n);
 }

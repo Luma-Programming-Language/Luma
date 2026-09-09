@@ -9,6 +9,7 @@
 @use "ast_expr"     as EAST
 @use "parser"       as PARS
 @use "ast"          as AST
+@use "error"        as ERR
 
 // String/char literal token text is raw source bytes (the lexer does not
 // interpret `\n`/`\t`/etc. — see src/lexer/lexer.lx's '"'/'\'' cases). Resolve
@@ -77,6 +78,7 @@ const unescape_str -> fn (s: *byte) *byte {
 
 #returns_ownership const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
 #returns_ownership const binary   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+#returns_ownership const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
 #returns_ownership const call     -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
 #returns_ownership const assign   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
 #returns_ownership const prefix   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
@@ -127,15 +129,26 @@ const nud -> fn (p: *PARS::Parser) *AST::AstNode {
 }
 
 #returns_ownership
-const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
+const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
   switch(p.current().kind) {
+    // `<` is ambiguous: `add<int>(1, 2)` (generic call) vs. `a < b` (a real
+    // comparison) parse identically up to this point — no symbol table
+    // exists yet to tell "add" apart from an ordinary variable. Try the
+    // generic-instantiation reading first (speculative — rolls itself back
+    // cleanly if it doesn't pan out) and only fall back to plain `<` if
+    // that fails. See try_generic_instantiation below.
+    TOK::LumaTokenType::TOK_LT -> {
+      let generic: *AST::AstNode = try_generic_instantiation(p, left, bp);
+      if (generic != cast<*AST::AstNode>(0)) return generic;
+      return binary(p, left, bp);
+    }
     TOK::LumaTokenType::TOK_PLUS, TOK::LumaTokenType::TOK_MINUS, TOK::LumaTokenType::TOK_STAR,
     TOK::LumaTokenType::TOK_SLASH, TOK::LumaTokenType::TOK_MODL, TOK::LumaTokenType::TOK_EQEQ,
-    TOK::LumaTokenType::TOK_NEQ,  TOK::LumaTokenType::TOK_LT,    TOK::LumaTokenType::TOK_LE,
+    TOK::LumaTokenType::TOK_NEQ,  TOK::LumaTokenType::TOK_LE,
     TOK::LumaTokenType::TOK_GT,   TOK::LumaTokenType::TOK_GE,    TOK::LumaTokenType::TOK_AMP,
     TOK::LumaTokenType::TOK_PIPE, TOK::LumaTokenType::TOK_CARET, TOK::LumaTokenType::TOK_AND,
-    TOK::LumaTokenType::TOK_OR,   TOK::LumaTokenType::TOK_RANGE, 
-    TOK::LumaTokenType::TOK_SHIFT_LEFT, TOK::LumaTokenType::TOK_SHIFT_RIGHT 
+    TOK::LumaTokenType::TOK_OR,   TOK::LumaTokenType::TOK_RANGE,
+    TOK::LumaTokenType::TOK_SHIFT_LEFT, TOK::LumaTokenType::TOK_SHIFT_RIGHT
       -> return binary(p, left, bp);
     TOK::LumaTokenType::TOK_DOT, TOK::LumaTokenType::TOK_RESOLVE, TOK::LumaTokenType::TOK_PLUSPLUS,
     TOK::LumaTokenType::TOK_MINUSMINUS, TOK::LumaTokenType::TOK_LBRACKET 
@@ -148,6 +161,73 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
       return left;
     }
   }
+}
+
+// Speculatively tries `left '<' Type (',' Type)* '>' (` — a generic call,
+// e.g. `add<int>(1, 2)` — or `left '<' Type (',' Type)* '>' {` — the
+// optional explicit generic struct literal, e.g. `Box<int> { value: 42 }`.
+// `p.current().kind` is already TOK_LT (checked by led's caller). Only a
+// bare identifier can plausibly be a generic template name, so anything
+// else (a member access, a call result, ...) isn't even attempted.
+//
+// On success returns the built CallNode/StructExprNode with its type_args
+// attached. On failure (this wasn't that shape after all — most commonly
+// just an ordinary `a < b` comparison) rolls the parser back to exactly
+// where it started via Parser.save/restore, so the caller can fall through
+// to parsing `<` as plain less-than with no trace of the attempt left
+// behind (no partial AST, no recorded errors, no moved token position).
+#returns_ownership
+const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
+  if (left.kind != AST::NodeType::EXPR_IDENTIFIER) return cast<*AST::AstNode>(0);
+
+  let sp: PARS::Savepoint = p.save();
+  let err_before: int = ERR::error_get_count();
+  let targs: VEC::Vector = PTYPE::parse_type_arg_list(p);
+
+  // parse_type_arg_list's own p.consume() calls always advance even when
+  // the expected token isn't there (see Parser.consume in parser.lx) — so
+  // landing on '(' or '{' right afterward isn't on its own proof this was
+  // real `<Type,...>` syntax: e.g. `off < len && (text[off] ...)` parses
+  // `len` as a fine-looking type, then chokes on '&&' where '>' should be,
+  // *consumes it anyway*, and would otherwise land right on the '(' that
+  // starts the next, unrelated group — a false match. An error recorded
+  // during the attempt is the real signal that this wasn't it.
+  let ok: bool = ERR::error_get_count() == err_before;
+
+  // call()/enstruct() only ever return NULL or a node of exactly that
+  // kind (EXPR_CALL/EXPR_STRUCT respectively — see their own
+  // constructors) — no separate kind check needed, and one less
+  // (statically-unprovable-but-actually-dead) path for the leak analyzer
+  // to worry doesn't free `node`.
+  if (ok && p.current().kind == TOK::LumaTokenType::TOK_LPAREN) {
+    let node: *AST::AstNode = call(p, left, bp);
+    if (node != cast<*AST::AstNode>(0)) {
+      let cn: *AST::CallNode = cast<*AST::CallNode>(node);
+      cn.type_arg_count = targs.size;
+      cn.type_args = PARS::vec_to_node_array(&targs);
+      VEC::free_vector(&targs);
+      return node;
+    }
+  } elif (ok && p.current().kind == TOK::LumaTokenType::TOK_LBRACE) {
+    let node: *AST::AstNode = enstruct(p, left, bp);
+    if (node != cast<*AST::AstNode>(0)) {
+      let sn: *AST::StructExprNode = cast<*AST::StructExprNode>(node);
+      sn.type_arg_count = targs.size;
+      sn.type_args = PARS::vec_to_node_array(&targs);
+      VEC::free_vector(&targs);
+      return node;
+    }
+  }
+
+  // Not a generic instantiation after all — undo everything.
+  let i: int = 0;
+  loop (i < targs.size) {
+    AST::free_node(cast<**AST::AstNode>(targs.data)[i]);
+    i = i + 1;
+  }
+  VEC::free_vector(&targs);
+  p.restore(sp);
+  return cast<*AST::AstNode>(0);
 }
 
 #returns_ownership

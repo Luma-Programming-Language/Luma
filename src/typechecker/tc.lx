@@ -10,6 +10,7 @@
 @use "tc_core"      as CORE
 @use "tc_scope"     as SCOPE
 @use "tc_stmt"      as STMT
+@use "tc_generics"  as GEN
 @use "tc_error"     as ERR
 
 const find_module_scope -> fn (registry: *VEC::Vector, name: *byte) *CORE::Scope {
@@ -213,6 +214,21 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
         report_module_allocations(ms.memory_analyzer, mod.file_path);
       }
     }
+  }
+
+  // ── Drain generic instantiations ─────────────────────────────────────────
+  // A call site's first use of `add<int>(...)` (tc_expr's tc_call, via
+  // tc_generics) only clones + gives the concrete function a signature —
+  // enough to typecheck that one call — and queues the body itself here,
+  // since tc_generics can't reach register_declaration/typecheck_statement
+  // without a circular dependency (see its module doc comment). Loop until
+  // empty: a generic instantiation's body can itself call another generic
+  // for the first time.
+  loop (GEN::pending_count() > 0) {
+    let job: GEN::Pending = GEN::pending_pop();
+    STMT::register_declaration(job.decl, job.def_scope);
+    if (STMT::typecheck_statement(job.decl, job.def_scope) == false) ok = false;
+    CORE::record_generated_decl(job.module_name, job.decl);
   }
 
   VEC::free_vector(&registry);

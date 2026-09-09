@@ -52,6 +52,10 @@ pub const error_get_count -> fn () int {
   return error_count;
 }
 
+pub const error_truncate -> fn (n: int) void {
+  if (n < error_count) error_count = n;
+}
+
 pub const error_has_errors -> fn () int {
   if (error_count > 0) return 1;
   return 0;

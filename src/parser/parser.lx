@@ -160,6 +160,13 @@ pub const get_bp -> fn (kind: int) int {
   }
 }
 
+// See Parser.save/restore below.
+pub const Savepoint -> struct {
+  pos:       int,
+  had_error: int,
+  err_count: int,
+};
+
 pub const Parser -> struct {
   file_path:   *byte,
   tks:         *TOK::Token,
@@ -237,6 +244,20 @@ pub const Parser -> struct {
     };
     ERR::error_add(info);
     self.had_error = 1;
+  },
+
+  // Speculative-parse support (generic call/struct-literal disambiguation:
+  // `ident<Type,...>(` vs plain `ident < expr`). `save` snapshots just
+  // enough to undo a failed attempt — token position, the parser's own
+  // sticky error flag, and the global error list's length (via
+  // ERR::error_truncate) — so a failed speculative parse leaves no trace.
+  save -> fn () Savepoint {
+    return Savepoint { pos: self.pos, had_error: self.had_error, err_count: ERR::error_get_count() };
+  },
+  restore -> fn (sp: Savepoint) void {
+    self.pos = sp.pos;
+    self.had_error = sp.had_error;
+    ERR::error_truncate(sp.err_count);
   },
 
   #returns_ownership

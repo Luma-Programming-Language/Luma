@@ -1,0 +1,20 @@
+@module "main"
+
+// Regression test for input<T>()'s codegen: exercises every T it knows how
+// to read (int, uint, float, double, bool, byte, *byte) so a future change
+// that breaks the type -> __luma_input_* dispatch (cg_expr's
+// input_helper_name) fails to compile instead of silently reading 0 again.
+pub const main -> fn (argc: int, argv: **byte) int {
+    let i: int    = input<int>("");
+    let u: uint   = input<uint>("");
+    let f: float  = input<float>("");
+    let d: double = input<double>("");
+    let b: bool   = input<bool>("");
+    let c: byte   = input<byte>("");
+    let s: *byte  = input<*byte>("");
+
+    output(i, u, f, d, b, c, s, "\n");
+    free(s);
+
+    return 0;
+}

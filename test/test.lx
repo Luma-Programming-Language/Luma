@@ -1,5 +1,38 @@
 @module "main"
 
+const swap -> fn<T> (a: *T, b: *T) T {
+  let temp: T = *a;
+  *a = *b;
+  *b = temp;
+}
+
+const max -> fn<T>(a: T, b: T) T {
+  if (a > b) {
+      return a;
+  }
+  return b;
+}
+
+const add -> fn<T>(a: T, b: T) T {
+  return a + b;
+}
+
 pub const main -> fn () int {
-    return 0;
+  // Integer arithmetic
+  outputln("add(1, 2) = ", add<int>(1, 2));
+
+  // Floating-point arithmetic
+  outputln("add(1.5, 2.5) = ", add<float>(1.5, 2.5));
+
+  // Swapping integers
+  let x: int = 5; 
+  let y: int = 10;
+  swap<int>(&x, &y);
+  outputln("After swap: x = ", x, ", y = ", y);
+
+  // Finding maximum
+  let largest: int = max<int>(42, 17);
+  outputln("Max: ", largest);
+
+  return 0;
 }

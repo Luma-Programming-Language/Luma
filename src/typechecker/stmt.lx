@@ -4,11 +4,12 @@
 @use "std_cstring" as STR
 @use "std_vector" as VEC
 
-@use "tc_core"  as CORE
-@use "tc_type"  as TYPE
-@use "tc_scope" as SCOPE
-@use "tc_expr"  as EXPR
-@use "tc_error" as ERR
+@use "tc_core"     as CORE
+@use "tc_type"     as TYPE
+@use "tc_scope"    as SCOPE
+@use "tc_expr"     as EXPR
+@use "tc_generics" as GEN
+@use "tc_error"    as ERR
 @use "ast"      as AST
 @use "ast_type" as TAST
 @use "error" as ERR
@@ -100,6 +101,17 @@ pub const register_declaration -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) 
 
   if (k == AST::NodeType::STMT_FUNCTION) {
     let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(stmt);
+
+    if (fd.type_param_count > 0) {
+      // Generic function — its param/return types name placeholders (T,
+      // U, ...), not real types, so resolve_type_ref must not touch them
+      // yet, and it gets no ordinary callable symbol. Concrete
+      // instantiations are cloned + substituted on demand at each call
+      // site — see tc_generics.
+      GEN::register_template(scope.module_name, fd.name, stmt, scope);
+      return true;
+    }
+
     loop [i: int = 0](i < fd.param_count) : (++i) {
       fd.param_types[i] = TYPE::resolve_type_ref(fd.param_types[i], scope);
     }
@@ -235,6 +247,11 @@ const handle_var_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
 
 const handle_func_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(stmt);
+
+  // Already handled as a template by register_declaration above — its
+  // body is only ever checked per concrete instantiation (tc_generics'
+  // pending queue, drained by tc.lx), never directly like this.
+  if (fd.type_param_count > 0) return true;
 
   loop [i: int = 0](i < fd.param_count) : (++i) {
     fd.param_types[i] = TYPE::resolve_type_ref(fd.param_types[i], scope);

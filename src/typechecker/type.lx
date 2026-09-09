@@ -304,22 +304,22 @@ pub const type_to_string -> fn (t: *AST::AstNode) *byte;
 const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: int) int {
   if (t == cast<*AST::AstNode>(0)) return append_str(buf, pos, "<null>");
 
-  switch (t.kind) {
-    AST::NodeType::TYPE_BASIC -> {
+  switch using AST::NodeType (t.kind) {
+    TYPE_BASIC -> {
       return append_str(buf, pos, basic_name(t));
     }
-    AST::NodeType::TYPE_POINTER -> {
+    TYPE_POINTER -> {
       let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
       let np: int = append_str(buf, pos, "*");
       return type_to_string_into(p.pointee_type, buf, np);
     }
-    AST::NodeType::TYPE_ARRAY -> {
+    TYPE_ARRAY -> {
       let a: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(t);
       let np: int = append_str(buf, pos, "[");
       np = type_to_string_into(a.element_type, buf, np);
       return append_str(buf, np, "]");
     }
-    AST::NodeType::TYPE_FUNCTION -> {
+    TYPE_FUNCTION -> {
       let f: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
       let np: int = append_str(buf, pos, "fn(");
       loop [i: int = 0](i < f.param_count) : (++i) {
@@ -329,7 +329,7 @@ const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: int) int {
       np = append_str(buf, np, ") ");
       return type_to_string_into(f.return_type, buf, np);
     }
-    AST::NodeType::TYPE_RESOLUTION -> {
+    TYPE_RESOLUTION -> {
       let r: *AST::ResolutionNode = cast<*AST::ResolutionNode>(t);
       let np: int = pos;
       loop [i: int = 0](i < r.part_count) : (++i) {
@@ -427,23 +427,25 @@ const resolve_type_leaf -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstN
 pub const resolve_type_ref -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (t == cast<*AST::AstNode>(0)) return t;
 
-  if (t.kind == AST::NodeType::TYPE_POINTER) {
-    let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
-    p.pointee_type = resolve_type_ref(p.pointee_type, scope);
-    return t;
-  }
-  if (t.kind == AST::NodeType::TYPE_ARRAY) {
-    let a: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(t);
-    a.element_type = resolve_type_ref(a.element_type, scope);
-    return t;
-  }
-  if (t.kind == AST::NodeType::TYPE_FUNCTION) {
-    let f: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
-    loop [i: int = 0](i < f.param_count) : (++i) {
-      f.param_types[i] = resolve_type_ref(f.param_types[i], scope);
+  switch using AST::NodeType (t.kind) {
+    TYPE_POINTER  -> {
+      let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
+      p.pointee_type = resolve_type_ref(p.pointee_type, scope);
+      return t;
     }
-    f.return_type = resolve_type_ref(f.return_type, scope);
-    return t;
+    TYPE_ARRAY    -> {
+      let a: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(t);
+      a.element_type = resolve_type_ref(a.element_type, scope);
+      return t;
+    }
+    TYPE_FUNCTION -> {
+      let f: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
+      loop [i: int = 0](i < f.param_count) : (++i) {
+        f.param_types[i] = resolve_type_ref(f.param_types[i], scope);
+      }
+      f.return_type = resolve_type_ref(f.return_type, scope);
+      return t;
+    }
   }
 
   return resolve_type_leaf(t, scope);

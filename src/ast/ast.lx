@@ -1,6 +1,8 @@
 @module "ast"
 
 @use "lexer_tokens" as TOK
+@use "std_cstring"  as STR
+@use "std_memory"   as MEM
 
 pub const NodeType -> enum {
   PREPROCESSOR_MODULE,
@@ -203,6 +205,11 @@ pub const CallNode -> struct {
   callee:    *AstNode,
   args:      **AstNode,
   arg_count: int,
+
+  // Generics: explicit `<int>` in `add<int>(1, 2)` — empty/0 for an
+  // ordinary call.
+  type_args:      **AstNode,
+  type_arg_count: int,
 };
 
 pub const AssignNode -> struct {
@@ -283,6 +290,12 @@ pub const StructExprNode -> struct {
   field_names: **byte,
   field_vals:  **AstNode,
   field_count: int,
+
+  // Generics: the optional explicit form `Box<int> { value: 42 }` — empty/0
+  // when omitted, which is the common case (T is inferred from context
+  // instead; see tc_expr.lx's tc_struct_expr).
+  type_args:      **AstNode,
+  type_arg_count: int,
 };
 
 // ─── Statement Nodes ─────────────────────────────────────────────────────────
@@ -327,6 +340,13 @@ pub const FuncDeclNode -> struct {
 
   lib_import:        int,
   lib_name:          *byte,
+
+  // Generics: names only (`T`, `U`, ...), no bounds. Empty/0 for an
+  // ordinary, non-generic function. A generic FuncDeclNode is never
+  // codegen'd directly — see tc_generics' instantiation cache, which
+  // clones this node per concrete call-site type argument list.
+  type_params:       **byte,
+  type_param_count:  int,
 };
 
 pub const StructDeclNode -> struct {
@@ -338,6 +358,10 @@ pub const StructDeclNode -> struct {
   private_members: **AstNode,
   private_count:   int,
   is_public:       int,
+
+  // Generics — see FuncDeclNode.type_params above; same rules.
+  type_params:       **byte,
+  type_param_count:  int,
 };
 
 pub const FieldDeclNode -> struct {
@@ -447,6 +471,12 @@ pub const DefaultNode -> struct {
 pub const BasicTypeNode -> struct {
   ...AstNode,
   name: *byte,
+
+  // Generics: `Box<int>`'s `<int>` — empty/0 for every ordinary type name,
+  // which is the overwhelming majority of BasicTypeNodes; every existing
+  // switch on TYPE_BASIC keeps working unchanged.
+  type_args:       **AstNode,
+  type_arg_count:  int,
 };
 
 pub const PointerTypeNode -> struct {
@@ -572,6 +602,12 @@ pub const free_node -> fn (node: *AstNode) void {
       i = i + 1;
     }
     free(n.args);
+    let j: int = 0;
+    loop (j < n.type_arg_count) {
+      free_node(n.type_args[j]);
+      j = j + 1;
+    }
+    free(n.type_args);
     free(node);
     return;
   }
@@ -681,6 +717,12 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.field_names);
     free(n.field_vals);
+    let j: int = 0;
+    loop (j < n.type_arg_count) {
+      free_node(n.type_args[j]);
+      j = j + 1;
+    }
+    free(n.type_args);
     free(n.name);
     free(n.alias);
     free(node);
@@ -730,6 +772,12 @@ pub const free_node -> fn (node: *AstNode) void {
     free(n.name);
     free_node(n.return_type);
     free_node(n.body);
+    let ti: int = 0;
+    loop (ti < n.type_param_count) {
+      free(n.type_params[ti]);
+      ti = ti + 1;
+    }
+    free(n.type_params);
     free(node);
     return;
   }
@@ -749,6 +797,12 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.private_members);
     free(n.name);
+    let tk: int = 0;
+    loop (tk < n.type_param_count) {
+      free(n.type_params[tk]);
+      tk = tk + 1;
+    }
+    free(n.type_params);
     free(node);
     return;
   }
@@ -908,6 +962,12 @@ pub const free_node -> fn (node: *AstNode) void {
   if (kind == NodeType::TYPE_BASIC) {
     let n: *BasicTypeNode = cast<*BasicTypeNode>(node);
     free(n.name);
+    let i: int = 0;
+    loop (i < n.type_arg_count) {
+      free_node(n.type_args[i]);
+      i = i + 1;
+    }
+    free(n.type_args);
     free(node);
     return;
   }
@@ -954,4 +1014,486 @@ pub const free_node -> fn (node: *AstNode) void {
 
   // Fallback
   free(node);
+}
+
+// ─── clone_node — deep copy, for generic instantiation ──────────────────────
+//
+// Monomorphization (see tc_generics) works by cloning a generic function's
+// or struct's *entire* template AST once per distinct concrete type-argument
+// list, then walking the clone substituting every type-parameter name for
+// the concrete type — never mutating the template itself, and never sharing
+// nodes between two instantiations (this compiler's typecheck pass mutates
+// type nodes in place — e.g. tc_type's resolve_type_ref rewrites
+// TYPE_RESOLUTION into TYPE_BASIC as it goes — so two instantiations
+// typechecked against the *same* shared nodes would corrupt each other).
+//
+// Covers every node kind that can plausibly appear in a function body or a
+// struct's fields/methods. Deliberately does NOT cover preprocessor nodes,
+// nested struct/enum declarations, or STMT_IMPL — none of those are valid
+// inside a function body or a struct's member list today, so a generic
+// template containing one was already invalid before generics existed.
+// Returns NULL for any node kind it doesn't handle; callers (tc_generics)
+// turn that into a proper user-facing error rather than miscompiling.
+#returns_ownership
+pub const clone_node -> fn (node: *AstNode) *AstNode;
+
+// Active generics substitution table for the duration of one
+// clone_node_substituting call — see the TYPE_BASIC case in clone_node
+// below. Empty (count 0) for a plain clone_node call, so nothing here
+// changes clone_node's behavior for any non-generics caller.
+let g_subst_names: **byte    = cast<**byte>(0);
+let g_subst_types: **AstNode = cast<**AstNode>(0);
+let g_subst_count: int       = 0;
+
+// Deep-clones `node`, substituting every bare type name in `names[i]` for
+// a clone of `types[i]` wherever clone_node's traversal reaches it (see
+// the TYPE_BASIC case below) — this is how tc_generics instantiates a
+// generic function/struct template for one concrete call site's type
+// arguments. Reentrant: an inner clone_node_substituting call (e.g. one
+// generic template's body calling another generic function) saves and
+// restores the outer table around its own, narrower one.
+#returns_ownership
+pub const clone_node_substituting -> fn (node: *AstNode, names: **byte, types: **AstNode, count: int) *AstNode {
+  let save_names: **byte    = g_subst_names;
+  let save_types: **AstNode = g_subst_types;
+  let save_count: int       = g_subst_count;
+
+  g_subst_names = names;
+  g_subst_types = types;
+  g_subst_count = count;
+
+  let result: *AstNode = clone_node(node);
+
+  g_subst_names = save_names;
+  g_subst_types = save_types;
+  g_subst_count = save_count;
+
+  return result;
+}
+
+#returns_ownership
+const dup_str -> fn (s: *byte) *byte {
+  if (s == cast<*byte>(0)) return cast<*byte>(0);
+  let len: int = STR::strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
+  return out;
+}
+
+#returns_ownership
+const clone_node_array -> fn (arr: **AstNode, count: int) **AstNode {
+  if (count == 0) return cast<**AstNode>(0);
+  let out: **AstNode = cast<**AstNode>(alloc(sizeof<*AstNode> * count));
+  let i: int = 0;
+  loop (i < count) {
+    out[i] = clone_node(arr[i]);
+    i = i + 1;
+  }
+  return out;
+}
+
+#returns_ownership
+const dup_str_array -> fn (arr: **byte, count: int) **byte {
+  if (count == 0) return cast<**byte>(0);
+  let out: **byte = cast<**byte>(alloc(sizeof<*byte> * count));
+  let i: int = 0;
+  loop (i < count) {
+    out[i] = dup_str(arr[i]);
+    i = i + 1;
+  }
+  return out;
+}
+
+#returns_ownership
+pub const clone_node -> fn (node: *AstNode) *AstNode {
+  if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);
+  let kind: int = node.kind;
+
+  if (kind == NodeType::EXPR_LITERAL) {
+    let n: *LiteralNode = cast<*LiteralNode>(node);
+    let c: *LiteralNode = cast<*LiteralNode>(alloc(sizeof<LiteralNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.lit_type = n.lit_type;
+    c.int_val = n.int_val;
+    c.float_val = n.float_val;
+    c.string_val = cast<*byte>(0);
+    if (n.lit_type == LiteralType::LITERAL_STRING) { c.string_val = dup_str(n.string_val); }
+    c.char_val = n.char_val;
+    c.bool_val = n.bool_val;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_IDENTIFIER) {
+    let n: *IdentifierNode = cast<*IdentifierNode>(node);
+    let c: *IdentifierNode = cast<*IdentifierNode>(alloc(sizeof<IdentifierNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_BINARY || kind == NodeType::EXPR_RANGE) {
+    let n: *BinaryNode = cast<*BinaryNode>(node);
+    let c: *BinaryNode = cast<*BinaryNode>(alloc(sizeof<BinaryNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.op = n.op;
+    c.left = clone_node(n.left);
+    c.right = clone_node(n.right);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_UNARY || kind == NodeType::EXPR_DEREF ||
+      kind == NodeType::EXPR_ADDR  || kind == NodeType::EXPR_GROUPING ||
+      kind == NodeType::EXPR_SYSTEM) {
+    let n: *UnaryNode = cast<*UnaryNode>(node);
+    let c: *UnaryNode = cast<*UnaryNode>(alloc(sizeof<UnaryNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.op = n.op;
+    c.operand = clone_node(n.operand);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_CALL) {
+    let n: *CallNode = cast<*CallNode>(node);
+    let c: *CallNode = cast<*CallNode>(alloc(sizeof<CallNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.callee = clone_node(n.callee);
+    c.args = clone_node_array(n.args, n.arg_count);
+    c.arg_count = n.arg_count;
+    c.type_args = clone_node_array(n.type_args, n.type_arg_count);
+    c.type_arg_count = n.type_arg_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_ASSIGNMENT) {
+    let n: *AssignNode = cast<*AssignNode>(node);
+    let c: *AssignNode = cast<*AssignNode>(alloc(sizeof<AssignNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.target = clone_node(n.target);
+    c.value = clone_node(n.value);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_TERNARY) {
+    let n: *TernaryNode = cast<*TernaryNode>(node);
+    let c: *TernaryNode = cast<*TernaryNode>(alloc(sizeof<TernaryNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.condition = clone_node(n.condition);
+    c.then_expr = clone_node(n.then_expr);
+    c.else_expr = clone_node(n.else_expr);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_MEMBER) {
+    let n: *MemberNode = cast<*MemberNode>(node);
+    let c: *MemberNode = cast<*MemberNode>(alloc(sizeof<MemberNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.is_compiletime = n.is_compiletime;
+    c.object = clone_node(n.object);
+    c.member = dup_str(n.member);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_INDEX) {
+    let n: *IndexNode = cast<*IndexNode>(node);
+    let c: *IndexNode = cast<*IndexNode>(alloc(sizeof<IndexNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.object = clone_node(n.object);
+    c.index = clone_node(n.index);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_ARRAY) {
+    let n: *ArrayNode = cast<*ArrayNode>(node);
+    let c: *ArrayNode = cast<*ArrayNode>(alloc(sizeof<ArrayNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.elements = clone_node_array(n.elements, n.element_count);
+    c.element_count = n.element_count;
+    c.target_size = n.target_size;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_CAST || kind == NodeType::EXPR_INPUT) {
+    let n: *CastNode = cast<*CastNode>(node);
+    let c: *CastNode = cast<*CastNode>(alloc(sizeof<CastNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.type_node = clone_node(n.type_node);
+    c.castee = clone_node(n.castee);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_ALLOC) {
+    let n: *AllocNode = cast<*AllocNode>(node);
+    let c: *AllocNode = cast<*AllocNode>(alloc(sizeof<AllocNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.size = clone_node(n.size);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_FREE) {
+    let n: *FreeNode = cast<*FreeNode>(node);
+    let c: *FreeNode = cast<*FreeNode>(alloc(sizeof<FreeNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.ptr = clone_node(n.ptr);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_MEMCPY) {
+    let n: *MemcpyNode = cast<*MemcpyNode>(node);
+    let c: *MemcpyNode = cast<*MemcpyNode>(alloc(sizeof<MemcpyNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.to = clone_node(n.to);
+    c.from = clone_node(n.from);
+    c.size = clone_node(n.size);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_SIZEOF) {
+    let n: *SizeofNode = cast<*SizeofNode>(node);
+    let c: *SizeofNode = cast<*SizeofNode>(alloc(sizeof<SizeofNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.object = clone_node(n.object);
+    c.is_type = n.is_type;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_SYSCALL) {
+    let n: *SyscallNode = cast<*SyscallNode>(node);
+    let c: *SyscallNode = cast<*SyscallNode>(alloc(sizeof<SyscallNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.args = clone_node_array(n.args, n.count);
+    c.count = n.count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::EXPR_STRUCT) {
+    let n: *StructExprNode = cast<*StructExprNode>(node);
+    let c: *StructExprNode = cast<*StructExprNode>(alloc(sizeof<StructExprNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    c.alias = dup_str(n.alias);
+    c.field_names = dup_str_array(n.field_names, n.field_count);
+    c.field_vals = clone_node_array(n.field_vals, n.field_count);
+    c.field_count = n.field_count;
+    c.type_args = clone_node_array(n.type_args, n.type_arg_count);
+    c.type_arg_count = n.type_arg_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_EXPRESSION) {
+    let n: *ExprStmtNode = cast<*ExprStmtNode>(node);
+    let c: *ExprStmtNode = cast<*ExprStmtNode>(alloc(sizeof<ExprStmtNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.expression = clone_node(n.expression);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_VAR_DECL || kind == NodeType::STMT_CONST_DECL) {
+    let n: *VarDeclNode = cast<*VarDeclNode>(node);
+    let c: *VarDeclNode = cast<*VarDeclNode>(alloc(sizeof<VarDeclNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    c.doc_comment = dup_str(n.doc_comment);
+    c.var_type = clone_node(n.var_type);
+    c.initializer = clone_node(n.initializer);
+    c.is_mutable = n.is_mutable;
+    c.is_public = n.is_public;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_FUNCTION) {
+    let n: *FuncDeclNode = cast<*FuncDeclNode>(node);
+    let c: *FuncDeclNode = cast<*FuncDeclNode>(alloc(sizeof<FuncDeclNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    c.doc_comment = dup_str(n.doc_comment);
+    c.param_names = dup_str_array(n.param_names, n.param_count);
+    c.param_types = clone_node_array(n.param_types, n.param_count);
+    c.param_count = n.param_count;
+    c.return_type = clone_node(n.return_type);
+    c.is_public = n.is_public;
+    c.body = clone_node(n.body);
+    c.returns_ownership = n.returns_ownership;
+    c.takes_ownership = n.takes_ownership;
+    c.forward_declared = n.forward_declared;
+    c.dll_import = n.dll_import;
+    c.dll_name = dup_str(n.dll_name);
+    c.dll_callconv = dup_str(n.dll_callconv);
+    c.lib_import = n.lib_import;
+    c.lib_name = dup_str(n.lib_name);
+    // A method inside a generic struct has no type params of its own — it
+    // just uses the enclosing struct's (T, U, ...), already substituted by
+    // the caller before/after cloning. A directly-generic function is never
+    // cloned via this path with its own params still unsubstituted — see
+    // tc_generics, which substitutes as it clones.
+    c.type_params = dup_str_array(n.type_params, n.type_param_count);
+    c.type_param_count = n.type_param_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_FIELD_DECL) {
+    let n: *FieldDeclNode = cast<*FieldDeclNode>(node);
+    let c: *FieldDeclNode = cast<*FieldDeclNode>(alloc(sizeof<FieldDeclNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    c.doc_comment = dup_str(n.doc_comment);
+    c.type_node = clone_node(n.type_node);
+    c.function = clone_node(n.function);
+    c.is_public = n.is_public;
+    c.is_embedded = n.is_embedded;
+    c.is_static = n.is_static;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_IF) {
+    let n: *IfStmtNode = cast<*IfStmtNode>(node);
+    let c: *IfStmtNode = cast<*IfStmtNode>(alloc(sizeof<IfStmtNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.condition = clone_node(n.condition);
+    c.then_stmt = clone_node(n.then_stmt);
+    c.elif_stmts = clone_node_array(n.elif_stmts, n.elif_count);
+    c.elif_count = n.elif_count;
+    c.else_stmt = clone_node(n.else_stmt);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_LOOP) {
+    let n: *LoopStmtNode = cast<*LoopStmtNode>(node);
+    let c: *LoopStmtNode = cast<*LoopStmtNode>(alloc(sizeof<LoopStmtNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.condition = clone_node(n.condition);
+    c.optional = clone_node(n.optional);
+    c.body = clone_node(n.body);
+    c.initializer = clone_node_array(n.initializer, n.init_count);
+    c.init_count = n.init_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_RETURN) {
+    let n: *ReturnStmtNode = cast<*ReturnStmtNode>(node);
+    let c: *ReturnStmtNode = cast<*ReturnStmtNode>(alloc(sizeof<ReturnStmtNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.value = clone_node(n.value);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_BLOCK) {
+    let n: *BlockNode = cast<*BlockNode>(node);
+    let c: *BlockNode = cast<*BlockNode>(alloc(sizeof<BlockNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.statements = clone_node_array(n.statements, n.stmt_count);
+    c.stmt_count = n.stmt_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_BREAK_CONTINUE) {
+    let n: *BreakContinueNode = cast<*BreakContinueNode>(node);
+    let c: *BreakContinueNode = cast<*BreakContinueNode>(alloc(sizeof<BreakContinueNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.is_continue = n.is_continue;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_DEFER) {
+    let n: *DeferNode = cast<*DeferNode>(node);
+    let c: *DeferNode = cast<*DeferNode>(alloc(sizeof<DeferNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.statement = clone_node(n.statement);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_SWITCH) {
+    let n: *SwitchNode = cast<*SwitchNode>(node);
+    let c: *SwitchNode = cast<*SwitchNode>(alloc(sizeof<SwitchNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.condition = clone_node(n.condition);
+    c.cases = clone_node_array(n.cases, n.case_count);
+    c.case_count = n.case_count;
+    c.default_case = clone_node(n.default_case);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_CASE) {
+    let n: *CaseNode = cast<*CaseNode>(node);
+    let c: *CaseNode = cast<*CaseNode>(alloc(sizeof<CaseNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.values = clone_node_array(n.values, n.value_count);
+    c.value_count = n.value_count;
+    c.body = clone_node(n.body);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_DEFAULT) {
+    let n: *DefaultNode = cast<*DefaultNode>(node);
+    let c: *DefaultNode = cast<*DefaultNode>(alloc(sizeof<DefaultNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.body = clone_node(n.body);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::TYPE_BASIC) {
+    let n: *BasicTypeNode = cast<*BasicTypeNode>(node);
+
+    // Generics substitution piggybacks on this existing traversal instead
+    // of a second whole-tree walk: clone_node_substituting (below) sets
+    // g_subst_* for the duration of one clone_node call, and every bare
+    // type name clone_node reaches — a param type, a return type, a var
+    // decl's type, a nested pointer/array element type, anything — passes
+    // through here. A name matching one of the active generic's type
+    // parameters (`T`, `U`, ...) clones the caller's concrete type instead
+    // of the placeholder.
+    let i: int = 0;
+    loop (i < g_subst_count) {
+      if (STR::strcmp(n.name, g_subst_names[i]) == 0) {
+        return clone_node(g_subst_types[i]);
+      }
+      i = i + 1;
+    }
+
+    let c: *BasicTypeNode = cast<*BasicTypeNode>(alloc(sizeof<BasicTypeNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    c.type_args = clone_node_array(n.type_args, n.type_arg_count);
+    c.type_arg_count = n.type_arg_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::TYPE_POINTER) {
+    let n: *PointerTypeNode = cast<*PointerTypeNode>(node);
+    let c: *PointerTypeNode = cast<*PointerTypeNode>(alloc(sizeof<PointerTypeNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.pointee_type = clone_node(n.pointee_type);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::TYPE_ARRAY) {
+    let n: *ArrayTypeNode = cast<*ArrayTypeNode>(node);
+    let c: *ArrayTypeNode = cast<*ArrayTypeNode>(alloc(sizeof<ArrayTypeNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.element_type = clone_node(n.element_type);
+    c.size = clone_node(n.size);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::TYPE_FUNCTION) {
+    let n: *FuncTypeNode = cast<*FuncTypeNode>(node);
+    let c: *FuncTypeNode = cast<*FuncTypeNode>(alloc(sizeof<FuncTypeNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.param_types = clone_node_array(n.param_types, n.param_count);
+    c.param_count = n.param_count;
+    c.return_type = clone_node(n.return_type);
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::TYPE_RESOLUTION) {
+    let n: *ResolutionNode = cast<*ResolutionNode>(node);
+    let c: *ResolutionNode = cast<*ResolutionNode>(alloc(sizeof<ResolutionNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.parts = dup_str_array(n.parts, n.part_count);
+    c.part_count = n.part_count;
+    return cast<*AstNode>(c);
+  }
+
+  // Not supported inside a generic function/struct template — see comment
+  // above clone_node's forward declaration. Caller reports this properly.
+  return cast<*AstNode>(0);
 }

@@ -1,0 +1,30 @@
+@module "main"
+
+// Regression test: a struct field of bare function type (`fn (...) T`, no
+// explicit `*`) must codegen as a real C function-pointer field
+// (`bool (*execute)(char *);`), not a plain function declaration
+// (`bool execute(char *);` — invalid as a struct member, GCC: "field
+// 'execute' declared as a function"). See cg_type's emit_value_declarator.
+const echo -> fn (arg: *byte) bool {
+    output(arg, "\n");
+    return true;
+}
+
+const Commands -> struct {
+  name:    *byte,
+  execute: fn (*byte) bool
+};
+
+const commands: [Commands; 2] = [
+  Commands {name: "a", execute: echo },
+  Commands {name: "b", execute: echo },
+];
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let i: int = 0;
+    loop (i < 2) {
+        commands[i].execute(commands[i].name);
+        i = i + 1;
+    }
+    return 0;
+}

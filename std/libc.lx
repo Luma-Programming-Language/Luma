@@ -147,6 +147,24 @@ pub const memcpy   -> fn (dst: *void, src: *void, n: int) *void;
 pub const memmove  -> fn (dst: *void, src: *void, n: int) *void;
 /// Compare memory regions
 pub const memcmp   -> fn (a: *void, b: *void, n: int) int;
+/// Return a human-readable message for an errno value
+pub const strerror -> fn (errnum: int) *byte;
+
+// ============================================================================
+// unistd.h - POSIX API
+// ============================================================================
+
+/// Check a path's existence/accessibility (see F_OK/R_OK/W_OK/X_OK below)
+pub const access -> fn (path: *byte, mode: int) int;
+
+/// `access()` mode: file exists
+pub const F_OK: int = 0;
+/// `access()` mode: read permission
+pub const R_OK: int = 4;
+/// `access()` mode: write permission
+pub const W_OK: int = 2;
+/// `access()` mode: execute (or search, for a directory) permission
+pub const X_OK: int = 1;
 
 // ============================================================================
 // math.h - Mathematical functions (libm)

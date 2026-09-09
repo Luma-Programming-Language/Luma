@@ -358,6 +358,31 @@ pub const s_byte -> fn (s: *byte, c: int) byte{
   return cast<byte>(0);
 }
 
+/// Checks whether a character occurs anywhere in a string
+///
+/// # Parameters
+/// * `s` - String to search
+/// * `c` - Character to look for
+///
+/// # Returns
+/// true if `c` occurs in `s`, false otherwise
+///
+/// # Example
+/// ```luma
+/// if (string::contains_char("a/b", '/')) {
+///     output("has a slash\n");
+/// }
+/// ```
+pub const contains_char -> fn (s: *byte, c: byte) bool {
+  loop [i: int = 0](s[i] != cast<byte>(0)) : (++i) {
+    if (s[i] == c) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
 /// Copies a string from source to destination
 ///
 /// Copies characters including the null terminator.

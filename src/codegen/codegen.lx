@@ -7,6 +7,7 @@
 @use "ast"       as AST
 @use "constants" as CONST
 @use "tc_type"   as TCT
+@use "tc_core"   as TCCORE
 @use "cg_core"   as CG
 @use "cg_type"   as CGT
 @use "cg_expr"   as CGE
@@ -15,88 +16,132 @@
 // libc/libm names already given correct prototypes by the preamble's own
 // `#include`s. A program that also `@use "std_libc"`s one of these must not
 // get a second, conflicting prototype generated from its Luma signature.
-const is_known_libc_name -> fn (name: *byte) bool {
-  // Was sized for 60 with 61 entries already listed below (a genuine
-  // one-past-the-end heap overflow, found while adding usleep as the
-  // 62nd) — sized with headroom now instead of exactly-N, so the next
-  // addition doesn't silently reintroduce the same bug.
-  let names: **byte = cast<**byte>(alloc(sizeof<*byte> * 80));
-  let n: int = 0;
-  names[n] = "printf"; n = n + 1;
-  names[n] = "puts"; n = n + 1;
-  names[n] = "putchar"; n = n + 1;
-  names[n] = "getchar"; n = n + 1;
-  names[n] = "fflush"; n = n + 1;
-  names[n] = "fopen"; n = n + 1;
-  names[n] = "fclose"; n = n + 1;
-  names[n] = "fread"; n = n + 1;
-  names[n] = "fwrite"; n = n + 1;
-  names[n] = "fgets"; n = n + 1;
-  names[n] = "fputs"; n = n + 1;
-  names[n] = "feof"; n = n + 1;
-  names[n] = "ferror"; n = n + 1;
-  names[n] = "rewind"; n = n + 1;
-  names[n] = "fseek"; n = n + 1;
-  names[n] = "ftell"; n = n + 1;
-  names[n] = "remove"; n = n + 1;
-  names[n] = "rename"; n = n + 1;
-  names[n] = "tmpfile"; n = n + 1;
-  names[n] = "malloc"; n = n + 1;
-  names[n] = "calloc"; n = n + 1;
-  names[n] = "realloc"; n = n + 1;
-  names[n] = "exit"; n = n + 1;
-  names[n] = "abort"; n = n + 1;
-  names[n] = "abs"; n = n + 1;
-  names[n] = "atoi"; n = n + 1;
-  names[n] = "atof"; n = n + 1;
-  names[n] = "atol"; n = n + 1;
-  names[n] = "rand"; n = n + 1;
-  names[n] = "srand"; n = n + 1;
-  names[n] = "getenv"; n = n + 1;
-  names[n] = "qsort"; n = n + 1;
-  names[n] = "bsearch"; n = n + 1;
-  names[n] = "time"; n = n + 1;
-  names[n] = "clock"; n = n + 1;
-  names[n] = "difftime"; n = n + 1;
-  names[n] = "strlen"; n = n + 1;
-  names[n] = "strcpy"; n = n + 1;
-  names[n] = "strncpy"; n = n + 1;
-  names[n] = "strcat"; n = n + 1;
-  names[n] = "strncat"; n = n + 1;
-  names[n] = "strcmp"; n = n + 1;
-  names[n] = "strncmp"; n = n + 1;
-  names[n] = "strchr"; n = n + 1;
-  names[n] = "strrchr"; n = n + 1;
-  names[n] = "strstr"; n = n + 1;
-  names[n] = "strtok"; n = n + 1;
-  names[n] = "memset"; n = n + 1;
-  names[n] = "memcpy"; n = n + 1;
-  names[n] = "memmove"; n = n + 1;
-  names[n] = "memcmp"; n = n + 1;
-  names[n] = "sqrt"; n = n + 1;
-  names[n] = "pow"; n = n + 1;
-  names[n] = "floor"; n = n + 1;
-  names[n] = "ceil"; n = n + 1;
-  names[n] = "fabs"; n = n + 1;
-  names[n] = "fmod"; n = n + 1;
-  names[n] = "log"; n = n + 1;
-  names[n] = "exp"; n = n + 1;
-  names[n] = "sin"; n = n + 1;
-  names[n] = "cos"; n = n + 1;
-  names[n] = "usleep"; n = n + 1;
+//
+// A real fixed-size array, not a hand-tracked `alloc` buffer: adding a name
+// here without bumping KNOWN_LIBC_NAME_COUNT is now a compile error ("excess
+// elements in array initializer"), not the silent heap overflow this used to
+// be (was sized for 60 with 61 entries already listed, found while adding
+// usleep as the 62nd — see git history).
+//
+// The `66` below and KNOWN_LIBC_NAME_COUNT must match by hand: a Luma
+// module-level `const` compiles to a real C global (with an initializer),
+// not a true compile-time constant expression, so C itself refuses to use
+// one to size another *file-scope* array ("variably modified ... at file
+// scope" — confirmed by trying it here). Named sizes only work for a
+// *local* array, where C allows a runtime-sized VLA.
+const KNOWN_LIBC_NAME_COUNT: int = 66;
+const known_libc_names: [*byte; 66] = [
+  "printf", "puts", "putchar", "getchar", "fflush",
+  "fopen", "fclose", "fread", "fwrite", "fgets", "fputs", "feof", "ferror",
+  "rewind", "fseek", "ftell", "remove", "rename", "tmpfile",
+  "malloc", "calloc", "realloc", "exit", "abort", "abs",
+  "atoi", "atof", "atol", "rand", "srand", "getenv", "qsort", "bsearch",
+  "time", "clock", "difftime",
+  "strlen", "strcpy", "strncpy", "strcat", "strncat", "strcmp", "strncmp",
+  "strchr", "strrchr", "strstr", "strtok",
+  "memset", "memcpy", "memmove", "memcmp",
+  "sqrt", "pow", "floor", "ceil", "fabs", "fmod", "log", "exp", "sin", "cos",
+  "usleep", "execv", "fork", "strerror", "access",
+];
 
-  let found: bool = false;
-  let i: int = 0;
-  loop (i < n) {
-    if (STR::strcmp(names[i], name) == 0) found = true;
-    i = i + 1;
+const is_known_libc_name -> fn (name: *byte) bool {
+  loop [i: int = 0](i < KNOWN_LIBC_NAME_COUNT) : (++i) {
+    if (STR::strcmp(known_libc_names[i], name) == 0) return true;
   }
-  free(names);
-  return found;
+  return false;
 }
 
 const IOWRITE -> fn (out: *void, s: *byte) void {
   LIBC::fputs(s, out);
+}
+
+// Backs `input<T>(prompt)` (see cg_expr's EXPR_INPUT codegen, which picks
+// one of these by T). Each prints `prompt` (if non-empty) before reading,
+// so callers get the same "print then read" shape regardless of T.
+//
+// Every one of these is built on __luma_read_byte, a single raw one-byte
+// read — deliberately never stdio's buffered getchar()/fgets(). Those
+// buffer far ahead of what's actually consumed, so a byte sitting in
+// stdio's private buffer becomes invisible to anything reading the fd
+// directly; mixing the two lets one input<T> call silently steal bytes
+// meant for the next. std/terminal.lx also depends on a *plain* read(2)
+// specifically for its raw/non-canonical stty polling (e.g. `stty min 0
+// time 0`), where a read() returning 0 bytes must come back as "nothing
+// available", not latch stdio's stream into permanent EOF the way a 0-byte
+// read does when seen through getchar(). Routing every input<T> through
+// the same primitive keeps a program that mixes input<byte> with
+// input<int>/input<*byte>/etc. reading bytes in the order they arrived,
+// rather than racing two different buffers over the same fd.
+// Windows has no raw-mode terminal story here (std/win32.lx's console API
+// is a separate path), so it just falls back to getchar() there.
+const write_input_helpers -> fn (out: *void, is_windows: bool) void {
+  if (is_windows) {
+    IOWRITE(out, "static int __luma_read_byte(void) {\n");
+    IOWRITE(out, "  int __c = getchar();\n");
+    IOWRITE(out, "  return __c == EOF ? -1 : __c;\n");
+    IOWRITE(out, "}\n");
+  } else {
+    IOWRITE(out, "static int __luma_read_byte(void) {\n");
+    IOWRITE(out, "  unsigned char __c;\n");
+    IOWRITE(out, "  return read(0, &__c, 1) == 1 ? (int)__c : -1;\n");
+    IOWRITE(out, "}\n");
+  }
+  IOWRITE(out, "static char* __luma_input_line(void) {\n");
+  IOWRITE(out, "  size_t __cap = 128, __len = 0;\n");
+  IOWRITE(out, "  char* __out = (char*)malloc(__cap);\n");
+  IOWRITE(out, "  for (;;) {\n");
+  IOWRITE(out, "    int __c = __luma_read_byte();\n");
+  IOWRITE(out, "    if (__c < 0 || __c == '\\n') break;\n");
+  IOWRITE(out, "    if (__len + 1 >= __cap) { __cap *= 2; __out = (char*)realloc(__out, __cap); }\n");
+  IOWRITE(out, "    __out[__len++] = (char)__c;\n");
+  IOWRITE(out, "  }\n");
+  IOWRITE(out, "  __out[__len] = '\\0';\n");
+  IOWRITE(out, "  return __out;\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static void __luma_input_prompt(const char* p) {\n");
+  IOWRITE(out, "  if (p != NULL && p[0] != '\\0') { fputs(p, stdout); fflush(stdout); }\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static long long __luma_input_int(const char* p) {\n");
+  IOWRITE(out, "  __luma_input_prompt(p);\n");
+  IOWRITE(out, "  char* __l = __luma_input_line();\n");
+  IOWRITE(out, "  long long __v = atoll(__l);\n");
+  IOWRITE(out, "  free(__l);\n");
+  IOWRITE(out, "  return __v;\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static unsigned long long __luma_input_uint(const char* p) {\n");
+  IOWRITE(out, "  __luma_input_prompt(p);\n");
+  IOWRITE(out, "  char* __l = __luma_input_line();\n");
+  IOWRITE(out, "  unsigned long long __v = strtoull(__l, NULL, 10);\n");
+  IOWRITE(out, "  free(__l);\n");
+  IOWRITE(out, "  return __v;\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static double __luma_input_double(const char* p) {\n");
+  IOWRITE(out, "  __luma_input_prompt(p);\n");
+  IOWRITE(out, "  char* __l = __luma_input_line();\n");
+  IOWRITE(out, "  double __v = atof(__l);\n");
+  IOWRITE(out, "  free(__l);\n");
+  IOWRITE(out, "  return __v;\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static float __luma_input_float(const char* p) {\n");
+  IOWRITE(out, "  return (float)__luma_input_double(p);\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static bool __luma_input_bool(const char* p) {\n");
+  IOWRITE(out, "  __luma_input_prompt(p);\n");
+  IOWRITE(out, "  char* __l = __luma_input_line();\n");
+  IOWRITE(out, "  bool __v = (__l[0]=='t'||__l[0]=='T'||__l[0]=='y'||__l[0]=='Y'||__l[0]=='1');\n");
+  IOWRITE(out, "  free(__l);\n");
+  IOWRITE(out, "  return __v;\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static char* __luma_input_string(const char* p) {\n");
+  IOWRITE(out, "  __luma_input_prompt(p);\n");
+  IOWRITE(out, "  return __luma_input_line();\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static char __luma_input_byte(const char* p) {\n");
+  IOWRITE(out, "  __luma_input_prompt(p);\n");
+  IOWRITE(out, "  int __c = __luma_read_byte();\n");
+  IOWRITE(out, "  return __c < 0 ? 0 : (char)__c;\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "\n");
 }
 
 const write_preamble -> fn (out: *void, os: *byte) void {
@@ -136,6 +181,8 @@ const write_preamble -> fn (out: *void, os: *byte) void {
   }
   IOWRITE(out, "\n");
   IOWRITE(out, "typedef struct { long long lo; long long hi; } __luma_range_t;\n\n");
+
+  write_input_helpers(out, is_windows);
 }
 
 // ─── Pass A: registries ──────────────────────────────────────────────────────
@@ -199,6 +246,14 @@ const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *by
 
   if (k == AST::NodeType::STMT_FUNCTION) {
     let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(decl);
+
+    // A generic template (`fn<T>`) itself is never codegen'd — only its
+    // concrete instantiations are, and those arrive separately as
+    // TCCORE-generated decls (see run_pass_a), already with
+    // type_param_count == 0. Registering the raw template here too would
+    // emit its still-placeholder `T` param/return types verbatim.
+    if (fd.type_param_count > 0) return;
+
     let is_main: bool = STR::strcmp(fd.name, "main") == 0;
     let has_body: bool = fd.body != cast<*AST::AstNode>(0);
 
@@ -255,6 +310,18 @@ const run_pass_a -> fn (ctx: *CG::CodegenContext, prog: *AST::ProgramNode, os: *
       }
     }
     i = i + 1;
+  }
+
+  // Generic instantiations (`add<int>`, ...) synthesized during typecheck
+  // — see tc_generics — aren't part of any ModuleNode.body (that array is
+  // fixed-size from parse time), so they don't show up in the walk above.
+  // Register them the same way; everything downstream (prototype/body
+  // emission) is driven off ctx.funcs, so nothing else needs to change.
+  let gi: int = 0;
+  loop (gi < TCCORE::generated_decl_count()) {
+    let gd: *TCCORE::GeneratedDecl = TCCORE::generated_decl_at(gi);
+    register_decl(ctx, os, gd.module_name, gd.decl);
+    gi = gi + 1;
   }
 }
 
@@ -355,7 +422,7 @@ const emit_struct_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, s: *CG::S
           let f: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(m);
           if (f.function == cast<*AST::AstNode>(0)) {
             CG::buf_str(buf, "  ");
-            CGT::emit_declarator(ctx, buf, f.type_node, f.name);
+            CGT::emit_value_declarator(ctx, buf, f.type_node, f.name);
             CG::buf_str(buf, ";\n");
           }
         }
@@ -384,6 +451,16 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
   let fd: *AST::FuncDeclNode = f.decl;
   if (f.is_extern) { if (is_known_libc_name(f.name)) return; }
 
+  // Needed before emitting param types below: a named array-bound in a
+  // param type (e.g. `args: [T; SOME_CONST]`) resolves SOME_CONST as a
+  // same-module global (see emit_array_size in cg_type), and this loops
+  // over every function across every module in one pass — left unset
+  // (or stale from whichever function/global was processed last), that
+  // lookup missed and silently fell back to the bare Luma name, which
+  // isn't a real C symbol: `undeclared identifier` in the prototype only
+  // (the definition below already sets this correctly at its own start).
+  ctx.current_module = f.module_name;
+
   // `main`'s signature is fixed by the C runtime (`int main(int, char**)`),
   // not by Luma's declared param types (`argc: int` maps to `long long`
   // everywhere else, but crt0 calls main with real 32-bit `int`s).
@@ -410,7 +487,7 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
   loop (i < fd.param_count) {
     if (has_self || i > 0) CG::buf_str(sig, ", ");
     let pb: *CG::Buf = CG::buf_init();
-    CGT::emit_declarator(ctx, pb, fd.param_types[i], fd.param_names[i]);
+    CGT::emit_value_declarator(ctx, pb, fd.param_types[i], fd.param_names[i]);
     let ps: *byte = CG::buf_finish(pb);
     CG::buf_str(sig, ps);
     free(ps);
@@ -420,7 +497,7 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
   CG::buf_str(sig, ")");
   let sig_str: *byte = CG::buf_finish(sig);
 
-  CGT::emit_declarator(ctx, buf, fd.return_type, sig_str);
+  CGT::emit_value_declarator(ctx, buf, fd.return_type, sig_str);
   CG::buf_str(buf, ";\n");
   free(sig_str);
   free(cname);
@@ -451,7 +528,7 @@ const emit_globals -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
       if (init != cast<*AST::AstNode>(0)) { t = init.resolved_type; }
     }
     let cname: *byte = CG::mangle2(g.module_name, g.name);
-    CGT::emit_declarator(ctx, buf, t, cname);
+    CGT::emit_value_declarator(ctx, buf, t, cname);
     free(cname);
     if (vd.initializer != cast<*AST::AstNode>(0)) {
       CG::buf_str(buf, " = ");
@@ -512,7 +589,7 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
     if (has_self || i > 0) CG::buf_str(sig, ", ");
     CG::local_bind_as(ctx, fd.param_names[i], fd.param_names[i]);
     let pb: *CG::Buf = CG::buf_init();
-    CGT::emit_declarator(ctx, pb, fd.param_types[i], fd.param_names[i]);
+    CGT::emit_value_declarator(ctx, pb, fd.param_types[i], fd.param_names[i]);
     let ps: *byte = CG::buf_finish(pb);
     CG::buf_str(sig, ps);
     free(ps);
@@ -522,7 +599,7 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
   CG::buf_str(sig, ")");
   let sig_str: *byte = CG::buf_finish(sig);
 
-  CGT::emit_declarator(ctx, buf, fd.return_type, sig_str);
+  CGT::emit_value_declarator(ctx, buf, fd.return_type, sig_str);
   CG::buf_str(buf, " ");
   free(sig_str);
   free(cname);
@@ -639,6 +716,19 @@ pub const codegen_transpile -> fn (program: *AST::AstNode, config: CONST::LumaBu
   emit_enums(ctx, buf);
   emit_struct_typedefs(ctx, buf);
   emit_all_struct_bodies(ctx, buf);
+  // Prototypes before globals: a global's initializer legitimately
+  // references a function *by name as a value* (a function-pointer struct
+  // field, e.g. `Commands { name: "echo", execute: echo }`) — that needs
+  // the function already declared. (Tried the opposite order for a
+  // narrower case — a global used as a function *parameter's* array-bound,
+  // e.g. `args: [T; SOME_CONST]` — but that broke this real, already-used
+  // pattern instead: test/valid/struct_function_pointer_field.lx. A
+  // same-module global still can't be used as an array-bound in a
+  // *prototype* specifically, only in a function's own definition, where
+  // per-function emission has already set ctx.current_module — narrow
+  // enough, and currently unused elsewhere in either codebase, that it's
+  // not worth a proper two-pass (forward-declare everything, then define)
+  // to also cover it.)
   emit_all_prototypes(ctx, buf);
   emit_globals(ctx, buf);
   emit_all_func_bodies(ctx, buf);

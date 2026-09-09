@@ -1,0 +1,274 @@
+@module "tc_generics"
+
+//! Monomorphization for `fn<T>`/`struct<T>` (see docs/docs.md's Generics
+//! section). An instantiation is just an ordinary, concrete FuncDeclNode
+//! with a mangled name and every type-parameter occurrence substituted for
+//! the caller's concrete type — synthesized once per unique
+//! (module, template name, concrete types) combination, then run through
+//! the same register_declaration -> typecheck_statement path any ordinary
+//! declaration already uses. Nothing in codegen needs to know generics
+//! exist; see tc_core's generated-decl registry, which codegen's Pass A
+//! reads in addition to each module's normal body.
+//!
+//! Deliberately does NOT depend on tc_stmt (register_declaration /
+//! typecheck_statement live there): tc_stmt already depends on tc_expr,
+//! and tc_call (tc_expr) is this module's main caller, so tc_generics ->
+//! tc_stmt -> tc_expr -> tc_generics would be circular. Instead, a newly
+//! discovered instantiation is only cloned + given a concrete signature
+//! here (enough to typecheck its call site immediately) and queued in
+//! g_pending; tc.lx drains that queue (register_declaration +
+//! typecheck_statement, which it can already reach) after each module's
+//! normal pass, looping until empty so a generic calling another generic
+//! is handled too.
+
+@use "std_vector"  as VEC
+@use "std_cstring" as STR
+@use "std_memory"  as MEM
+
+@use "ast"      as AST
+@use "ast_type" as TAST
+@use "tc_core"  as CORE
+@use "tc_scope" as SCOPE
+@use "tc_type"  as TYPE
+@use "tc_error" as ERR
+
+// ─── small string helpers ────────────────────────────────────────────────
+// Mirror cg_core's mangle2 — kept local rather than shared, since the
+// typechecker shouldn't depend on codegen.
+
+#returns_ownership
+const dup_str -> fn (s: *byte) *byte {
+  let len: int = STR::strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
+  return out;
+}
+
+#returns_ownership
+const join2 -> fn (a: *byte, b: *byte) *byte {
+  let la: int = STR::strlen(a);
+  let lb: int = STR::strlen(b);
+  let s: *byte = cast<*byte>(alloc(la + lb + 3));
+  MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
+  s[la] = '_'; s[la + 1] = '_';
+  MEM::memcpy(cast<*void>(cast<int>(s) + la + 2), cast<*void>(b), lb);
+  s[la + lb + 2] = '\0';
+  return s;
+}
+
+// A concrete type's own type_to_string (e.g. "*byte") isn't a valid C
+// identifier fragment — replace anything but [A-Za-z0-9_] with '_'.
+#returns_ownership
+const sanitize -> fn (s: *byte) *byte {
+  let len: int = STR::strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  let i: int = 0;
+  loop (i < len) {
+    let c: byte = s[i];
+    let ok: bool = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
+    if (ok) { out[i] = c; } else { out[i] = '_'; }
+    i = i + 1;
+  }
+  out[len] = '\0';
+  return out;
+}
+
+#returns_ownership
+const build_mangled_name -> fn (base_name: *byte, concretes: **AST::AstNode, count: int) *byte {
+  let mangled: *byte = dup_str(base_name);
+  let i: int = 0;
+  loop (i < count) {
+    let ts: *byte = TYPE::type_to_string(concretes[i]);
+    let clean: *byte = sanitize(ts);
+    free(ts);
+    let next: *byte = join2(mangled, clean);
+    free(mangled);
+    free(clean);
+    mangled = next;
+    i = i + 1;
+  }
+  return mangled;
+}
+
+// ─── template registry ───────────────────────────────────────────────────
+// One entry per `fn<T,...>` (structs follow later — see docs/todo.md).
+
+pub const GenericTemplate -> struct {
+  module_name: *byte,
+  name:        *byte,
+  decl:        *AST::AstNode,  // raw FuncDeclNode, type params unresolved
+  def_scope:   *CORE::Scope,   // where it was declared — NOT the caller's scope
+};
+
+let g_templates: VEC::Vector;
+let g_templates_ready: bool = false;
+
+const templates_init -> fn () void {
+  if (g_templates_ready) return;
+  g_templates_ready = true;
+  g_templates = VEC::create_vector(sizeof<GenericTemplate>);
+}
+
+pub const register_template -> fn (module_name: *byte, name: *byte, decl: *AST::AstNode, def_scope: *CORE::Scope) void {
+  templates_init();
+  let t: GenericTemplate = GenericTemplate { module_name: module_name, name: name, decl: decl, def_scope: def_scope };
+  g_templates.push_back(cast<*void>(&t));
+}
+
+pub const find_template -> fn (module_name: *byte, name: *byte) *GenericTemplate {
+  templates_init();
+  let n: int = g_templates.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let t: *GenericTemplate = cast<*GenericTemplate>(g_templates.get(i));
+    if (STR::strcmp(t.module_name, module_name) == 0 && STR::strcmp(t.name, name) == 0) return t;
+  }
+  return cast<*GenericTemplate>(0);
+}
+
+// ─── instantiation cache — one entry per concrete (module, name, types) ──
+
+pub const Instantiation -> struct {
+  key:          *byte,
+  ftype:        *AST::AstNode,
+  mangled_name: *byte,
+};
+
+let g_insts: VEC::Vector;
+let g_insts_ready: bool = false;
+
+const insts_init -> fn () void {
+  if (g_insts_ready) return;
+  g_insts_ready = true;
+  g_insts = VEC::create_vector(sizeof<Instantiation>);
+}
+
+const find_instantiation -> fn (key: *byte) *Instantiation {
+  insts_init();
+  let n: int = g_insts.size;
+  loop [i: int = 0](i < n) : (++i) {
+    let inst: *Instantiation = cast<*Instantiation>(g_insts.get(i));
+    if (STR::strcmp(inst.key, key) == 0) return inst;
+  }
+  return cast<*Instantiation>(0);
+}
+
+const add_instantiation -> fn (key: *byte, ftype: *AST::AstNode, mangled_name: *byte) void {
+  insts_init();
+  let inst: Instantiation = Instantiation { key: key, ftype: ftype, mangled_name: mangled_name };
+  g_insts.push_back(cast<*void>(&inst));
+}
+
+// ─── pending queue — drained by tc.lx, see module doc comment above ──────
+
+pub const Pending -> struct {
+  decl:        *AST::AstNode,
+  def_scope:   *CORE::Scope,
+  module_name: *byte,
+};
+
+let g_pending: VEC::Vector;
+let g_pending_ready: bool = false;
+
+const pending_init -> fn () void {
+  if (g_pending_ready) return;
+  g_pending_ready = true;
+  g_pending = VEC::create_vector(sizeof<Pending>);
+}
+
+const pending_push -> fn (decl: *AST::AstNode, def_scope: *CORE::Scope, module_name: *byte) void {
+  pending_init();
+  let p: Pending = Pending { decl: decl, def_scope: def_scope, module_name: module_name };
+  g_pending.push_back(cast<*void>(&p));
+}
+
+pub const pending_count -> fn () int {
+  pending_init();
+  return g_pending.size;
+}
+
+// Pops the last entry (order doesn't matter — every entry is independent).
+// Only call when pending_count() > 0.
+pub const pending_pop -> fn () Pending {
+  pending_init();
+  let idx: int = g_pending.size - 1;
+  let last: *Pending = cast<*Pending>(g_pending.get(idx));
+  let copy: Pending = Pending { decl: last.decl, def_scope: last.def_scope, module_name: last.module_name };
+  g_pending.size = idx;
+  return copy;
+}
+
+// ─── the entry point — called from tc_expr's tc_call ─────────────────────
+
+const rename_callee -> fn (call_node: *AST::CallNode, new_name: *byte) void {
+  if (call_node.callee.kind != AST::NodeType::EXPR_IDENTIFIER) return;
+  let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(call_node.callee);
+  free(id.name);
+  id.name = dup_str(new_name);
+}
+
+// Returns the concrete FuncType to typecheck the call's arguments/result
+// against, or NULL (with a tc_error already reported) on failure. Also
+// rewrites call_node's callee to the mangled concrete name, so codegen —
+// completely unaware generics exist — just emits an ordinary call.
+#returns_ownership
+pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *GenericTemplate, caller_scope: *CORE::Scope) *AST::AstNode {
+  let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(tmpl.decl);
+
+  if (call_node.type_arg_count != fd.type_param_count) {
+    ERR::tc_error(cast<*AST::AstNode>(call_node), "Generics Error",
+      "wrong number of explicit type arguments for this generic function", "type argument count mismatch");
+    return cast<*AST::AstNode>(0);
+  }
+
+  let count: int = fd.type_param_count;
+  let concretes: **AST::AstNode = cast<**AST::AstNode>(alloc(sizeof<*AST::AstNode> * count));
+  let i: int = 0;
+  loop (i < count) {
+    concretes[i] = TYPE::resolve_type_ref(call_node.type_args[i], caller_scope);
+    i = i + 1;
+  }
+
+  let mangled: *byte = build_mangled_name(fd.name, concretes, count);
+  let key: *byte = join2(tmpl.module_name, mangled);
+
+  let existing: *Instantiation = find_instantiation(key);
+  if (existing != cast<*Instantiation>(0)) {
+    free(mangled);
+    free(key);
+    free(concretes);
+    rename_callee(call_node, existing.mangled_name);
+    return existing.ftype;
+  }
+
+  // First time for this concrete instantiation: clone the whole template,
+  // substituting every T/U/... occurrence for the caller's concrete
+  // types (see clone_node_substituting), give it the mangled name, and
+  // strip its own generic markers — from here on it's just an ordinary
+  // concrete function to every other part of the compiler.
+  let cloned: *AST::AstNode = AST::clone_node_substituting(tmpl.decl, fd.type_params, concretes, count);
+  let cfd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(cloned);
+
+  free(cfd.name);
+  cfd.name = mangled; // ownership transferred to the node
+
+  let tpi: int = 0;
+  loop (tpi < cfd.type_param_count) { free(cfd.type_params[tpi]); tpi = tpi + 1; }
+  free(cfd.type_params);
+  cfd.type_params = cast<**byte>(0);
+  cfd.type_param_count = 0;
+
+  // The concrete signature is enough to typecheck THIS call site right
+  // now, without waiting for the body itself to be checked (queued below
+  // — see tc.lx's drain, which mirrors what register_declaration already
+  // does for an ordinary function).
+  let ftype: *AST::AstNode = TAST::make_func_type(cfd.param_types, cfd.param_count, cfd.return_type, cloned.line, cloned.col);
+  SCOPE::scope_add_symbol_full(tmpl.def_scope, cfd.name, ftype,
+    fd.is_public == 1, false, cfd.returns_ownership == 1, cfd.takes_ownership == 1);
+
+  add_instantiation(key, ftype, cfd.name);
+  pending_push(cloned, tmpl.def_scope, tmpl.module_name);
+
+  free(concretes);
+  rename_callee(call_node, cfd.name);
+  return ftype;
+}

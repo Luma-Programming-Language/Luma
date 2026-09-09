@@ -20,6 +20,7 @@
 #returns_ownership const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: int) *AST::AstNode;
 #returns_ownership const _enum   -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode;
 #returns_ownership const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode;
+#returns_ownership const parse_type_param_list -> fn (p: *PARS::Parser) VEC::Vector;
 #returns_ownership const var     -> fn (p: *PARS::Parser, is_public: int) *AST::AstNode;
 #returns_ownership const infinite_loop_stmt  -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const for_loop_stmt       -> fn (p: *PARS::Parser) *AST::AstNode;
@@ -396,6 +397,31 @@ const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, ta
 }
 
 #returns_ownership
+// Parses `<Ident (',' Ident)*>` — a generic declaration's type parameter
+// list (`fn<T, U>` / `struct<T, U>`). Plain names only, no bounds (v1 is
+// fully unconstrained/duck-typed). Caller has already confirmed the
+// current token is '<'.
+#returns_ownership
+const parse_type_param_list -> fn (p: *PARS::Parser) VEC::Vector {
+  let names: VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' to start type parameter list.");
+
+  loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_GT) {
+    if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+      p.error("SyntaxError", "Expected identifier in type parameter list.");
+      break;
+    }
+    let name: *byte = p.get_name();
+    p.advance();
+    names.push_back(cast<*void>(&name));
+    if (p.current().kind == TOK::LumaTokenType::TOK_COMMA) { p.advance(); } else { break; }
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' to close type parameter list.");
+  return names;
+}
+
+#returns_ownership
 const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownership: int, takes_ownership: int) *AST::AstNode {
   let doc_comment: *byte = "";
   let line: int = p.current().line;
@@ -404,7 +430,16 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
   let param_names: VEC::Vector = VEC::create_vector(sizeof<*byte>);
   let param_types: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
-  p.consume(TOK::LumaTokenType::TOK_FN,     "Expected 'fn' keyword.");
+  p.consume(TOK::LumaTokenType::TOK_FN, "Expected 'fn' keyword.");
+
+  // Generic function — `fn<T, U> (...)`. A fixed grammar slot right after
+  // the 'fn' keyword, so unlike a generic *call* there's no ambiguity to
+  // resolve here.
+  let type_params: VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  if (p.current().kind == TOK::LumaTokenType::TOK_LT) {
+    type_params = parse_type_param_list(p);
+  }
+
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'fn'.");
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RPAREN) {
@@ -412,6 +447,7 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
       p.error("SyntaxError", "Expected identifier for function parameter.");
       VEC::free_vector(&param_names);
       VEC::free_vector(&param_types);
+      VEC::free_vector(&type_params);
       return cast<*AST::AstNode>(0);
     }
 
@@ -424,6 +460,7 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
       p.error("TypeError", "Failed to parse type for parameter.");
       VEC::free_vector(&param_names);
       VEC::free_vector(&param_types);
+      VEC::free_vector(&type_params);
       return cast<*AST::AstNode>(0);
     }
 
@@ -440,6 +477,7 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
     p.error("TypeError", "Expected return type after function parameters.");
     VEC::free_vector(&param_names);
     VEC::free_vector(&param_types);
+    VEC::free_vector(&type_params);
     return cast<*AST::AstNode>(0);
   }
 
@@ -452,8 +490,12 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
       return_type, is_public, cast<*AST::AstNode>(0),
       returns_ownership, takes_ownership, 1, line, col
     );
+    let fdn0: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(node);
+    fdn0.type_param_count = type_params.size;
+    fdn0.type_params = PARS::vec_to_byte_array(&type_params);
     VEC::free_vector(&param_names);
     VEC::free_vector(&param_types);
+    VEC::free_vector(&type_params);
     return node;
   }
 
@@ -462,18 +504,23 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
     p.error("SyntaxError", "Expected function body.");
     VEC::free_vector(&param_names);
     VEC::free_vector(&param_types);
+    VEC::free_vector(&type_params);
     return cast<*AST::AstNode>(0);
   }
-  
+
   let node: *AST::AstNode = SAST::make_func_decl(
     name, doc_comment,
     PARS::vec_to_byte_array(&param_names), PARS::vec_to_node_array(&param_types), param_names.size,
     return_type, is_public, body,
     returns_ownership, takes_ownership, 0, line, col
   );
+  let fdn: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(node);
+  fdn.type_param_count = type_params.size;
+  fdn.type_params = PARS::vec_to_byte_array(&type_params);
 
   VEC::free_vector(&param_names);
   VEC::free_vector(&param_types);
+  VEC::free_vector(&type_params);
 
   return node;
 }
@@ -525,6 +572,18 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
   let private_fields: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   p.consume(TOK::LumaTokenType::TOK_STRUCT, "Expected 'struct' keyword.");
+
+  // Generic struct — `struct<T, U> { ... }`. A fixed grammar slot right
+  // after the 'struct' keyword — no ambiguity to resolve, unlike a generic
+  // struct *literal* (see parser_expr.lx). Covers the whole declaration,
+  // including any methods parsed below via _fn: they just reference `T`/`U`
+  // by name in their own param/return types, substituted uniformly with
+  // everything else when tc_generics clones+instantiates the struct.
+  let type_params: VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  if (p.current().kind == TOK::LumaTokenType::TOK_LT) {
+    type_params = parse_type_param_list(p);
+  }
+
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after struct name.");
 
   let public_member: int = 1;
@@ -564,6 +623,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
         p.error("SyntaxError", "Expected ',' or '}' after embedded struct field.");
         VEC::free_vector(&public_fields);
         VEC::free_vector(&private_fields);
+        VEC::free_vector(&type_params);
         return cast<*AST::AstNode>(0);
       }
 
@@ -627,6 +687,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
         p.error("SyntaxError", "'static' is only valid on a method, not a data field.");
         VEC::free_vector(&public_fields);
         VEC::free_vector(&private_fields);
+        VEC::free_vector(&type_params);
         return cast<*AST::AstNode>(0);
       }
       p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after field name.");
@@ -639,6 +700,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
       p.error("SyntaxError", "Expected ',' or '}' after struct field.");
       VEC::free_vector(&public_fields);
       VEC::free_vector(&private_fields);
+      VEC::free_vector(&type_params);
       return cast<*AST::AstNode>(0);
     }
 
@@ -662,8 +724,13 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
     PARS::vec_to_node_array(&private_fields), private_fields.size,
     is_public, line, col
   );
+  let sdn: *AST::StructDeclNode = cast<*AST::StructDeclNode>(node);
+  sdn.type_param_count = type_params.size;
+  sdn.type_params = PARS::vec_to_byte_array(&type_params);
+
   VEC::free_vector(&public_fields);
   VEC::free_vector(&private_fields);
+  VEC::free_vector(&type_params);
   return node;
 }
 

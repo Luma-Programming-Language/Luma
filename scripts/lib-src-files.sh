@@ -16,6 +16,7 @@ SRC_FILES=(
   src/parser/file.lx src/parser/type.lx src/parser/parser.lx
   src/parser/expr.lx src/parser/stmt.lx
   src/typechecker/core.lx src/typechecker/type.lx src/typechecker/scope.lx
+  src/typechecker/generics.lx
   src/typechecker/expr.lx src/typechecker/tc_error.lx src/typechecker/tc.lx
   src/typechecker/stmt.lx
   src/codegen/codegen_core.lx src/codegen/codegen_type.lx

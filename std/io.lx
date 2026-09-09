@@ -297,14 +297,24 @@ const from_int -> fn (n: int) *byte {
     return s;
 }
 
-pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
+// print()/print_err()'s arg-count cap. Named here so the bound checks below
+// can't silently drift from each other or from what the two functions
+// actually mean by "too many args" — but the array-type positions in their
+// signatures below still have to repeat this as the literal 256: a
+// module-level global can't size a function parameter's array in its
+// *prototype* (only in the function's own definition, where per-function
+// codegen already has the right module context — narrow, cross-file
+// declaration-order limitation, not worth a bigger codegen rework for).
+const MAX_FORMAT_ARGS: int = 256;
+
+pub const print -> fn (s: *byte, args: [FormatArg; 256]) int { // see MAX_FORMAT_ARGS above
     let buffer: [byte; 1024];
     let buf_index: int = 0;
     let arg_index: int = 0;
 
     let i: int = 0;
     loop (s[i] != '\0') {
-        if (s[i] == '%' && arg_index < 256) {
+        if (s[i] == '%' && arg_index < MAX_FORMAT_ARGS) {
             let next: byte = s[i + 1];
             let arg: FormatArg = args[arg_index];
 
@@ -361,14 +371,14 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int {
     }
 }
 
-pub const print_err -> fn (s: *byte, args: [int; 256]) int {
-    let buffer: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
+pub const print_err -> fn (s: *byte, args: [int; 256]) int { // see MAX_FORMAT_ARGS above
+    let buffer: *byte = cast<*byte>(alloc(MAX_FORMAT_ARGS * sizeof<byte>));
     let buf_index: int = 0;
     let arg_index: int = 0;
     defer { free(buffer); }
 
     loop [i: int = 0](s[i] != '\0') : (++i) {
-        if (s[i] == '%' && s[i + 1] == 'd' && arg_index < 256) {
+        if (s[i] == '%' && s[i + 1] == 'd' && arg_index < MAX_FORMAT_ARGS) {
             let num_str: *byte = from_int(args[arg_index]);
             defer { free(num_str); }
             loop [j: int = 0](num_str[j] != '\0') : (++j) {

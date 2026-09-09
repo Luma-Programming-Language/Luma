@@ -52,7 +52,7 @@ const gen_local_var_decl -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *
   }
 
   let c_name: *byte = CG::local_declare(ctx, n.name);
-  CGT::emit_declarator(ctx, buf, t, c_name);
+  CGT::emit_value_declarator(ctx, buf, t, c_name);
   if (init_str != cast<*byte>(0)) {
     CG::buf_str(buf, " = ");
     CG::buf_str(buf, init_str);
@@ -102,7 +102,7 @@ const gen_return -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::Ast
 
   CG::buf_str(buf, "{\n");
   if (n.value != cast<*AST::AstNode>(0)) {
-    CGT::emit_declarator(ctx, buf, ctx.current_return_type, "__retval");
+    CGT::emit_value_declarator(ctx, buf, ctx.current_return_type, "__retval");
     CG::buf_str(buf, " = (");
     CGE::gen_expr(ctx, buf, n.value);
     CG::buf_str(buf, ");\n");
@@ -172,7 +172,7 @@ const gen_loop -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNo
     let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(n.initializer[i]);
     let t: *AST::AstNode = var_decl_type(ctx, vd);
     let c_name: *byte = CG::local_declare(ctx, vd.name);
-    CGT::emit_declarator(ctx, buf, t, c_name);
+    CGT::emit_value_declarator(ctx, buf, t, c_name);
     if (vd.initializer != cast<*AST::AstNode>(0)) {
       CG::buf_str(buf, " = ");
       CGE::gen_expr(ctx, buf, vd.initializer);

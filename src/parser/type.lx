@@ -111,6 +111,35 @@ const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
   return TAST::make_pointer_type(pointee, line, col);
 }
 
+// Parses `<Type (',' Type)*>` — the explicit type-argument list of a generic
+// type reference (`Box<int>`), function call (`add<int>(...)`), or struct
+// literal (`Box<int> { ... }`). Caller has already confirmed the current
+// token is '<'. Type position (this function's own callers in this file)
+// needs no ambiguity handling: `parse_type` is a separate grammar from
+// expressions, so there's no competing '<' operator to confuse it with —
+// only the expression-position callers in parser_expr.lx (generic calls and
+// struct literals) need the speculative try/rollback dance around *this*.
+#returns_ownership
+pub const parse_type_arg_list -> fn (p: *PARS::Parser) VEC::Vector {
+  let args: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
+  p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' to start type argument list.");
+
+  if (p.current().kind != TOK::LumaTokenType::TOK_GT) {
+    loop (p.has_tokens()) {
+      let t: *AST::AstNode = parse_type(p);
+      if (t == cast<*AST::AstNode>(0)) {
+        p.error("TypeError", "Expected type in type argument list.");
+        break;
+      }
+      args.push_back(cast<*void>(&t));
+      if (p.current().kind == TOK::LumaTokenType::TOK_COMMA) { p.advance(); } else { break; }
+    }
+  }
+
+  p.consume(TOK::LumaTokenType::TOK_GT, "Expected '>' to close type argument list.");
+  return args;
+}
+
 #returns_ownership
 const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: int = p.current().line;
@@ -121,7 +150,17 @@ const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
 
   // Simple identifier type — no resolution operator
   if (p.current().kind != TOK::LumaTokenType::TOK_RESOLVE) {
-    return TAST::make_basic_type(first_name, line, col);
+    let node: *AST::AstNode = TAST::make_basic_type(first_name, line, col);
+    // Generic type reference, e.g. `Box<int>` / `Pair<int, *byte>` — a fixed
+    // grammar slot, unlike the same '<' at an expression call site (see
+    // parser_expr.lx), so no ambiguity/backtracking needed here.
+    if (p.current().kind == TOK::LumaTokenType::TOK_LT) {
+      let targs: VEC::Vector = parse_type_arg_list(p);
+      let bn: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(node);
+      bn.type_arg_count = targs.size;
+      bn.type_args = PARS::vec_to_node_array(&targs);
+    }
+    return node;
   }
 
   // namespace::Type or namespace::sub::Type

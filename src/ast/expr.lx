@@ -148,6 +148,8 @@ pub const make_call -> fn (callee: *AST::AstNode, args: **AST::AstNode, arg_coun
   n.callee = callee;
   n.args = args;
   n.arg_count = arg_count;
+  n.type_args = cast<**AST::AstNode>(0);
+  n.type_arg_count = 0;
 
   return cast<*AST::AstNode>(n);
 }
@@ -333,6 +335,8 @@ pub const make_struct_expr -> fn (name: *byte, alias: *byte, field_names: **byte
   n.field_names = field_names;
   n.field_vals = field_vals;
   n.field_count = field_count;
+  n.type_args = cast<**AST::AstNode>(0);
+  n.type_arg_count = 0;
 
   return cast<*AST::AstNode>(n);
 }

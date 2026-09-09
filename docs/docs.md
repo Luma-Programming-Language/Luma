@@ -367,122 +367,94 @@ See [Type Casting System](#type-casting-system) for full details on conversions.
 
 ---
 
-## Generics (Not yet supported)
+## Generics
 
-Luma supports generic programming through templates, enabling you to write code that works with multiple types while maintaining type safety and zero-cost abstractions.
+**Generic functions are implemented.** Generic structs (`struct<T>`) are not
+yet — see the note at the end of this section.
 
 ### Generic Functions
 
-Generic functions are declared with type parameters in angle brackets `<>` after the `fn` keyword:
+Generic functions are declared with type parameters in angle brackets `<>`
+right after the `fn` keyword, same position as every other function
+declaration's parameter list:
 
 ```luma
-const add = fn<T>(a: T, b: T) T { 
-    return a + b; 
+const add -> fn<T> (a: T, b: T) T {
+    return a + b;
 }
 
-const swap = fn<T>(a: *T, b: *T) void {
+const swap -> fn<T> (a: *T, b: *T) void {
     let temp: T = *a;
     *a = *b;
     *b = temp;
 }
 
-const max = fn<T>(a: T, b: T) T {
-    if (a > b) {
-        return a;
-    }
-    return b;
+const identity -> fn<T> (x: T) T {
+    return x;
 }
 ```
 
 ### Using Generic Functions
 
-Generic functions require **explicit type arguments** at the call site:
+Generic functions require **explicit type arguments** at the call site —
+`add<int>(1, 2)`, not just `add(1, 2)`:
 
 ```luma
-const main = fn() int {
+pub const main -> fn (argc: int, argv: **byte) int {
     // Integer arithmetic
     outputln("add(1, 2) = ", add<int>(1, 2));
-    
+
     // Floating-point arithmetic
     outputln("add(1.5, 2.5) = ", add<float>(1.5, 2.5));
 
     // Swapping integers
-    let x: int = 5; 
+    let x: int = 5;
     let y: int = 10;
     swap<int>(&x, &y);
     outputln("After swap: x = ", x, ", y = ", y);
-    
-    // Finding maximum
-    let largest: int = max<int>(42, 17);
-    outputln("Max: ", largest);
-    
+
+    // identity<*byte> and identity<int> are two independent instantiations
+    let s: *byte = identity<*byte>("hello");
+    let n: int = identity<int>(42);
+
     return 0;
 }
 ```
 
-### Generic Structs
-
-Structs can also be generic, allowing you to create container types and data structures that work with any type:
-
-```luma
-const Box -> struct<T> {
-    value: T,
-    
-    get = fn() T {
-        return value;
-    },
-    
-    set = fn(new_value: T) void {
-        value = new_value;
-    }
-};
-
-const Pair -> struct<T, U> {
-    first: T,
-    second: U
-};
-
-// Usage
-const main = fn() int {
-    // Box holding an integer
-    let int_box: Box<int> = Box { value: 42 };
-    outputln("Box contains: ", int_box.get());
-    
-    // Box holding a float
-    let float_box: Box<float> = Box { value: 3.14 };
-    
-    // Pair with different types
-    let pair: Pair<int, *byte> = Pair { 
-        first: 1, 
-        second: "hello" 
-    };
-    outputln("Pair: (", pair.first, ", ", pair.second, ")");
-    
-    return 0;
-}
-```
+Why explicit, rather than inferring `T` from the arguments the way most
+languages with generics do: `add<int>(...)` and `a < int > (...)` (a chained
+comparison) are genuinely ambiguous to parse — Luma's parser has no symbol
+table, so it can't tell "add" apart from an ordinary variable at parse time.
+It resolves this the same way C++ effectively does: on seeing `ident <`, it
+*speculatively* tries to parse a type-argument list followed immediately by
+`(` or `{`; if that doesn't parse cleanly, it rolls back with zero side
+effects and falls through to ordinary `<` (less-than). This is also why the
+type arguments are mandatory rather than optional — inference would remove
+the very shape (`<Type,...>(`) the parser depends on to disambiguate.
 
 ### Monomorphization
 
-Luma uses **monomorphization** for generic code generation. This means:
-
-- The compiler generates **separate machine code** for each concrete type used
-- Generic code has **zero runtime overhead** compared to hand-written type-specific code
-- Each instantiation (e.g., `add<int>`, `add<float>`) produces its own optimized assembly
-- Similar to C++ templates and Rust generics, not Java's type erasure
-
-**Example:**
+Luma uses **monomorphization**: the compiler generates a separate, concrete
+function for each distinct set of type arguments actually used, the first
+time it's used — not type erasure, and not a runtime dispatch of any kind.
 
 ```luma
-const identity = fn<T>(x: T) T {
-    return x;
-}
+const identity -> fn<T> (x: T) T { return x; }
 
-// These calls generate separate functions in the compiled binary:
-let a: int = identity<int>(42);        // Generates identity_int
-let b: float = identity<float>(3.14);  // Generates identity_float
-let c: *byte = identity<*byte>("hello"); // Generates identity_str
+// These calls generate two independent, separately-typechecked functions:
+let a: int   = identity<int>(42);        // -> identity__int
+let c: *byte = identity<*byte>("hello"); // -> identity___byte
 ```
+
+A generic function's body is duck-typed, like a C++ template: it's only
+fully typechecked once per concrete instantiation, not at the generic
+declaration itself. `add<T>`'s `a + b` isn't checked against every possible
+`T` up front — `add<*byte>(...)` would fail with an ordinary Type Error
+right at that call site (`+` isn't defined for `*byte`), the same as if
+you'd written a `*byte`-specific function with `+` in it directly.
+
+**Not yet supported:** generic structs (`struct<T>`, e.g. a `Box<T>`
+container) — only generic functions are implemented so far.
 
 ---
 
@@ -501,7 +473,7 @@ const add -> fn (a: int, b: int) int {                 // Function definition
 }
 ```
 
-(Generic bindings like `struct<T>`/`fn<T>` are aspirational syntax — see [Generics](#generics-not-yet-supported), which isn't implemented yet.)
+(`fn<T>` bindings work today — see [Generics](#generics). `struct<T>` is aspirational syntax, not yet implemented.)
 
 ### Why This Design?
 
@@ -1171,7 +1143,13 @@ pub const main -> fn (argc: int, argv: **byte) int {
 }
 ```
 
-**Not implemented yet**: codegen currently ignores the prompt and stdin entirely and evaluates every `input<T>(...)` to a zeroed `T` — the program above compiles but `age`/`height` will read as `0`, not whatever's typed.
+`input<T>` prints `prompt` (skipped if empty), then reads a line from stdin and
+parses it as `T`. Supported `T`: `int`, `uint`, `float`, `double`, `bool`,
+`byte`, and `*byte` (string). `byte` is the exception to "a line" — it reads a
+single raw byte (via `read(2)`, not line-buffered stdio), which is what
+`std/terminal.lx`'s raw-mode key readers (`getch`, `getch_raw`, `getpass`, ...)
+rely on. Any other `T` (structs, enums, ...) isn't supported yet and evaluates
+to a zeroed value.
 
 ### System Commands
 
@@ -1717,32 +1695,32 @@ Understanding performance is crucial for systems programming.
 
 Luma follows the "zero-cost abstraction" principle: abstractions should have no runtime overhead.
 
-**Generics are designed to be zero-cost** (see [Generics](#generics-not-yet-supported) — this is the design intent, not implemented yet):
+**Generics are zero-cost** (see [Generics](#generics)):
 ```luma
-const add = fn<T>(a: T, b: T) T {
+const add -> fn<T> (a: T, b: T) T {
     return a + b;
 }
 
-// These calls would compile to separate, optimized functions:
+// These calls compile to separate, optimized functions:
 let x: int = add<int>(1, 2);        // Same as: x = 1 + 2
 let y: float = add<float>(1.0, 2.0); // Same as: y = 1.0 + 2.0
 ```
 
-**No runtime dispatch** - once implemented, generic instantiations are meant to be resolved at compile time through monomorphization, the same way it already works for structs and switch cases today.
+**No runtime dispatch** - generic instantiations are resolved at compile time through monomorphization.
 
 ### Monomorphization
 
-The plan is for Luma to generate specialized code per type, the same way C++ templates or Rust generics do (also not implemented yet):
+Luma generates specialized code per type, the same way C++ templates do:
 
 ```luma
-const max = fn<T>(a: T, b: T) T {
+const max -> fn<T> (a: T, b: T) T {
     if (a > b) { return a; }
     return b;
 }
 
-// Compiler would generate:
-// max_int(a: int, b: int) -> int { ... }
-// max_float(a: float, b: float) -> float { ... }
+// Compiler generates, on first use of each:
+// max__int(a: long long, b: long long) -> long long { ... }
+// max__float(a: float, b: float) -> float { ... }
 ```
 
 **Benefits:**

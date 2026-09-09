@@ -80,3 +80,39 @@ pub const ModuleDependency -> struct {
   dependencies: VEC::Vector,
   processed:    bool,
 };
+
+// ─── generics: synthesized declarations, for codegen's Pass A ───────────
+// Each concrete generic instantiation (see tc_generics) is an ordinary
+// FuncDeclNode by the time typecheck is done with it, but it isn't part of
+// any ModuleNode.body (that array is fixed-size from parse time) — codegen
+// reads this list in addition to each module's normal body so it emits a
+// prototype/definition for every instantiation actually used.
+pub const GeneratedDecl -> struct {
+  module_name: *byte,
+  decl:        *AST::AstNode,
+};
+
+let g_generated_decls: VEC::Vector;
+let g_generated_decls_ready: bool = false;
+
+const generated_decls_init -> fn () void {
+  if (g_generated_decls_ready) return;
+  g_generated_decls_ready = true;
+  g_generated_decls = VEC::create_vector(sizeof<GeneratedDecl>);
+}
+
+pub const record_generated_decl -> fn (module_name: *byte, decl: *AST::AstNode) void {
+  generated_decls_init();
+  let gd: GeneratedDecl = GeneratedDecl { module_name: module_name, decl: decl };
+  g_generated_decls.push_back(cast<*void>(&gd));
+}
+
+pub const generated_decl_count -> fn () int {
+  generated_decls_init();
+  return g_generated_decls.size;
+}
+
+pub const generated_decl_at -> fn (i: int) *GeneratedDecl {
+  generated_decls_init();
+  return cast<*GeneratedDecl>(g_generated_decls.get(i));
+}

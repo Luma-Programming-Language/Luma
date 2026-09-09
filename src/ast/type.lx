@@ -10,6 +10,8 @@ pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AST::AstNode
   n.line = line;
   n.col = col;
   n.name = name;
+  n.type_args = cast<**AST::AstNode>(0);
+  n.type_arg_count = 0;
   return cast<*AST::AstNode>(n);
 }
 

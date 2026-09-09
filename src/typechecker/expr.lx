@@ -1,14 +1,15 @@
 @module "tc_expr"
 
 @use "std_cstring" as STR
-@use "std_memory" as MEM
-@use "std_vector" as VEC
+@use "std_memory"  as MEM
+@use "std_vector"  as VEC
 
-@use "tc_core"  as CORE
-@use "tc_type"  as TYPE
-@use "tc_scope" as SCOPE
-@use "tc_error" as ERR
-@use "ast"      as AST
+@use "tc_core"     as CORE
+@use "tc_type"     as TYPE
+@use "tc_scope"    as SCOPE
+@use "tc_generics" as GEN
+@use "tc_error"    as ERR
+@use "ast"         as AST
 @use "error" as ERR
 
 #returns_ownership pub const typecheck_expression -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode;
@@ -452,6 +453,15 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
       if (imp != cast<*CORE::ModuleImport>(0)) {
         let msym: *CORE::Symbol = SCOPE::scope_lookup_in_module(imp.module_scope, n.member);
         if (msym != cast<*CORE::Symbol>(0)) return msym.type;
+        // `obj.name` is unambiguously a module alias (found via
+        // find_module_import), so a missing `n.member` in that module's
+        // scope isn't a "maybe it's an enum" ambiguity — it's a genuine
+        // unresolved reference. Left unreported, this fell through as a
+        // silently-untyped expression that codegen would later paper over
+        // with a placeholder `0` (see codegen_expr.lx's "unresolved
+        // qualified call/name" fallbacks) — i.e. `Mod::nonexistent(...)`
+        // compiled clean and quietly ran as if it were the literal 0.
+        ERR::tc_error_id(expr, n.member, "Module Error", "no such symbol in this module", "not found");
         return cast<*AST::AstNode>(0);
       }
 
@@ -479,6 +489,12 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
             let qname2: *byte = qualify(inner.member, n.member);
             let msym2: *CORE::Symbol = SCOPE::scope_lookup_in_module(imp2.module_scope, qname2);
             if (msym2 != cast<*CORE::Symbol>(0)) return msym2.type;
+            // Same reasoning as the single-level alias case above: `iobj.name`
+            // is a confirmed module alias, so `EnumName::Member` not existing
+            // in that module is a real error, not something to stay
+            // permissive about.
+            ERR::tc_error_id(expr, n.member, "Module Error", "no such symbol in this module", "not found");
+            return cast<*AST::AstNode>(0);
           }
         }
       }
@@ -536,7 +552,27 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     }
   }
 
-  let ct: *AST::AstNode = resolve_callee_type(n.callee, scope);
+  // Explicit generic call — `add<int>(1, 2)`. Only a bare identifier
+  // naming a template registered in the caller's own module triggers
+  // this (cross-module generics aren't supported yet); anything else,
+  // including an ordinary call (type_arg_count == 0), falls through to
+  // the normal resolve_callee_type path below unchanged.
+  let ct: *AST::AstNode = cast<*AST::AstNode>(0);
+  let is_generic_call: bool = false;
+  if (n.type_arg_count > 0 && callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
+    let mscope: *CORE::Scope = SCOPE::find_containing_module(scope);
+    if (mscope != cast<*CORE::Scope>(0)) {
+      let tmpl: *GEN::GenericTemplate = GEN::find_template(mscope.module_name, id.name);
+      if (tmpl != cast<*GEN::GenericTemplate>(0)) {
+        is_generic_call = true;
+        ct = GEN::instantiate_function_call(n, tmpl, scope);
+      }
+    }
+  }
+  if (is_generic_call == false) {
+    ct = resolve_callee_type(n.callee, scope);
+  }
 
   let ftype: *AST::AstNode = ct;
   if (TYPE::is_pointer_to_function_type(ftype)) {
@@ -562,7 +598,7 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
       let at: *AST::AstNode = typecheck_expression(n.args[i], scope, pexp);
       if (at != cast<*AST::AstNode>(0) && pexp != cast<*AST::AstNode>(0)) {
         if (TYPE::types_match(at, pexp) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
-          ERR::tc_error(n.args[i], "Type Error", "argument type does not match parameter type", "type mismatch");
+          ERR::tc_error(expr, "Type Error", "argument type does not match parameter type", "type mismatch");
         }
       }
       if (consumes) { track_free(n.args[i], scope); }
