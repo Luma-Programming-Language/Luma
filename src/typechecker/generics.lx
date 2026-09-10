@@ -90,13 +90,12 @@ const build_mangled_name -> fn (base_name: *byte, concretes: **AST::AstNode, cou
   return mangled;
 }
 
-// ─── template registry ───────────────────────────────────────────────────
-// One entry per `fn<T,...>` (structs follow later — see docs/todo.md).
+// ─── one entry per `fn<T,...>`/`struct<T,...>` template ───────────────────
 
 pub const GenericTemplate -> struct {
   module_name: *byte,
   name:        *byte,
-  decl:        *AST::AstNode,  // raw FuncDeclNode, type params unresolved
+  decl:        *AST::AstNode,  // raw FuncDeclNode or StructDeclNode, type params unresolved
   def_scope:   *CORE::Scope,   // where it was declared — NOT the caller's scope
 };
 
@@ -200,10 +199,22 @@ pub const pending_pop -> fn () Pending {
 // ─── the entry point — called from tc_expr's tc_call ─────────────────────
 
 const rename_callee -> fn (call_node: *AST::CallNode, new_name: *byte) void {
-  if (call_node.callee.kind != AST::NodeType::EXPR_IDENTIFIER) return;
-  let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(call_node.callee);
-  free(id.name);
-  id.name = dup_str(new_name);
+  let callee: *AST::AstNode = call_node.callee;
+  if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
+    free(id.name);
+    id.name = dup_str(new_name);
+    return;
+  }
+  // `ALIAS::func<T>(...)` — keep the member shape (codegen's member-call
+  // path still needs the alias to resolve the target module) but point it
+  // at the mangled concrete name so codegen emits the instantiation.
+  if (callee.kind == AST::NodeType::EXPR_MEMBER) {
+    let mn: *AST::MemberNode = cast<*AST::MemberNode>(callee);
+    free(mn.member);
+    mn.member = dup_str(new_name);
+    return;
+  }
 }
 
 // Returns the concrete FuncType to typecheck the call's arguments/result
@@ -271,4 +282,129 @@ pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *Gen
   free(concretes);
   rename_callee(call_node, cfd.name);
   return ftype;
+}
+
+// ─── struct generics ────────────────────────────────────────────────────────
+// `Box<int>` in type position or `Box<int> { ... }` struct-literal position.
+// This mirrors instantiate_function_call but has no call site to hang the
+// A method inside a generic struct template inherits the struct's type params
+// (e.g. `fn<K, V> new(...)`). clone_node_substituting clones the body with
+// K/V substituted but leaves `FuncDeclNode.type_param_count` intact —
+// handle_func_decl then skips the body as still-generic. This strips those
+// cloned-away params from each method so the pending drain can check them.
+const strip_method_type_params -> fn (members: **AST::AstNode, count: int) void {
+  let mi: int = 0;
+  loop (mi < count) {
+    if (members[mi] != cast<*AST::AstNode>(0) && members[mi].kind == AST::NodeType::STMT_FIELD_DECL) {
+      let fdn: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(members[mi]);
+      if (fdn.function != cast<*AST::AstNode>(0) && fdn.function.kind == AST::NodeType::STMT_FUNCTION) {
+        let fnd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(fdn.function);
+        if (fnd.type_param_count > 0) {
+          let j: int = 0;
+          loop (j < fnd.type_param_count) { free(fnd.type_params[j]); j = j + 1; }
+          free(fnd.type_params);
+          fnd.type_params = cast<**byte>(0);
+          fnd.type_param_count = 0;
+        }
+      }
+    }
+    mi = mi + 1;
+  }
+}
+
+// type arguments off of, so the trigger is a TYPE_BASIC leaf carrying a
+// `<int, ...>` type-argument list (tc_type.resolve_type_leaf and
+// tc_expr.tc_struct_expr both route such leaves through here). The leaf is
+// rewritten in place to a plain named type (`Box__int`), so every downstream
+// consumer — codegen included — just sees an ordinary concrete struct; the
+// concrete StructDeclNode itself is queued through the same pending queue
+// and drained by tc.lx like a function instantiation.
+#returns_ownership
+const scope_module_name -> fn (scope: *CORE::Scope) *byte {
+  let s: *CORE::Scope = scope;
+  loop (s != cast<*CORE::Scope>(0)) {
+    if (s.is_module_scope) return s.module_name;
+    s = s.parent;
+  }
+  return cast<*byte>(0);
+}
+
+#returns_ownership
+pub const resolve_struct_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+  if (leaf == cast<*AST::AstNode>(0)) return leaf;
+  if (leaf.kind != AST::NodeType::TYPE_BASIC) return leaf;
+
+  let bn: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(leaf);
+  if (bn.type_arg_count == 0) return leaf;
+
+  let mod_name: *byte = scope_module_name(scope);
+  if (mod_name == cast<*byte>(0)) {
+    ERR::tc_error_id(leaf, bn.name, "Generics Error", "cannot determine declaring module", "missing module scope");
+    return leaf;
+  }
+
+  let tmpl: *GenericTemplate = find_template(mod_name, bn.name);
+  if (tmpl == cast<*GenericTemplate>(0)) {
+    ERR::tc_error_id(leaf, bn.name, "Generics Error", "generic type not found", "not found");
+    return leaf;
+  }
+  if (tmpl.decl.kind != AST::NodeType::STMT_STRUCT) {
+    ERR::tc_error_id(leaf, bn.name, "Generics Error", "not a generic struct", "expected struct template");
+    return leaf;
+  }
+
+  let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(tmpl.decl);
+  if (bn.type_arg_count != sd.type_param_count) {
+    ERR::tc_error(leaf, "Generics Error",
+      "wrong number of explicit type arguments for this generic struct", "type argument count mismatch");
+    return leaf;
+  }
+
+  let count: int = sd.type_param_count;
+  let concretes: **AST::AstNode = cast<**AST::AstNode>(alloc(sizeof<*AST::AstNode> * count));
+  let i: int = 0;
+  loop (i < count) {
+    concretes[i] = TYPE::resolve_type_ref(bn.type_args[i], scope);
+    i = i + 1;
+  }
+
+  let mangled: *byte = build_mangled_name(sd.name, concretes, count);
+  let key: *byte = join2(tmpl.module_name, mangled);
+
+  let existing: *Instantiation = find_instantiation(key);
+  if (existing == cast<*Instantiation>(0)) {
+    // First time for this concrete instantiation: clone the whole template
+    // with every T/U/... substituted, give it the mangled name, and strip
+    // its own generic markers — from here on it's an ordinary concrete
+    // struct (registered + typechecked by tc.lx's drain).
+    let cloned: *AST::AstNode = AST::clone_node_substituting(tmpl.decl, sd.type_params, concretes, count);
+    let csd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(cloned);
+
+    free(csd.name);
+    csd.name = dup_str(mangled); // ownership transferred to the node
+
+    let tpi: int = 0;
+    loop (tpi < csd.type_param_count) { free(csd.type_params[tpi]); tpi = tpi + 1; }
+    free(csd.type_params);
+    csd.type_params = cast<**byte>(0);
+    csd.type_param_count = 0;
+
+    strip_method_type_params(csd.public_members,  csd.public_count);
+    strip_method_type_params(csd.private_members, csd.private_count);
+
+    // `key` is retained (ownership passes to the Instantiation entry) so
+    // later references to the same concrete type hit the cache — same
+    // convention as instantiate_function_call.
+    add_instantiation(key, TYPE::make_named_type(mangled), dup_str(mangled));
+    pending_push(cloned, tmpl.def_scope, tmpl.module_name);
+  } else {
+    free(key);
+  }
+  free(concretes);
+
+  // Rewrite the leaf in place to the plain concrete name.
+  free(bn.name);
+  bn.name = mangled; // ownership transferred to the node
+  bn.type_arg_count = 0;
+  return leaf;
 }

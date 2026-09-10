@@ -17,6 +17,8 @@
 
 @use "progress_bar" as PBAR
 
+// @use "ast_print" as PRINT
+
 pub const main -> fn (argc: int, argv: **byte) int {
   let args: ARGS::Args = ARGS::init_args(argc, argv);
   args = args.tail();
@@ -82,6 +84,8 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
   VEC::free_vector(&modules);
   VEC::free_vector(&build_config.link_files);
+
+  // PRINT::print_node(program, 0);
   
   if (build_config.anim) {
     bar.update("Typechecking", "\\");

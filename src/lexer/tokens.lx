@@ -202,9 +202,9 @@ pub const lookup_single -> fn (val: byte) int {
   return -1;
 }
 
-const DOUBLE_SYMBOL_COUNT: int = 14;
+const DOUBLE_SYMBOL_COUNT: int = 13;
 const DoubleSymbol -> struct { val: *byte, kind: int };
-const double_symbol_map: [DoubleSymbol; 14] = [
+const double_symbol_map: [DoubleSymbol; 13] = [
   DoubleSymbol { val: "==", kind: LumaTokenType::TOK_EQEQ        },
   DoubleSymbol { val: "!=", kind: LumaTokenType::TOK_NEQ         },
   DoubleSymbol { val: "<=", kind: LumaTokenType::TOK_LE          },
@@ -215,7 +215,6 @@ const double_symbol_map: [DoubleSymbol; 14] = [
   DoubleSymbol { val: "++", kind: LumaTokenType::TOK_PLUSPLUS    },
   DoubleSymbol { val: "--", kind: LumaTokenType::TOK_MINUSMINUS  },
   DoubleSymbol { val: "<<", kind: LumaTokenType::TOK_SHIFT_LEFT  },
-  DoubleSymbol { val: ">>", kind: LumaTokenType::TOK_SHIFT_RIGHT },
   DoubleSymbol { val: "..", kind: LumaTokenType::TOK_RANGE       },
   DoubleSymbol { val: "->", kind: LumaTokenType::TOK_RIGHT_ARROW },
   DoubleSymbol { val: "<-", kind: LumaTokenType::TOK_LEFT_ARROW  },

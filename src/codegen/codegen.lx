@@ -89,10 +89,17 @@ const write_input_helpers -> fn (out: *void, is_windows: bool) void {
   IOWRITE(out, "static char* __luma_input_line(void) {\n");
   IOWRITE(out, "  size_t __cap = 128, __len = 0;\n");
   IOWRITE(out, "  char* __out = (char*)malloc(__cap);\n");
+  IOWRITE(out, "  char* __grown;\n");
+  IOWRITE(out, "  if (__out == NULL) return NULL;\n");
   IOWRITE(out, "  for (;;) {\n");
   IOWRITE(out, "    int __c = __luma_read_byte();\n");
   IOWRITE(out, "    if (__c < 0 || __c == '\\n') break;\n");
-  IOWRITE(out, "    if (__len + 1 >= __cap) { __cap *= 2; __out = (char*)realloc(__out, __cap); }\n");
+  IOWRITE(out, "    if (__len + 1 >= __cap) {\n");
+  IOWRITE(out, "      __cap *= 2;\n");
+  IOWRITE(out, "      __grown = (char*)realloc(__out, __cap);\n");
+  IOWRITE(out, "      if (__grown == NULL) { free(__out); return NULL; }\n");
+  IOWRITE(out, "      __out = __grown;\n");
+  IOWRITE(out, "    }\n");
   IOWRITE(out, "    __out[__len++] = (char)__c;\n");
   IOWRITE(out, "  }\n");
   IOWRITE(out, "  __out[__len] = '\\0';\n");
@@ -104,21 +111,21 @@ const write_input_helpers -> fn (out: *void, is_windows: bool) void {
   IOWRITE(out, "static long long __luma_input_int(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
   IOWRITE(out, "  char* __l = __luma_input_line();\n");
-  IOWRITE(out, "  long long __v = atoll(__l);\n");
+  IOWRITE(out, "  long long __v = (__l != NULL) ? atoll(__l) : 0;\n");
   IOWRITE(out, "  free(__l);\n");
   IOWRITE(out, "  return __v;\n");
   IOWRITE(out, "}\n");
   IOWRITE(out, "static unsigned long long __luma_input_uint(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
   IOWRITE(out, "  char* __l = __luma_input_line();\n");
-  IOWRITE(out, "  unsigned long long __v = strtoull(__l, NULL, 10);\n");
+  IOWRITE(out, "  unsigned long long __v = (__l != NULL) ? strtoull(__l, NULL, 10) : 0;\n");
   IOWRITE(out, "  free(__l);\n");
   IOWRITE(out, "  return __v;\n");
   IOWRITE(out, "}\n");
   IOWRITE(out, "static double __luma_input_double(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
   IOWRITE(out, "  char* __l = __luma_input_line();\n");
-  IOWRITE(out, "  double __v = atof(__l);\n");
+  IOWRITE(out, "  double __v = (__l != NULL) ? atof(__l) : 0.0;\n");
   IOWRITE(out, "  free(__l);\n");
   IOWRITE(out, "  return __v;\n");
   IOWRITE(out, "}\n");
@@ -128,7 +135,7 @@ const write_input_helpers -> fn (out: *void, is_windows: bool) void {
   IOWRITE(out, "static bool __luma_input_bool(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
   IOWRITE(out, "  char* __l = __luma_input_line();\n");
-  IOWRITE(out, "  bool __v = (__l[0]=='t'||__l[0]=='T'||__l[0]=='y'||__l[0]=='Y'||__l[0]=='1');\n");
+  IOWRITE(out, "  bool __v = (__l != NULL) && (__l[0]=='t'||__l[0]=='T'||__l[0]=='y'||__l[0]=='Y'||__l[0]=='1');\n");
   IOWRITE(out, "  free(__l);\n");
   IOWRITE(out, "  return __v;\n");
   IOWRITE(out, "}\n");
@@ -225,6 +232,14 @@ const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *by
 
   if (k == AST::NodeType::STMT_STRUCT) {
     let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(decl);
+
+    // A generic template (`struct<T>`) itself is never codegen'd — only its
+    // concrete instantiations are, and those arrive separately as
+    // TCCORE-generated decls (see run_pass_a), already with
+    // type_param_count == 0. Registering the raw template here too would
+    // emit its still-placeholder `T` field types verbatim.
+    if (sd.type_param_count > 0) return;
+
     let si: CG::StructInfo = CG::StructInfo { name: sd.name, module_name: module_name, decl: sd, defined: false, in_progress: false };
     let sv: *VEC::Vector = &ctx.structs;
     sv.push_back(cast<*void>(&si));

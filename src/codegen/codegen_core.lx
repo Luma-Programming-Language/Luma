@@ -269,6 +269,33 @@ pub const find_method -> fn (ctx: *CodegenContext, struct_name: *byte, method_na
   return cast<*FuncInfo>(0);
 }
 
+// Static-method fallback for generic struct templates: the caller writes
+// `HashMap::new(...)`, but the registered concrete method's owner is the
+// mangled concrete name (`main__HashMap__int___byte`). Match any registered
+// method whose owner embeds `struct_name` followed by `__` (the mangling
+// separator) and whose method name matches.
+pub const find_method_owner_containing -> fn (ctx: *CodegenContext, struct_name: *byte, method_name: *byte) *FuncInfo {
+  let v: *VEC::Vector = &ctx.funcs;
+  let n: int = v.size;
+  let i: int = 0;
+  loop (i < n) {
+    let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
+    if (f.owner != cast<*byte>(0) && STR::strcmp(f.name, method_name) == 0) {
+      let len: int = STR::strlen(struct_name);
+      let olen: int = STR::strlen(f.owner);
+      let k: int = 0;
+      loop (k + len < olen) {
+        if (STR::strncmp(&f.owner[k], struct_name, len) == 0) {
+          if (f.owner[k + len] == '_' && f.owner[k + len + 1] == '_') return f;
+        }
+        k = k + 1;
+      }
+    }
+    i = i + 1;
+  }
+  return cast<*FuncInfo>(0);
+}
+
 pub const find_func_in_module -> fn (ctx: *CodegenContext, module_name: *byte, name: *byte) *FuncInfo {
   let v: *VEC::Vector = &ctx.funcs;
   let n: int = v.size;

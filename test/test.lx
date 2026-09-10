@@ -1,38 +1,133 @@
 @module "main"
 
-const swap -> fn<T> (a: *T, b: *T) T {
-  let temp: T = *a;
-  *a = *b;
-  *b = temp;
+const EntryState -> enum { Empty, Occupied, Deleted };
+const Entry -> struct<K, V> {
+  key:   K,
+  value: V,
+  state: EntryState,
+};
+
+const HashMap -> struct<K, V> {
+priv:
+  entries: *Entry<K, V>,
+  tombstones: uint,
+  cap:        uint,
+  len:        uint,
+
+  hash:   fn (K)    uint,
+  equals: fn (K, K) bool,
+
+pub:
+  #returns_ownership
+  static new -> fn<K, V> (
+    hash:   fn (K)    uint,
+    equals: fn (K, K) bool
+  ) *HashMap<K, V> { 
+    let map: *HashMap<K, V> = cast<*HashMap<K, V>>(
+      alloc(sizeof<HashMap<K, V>>)
+    );
+ 
+    map.tombstones = 0;
+    map.cap = 8;
+    map.len = 0;
+
+    map.hash = hash;
+    map.equals = equals;
+
+    map.entries = cast<*Entry<K, V>>(
+      alloc(sizeof<Entry<K, V>> * map.cap)
+    );
+
+    loop [i: uint = 0](i >= map.cap) : (++i) {
+      let entry: *Entry<K, V> = &map.entries[i];
+      entry.state = EntryState::Empty;
+    }
+
+    return map;
+  },
+
+  #takes_ownership 
+  _free -> fn () void {
+    free(self.entries);
+    free(self);
+  },
+  
+  insert -> fn (key: K, value: V) bool { 
+    let index: uint = self.hash(key) % self.cap;
+
+    loop {
+      let entry: *Entry<K, V> = &self.entries[index];
+
+      if (entry.state == EntryState::Empty) {
+        entry.key = key;
+        entry.value = value;
+        entry.state = EntryState::Occupied;
+
+        self.len = self.len + 1;
+        return true;
+      }
+
+      if (entry.state == EntryState::Occupied) {
+        if (self.equals(entry.key, key)) {
+          entry.value = value;
+          return false;
+        }
+      }
+
+      index = (index + 1) % self.cap;
+    }
+
+    return false; 
+  },
+
+  get -> fn (key: K) V {
+    let index: uint = self.hash(key) % self.cap;
+
+    loop {
+      let entry: *Entry<K, V> = &self.entries[index];
+
+      if (entry.state == EntryState::Empty) 
+        return cast<V>(0);
+
+      if (entry.state == EntryState::Occupied) {
+        if (self.equals(entry.key, key)) return entry.value;
+      }
+
+      index = (index + 1) % self.cap;
+    }
+  },
+
+  contains -> fn (key: K) bool { return false; },
+  remove -> fn (key: K) V { return cast<V>(0); },
+  resize -> fn (size: uint) void {},
+};
+
+/* 
+  const sort -> fn<@cmp<T>> ( // Means that there is something to compare on T, and that T must have some sort of compareson
+    value: [T; 256], 
+    sort: fn (T, T) bool
+  ) void;
+*/
+
+const hash_int -> fn (value: int) uint {
+  let x: uint = cast<uint>(value);
+
+  x = (x ^ (x >> 30)) * 13787848793156543929;
+  x = (x ^ (x >> 27)) * 10723151780598845931;
+  x = (x ^ (x >> 31));
+
+  return x;
 }
 
-const max -> fn<T>(a: T, b: T) T {
-  if (a > b) {
-      return a;
-  }
-  return b;
-}
-
-const add -> fn<T>(a: T, b: T) T {
-  return a + b;
-}
+const int_equals -> fn (a: int, b: int) bool { return a == b; }
 
 pub const main -> fn () int {
-  // Integer arithmetic
-  outputln("add(1, 2) = ", add<int>(1, 2));
+  let map: *HashMap<int, int> = HashMap::new<int, int>(hash_int, int_equals);
+  defer map._free();
 
-  // Floating-point arithmetic
-  outputln("add(1.5, 2.5) = ", add<float>(1.5, 2.5));
+  map.insert(0, 123);
 
-  // Swapping integers
-  let x: int = 5; 
-  let y: int = 10;
-  swap<int>(&x, &y);
-  outputln("After swap: x = ", x, ", y = ", y);
-
-  // Finding maximum
-  let largest: int = max<int>(42, 17);
-  outputln("Max: ", largest);
+  output(map.get(0));
 
   return 0;
 }

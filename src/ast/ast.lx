@@ -134,18 +134,6 @@ pub const AstNode -> struct {
   resolved_type: *AstNode,
 };
 
-#returns_ownership
-pub const make_node -> fn<T> (kind: int, cat: int, line: int, col: int) *AstNode {
-  let n: *T = cast<*T>(alloc(sizeof<T>));
-
-  n.kind = kind;
-  n.category = cat;
-  n.line = line;
-  n.col = col;
-
-  return cast<*AstNode>(n);
-}
-
 // ─── Preprocessor Nodes ──────────────────────────────────────────────────────
 
 pub const ModuleNode -> struct {
@@ -1337,6 +1325,22 @@ pub const clone_node -> fn (node: *AstNode) *AstNode {
     // the caller before/after cloning. A directly-generic function is never
     // cloned via this path with its own params still unsubstituted — see
     // tc_generics, which substitutes as it clones.
+    c.type_params = dup_str_array(n.type_params, n.type_param_count);
+    c.type_param_count = n.type_param_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_STRUCT) {
+    let n: *StructDeclNode = cast<*StructDeclNode>(node);
+    let c: *StructDeclNode = cast<*StructDeclNode>(alloc(sizeof<StructDeclNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    c.doc_comment = dup_str(n.doc_comment);
+    c.public_members = clone_node_array(n.public_members, n.public_count);
+    c.public_count = n.public_count;
+    c.private_members = clone_node_array(n.private_members, n.private_count);
+    c.private_count = n.private_count;
+    c.is_public = n.is_public;
     c.type_params = dup_str_array(n.type_params, n.type_param_count);
     c.type_param_count = n.type_param_count;
     return cast<*AstNode>(c);

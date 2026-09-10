@@ -401,6 +401,12 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
         // Not a module alias — `Type::static_method(...)`, a static method
         // call with no `self` argument.
         let sfi: *CG::FuncInfo = CG::find_method(ctx, obj.name, mn.member);
+        if (sfi == cast<*CG::FuncInfo>(0)) {
+          // Generic template static call: `HashMap::new(...)` — the concrete
+          // method is registered under its mangled owner name, so fall back
+          // to an owner-embedding match.
+          sfi = CG::find_method_owner_containing(ctx, obj.name, mn.member);
+        }
         if (sfi != cast<*CG::FuncInfo>(0)) {
           if (sfi.is_static) {
             let scname: *byte = CG::c_name_for_method(sfi);
@@ -428,6 +434,9 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
         let inner: *AST::MemberNode = cast<*AST::MemberNode>(mn_object);
         if (inner.is_compiletime == 1) {
           let sfi: *CG::FuncInfo = CG::find_method(ctx, inner.member, mn.member);
+          if (sfi == cast<*CG::FuncInfo>(0)) {
+            sfi = CG::find_method_owner_containing(ctx, inner.member, mn.member);
+          }
           if (sfi != cast<*CG::FuncInfo>(0)) {
             if (sfi.is_static) {
               let scname: *byte = CG::c_name_for_method(sfi);

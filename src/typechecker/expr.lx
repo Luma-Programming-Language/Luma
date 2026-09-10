@@ -10,6 +10,7 @@
 @use "tc_generics" as GEN
 @use "tc_error"    as ERR
 @use "ast"         as AST
+@use "ast_type"    as TAST
 @use "error" as ERR
 
 #returns_ownership pub const typecheck_expression -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode;
@@ -552,11 +553,12 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     }
   }
 
-  // Explicit generic call — `add<int>(1, 2)`. Only a bare identifier
-  // naming a template registered in the caller's own module triggers
-  // this (cross-module generics aren't supported yet); anything else,
-  // including an ordinary call (type_arg_count == 0), falls through to
-  // the normal resolve_callee_type path below unchanged.
+  // Explicit generic call — `add<int>(1, 2)`. A bare identifier naming a
+  // template registered in the caller's own module triggers this; a
+  // module-qualified name (`ALIAS::func<int>(...)`) resolves the template
+  // through the module import below. Anything else, including an ordinary
+  // call (type_arg_count == 0), falls through to the normal
+  // resolve_callee_type path below unchanged.
   let ct: *AST::AstNode = cast<*AST::AstNode>(0);
   let is_generic_call: bool = false;
   if (n.type_arg_count > 0 && callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
@@ -567,6 +569,24 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
       if (tmpl != cast<*GEN::GenericTemplate>(0)) {
         is_generic_call = true;
         ct = GEN::instantiate_function_call(n, tmpl, scope);
+      }
+    }
+  }
+  // `ALIAS::func<T>(...)` — a generic function imported from another
+  // module. The template registry keys on the defining module's real name
+  // (what register_template stored when the `fn<T>` was parsed), found via
+  // the module import's module_name.
+  if (is_generic_call == false && n.type_arg_count > 0 && callee.kind == AST::NodeType::EXPR_MEMBER) {
+    let mn: *AST::MemberNode = cast<*AST::MemberNode>(callee);
+    if (mn.is_compiletime == 1 && mn.object.kind == AST::NodeType::EXPR_IDENTIFIER) {
+      let obj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(mn.object);
+      let imp: *CORE::ModuleImport = SCOPE::find_module_import(scope, obj.name);
+      if (imp != cast<*CORE::ModuleImport>(0)) {
+        let tmpl: *GEN::GenericTemplate = GEN::find_template(imp.module_name, mn.member);
+        if (tmpl != cast<*GEN::GenericTemplate>(0)) {
+          is_generic_call = true;
+          ct = GEN::instantiate_function_call(n, tmpl, scope);
+        }
       }
     }
   }
@@ -726,6 +746,34 @@ const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: 
   }
 
   if (n.name != cast<*byte>(0)) {
+    // A generic struct literal `Box<int> { ... }` — instantiate the type
+    // reference and rewrite this node's name to the concrete mangled name
+    // (`Box__int`), so codegen emits against the concrete struct. The bare
+    // `Name` nominal check is skipped: the concrete name is only registered
+    // during tc.lx's drain, after this pass.
+    if (n.type_arg_count > 0 && n.alias == cast<*byte>(0)) {
+      let orig_tcount: int = n.type_arg_count;
+      let fake: *AST::AstNode = TAST::make_basic_type(dup_str(n.name), expr.line, expr.col);
+      let fb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(fake);
+      fb.type_args = n.type_args;
+      fb.type_arg_count = n.type_arg_count;
+      let out: *AST::AstNode = GEN::resolve_struct_type_ref(fake, scope);
+      if (out != cast<*AST::AstNode>(0) && out.kind == AST::NodeType::TYPE_BASIC) {
+        let ob: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(out);
+        free(n.name);
+        n.name = dup_str(ob.name);
+        // Ownership of the type-arg array stays with this node (same
+        // convention as generic call nodes): free_node(_node) releases the
+        // args and the array at teardown. The count is kept for that reason;
+        // re-resolution can't happen because expressions are checked once.
+        n.type_args = fb.type_args;
+        n.type_arg_count = orig_tcount;
+        free(ob.name);
+        free(out);
+      }
+      return TYPE::make_named_type(n.name);
+    }
+
     // `ALIAS::Name { ... }` vs bare `Name { ... }` — same rule as a type
     // annotation: bare is only valid when Name is declared in this module.
     if (n.alias == cast<*byte>(0)) {

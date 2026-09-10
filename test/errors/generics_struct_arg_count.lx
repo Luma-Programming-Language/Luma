@@ -1,0 +1,15 @@
+// error-type: Generics Error
+@module "main"
+
+// A generic struct literal/type reference must name exactly as many type
+// arguments as the template declares.
+
+const Box -> struct<T> {
+  value: T,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let b: Box<int, bool> = Box<int, bool> { value: 42 };
+  outputln(b.value);
+  return 0;
+}

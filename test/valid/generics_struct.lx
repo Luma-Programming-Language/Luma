@@ -1,0 +1,35 @@
+@module "main"
+
+// Regression test for generic structs (`struct<T, U>`) — same
+// monomorphization story as generic functions: a concrete struct decl
+// (main__Entry__int__int, main__Map__int__int, ...) is synthesized by
+// tc_generics for each distinct type-argument list, typechecked through the
+// tc.lx drain, and codegen'd via tc_core's generated-decl registry. Generic
+// fields (`*Entry<K, V>`) resolve through placeholder substitution. See
+// docs/docs.md's Generics section.
+
+const Entry -> struct<K, V> {
+  key: K,
+  val: V,
+};
+
+const Map -> struct<K, V> {
+  size: int,
+  first: *Entry<K, V>,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let e: Entry<int, int> = Entry<int, int> { key: 7, val: 9 };
+
+  // Concrete struct whose field type is itself a concrete struct
+  // instantiation (the `*Entry<K,V>` field, after substitution).
+  let m: Map<int, int> = Map<int, int> { size: 1, first: &e };
+
+  if (e.key != 7 || e.val != 9) return 1;
+  if (m.size != 1) return 1;
+  if (m.first.key != 7) return 1;
+
+  outputln(m.first.val);
+
+  return 0;
+}

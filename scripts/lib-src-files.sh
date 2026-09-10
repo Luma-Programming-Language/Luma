@@ -9,7 +9,7 @@
 # externs locally instead, so it doesn't need std/win32.lx linked at all.
 SRC_FILES=(
   src/ast/expr.lx src/ast/module.lx src/ast/type.lx src/ast/stmt.lx
-  src/ast/ast.lx
+  src/ast/ast.lx src/ast/ast_print.lx
   std/cstring.lx std/vector.lx src/constants.lx std/io.lx std/sys.lx
   src/error/error.lx
   src/lexer/tokens.lx src/lexer/lexer.lx std/memory.lx std/arena.lx

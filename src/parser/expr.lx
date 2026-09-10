@@ -78,6 +78,8 @@ const unescape_str -> fn (s: *byte) *byte {
 
 #returns_ownership const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
 #returns_ownership const binary   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+const is_shift_right -> fn (p: *PARS::Parser) bool;
+const current_bp     -> fn (p: *PARS::Parser) int;
 #returns_ownership const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
 #returns_ownership const call     -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
 #returns_ownership const assign   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
@@ -155,8 +157,10 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
 // e.g. `add<int>(1, 2)` — or `left '<' Type (',' Type)* '>' {` — the
 // optional explicit generic struct literal, e.g. `Box<int> { value: 42 }`.
 // `p.current().kind` is already TOK_LT (checked by led's caller). Only a
-// bare identifier can plausibly be a generic template name, so anything
-// else (a member access, a call result, ...) isn't even attempted.
+// bare identifier or a module-qualified name (`ALIAS::func<T>(...)`, which
+// parses as a compiletime MemberNode) can plausibly be a generic template
+// name, so anything else (a call result, a runtime member access, ...)
+// isn't even attempted.
 //
 // On success returns the built CallNode/StructExprNode with its type_args
 // attached. On failure (this wasn't that shape after all — most commonly
@@ -166,7 +170,13 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
 // behind (no partial AST, no recorded errors, no moved token position).
 #returns_ownership
 const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
-  if (left.kind != AST::NodeType::EXPR_IDENTIFIER) return cast<*AST::AstNode>(0);
+  let ident_ok: bool = left.kind == AST::NodeType::EXPR_IDENTIFIER;
+  let member_ok: bool = left.kind == AST::NodeType::EXPR_MEMBER;
+  if (member_ok) {
+    let mn: *AST::MemberNode = cast<*AST::MemberNode>(left);
+    member_ok = mn.is_compiletime == 1 && mn.object.kind == AST::NodeType::EXPR_IDENTIFIER;
+  }
+  if (ident_ok == false && member_ok == false) return cast<*AST::AstNode>(0);
 
   let sp: PARS::Savepoint = p.save();
   let err_before: int = ERR::error_get_count();
@@ -223,8 +233,8 @@ pub const parse_expr -> fn (p: *PARS::Parser, bp: int) *AST::AstNode {
   if (left == cast<*AST::AstNode>(0)) 
       return cast<*AST::AstNode>(0);
 
-  loop (p.has_tokens() && (PARS::get_bp(p.current().kind) > bp)) {
-    let c_bp: int = PARS::get_bp(p.current().kind);
+  loop (p.has_tokens() && (current_bp(p) > bp)) {
+    let c_bp: int = current_bp(p);
     left = led(p, left, c_bp);
 
     if (left == cast<*AST::AstNode>(0)) 
@@ -330,8 +340,18 @@ const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstN
 const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
   let line: int = p.current().line;
   let col:  int = p.current().col;
-  let op:   int = PARS::search_binop_map(p.current().kind);
+  let is_shift: bool = is_shift_right(p);
+  let op: int = AST::BinaryOp::BINOP_GT;
+  if (is_shift) {
+    op = AST::BinaryOp::BINOP_SHR;
+  } else {
+    op = PARS::search_binop_map(p.current().kind);
+  }
   p.advance();
+  // `>>` lexes as two `>` tokens (so nested generic closes like
+  // `cast<Box<int>>(...)` split cleanly); when both appear together in an
+  // expression it's a right-shift, consuming both.
+  if (is_shift) p.advance();
 
   let right: *AST::AstNode = parse_expr(p, bp);
   if (right == cast<*AST::AstNode>(0)) {
@@ -340,6 +360,20 @@ const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNod
   }
 
   return EAST::make_binary(op, left, right, line, col); 
+}
+
+// Two adjacent `>` tokens (the lexer no longer merges `>>`) in an expression
+// are a right-shift, not a comparison followed by <something>. Being adjacent,
+// they can only be a shift — a comparison's right operand could never start
+// with a bare `>`.
+const is_shift_right -> fn (p: *PARS::Parser) bool {
+  return p.current().kind == TOK::LumaTokenType::TOK_GT
+      && p.peek(1).kind == TOK::LumaTokenType::TOK_GT;
+}
+
+const current_bp -> fn (p: *PARS::Parser) int {
+  if (is_shift_right(p)) return PARS::BindingPower::BP_SHIFT;
+  return PARS::get_bp(p.current().kind);
 }
 
 #returns_ownership 

@@ -1,0 +1,46 @@
+@module "main"
+
+// Regression test for generic struct *methods*. Before this fix, a concrete
+// method body referenced the raw template name (`HashMap`) instead of the
+// concrete mangled name (`main__HashMap__int___byte`), emitted `sizeof(HashMap)`
+// and `malloc` casts against a nonexistent C type, and a `HashMap::new()`
+// static call fell through to an "unresolved qualified call" zero. The
+// `>>` between the nested generic close and the cast/sizeof close was also a
+// parse failure until the lexer stopped merging `>>` into one token.
+
+const Entry -> struct<K, V> {
+  key:   K,
+  value: V,
+};
+
+const Box -> struct<K, V> {
+  content: *Entry<K, V>,
+  cap:     uint,
+
+  #returns_ownership
+  static make -> fn (key: K, value: V) *Box<K, V> {
+    let b: *Box<K, V> = cast<*Box<K, V>>(
+      alloc(sizeof<Box<K, V>> * 1)
+    );
+    b.content = cast<*Entry<K, V>>(
+      alloc(sizeof<Entry<K, V>>)
+    );
+    b.content.key = key;
+    b.content.value = value;
+    b.cap = sizeof<Entry<K, V>>;
+    return b;
+  },
+
+  get_key -> fn () K { return self.content.key; },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let b: *Box<int, *byte> = Box::make<int, *byte>(7, "seven");
+
+  if (b.get_key() != 7) return 1;
+  if (b.cap != sizeof<Entry<int, *byte>>) return 1;
+
+  outputln(b.content.value);
+
+  return 0;
+}

@@ -326,6 +326,16 @@ const register_field -> fn (struct_name: *byte, member: *AST::AstNode, scope: *C
 const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(stmt);
 
+  if (sd.type_param_count > 0) {
+    // Generic struct (`struct<T, U> { ... }`) — its field/method types name
+    // placeholders (T, U, ...), not real types, so it gets no ordinary
+    // scope symbol and its fields must not be resolved yet. Concrete
+    // instantiations are cloned + substituted on demand at each `Name<Args>`
+    // type reference or struct literal — see tc_generics.resolve_struct_type_ref.
+    GEN::register_template(scope.module_name, sd.name, stmt, scope);
+    return true;
+  }
+
   let stype: *AST::AstNode = TYPE::make_named_type(sd.name);
   SCOPE::scope_add_symbol(scope, sd.name, stype, sd.is_public == 1, false);
 
@@ -342,6 +352,15 @@ const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool
 
 const handle_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(stmt);
+
+  if (sd.type_param_count > 0) {
+    // The raw template's methods reference T/U placeholders — checking them
+    // here (Pass 3b) would fail on the unresolved names. Only its concrete
+    // instantiations (type_param_count == 0) are checked: they arrive via
+    // tc_generics' pending queue and run through this same function with
+    // every placeholder already substituted.
+    return true;
+  }
 
   register_struct_decl(stmt, scope);
 

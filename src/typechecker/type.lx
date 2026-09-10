@@ -5,6 +5,7 @@
 
 @use "tc_core"  as CORE
 @use "tc_scope" as SCOPE
+@use "tc_generics" as GEN
 @use "tc_error" as ERR
 @use "ast"      as AST
 @use "ast_type" as TAST
@@ -389,6 +390,14 @@ pub const check_nominal_bare -> fn (name: *byte, scope: *CORE::Scope, err_node: 
 #returns_ownership
 const resolve_type_leaf -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (t.kind == AST::NodeType::TYPE_BASIC) {
+    // A generic type reference (`Box<int>`) — instantiate it to the plain
+    // concrete named type (`Box__int`) before the generic-leaf handling
+    // below runs; the node is rewritten in place, so a bare-name validation
+    // against the concrete name would run too early (the concrete struct is
+    // only registered by tc.lx's drain, after this module's Pass 3b).
+    let nb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(t);
+    if (nb.type_arg_count > 0) return GEN::resolve_struct_type_ref(t, scope);
+
     // A synthetic node from make_named_type (line 0, col 0) is already a
     // normalized result of a *previous* resolve_type_ref pass over this same
     // AST node (Pass 3a, Pass 3b, register_field, ... all call it on the
