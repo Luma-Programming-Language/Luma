@@ -11,6 +11,7 @@
 @use "tc_scope"     as SCOPE
 @use "tc_stmt"      as STMT
 @use "tc_generics"  as GEN
+@use "tc_type"      as TYPE
 @use "tc_error"     as ERR
 
 const find_module_scope -> fn (registry: *VEC::Vector, name: *byte) *CORE::Scope {
@@ -229,6 +230,20 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
     STMT::register_declaration(job.decl, job.def_scope);
     if (STMT::typecheck_statement(job.decl, job.def_scope) == false) ok = false;
     CORE::record_generated_decl(job.module_name, job.decl);
+  }
+
+  // Bare type names that matched nothing when resolved — now that every
+  // declaration (module-level and generated) is registered, names that still
+  // don't resolve to a same-module nominal are genuine typos. Reported after
+  // the normal passes so a forward reference never false-positives.
+  let uc: int = CORE::unresolved_type_name_count();
+  let ui: int = 0;
+  loop (ui < uc) {
+    let u: *CORE::UnresolvedTypeName = CORE::unresolved_type_name_at(ui);
+    if (TYPE::nominal_known_in_module(u.module_scope, u.name) == false) {
+      ERR::tc_error_id(u.err_node, u.name, "Type Error", "unknown type name", "unknown type");
+    }
+    ui = ui + 1;
   }
 
   VEC::free_vector(&registry);

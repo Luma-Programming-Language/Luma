@@ -1487,6 +1487,18 @@ let g_sem_text: *byte = cast<*byte>(0);
 // being one of the most common identifiers in method bodies.
 let g_sem_in_method: bool = false;
 
+// True while walking an *uninstantiated generic* body — a generic struct
+// template's methods (`struct<K, V> { ... }`, including methods that use the
+// inherited params by name without redeclaring them) or a top-level
+// `fn<T>` template. Typecheck never runs over those bodies (stmt.lx only
+// checks them per concrete instantiation via tc_generics' clone+queue), so
+// their AstNode.resolved_type is uninitialized garbage, not null — see the
+// note on emit_member_token, which is the one walker that must dereference
+// it. resolved_type-based classification is skipped entirely while this
+// flag is set; the raw lexical pass still gives those identifiers a color.
+// Safe as a global since requests are handled one at a time.
+let g_sem_in_template: bool = false;
+
 const SemToken -> struct {
   line:     int,
   col:      int,
@@ -1716,7 +1728,7 @@ const emit_member_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, prog
       let target: *AST::ModuleNode = resolve_use_alias(mod, prog, alias_id.name);
       if (target != cast<*AST::ModuleNode>(0)) { kind = lookup_public_kind(target, n.member); }
     }
-  } else {
+  } elif (g_sem_in_template == false) {
     let type_name: *byte = resolve_type_name(n.object.resolved_type);
     if (type_name != cast<*byte>(0)) {
       let sd: *AST::StructDeclNode = find_struct_decl(mod, prog, type_name);
@@ -2088,15 +2100,21 @@ const walk_module_decl_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::Module
       walk_type_for_tokens(tokens, mod, prog, fd.param_types[p]);
     }
     walk_type_for_tokens(tokens, mod, prog, fd.return_type);
+    let saved: bool = g_sem_in_template;
+    if (fd.type_param_count > 0) { g_sem_in_template = true; }
     walk_stmt_for_tokens(tokens, mod, fd, prog, fd.body);
+    g_sem_in_template = saved;
   } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
     let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+    let saved: bool = g_sem_in_template;
+    if (sd.type_param_count > 0) { g_sem_in_template = true; }
     loop [f: int = 0](f < sd.public_count) : (++f) {
       walk_field_for_tokens(tokens, mod, prog, sd.public_members[f]);
     }
     loop [f: int = 0](f < sd.private_count) : (++f) {
       walk_field_for_tokens(tokens, mod, prog, sd.private_members[f]);
     }
+    g_sem_in_template = saved;
   } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
     let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
     walk_type_for_tokens(tokens, mod, prog, vd.var_type);

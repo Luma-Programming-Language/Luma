@@ -116,3 +116,47 @@ pub const generated_decl_at -> fn (i: int) *GeneratedDecl {
   generated_decls_init();
   return cast<*GeneratedDecl>(g_generated_decls.get(i));
 }
+
+// Names referenced bare in type position (`let x: Token`) that matched
+// nothing when first examined. Type resolution runs in two passes (Pass 3a
+// forwards a module's declarations statement-by-statement, Pass 3b checks
+// bodies), so a name used before its struct is declared later in the same
+// module is *supposed* to resolve by the time typecheck is done — defer
+// the "unknown type" report until every declaration is registered. Left
+// unreported, an unknown type name silently falls through to codegen, which
+// emits it verbatim and lets cc produce a confusing "unknown type name".
+pub const UnresolvedTypeName -> struct {
+  module_scope: *Scope,
+  name:         *byte,
+  err_node:     *AST::AstNode,
+};
+
+let g_unresolved_types_ready: bool = false;
+let g_unresolved_types: VEC::Vector;
+
+const unresolved_types_init -> fn () void {
+  if (g_unresolved_types_ready) return;
+  g_unresolved_types_ready = true;
+  g_unresolved_types = VEC::create_vector(sizeof<UnresolvedTypeName>);
+}
+
+pub const record_unresolved_type_name -> fn (module_scope: *Scope, name: *byte, err_node: *AST::AstNode) void {
+  unresolved_types_init();
+  let c: int = g_unresolved_types.size;
+  loop [i: int = 0](i < c) : (++i) {
+    let e: *UnresolvedTypeName = cast<*UnresolvedTypeName>(g_unresolved_types.get(i));
+    if (e.err_node == err_node) return;
+  }
+  let u: UnresolvedTypeName = UnresolvedTypeName { module_scope: module_scope, name: name, err_node: err_node };
+  g_unresolved_types.push_back(cast<*void>(&u));
+}
+
+pub const unresolved_type_name_count -> fn () int {
+  unresolved_types_init();
+  return g_unresolved_types.size;
+}
+
+pub const unresolved_type_name_at -> fn (i: int) *UnresolvedTypeName {
+  unresolved_types_init();
+  return cast<*UnresolvedTypeName>(g_unresolved_types.get(i));
+}

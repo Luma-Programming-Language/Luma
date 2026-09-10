@@ -408,3 +408,34 @@ pub const resolve_struct_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scop
   bn.type_arg_count = 0;
   return leaf;
 }
+
+// A struct template's method set is the same for every instantiation
+// (bodies clone with type params substituted, the member list doesn't
+// change), so checking a static-call name against the raw template proves
+// whether *any* concrete instantiation could have it — tc_call uses this to
+// report `Foo::missing()` before letting the call fall through to codegen's
+// placeholder.
+pub const struct_template_has_method -> fn (sd: *AST::StructDeclNode, method_name: *byte) bool {
+  let groups: int = 0;
+  loop (groups < 2) {
+    let members: **AST::AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AST::AstNode = members[i];
+      if (m != cast<*AST::AstNode>(0) && m.kind == AST::NodeType::STMT_FIELD_DECL) {
+        let f: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(m);
+        if (f.function != cast<*AST::AstNode>(0) &&
+            f.function.kind == AST::NodeType::STMT_FUNCTION &&
+            STR::strcmp(f.name, method_name) == 0) {
+          return true;
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+  return false;
+}

@@ -361,6 +361,17 @@ const symbol_is_nominal_named -> fn (sym: *CORE::Symbol, name: *byte) bool {
   return STR::strcmp(basic_name(sym.type), name) == 0;
 }
 
+// Whether the module's own registry knows `name` as a bare nominal — the
+// same test check_nominal_bare uses up front. tc.lx re-runs it at the very
+// end of typecheck against the deferred-unknown list, by which time every
+// declaration (including ones that appear later in a module than the
+// reference) is registered.
+pub const nominal_known_in_module -> fn (mscope: *CORE::Scope, name: *byte) bool {
+  if (mscope == cast<*CORE::Scope>(0)) return false;
+  let local_sym: *CORE::Symbol = SCOPE::scope_lookup_current(mscope, name);
+  return symbol_is_nominal_named(local_sym, name);
+}
+
 // Builtins and locally-declared structs/enums may be referenced bare; a
 // struct/enum only visible through an `@use` import must be written
 // `ALIAS::Name` — reports an error at `err_node` if a bare `name` turns out
@@ -371,16 +382,25 @@ pub const check_nominal_bare -> fn (name: *byte, scope: *CORE::Scope, err_node: 
   if (is_builtin_name(name)) return;
 
   let mscope: *CORE::Scope = SCOPE::find_containing_module(scope);
-  if (mscope != cast<*CORE::Scope>(0)) {
-    let local_sym: *CORE::Symbol = SCOPE::scope_lookup_current(mscope, name);
-    if (symbol_is_nominal_named(local_sym, name)) return;
-  }
+  if (nominal_known_in_module(mscope, name)) return;
 
   let any_sym: *CORE::Symbol = SCOPE::scope_lookup(scope, name);
   if (symbol_is_nominal_named(any_sym, name)) {
     ERR::tc_error_id(err_node, name, "Module Error",
       "imported type must be qualified with its module alias", "needs a module qualifier");
+    return;
   }
+
+  // A non-type symbol (variable, function, ...) with this name definitely
+  // exists and is definitely not a type — report immediately.
+  if (any_sym != cast<*CORE::Symbol>(0)) {
+    ERR::tc_error_id(err_node, name, "Type Error", "name is not a type", "not a type");
+    return;
+  }
+
+  // Nothing found — could still be a later declaration in the same module
+  // (forward reference). Defer the verdict to end of typecheck.
+  CORE::record_unresolved_type_name(mscope, name, err_node);
 }
 
 // Validates (and normalizes) a single TYPE_BASIC / TYPE_RESOLUTION leaf. A

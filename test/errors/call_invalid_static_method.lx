@@ -1,0 +1,19 @@
+// error-type: Call Error
+@module "main"
+
+// `Foo::does_not_exist(...)` — an unknown static method on a registered
+// struct template. Used to compile to `/* unresolved qualified call */ 0`
+// with exit 0; now it's reported as a call error before codegen.
+
+const Foo -> struct<T> {
+  data: T,
+
+  static make -> fn (x: int) Foo<T> {
+    return Foo<T> { data: x };
+  },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let x: int = Foo::does_not_exist<int>(3);
+  return x;
+}

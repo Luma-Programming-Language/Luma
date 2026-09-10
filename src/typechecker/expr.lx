@@ -48,6 +48,14 @@ pub const qualify -> fn (a: *byte, b: *byte) *byte {
   return s;
 }
 
+#returns_ownership
+const dup_str -> fn (s: *byte) *byte {
+  let len: int = STR::strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
+  return out;
+}
+
 const strip_pointer -> fn (t: *AST::AstNode) *AST::AstNode {
   if (TYPE::is_pointer_type(t)) {
     let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
@@ -511,6 +519,10 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
 
   let base: *AST::AstNode = strip_pointer(ot);
   if (TYPE::is_nominal_type(base) == false) {
+    // Member access on a builtin / pointer-to-primitive is never valid —
+    // report it now instead of letting codegen emit `(x).field` for cc to
+    // reject with "not a structure or union".
+    ERR::tc_error_id(expr, n.member, "Type Error", "member access on non-struct type", "not a struct");
     return cast<*AST::AstNode>(0);
   }
 
@@ -625,6 +637,51 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     }
     let rett: *AST::AstNode = ft.return_type;
     return rett;
+  }
+
+  // ── No function type resolved ────────────────────────────────────────
+  // The callee isn't (or couldn't be resolved as) a function. Report the
+  // genuine errors before codegen papers them over with a placeholder 0:
+  // an undeclared function, a non-callable value, or a missing static
+  // method. The one deliberately-permissive case: a static method that
+  // *does* exist on a struct template — its concrete signature is resolved
+  // at codegen via the mangled owner, so tc_call just typechecks the args.
+  if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
+    let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
+    if (is_generic_call == false) {
+      let mscope2: *CORE::Scope = SCOPE::find_containing_module(scope);
+      if (mscope2 != cast<*CORE::Scope>(0) &&
+          GEN::find_template(mscope2.module_name, id.name) != cast<*GEN::GenericTemplate>(0)) {
+        ERR::tc_error_id(expr, id.name, "Call Error",
+          "generic function requires explicit type arguments", "missing type arguments");
+      } elif (SCOPE::scope_lookup(scope, id.name) != cast<*CORE::Symbol>(0)) {
+        ERR::tc_error_id(expr, id.name, "Call Error", "called value is not a function", "not a function");
+      } else {
+        ERR::tc_error_id(expr, id.name, "Call Error", "undeclared function", "undeclared function");
+      }
+    }
+  } elif (callee.kind == AST::NodeType::EXPR_MEMBER) {
+    let mn: *AST::MemberNode = cast<*AST::MemberNode>(callee);
+    if (mn.is_compiletime == 1 && mn.object.kind == AST::NodeType::EXPR_IDENTIFIER) {
+      let mo: *AST::IdentifierNode = cast<*AST::IdentifierNode>(mn.object);
+      let imp2: *CORE::ModuleImport = SCOPE::find_module_import(scope, mo.name);
+      if (imp2 != cast<*CORE::ModuleImport>(0)) {
+        // tc_member already reports a member *missing* from the module;
+        // reaching here means it resolved to a non-function symbol.
+        ERR::tc_error_id(expr, mn.member, "Call Error", "module member is not a function", "not a function");
+      } else {
+        let mscope3: *CORE::Scope = SCOPE::find_containing_module(scope);
+        let tmpl: *GEN::GenericTemplate = cast<*GEN::GenericTemplate>(0);
+        if (mscope3 != cast<*CORE::Scope>(0)) tmpl = GEN::find_template(mscope3.module_name, mo.name);
+        if (tmpl == cast<*GEN::GenericTemplate>(0) || tmpl.decl.kind != AST::NodeType::STMT_STRUCT) {
+          ERR::tc_error_id(expr, mn.member, "Call Error", "no such static method", "unknown method");
+        } elif (GEN::struct_template_has_method(cast<*AST::StructDeclNode>(tmpl.decl), mn.member) == false) {
+          ERR::tc_error_id(expr, mn.member, "Call Error", "no such static method in struct", "unknown method");
+        }
+        // Method exists on the template — legitimate static call, leave
+        // permissive here (codegen resolves the concrete mangled form).
+      }
+    }
   }
 
   loop [i: int = 0](i < n.arg_count) : (++i) {

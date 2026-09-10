@@ -1,0 +1,12 @@
+// error-type: Call Error
+@module "main"
+
+// Calling a function that was never declared used to fall silently through
+// to codegen, which emitted the raw name for cc's `-Wimplicit-function-
+// declaration` to pick up (or a placeholder `0`). It must be a typecheck
+// error so the user gets a real diagnostic pointing at the call.
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let x: int = totally_undefined_func(3);
+    return x;
+}

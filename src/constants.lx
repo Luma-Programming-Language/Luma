@@ -2,7 +2,7 @@
 
 @use "std_vector" as VEC
 
-pub const Luma_Compiler_version: *byte = "v0.3.6";
+pub const Luma_Compiler_version: *byte = "v0.3.7";
 
 pub const LumaErrorCode -> enum {
   Argc_Error,

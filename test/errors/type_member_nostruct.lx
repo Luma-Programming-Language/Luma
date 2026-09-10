@@ -1,0 +1,13 @@
+// error-type: Type Error
+@module "main"
+
+// Member access is only valid on a struct (or pointer-to-struct). Accessing
+// `.member` on a builtin used to slip to codegen, which emitted `(x).member`
+// and let cc fail with "request for member ... in something not a structure
+// or union".
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let b: int = 5;
+    let c: int = b.nonexistent_field;
+    return c;
+}

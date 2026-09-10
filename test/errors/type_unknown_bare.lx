@@ -1,0 +1,12 @@
+// error-type: Type Error
+@module "main"
+
+// A bare type name (no module alias) that matches nothing — not a builtin,
+// not a struct/enum in this module — must be reported rather than carried to
+// codegen, which would emit the verbatim name and let cc fail with a cryptic
+// `unknown type name 'KNonexistentType'`.
+
+pub const main -> fn (argc: int, argv: **byte) int {
+    let x: KNonexistentType = 5;
+    return 0;
+}
