@@ -2,9 +2,7 @@
 
 *A low-level compiled language for people who want C's control without giving up their afternoon to memory bugs.*
 
-<p align="center">
-  <img src="../assets/luma.png" alt="Luma Logo" width="160"/>
-</p>
+![Luma Logo](../assets/luma.png)
 
 [Why?](#why) • [Language Tour](#language-tour) • [Self-Hosted](#self-hosted) • [Getting Started](#getting-started) • [Join Us](#join-us)
 
@@ -117,7 +115,7 @@ That's a small slice. The full language reference is in [`docs/docs.md`](https:/
 
 The compiler is written in Luma. It compiles itself, and every commit proves it can: an existing `luma` binary builds the current compiler source, that output builds the same source again, and the two results are diffed byte-for-byte. If a compiler can't reproduce itself exactly from its own source, something's wrong, so that check runs before anything else does, on every push and every PR.
 
-Releases are cross-compiled from that same self-hosted compiler: a single Linux CI run produces Linux, Windows, and macOS binaries, and the Windows/macOS ones actually get downloaded and executed on real runners before a release goes out. See [`docs/releases/`](releases/) for what's shipped and when.
+Releases are built from that same self-hosted compiler: Linux and Windows binaries are produced on Linux, while macOS binaries are built on a macOS CI runner. The Windows and macOS binaries are downloaded and executed on real runners before a release goes out. See [`docs/releases/`](releases/) for what's shipped and when.
 
 ---
 
@@ -134,13 +132,13 @@ Latest release: **[v0.3.5](releases/v0.3.5.md)**
 - A language server (`luma --lsp`) with diagnostics, hover, and completion
 - Cross-platform builds for Linux, Windows, and macOS, verified in CI
 
-**What's not there yet:** generic structs (generic *functions* — `fn<T>` — are implemented, see [docs.md's Generics section](docs.md#generics)), and a few rough edges in the static analyzer around conditional allocation paths. See the Known Limitations section of the [latest release notes](releases/v0.3.5.md) for the current honest list.
+**What's not there yet:** a few rough edges in the static analyzer around conditional allocation paths. Generic functions and generic structs are implemented; see [the Generics section](docs.md#generics). See [Current Limitations](docs.md#current-limitations) for the current list.
 
 ---
 
 ## Getting Started
 
-Building from source just needs a C compiler no LLVM, no Meson, nothing else to install first:
+Building from source just needs a C compiler, not LLVM or Meson:
 
 ```bash
 git clone https://github.com/Luma-Programming-Language/Luma.git
@@ -199,7 +197,4 @@ cc output/main.c -lm -o main
 
 ---
 
-<p align="center">
-  <strong>Built with ❤️ by the Luma community</strong>
-</p>
-
+Built with ❤️ by the Luma community

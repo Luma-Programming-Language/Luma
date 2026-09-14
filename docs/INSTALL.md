@@ -6,7 +6,7 @@ Luma is a self-hosted compiler — it transpiles to C and just needs a C compile
 
 Grab the archive for your platform from the [latest release](releases/v0.3.5.md).
 
-### Linux / macOS
+### Linux / macOS (Prebuilt Binary)
 
 ```bash
 tar -xzf luma-v0.3.5-linux-x86_64.tar.gz    # or luma-v0.3.5-macos-x86_64.tar.gz
@@ -17,7 +17,7 @@ sudo ./install.sh   # system-wide, requires sudo
 ./install.sh        # user-local install, no sudo needed
 ```
 
-### Windows
+### Windows (Prebuilt Binary)
 
 1. Extract `luma-v0.3.5-windows-x86_64.zip`.
 2. Run `install.bat` — as Administrator for a system-wide install, or without for a user-local one.
@@ -68,7 +68,7 @@ If none of the three has the file, you'll get a "module not found — was its fi
 
 If you'd rather not run the installer script:
 
-### Linux / macOS
+### Linux / macOS (Manual Installation)
 
 **System-wide:**
 
@@ -90,9 +90,9 @@ cp -r std/* ~/.luma/std/
 export PATH="$PATH:$HOME/.local/bin"
 ```
 
-### Windows
+### Windows (Manual Installation)
 
-1. Create `C:\Program Files\luma\bin` and `\std` (system-wide) or `%USERPROFILE%\.luma\bin` and `\std` (user-local).
+1. Create `C:\Program Files\luma\bin` and `C:\Program Files\luma\std` (system-wide) or `%USERPROFILE%\.luma\bin` and `%USERPROFILE%\.luma\std` (user-local).
 2. Copy `luma.exe` into the `bin` directory.
 3. Copy the contents of `std/` into the `std` directory.
 4. Add the `bin` directory to your `PATH` environment variable.
@@ -105,7 +105,7 @@ export PATH="$PATH:$HOME/.local/bin"
 luma --version
 ```
 
-```
+```text
 Luma Compiler v0.3.5
 ```
 
@@ -113,7 +113,7 @@ Luma Compiler v0.3.5
 
 ## Troubleshooting
 
-**"module not found — was its file passed with -l?"**
+### "module not found — was its file passed with -l?"
 
 Either the file wasn't passed with `-l` at all, or it's not sitting in any of the three [Standard Library Paths](#standard-library-paths) tiers above. Double-check the install actually landed where you expect (`ls ~/.luma/std/` or `ls /usr/local/lib/luma/std/`), and that the path you're passing to `-l` matches what's actually on disk relative to your current directory.
 
@@ -126,7 +126,7 @@ export PATH="$PATH:$HOME/.local/bin"        # user-local install
 export PATH="$PATH:/usr/local/bin"          # system-wide install (usually already on PATH)
 ```
 
-**PATH issues (Windows)**
+### PATH issues (Windows)
 
 Search "Environment Variables" in the Start menu, edit your PATH, and add `%USERPROFILE%\.luma\bin` or `C:\Program Files\luma\bin`, then restart your terminal.
 
