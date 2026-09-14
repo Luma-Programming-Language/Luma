@@ -34,7 +34,7 @@ LLVM ERROR: Broken module found, compilation aborted!
 ## Linked List Ideas
 
 ```luma
-;; Syntax will change on somethins
+;; Syntax will change on something
 const Link = struct {
     tag: int,
     value = union {
@@ -102,10 +102,10 @@ extern "C" {
 
 pub const main = fn () int {
     io.printf("Hello from C!\n");
-    
+
     let file: *io.FILE = io.fopen("test.txt", "w");
     defer io.fclose(file);
-    
+
     io.fprintf(file, "Writing from Luma!\n");
     return 0;
 }
@@ -123,7 +123,7 @@ impl [func list...] -> [struct list...] {
     }
 }
 
-## The goals of the impl is to implement functions for structs
+## The goal of impl is to implement functions for structs
 
 ## It should have the ability to conditionally make functions
 
@@ -139,27 +139,27 @@ impl [func list...] -> [struct list...] {
 
 ## a #compile tag from a function within a conditional will be optionally compiled, and so only one available at runtime
 
-## Why the two? One use case for @run_time is to allow dynamic function assignment. Lets say you must work with an api
+## Why the two? One use case for @run_time is to allow dynamic function assignment. Let's say you must work with an API
 
 ## This api does not respond with the same data, same type of data and so on. This means you can write multiple capture() functions
 
-## Yes this is function overloading, but conditionally, and can be programmed for the potential context the appliction will be in
+## Yes this is function overloading, but conditionally, and can be programmed for the potential context the application will be in
 
 ## For @compile_time, it optionally compiles one of the implementations of the function. Say you need portability, you can use the same
 
-## source code and target specific architectures. This can be thought of #IF_WINDOWS bullshit from C, you can conditionaly compile
+## source code and target specific architectures. This can be thought of #IF_WINDOWS bullshit from C, you can conditionally compile
 
-## one function or another, but in a nice and effecient way
+## one function or another, but in a nice and efficient way
 
 ## the ? and None type
 
 someType: ?; # is a None, or a real type.
 
-## Thats what it does. Gives a way to init without a type. Can also be used to identify things. if (someType? == None) {return "Nothing found";}
+## That's what it does. It provides a way to initialize without a type. It can also be used to identify things. if (someType? == None) {return "Nothing found";}
 
 ## It is our solution to NULL, but it provides a more meaning. Because it can also be a value if (someType?) {return "value found";}
 
-## This is very straigh forward in its concept. someType? returns the value inside, or it returns the None type
+## This is very straightforward in its concept. someType? returns the value inside, or it returns the None type
 
 ## the set type
 
@@ -173,7 +173,7 @@ someType: ?; # is a None, or a real type.
 
 ## a, b, c : () = func1
 
-## changes the the position for the returning set
+## changes the position for the returning set
 
 ## a, b, c : (float, int, int) = func1
 
@@ -187,7 +187,7 @@ someType: ?; # is a None, or a real type.
 // -OB : object files
 cc_o = luma-1 -OB -V2;
 
-// -x86_64 could be used to verify the executable and compatability for translate()
+// -x86_64 could be used to verify the executable and compatibility for translate()
 cc = luma-1 -O3 -x86_64;
 
 // the output for artefacts and exe
@@ -227,13 +227,13 @@ clean_all -> (where) {
     output("Removed all artefacts\n");
 }
 
-## compile: and clean: are labels, there are the external commands a user can run (lpbs compile, lpbs clean)
+## compile: and clean: are labels; they are the external commands a user can run (lpbs compile, lpbs clean)
 
-## Lets break it down. Post-Processing is about understanding end context from the src code and a solution
+## Let's break it down. Post-processing is about understanding the end context from the source code and finding a solution
 
 ## The LPB System should generate bindings for the end result
 
-## It should manage ffi for C and providing that compatability
+## It should manage FFI for C and provide that compatibility
 
 ## It should provide a way to create, manage, and work with shared libraries or static libraries
 
@@ -280,7 +280,7 @@ pub const main = fn () int {
 
 ## This creates:
 ## std/stdio.lx
-## std/stdlib.lx  
+## std/stdlib.lx
 ## std/math.lx
 ## std/string.lx
 ## etc.

@@ -39,20 +39,21 @@ pub const main -> fn (argc: int, argv: **byte) int {
     let origin: Point = Point { x: 0, y: 0 };
     let destination: Point = Point { x: 3, y: 4 };
     let current_status: Status = Status::Active;
-    
+
     outputln("Distance: ", origin.distance_to(destination));
-    
+
     switch (current_status) {
         Status::Active -> outputln("System is running");
         Status::Inactive -> outputln("System is stopped");
         Status::Pending -> outputln("System is starting");
     }
-    
+
     return 0;
 }
 ```
 
 This example shows:
+
 - Module declaration with `@module`
 - Struct definitions with methods
 - Enum definitions
@@ -67,8 +68,9 @@ This example shows:
 
 Luma provides a straightforward type system with both primitive and compound types.
 
-### Primitive Types
-```
+### Primitive Types (Quick Reference)
+
+```text
 int      - Signed integer (64-bit)
 uint     - Unsigned integer (64-bit)
 float    - Floating point (32-bit)
@@ -80,23 +82,27 @@ void     - No value (used for function return types and generic pointers)
 ```
 
 **Note on String Types:**
+
 - String literals like `"hello"` are of type `*byte` (null-terminated character arrays)
 - All string operations in the standard library use `*byte`
 - There is no separate `str` type in Luma
 
 ### Type Modifiers & Operators
-```
+
+```text
 *T       - Pointer type (declares a pointer to type T)
 [T; N]   - Array type (fixed-size array of N elements of type T)
 ```
 
 **Pointer Operators:**
-```
+
+```text
 *expr    - Dereference operator (access value pointed to)
 &expr    - Address-of operator (get pointer to value)
 ```
 
 **Example:**
+
 ```luma
 let x: int = 42;           // x is an int
 let ptr: *int = &x;        // ptr is a pointer to int, holds address of x
@@ -106,6 +112,7 @@ let value: int = *ptr;     // value is 42 (dereferenced ptr)
 ### Enumerations
 
 Enums provide type-safe constants with underlying integer values:
+
 ```luma
 const Direction -> enum {
     North,    // = 0
@@ -123,6 +130,7 @@ let dir_value: int = cast<int>(Direction::North);  // 0
 ### Structures
 
 Structures group related data with optional access control:
+
 ```luma
 const Point -> struct {
     x: int,
@@ -148,13 +156,14 @@ priv:
 ```
 
 ### Using Types
+
 ```luma
 const origin: Point = Point { x: 0, y: 0 };
 
-const player: Player = Player { 
-    name: "Alice", 
+const player: Player = Player {
+    name: "Alice",
     score: 100,
-    internal_id: 12345 
+    internal_id: 12345
 };
 
 // Access fields
@@ -349,6 +358,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
 `destroy` only frees what the struct itself owns (`name`) — the struct's own allocation (`alice` the pointer) is a separate responsibility, freed by whoever called `create`, same as any other `#returns_ownership` pointer. Nothing in Luma calls `destroy` automatically; there's no destructor-on-scope-exit — pair it with `defer` explicitly, as shown.
 
 ### Type Compatibility
+
 ```luma
 // Same types
 let x: int = 42;
@@ -369,8 +379,8 @@ See [Type Casting System](#type-casting-system) for full details on conversions.
 
 ## Generics
 
-**Generic functions are implemented.** Generic structs (`struct<T>`) are not
-yet — see the note at the end of this section.
+**Generic functions and generic structs are implemented.** Generic structs use
+type parameters in angle brackets, such as `struct<T>`.
 
 ### Generic Functions
 
@@ -432,7 +442,7 @@ effects and falls through to ordinary `<` (less-than). This is also why the
 type arguments are mandatory rather than optional — inference would remove
 the very shape (`<Type,...>(`) the parser depends on to disambiguate.
 
-### Monomorphization
+### Performance Monomorphization
 
 Luma uses **monomorphization**: the compiler generates a separate, concrete
 function for each distinct set of type arguments actually used, the first
@@ -453,8 +463,8 @@ declaration itself. `add<T>`'s `a + b` isn't checked against every possible
 right at that call site (`+` isn't defined for `*byte`), the same as if
 you'd written a `*byte`-specific function with `+` in it directly.
 
-**Not yet supported:** generic structs (`struct<T>`, e.g. a `Box<T>`
-container) — only generic functions are implemented so far.
+Generic structs such as `struct<T>` containers are supported alongside generic
+functions.
 
 ---
 
@@ -462,7 +472,7 @@ container) — only generic functions are implemented so far.
 
 Luma uses the `const` keyword as a **unified declaration mechanism** for all top-level bindings. Whether you're declaring variables, functions, types, or enums, `const` provides a consistent syntax that enforces immutability at the binding level.
 
-### Basic Syntax
+### Declaration Examples
 
 ```luma
 const NUM: int = 42;                                  // Immutable variable
@@ -473,7 +483,7 @@ const add -> fn (a: int, b: int) int {                 // Function definition
 }
 ```
 
-(`fn<T>` bindings work today — see [Generics](#generics). `struct<T>` is aspirational syntax, not yet implemented.)
+(`fn<T>` and `struct<T>` bindings work today — see [Generics](#generics).)
 
 ### Why This Design?
 
@@ -505,20 +515,21 @@ Inside functions, use `let` to declare local variables:
 const main -> fn (argc: int, argv: **byte) int {
     let x: int = 10;        // Mutable local variable
     x = 20;                 // Can be reassigned
-    
+
     let y: int = 5;
     y = y + 1;              // Can be modified
-    
+
     let counter: int = 0;
     loop (counter < 10) {
         counter = counter + 1;  // Mutating in loop
     }
-    
+
     return 0;
 }
 ```
 
 **Key difference:**
+
 - `const` at top-level = immutable binding (cannot reassign)
 - `let` in functions = mutable variable (can reassign and modify)
 
@@ -573,10 +584,10 @@ pub const main -> fn (argc: int, argv: **byte) int {
 const main -> fn (argc: int, argv: **byte) int {
     let result: int = add(5, 3);
     outputln("5 + 3 = ", result);
-    
+
     greet();
     print_number(42);
-    
+
     return 0;
 }
 ```
@@ -821,7 +832,7 @@ const WeekDay -> enum {
 
 const classify_day -> fn (day: WeekDay) void {
     switch (day) {
-        WeekDay::Monday, WeekDay::Tuesday, WeekDay::Wednesday, 
+        WeekDay::Monday, WeekDay::Tuesday, WeekDay::Wednesday,
         WeekDay::Thursday, WeekDay::Friday ->
             outputln("Weekday => ", day);
         WeekDay::Saturday, WeekDay::Sunday ->
@@ -916,7 +927,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
 `@use` only declares the dependency — it doesn't locate the file. Every module you `@use` also has to be passed to the compiler explicitly with `-l`:
 
-```
+```sh
 luma main.lx -l std/libc.lx std/cstring.lx -name main
 ```
 
@@ -924,7 +935,7 @@ luma main.lx -l std/libc.lx std/cstring.lx -name main
 
 All standard library modules use the `std_` prefix:
 
-```
+```txt
 std_math      - Mathematical functions and constants
 std_memory    - Low-level memory operations
 std_cstring   - Null-terminated (*byte) string utilities: strlen, strcmp, copy, dup, ...
@@ -1112,11 +1123,11 @@ Both functions are **variadic** - they accept any number of arguments of any typ
 const main -> fn (argc: int, argv: **byte) int {
     output("Hello", " ", "World");           // Hello World
     outputln("The answer is:", 42);          // The answer is: 42\n
-    
+
     let x: int = 10;
     let y: float = 3.14;
     outputln("x = ", x, ", y = ", y);       // x = 10, y = 3.14\n
-    
+
     return 0;
 }
 ```
@@ -1180,11 +1191,11 @@ const main -> fn (argc: int, argv: **byte) int {
     outputln("int: ", sizeof<int>);           // 8
     outputln("byte: ", sizeof<byte>);         // 1
     outputln("double: ", sizeof<double>);     // 8
-    
+
     // Use in allocations
     let buffer: *int = cast<*int>(alloc(100 * sizeof<int>));
     defer free(buffer);
-    
+
     return 0;
 }
 ```
@@ -1208,15 +1219,15 @@ const main -> fn (argc: int, argv: **byte) int {
     // Integer to float
     let i: int = 42;
     let f: float = cast<float>(i);        // 42.0
-    
+
     // Float to integer (truncates)
     let pi: double = 3.14159;
     let rounded: int = cast<int>(pi);     // 3
-    
+
     // Between integer types
     let small: byte = cast<byte>(65);     // 'A'
     let large: int = cast<int>(small);    // 65
-    
+
     return 0;
 }
 ```
@@ -1230,12 +1241,12 @@ const main -> fn (argc: int, argv: **byte) int {
     let typed: *int = cast<*int>(raw);
     *typed = 42;
     free(raw);
-    
+
     // Between pointer types
     let int_ptr: *int = cast<*int>(alloc(sizeof<int>));
     let void_ptr: *void = cast<*void>(int_ptr);
     free(int_ptr);
-    
+
     return 0;
 }
 ```
@@ -1246,16 +1257,16 @@ const main -> fn (argc: int, argv: **byte) int {
 const main -> fn (argc: int, argv: **byte) int {
     let ptr: *byte = cast<*byte>(alloc(10));
     defer free(ptr);
-    
+
     // Pointer to integer
     let addr: int = cast<int>(ptr);
-    
+
     // Add offset (pointer arithmetic)
     let offset_addr: int = addr + 5;
-    
+
     // Back to pointer
     let offset_ptr: *byte = cast<*byte>(offset_addr);
-    
+
     return 0;
 }
 ```
@@ -1284,16 +1295,16 @@ const PRIMES: [int; 5] = [2, 3, 5, 7, 11];
 const main -> fn (argc: int, argv: **byte) int {
     // Uninitialized (contains garbage)
     let data: [int; 5];
-    
+
     // Initialize with literal
     let primes: [int; 5] = [2, 3, 5, 7, 11];
-    
+
     // Initialize element by element
     let scores: [int; 3];
     scores[0] = 95;
     scores[1] = 87;
     scores[2] = 92;
-    
+
     return 0;
 }
 ```
@@ -1303,19 +1314,19 @@ const main -> fn (argc: int, argv: **byte) int {
 ```luma
 const main -> fn (argc: int, argv: **byte) int {
     let numbers: [int; 5] = [10, 20, 30, 40, 50];
-    
+
     // Read elements
     let first: int = numbers[0];    // 10
     let last: int = numbers[4];     // 50
-    
+
     // Write elements
     numbers[2] = 99;
-    
+
     // Loop through array
     loop [i: int = 0](i < 5) : (++i) {
         outputln("numbers[", i, "] = ", numbers[i]);
     }
-    
+
     return 0;
 }
 ```
@@ -1333,7 +1344,7 @@ const main -> fn (argc: int, argv: **byte) int {
     // String literal - type is *byte
     let message: *byte = "Hello, World!";
     outputln(message);
-    
+
     return 0;
 }
 ```
@@ -1347,7 +1358,7 @@ const main -> fn (argc: int, argv: **byte) int {
     let letter: byte = 'A';           // Character literal
     let newline: byte = '\n';         // Escape sequence
     let tab: byte = '\t';             // Tab character
-    
+
     return 0;
 }
 ```
@@ -1378,19 +1389,19 @@ Luma supports pointer arithmetic for low-level memory manipulation.
 const main -> fn (argc: int, argv: **byte) int {
     let arr: *int = cast<*int>(alloc(5 * sizeof<int>));
     defer free(arr);
-    
+
     // Initialize
     loop [i: int = 0](i < 5) : (++i) {
         arr[i] = i * 10;
     }
-    
+
     // Pointer arithmetic: convert to int, add offset, convert back
     let addr: int = cast<int>(arr);
     let new_addr: int = addr + (2 * sizeof<int>);
     let new_ptr: *int = cast<*int>(new_addr);
-    
+
     outputln(*new_ptr);  // arr[2] = 20
-    
+
     return 0;
 }
 ```
@@ -1424,7 +1435,7 @@ const Person -> struct {
 pub:
     name: *byte,
     age: int,
-    
+
 priv:
     ssn: *byte,
     internal_id: int
@@ -1451,11 +1462,11 @@ sizeof<T> -> int             // Size of type
 const main -> fn (argc: int, argv: **byte) int {
     // Allocate memory
     let ptr: *int = cast<*int>(alloc(sizeof<int>));
-    
+
     // Use the memory
     *ptr = 42;
     outputln("Value: ", *ptr);
-    
+
     // Clean up
     free(ptr);
     return 0;
@@ -1470,15 +1481,15 @@ Ensure cleanup with `defer` statements that execute when leaving scope:
 const process_data -> fn () void {
     let buffer: *int = cast<*int>(alloc(100 * sizeof<int>));
     defer free(buffer);  // Guaranteed to run when function exits
-    
+
     let file: *File = open_file("data.txt");
     defer close_file(file);  // Will run even if early return
-    
+
     // Complex processing...
     if (error_condition) {
         return; // defer statements still execute
     }
-    
+
     // More processing...
     // defer statements execute here automatically
 }
@@ -1495,6 +1506,7 @@ defer {
 ```
 
 **Key Benefits:**
+
 - Ensures cleanup code runs regardless of how the function exits
 - Keeps allocation and deallocation code close together
 - Prevents resource leaks from early returns
@@ -1536,10 +1548,10 @@ const consume_buffer -> fn (buffer: *int) void {
 const main -> fn (argc: int, argv: **byte) int {
     let data: *int = cast<*int>(alloc(sizeof<int>));
     *data = 42;
-    
+
     consume_buffer(data);  // Ownership transferred
     // Note: do not use `data` after this point
-    
+
     return 0;
 }
 ```
@@ -1551,6 +1563,7 @@ Luma's compiler includes a static analyzer that tracks memory at compile time to
 #### What the Analyzer Tracks
 
 **Verified at Compile Time:**
+
 - **Memory Leaks**: Detects `alloc()` calls without corresponding `free()`
 - **Double-Free**: Prevents freeing the same pointer twice
 - **Use-After-Free**: Catches access to freed memory within the same function
@@ -1617,12 +1630,13 @@ const create_arena -> fn () Arena {
 The analyzer currently has limitations in these areas:
 
 1. **Struct Field Granularity**: When tracking `a.buf = alloc(...)`, the analyzer tracks the entire struct `a`, not the specific field `a.buf`. This works for single-pointer structs but may cause issues with:
+
    ```luma
    const Container -> struct {
        data1: *int,
        data2: *int
    };
-   
+
    let c: Container;
    c.data1 = alloc(10);  // Tracked as "c"
    c.data2 = alloc(20);  // Also tracked as "c" - potential confusion
@@ -1630,6 +1644,7 @@ The analyzer currently has limitations in these areas:
    ```
 
 2. **Conditional Allocations**: The analyzer may report false positives for conditional paths:
+
    ```luma
    let ptr: *int;
    if (condition) {
@@ -1639,6 +1654,7 @@ The analyzer currently has limitations in these areas:
    ```
 
 3. **Allocations in Loops**: Each loop iteration's allocations should be independent, but edge cases may exist:
+
    ```luma
    loop [i: int = 0](i < 10) : (++i) {
        let temp: *int = alloc(4);
@@ -1648,11 +1664,12 @@ The analyzer currently has limitations in these areas:
    ```
 
 4. **Early Returns with Defer**: While generally working, complex control flow with multiple early returns may need testing:
+
    ```luma
    const process -> fn () int {
        let a: *int = alloc(sizeof<int>);
        defer free(a);
-       
+
        if (error) { return -1; }  // Defer should fire
        if (warning) { return 0; } // Defer should fire
        return 1;                  // Defer should fire
@@ -1660,6 +1677,7 @@ The analyzer currently has limitations in these areas:
    ```
 
 5. **Stack vs Heap**: The analyzer doesn't currently detect returning pointers to stack variables:
+
    ```luma
    const dangerous -> fn () *int {
        let local: int = 42;
@@ -1668,6 +1686,7 @@ The analyzer currently has limitations in these areas:
    ```
 
 6. **Arrays of Pointers**: Complex allocation patterns may not be fully tracked:
+
    ```luma
    let arr: [*int; 5];
    loop [i: int = 0](i < 5) : (++i) {
@@ -1696,6 +1715,7 @@ Understanding performance is crucial for systems programming.
 Luma follows the "zero-cost abstraction" principle: abstractions should have no runtime overhead.
 
 **Generics are zero-cost** (see [Generics](#generics)):
+
 ```luma
 const add -> fn<T> (a: T, b: T) T {
     return a + b;
@@ -1724,17 +1744,20 @@ const max -> fn<T> (a: T, b: T) T {
 ```
 
 **Benefits:**
+
 - No runtime overhead
 - Full optimization per type
 - No vtables or dynamic dispatch
 
 **Trade-offs:**
+
 - Larger binary size (one copy per type)
 - Longer compilation time
 
 ### Memory Layout
 
 **Struct layout is predictable:**
+
 ```luma
 const Point -> struct {
     x: int,    // Offset 0, 8 bytes
@@ -1743,6 +1766,7 @@ const Point -> struct {
 ```
 
 **Array layout is contiguous:**
+
 ```luma
 let arr: [int; 10];  // 80 contiguous bytes
 // arr[0] at offset 0, arr[1] at offset 8, arr[2] at offset 16...
@@ -1751,6 +1775,7 @@ let arr: [int; 10];  // 80 contiguous bytes
 ### Memory Allocation Performance
 
 **Stack allocation is fast:**
+
 ```luma
 const fast_function -> fn () void {
     let buffer: [int; 1024];  // Stack allocated - instant
@@ -1759,6 +1784,7 @@ const fast_function -> fn () void {
 ```
 
 **Heap allocation has overhead:**
+
 ```luma
 const slower_function -> fn () void {
     let buffer: *int = cast<*int>(alloc(1024 * sizeof<int>));
@@ -1770,11 +1796,13 @@ const slower_function -> fn () void {
 ### Optimization Guidelines
 
 **1. Prefer stack allocation when possible:**
+
 ```luma
 let temp: [int; 100];  // Good for small, fixed-size data
 ```
 
 **2. Minimize pointer indirection:**
+
 ```luma
 // Better: direct access
 let ptr: *int;
@@ -1785,6 +1813,7 @@ let value2: int = 42;     // No memory load
 ```
 
 **3. Batch operations:**
+
 ```luma
 // Good: one large allocation
 let buffer: *int = cast<*int>(alloc(1000 * sizeof<int>));
@@ -1795,6 +1824,7 @@ free(buffer);
 ```
 
 **4. Avoid unnecessary copying:**
+
 ```luma
 // Bad: pass large struct by value
 const process -> fn (data: LargeStruct) void { }
@@ -1806,7 +1836,7 @@ const process_fast -> fn (data: *LargeStruct) void { }
 ### Performance Summary
 
 | Operation | Cost | Notes |
-|-----------|------|-------|
+| ----------- | ------ | ------- |
 | Stack variable | ~0 | Instant |
 | Heap allocation | High | System call |
 | Pointer dereference | Low | One memory access |
@@ -1860,7 +1890,7 @@ Luma provides several safety features to prevent common bugs:
 
 ### Keywords
 
-```
+```txt
 const      let        if         elif       else
 loop       break      continue   return     defer
 struct     enum       pub        priv       cast
@@ -1870,7 +1900,7 @@ using      static     input      system     as
 
 ### Directives
 
-```
+```luma
 @module "name"              // Declare module name
 @use "name" as alias        // Import module
 @os { "linux" -> { } }      // Platform-conditional code
@@ -1879,7 +1909,7 @@ using      static     input      system     as
 
 ### Attributes
 
-```
+```luma
 #returns_ownership          // Function returns allocated memory (caller must free)
 #takes_ownership            // Function takes ownership of a pointer argument
 #lib_import("lib.so")       // Per-function library override (POSIX)
@@ -1888,7 +1918,7 @@ using      static     input      system     as
 
 ### Operators
 
-```
+```txt
 Arithmetic:  +  -  *  /  %  ++  --
 Comparison:  ==  !=  <  >  <=  >=
 Logical:     &&  ||  !
@@ -1899,7 +1929,7 @@ Access:      .   ::  []  *  &
 
 ### Primitive Types
 
-```
+```txt
 int     double    bool    *T      [T; N]
 uint    float     byte    void
 ```

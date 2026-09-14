@@ -71,7 +71,7 @@ These AST node types are fully implemented in code generation:
 - [ ] Consider ownership transfer semantics
 - [ ] Allowing structs to point to itself -- name struct {some: *name};
 
-#### Control Flow Analysis  
+#### Control Flow Analysis
 
 - [ ] **Conditional path tracking**
 - [ ] Detect leaks in conditional branches (`if/else` without free in all paths)
@@ -127,39 +127,39 @@ These AST node types are fully implemented in code generation:
 
 ### Parsing
 
-- [ ] Add parsing for templates (`fn[T]`, `struct[T]`)  
-- [ ] Add parsing for type aliases using `type` keyword  
-- [ ] Add parsing for modules and imports refinements  
+- [x] Add parsing for generics (`fn<T>`, `struct<T>`)
+- [ ] Add parsing for type aliases using `type` keyword
+- [ ] Add parsing for modules and imports refinements
 - [ ] Design and implement **union syntax**
 - [ ] Consider Go/Odin-style loop syntax improvements
 
 ### Semantic Analysis
 
-- [ ] Type inference for generics  
-- [ ] Detect unused imports and symbols  
+- [ ] Type inference for generics
+- [ ] Detect unused imports and symbols
 
 ### Codegen
 
-- [ ] Implement codegen for `switch` or `match` constructs  
-- [ ] Support more LLVM optimizations  
-- [ ] **Add structs and enums support** in codegen  
+- [x] Implement codegen for `switch` constructs
+- [ ] Support more C codegen optimizations
+- [x] **Add structs and enums support** in codegen
 - [ ] **Add unions support** in codegen
-- [ ] **Add in memcpy and streq** streq === strcmp
+- [ ] Add `memcpy` and `streq` support (`streq` is equivalent to `strcmp`)
 
 ### Lexer & Parser
 
-- [ ] Add tokens and grammar for unions  
+- [ ] Add tokens and grammar for unions
 
 ### Type Checker
 
-- [ ] Implement type checking for structs  
+- [x] Implement type checking for structs
 - [ ] Implement type checking for unions
 
 ---
 
 ## 🚀 Future Features Ideas (Maybe)
 
-- [ ] Investigate pattern matching  
+- [ ] Investigate pattern matching
 - [ ] Build minimal standard library
 - [ ] Consider ownership/borrowing system for advanced memory safety
 - [ ] Explore compile-time memory layout optimization

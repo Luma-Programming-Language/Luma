@@ -56,21 +56,25 @@ We will review your pull request and provide feedback.
 
 To set up a local development environment:
 
-1. Ensure you have the required dependencies installed (e.g., cmake, ninja, gcc or your preferred compiler).
+1. Ensure you have a C compiler installed, such as `cc`, `gcc`, or `clang`.
 
-2. Clone the Luma repository:
+1. Clone the Luma repository:
 
 ```bash
-git clone https://github.com/your-username/luma.git
-cd luma
+git clone https://github.com/Luma-Programming-Language/Luma.git
+cd Luma
 ```
 
-3. Build the project following instructions in the README (or specific build scripts).
-
-4. Run to ensure everything is working:
+1. Build the project with the bootstrap script:
 
 ```bash
-./luma
+./scripts/bootstrap-build.sh
+```
+
+1. Run the compiler to ensure everything is working:
+
+```bash
+./bin/luma --help
 ```
 
 ## Style Guide
@@ -86,7 +90,7 @@ cd luma
 Tests are important to maintain code quality. Before submitting a pull request:
 
 - Write new tests for your features or bug fixes
-- Run the full test suite to make sure everything passes
+- Run the full test suite with `./bin/luma test/test.lx -name testing`
 - Avoid breaking existing tests
 
 ## License
