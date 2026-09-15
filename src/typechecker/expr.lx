@@ -479,6 +479,50 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
       let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, qname);
       if (sym != cast<*CORE::Symbol>(0)) return sym.type;
 
+      // Generic enum member — `State<int>::Idle`. This member's type args
+      // came from the parser's try_generic_instantiation extension. Mirror
+      // tc_struct_expr: build a fake TYPE_BASIC carrying them, resolve it
+      // (monomorphizes the template, queueing the concrete `State__int`
+      // enum for tc.lx's drain), then rewrite the object identifier to the
+      // concrete mangled name. Every downstream consumer — enum type
+      // compatibility, switch handling, codegen — then sees an ordinary
+      // `State__int::Idle` member access. The concrete enum's members only
+      // get registered during the drain (after this pass), so don't depend
+      // on them; return the concrete nominal type directly.
+      if (n.type_arg_count > 0) {
+        let fake: *AST::AstNode = TAST::make_basic_type(dup_str(obj.name), expr.line, expr.col);
+        let fb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(fake);
+        fb.type_args = n.type_args;
+        fb.type_arg_count = n.type_arg_count;
+        let out: *AST::AstNode = GEN::resolve_nominal_type_ref(fake, scope);
+        if (out != cast<*AST::AstNode>(0) && out.kind == AST::NodeType::TYPE_BASIC) {
+          let ob: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(out);
+          free(obj.name);
+          obj.name = dup_str(ob.name);
+          // Ownership of the type-arg array stays with this node (same
+          // convention as generic call/struct-expr nodes): free_node(expr)
+          // releases the args and the array at teardown, so the count is
+          // kept even though re-resolution can't happen (expressions are
+          // checked once).
+          n.type_args = fb.type_args;
+          free(ob.name);
+          free(out);
+          return TYPE::make_named_type(obj.name);
+        }
+      }
+
+      // `obj.name` resolves to a real symbol but `member` isn't one of its
+      // registered members — a genuine typo (e.g. `State::Err` vs
+      // `State::Error`), not an unknown-qualified-name ambiguity. Report it
+      // now (mirroring the module-alias branch above) instead of letting
+      // codegen emit a made-up `main__State_Error` symbol that cc rejects.
+      let obj_sym: *CORE::Symbol = SCOPE::scope_lookup(scope, obj.name);
+      if (obj_sym != cast<*CORE::Symbol>(0)) {
+        ERR::tc_error_id(expr, n.member, "Type Error",
+          "no such enum or static member on this type", "not a member");
+        return cast<*AST::AstNode>(0);
+      }
+
       // Unknown qualified name — treat as enum-like int to stay permissive.
       return TYPE::make_named_type(obj.name);
     }
@@ -794,6 +838,87 @@ const tc_array -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::
   return TYPE::make_pointer_to(first);
 }
 
+// ─── struct-literal field-name validation ────────────────────────────────
+// A literal may name a direct field or a *promoted* field inherited from an
+// `...Embedded` member — embedded bases get no scope symbols, so match
+// against the decl tree the way codegen's field lookup does. Unknown field
+// names used to fall straight through to codegen, which emitted `.name =
+// value` designators that cc then rejected with a confusing "has no member
+// named" error (instead of a proper Luma diagnostic).
+const struct_decl_has_field -> fn (scope: *CORE::Scope, sname: *byte, field: *byte) bool {
+  let decl: *AST::AstNode = cast<*AST::AstNode>(0);
+  let mscope: *CORE::Scope = SCOPE::find_containing_module(scope);
+  if (mscope != cast<*CORE::Scope>(0) && mscope.module_name != cast<*byte>(0)) {
+    let tmpl: *GEN::GenericTemplate = GEN::find_template(mscope.module_name, sname);
+    if (tmpl != cast<*GEN::GenericTemplate>(0)) decl = tmpl.decl;
+  }
+  if (decl == cast<*AST::AstNode>(0)) decl = CORE::find_nominal_decl(sname);
+  if (decl == cast<*AST::AstNode>(0)) return true; // can't establish → stay permissive
+
+  if (decl.kind != AST::NodeType::STMT_STRUCT) return false; // enums have no literal fields
+
+  let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(decl);
+
+  let groups: int = 0;
+  loop (groups < 2) {
+    let members: **AST::AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AST::AstNode = members[i];
+      if (m != cast<*AST::AstNode>(0)) {
+        if (m.kind == AST::NodeType::STMT_FIELD_DECL) {
+          let f: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(m);
+          if (f.is_embedded == 0 && f.name != cast<*byte>(0)) {
+            if (STR::strcmp(f.name, field) == 0) return true;
+          }
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+
+  // Not a direct member — promoted through `...Embedded` bases, recursively.
+  groups = 0;
+  loop (groups < 2) {
+    let members: **AST::AstNode = sd.public_members;
+    let count: int = sd.public_count;
+    if (groups == 1) { members = sd.private_members; count = sd.private_count; }
+
+    let i: int = 0;
+    loop (i < count) {
+      let m: *AST::AstNode = members[i];
+      if (m != cast<*AST::AstNode>(0)) {
+        if (m.kind == AST::NodeType::STMT_FIELD_DECL) {
+          let f: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(m);
+          if (f.is_embedded == 1 && f.name != cast<*byte>(0)) {
+            if (struct_decl_has_field(scope, f.name, field)) return true;
+          }
+        }
+      }
+      i = i + 1;
+    }
+    groups = groups + 1;
+  }
+  return false;
+}
+
+const validate_struct_literal_fields -> fn (expr: *AST::AstNode, scope: *CORE::Scope, sname: *byte) void {
+  let sn: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
+  let fi: int = 0;
+  loop (fi < sn.field_count) {
+    if (struct_decl_has_field(scope, sname, sn.field_names[fi]) == false) {
+      ERR::tc_error_id(sn.field_vals[fi], sn.field_names[fi], "Type Error",
+        "no such field on this struct", "unknown field");
+      return;
+    }
+    fi = fi + 1;
+  }
+}
+
 #returns_ownership
 const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
   let n: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
@@ -803,6 +928,11 @@ const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: 
   }
 
   if (n.name != cast<*byte>(0)) {
+    // Only bare literals (`Name { ... }`) — an `Alias::Name { ... }` literal
+    // names a struct in another module whose decl is out of reach here.
+    if (n.alias == cast<*byte>(0)) {
+      validate_struct_literal_fields(expr, scope, n.name);
+    }
     // A generic struct literal `Box<int> { ... }` — instantiate the type
     // reference and rewrite this node's name to the concrete mangled name
     // (`Box__int`), so codegen emits against the concrete struct. The bare
@@ -814,7 +944,7 @@ const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: 
       let fb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(fake);
       fb.type_args = n.type_args;
       fb.type_arg_count = n.type_arg_count;
-      let out: *AST::AstNode = GEN::resolve_struct_type_ref(fake, scope);
+      let out: *AST::AstNode = GEN::resolve_nominal_type_ref(fake, scope);
       if (out != cast<*AST::AstNode>(0) && out.kind == AST::NodeType::TYPE_BASIC) {
         let ob: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(out);
         free(n.name);

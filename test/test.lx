@@ -97,8 +97,25 @@ pub:
     }
   },
 
-  contains -> fn (key: K) bool { return false; },
+  contains -> fn (key: K) bool { 
+    let index: uint = self.hash(key) % self.cap;
+
+    loop {
+      let entry: *Entry<K, V> = &self.entries[index];
+
+      if (entry.state == EntryState::Empty) 
+        return false;
+
+      if (entry.state == EntryState::Occupied) {
+        if (self.equals(entry.key, key)) return true;
+      }
+
+      index = (index + 1) % self.cap;
+    }
+  },
+
   remove -> fn (key: K) V { return cast<V>(0); },
+
   resize -> fn (size: uint) void {},
 };
 

@@ -230,6 +230,15 @@ pub const MemberNode -> struct {
   is_compiletime: int,
   object:         *AstNode,
   member:         *byte,
+
+  // Explicit type arguments for a *generic* qualified name —
+  // `State<int>::Idle` — parsed by try_generic_instantiation. Empty/0 for
+  // every ordinary `Name.member` / `Name::member`. tc_member uses them to
+  // instantiate the enum template and rewrite `object` to the concrete
+  // mangled name before codegen; ownership follows the same convention as
+  // EXPR_STRUCT's type_args (the node frees them at teardown).
+  type_args:       **AstNode,
+  type_arg_count:  int,
 };
 
 pub const IndexNode -> struct {
@@ -388,6 +397,14 @@ pub const EnumDeclNode -> struct {
   members:      **byte,
   member_count: int,
   is_public:    int,
+
+  // Generics — see FuncDeclNode.type_params above; same rules. A member of
+  // a generic enum can't carry a value of type T (Luma enums are plain
+  // C-style name constants), so T acts as a phantom/type-tag that makes
+  // `State<int>` and `State<*byte>` distinct nominal types with their own
+  // (mangled) member constants.
+  type_params:       **byte,
+  type_param_count:  int,
 };
 
 pub const IfStmtNode -> struct {
@@ -633,6 +650,12 @@ pub const free_node -> fn (node: *AstNode) void {
     let n: *MemberNode = cast<*MemberNode>(node);
     free_node(n.object);
     free(n.member);
+    let ti: int = 0;
+    loop (ti < n.type_arg_count) {
+      free_node(n.type_args[ti]);
+      ti = ti + 1;
+    }
+    free(n.type_args);
     free(node);
     return;
   }
@@ -824,6 +847,12 @@ pub const free_node -> fn (node: *AstNode) void {
       i = i + 1;
     }
     free(n.members);
+    let tp: int = 0;
+    loop (tp < n.type_param_count) {
+      free(n.type_params[tp]);
+      tp = tp + 1;
+    }
+    free(n.type_params);
     free(n.name);
     free(node);
     return;
@@ -1190,6 +1219,8 @@ pub const clone_node -> fn (node: *AstNode) *AstNode {
     c.is_compiletime = n.is_compiletime;
     c.object = clone_node(n.object);
     c.member = dup_str(n.member);
+    c.type_args = clone_node_array(n.type_args, n.type_arg_count);
+    c.type_arg_count = n.type_arg_count;
     return cast<*AstNode>(c);
   }
 
@@ -1340,6 +1371,20 @@ pub const clone_node -> fn (node: *AstNode) *AstNode {
     c.public_count = n.public_count;
     c.private_members = clone_node_array(n.private_members, n.private_count);
     c.private_count = n.private_count;
+    c.is_public = n.is_public;
+    c.type_params = dup_str_array(n.type_params, n.type_param_count);
+    c.type_param_count = n.type_param_count;
+    return cast<*AstNode>(c);
+  }
+
+  if (kind == NodeType::STMT_ENUM) {
+    let n: *EnumDeclNode = cast<*EnumDeclNode>(node);
+    let c: *EnumDeclNode = cast<*EnumDeclNode>(alloc(sizeof<EnumDeclNode>));
+    c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
+    c.name = dup_str(n.name);
+    c.doc_comment = dup_str(n.doc_comment);
+    c.members = dup_str_array(n.members, n.member_count);
+    c.member_count = n.member_count;
     c.is_public = n.is_public;
     c.type_params = dup_str_array(n.type_params, n.type_param_count);
     c.type_param_count = n.type_param_count;

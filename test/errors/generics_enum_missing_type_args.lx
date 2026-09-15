@@ -1,0 +1,18 @@
+// error-type: Type Error
+@module "main"
+
+// A generic enum template is not a usable type on its own — a bare `State`
+// (no explicit type arguments) can't name an instantiation, and the template
+// registers no symbols of its own. The concrete `State__int` only exists
+// once `State<int>` has been referenced.
+
+const State -> enum<T> {
+  Idle,
+  Running,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let s: State = State::Idle;
+  if (s == State::Idle) return 0;
+  return 1;
+}

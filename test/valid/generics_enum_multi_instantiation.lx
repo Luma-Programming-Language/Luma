@@ -1,0 +1,33 @@
+@module "main"
+
+// Multiple concrete instantiations of the same generic enum template in one
+// program: `State<int>` and `State<*byte>` are independent nominal types
+// (mangled `main__State__int` / `main__State___byte` — note the `*byte`
+// sanitizes to `_byte`), each with its own member-constant set, so
+// per-instantiation type identity, function parameters and switch arms all
+// work independently. See docs/docs.md's Generics section.
+
+const State -> enum<T> {
+  Idle,
+  Busy,
+};
+
+const describe_int -> fn (s: State<int>) int {
+  switch (s) {
+    State<int>::Idle -> return 0;
+    State<int>::Busy -> return 1;
+  }
+}
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let si: State<int> = State<int>::Idle;
+  let sp: State<*byte> = State<*byte>::Busy;
+
+  if (describe_int(si) != 0) return 1;
+
+  // `sp`'s members come from the `State<*byte>` instantiation, not `State<int>`.
+  switch (sp) {
+    State<*byte>::Idle -> return 1;
+    State<*byte>::Busy -> return 0;
+  }
+}

@@ -1,0 +1,10 @@
+// error-type: Type Error
+@module "main"
+
+const Color -> enum { Red, Green };
+
+pub const main -> fn () int {
+  let c: Color = Color::Red;
+  if (c == Color::Blurp) return 1;
+  return 0;
+}

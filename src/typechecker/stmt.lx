@@ -22,6 +22,7 @@ const handle_var_decl      -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool
 const handle_func_decl     -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 const handle_struct_decl   -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
+const register_enum_decl   -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 const handle_enum_decl     -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 const handle_if          -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 const handle_loop        -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
@@ -124,7 +125,7 @@ pub const register_declaration -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) 
     return true;
   }
 
-  if (k == AST::NodeType::STMT_ENUM)   return handle_enum_decl(stmt, scope);
+  if (k == AST::NodeType::STMT_ENUM)   return register_enum_decl(stmt, scope);
   if (k == AST::NodeType::STMT_STRUCT) return register_struct_decl(stmt, scope);
 
   // Forward-register module-level globals that have an explicit declared
@@ -331,7 +332,7 @@ const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool
     // placeholders (T, U, ...), not real types, so it gets no ordinary
     // scope symbol and its fields must not be resolved yet. Concrete
     // instantiations are cloned + substituted on demand at each `Name<Args>`
-    // type reference or struct literal — see tc_generics.resolve_struct_type_ref.
+    // type reference or struct literal — see tc_generics.resolve_nominal_type_ref.
     GEN::register_template(scope.module_name, sd.name, stmt, scope);
     return true;
   }
@@ -347,6 +348,8 @@ const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool
   loop [i: int = 0](i < privc) : (++i) {
     register_field(sd.name, sd.private_members[i], scope);
   }
+
+  CORE::record_nominal_decl(sd.name, stmt);
   return true;
 }
 
@@ -386,8 +389,18 @@ const handle_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return true;
 }
 
-const handle_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
+const register_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(stmt);
+
+  // A generic enum (`enum<T>`) is a template: no symbols whatsoever are
+  // registered until an instantiation (`State<int>`) is type-referenced,
+  // which GENERICS::resolve_nominal_type_ref clones this decl with
+  // T substituted, strips the type params, and queues it for re-registration.
+  // State<T> itself is not a usable type and has no members.
+  if (ed.type_param_count > 0) {
+    GEN::register_template(scope.module_name, ed.name, stmt, scope);
+    return true;
+  }
 
   let etype: *AST::AstNode = TYPE::make_named_type(ed.name);
   SCOPE::scope_add_symbol(scope, ed.name, etype, ed.is_public == 1, false);
@@ -398,7 +411,15 @@ const handle_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
     let mtype: *AST::AstNode = TYPE::make_named_type(ed.name);
     SCOPE::scope_add_symbol(scope, qname, mtype, ed.is_public == 1, false);
   }
+
+  CORE::record_nominal_decl(ed.name, stmt);
   return true;
+}
+
+const handle_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
+  let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(stmt);
+  if (ed.type_param_count > 0) return true;
+  return register_enum_decl(stmt, scope);
 }
 
 const check_condition -> fn (cond: *AST::AstNode, scope: *CORE::Scope) void {

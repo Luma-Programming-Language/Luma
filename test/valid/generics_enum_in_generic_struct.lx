@@ -1,0 +1,47 @@
+@module "main"
+
+// A generic enum as a field type — both through a generic struct whose type
+// parameter is the enum's phantom tag (`state: State<T>` substituted with T
+// == int) and with the enum given a *nested* concrete generic type argument
+// (`State<Entry<int, int>>`, where `Entry<int, int>` is itself a generic
+// struct instantiation — the phantom type arg is any concrete type). Both
+// paths resolve to ordinary mangled nominal types during struct/field
+// typechecking. See docs/docs.md's Generics section.
+
+const Entry -> struct<K, V> {
+  key: K,
+  val: V,
+};
+
+const State -> enum<T> {
+  Idle,
+  Running,
+  Done,
+};
+
+const Wrapper -> struct<T> {
+  state: State<T>,
+};
+
+const Job -> struct {
+  id: int,
+  state: State<Entry<int, int>>,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  // `State<T>` in Wrapper's field is substituted with the caller's `int`.
+  let w: Wrapper<int> = Wrapper<int> { state: State<int>::Idle };
+  if (w.state != State<int>::Idle) return 1;
+
+  let e: Entry<int, int> = Entry<int, int> { key: 7, val: 9 };
+
+  // `State<Entry<int, int>>` — a generic enum with a generic-struct
+  // instantiation as its phantom/type-tag argument.
+  let j: Job = Job {
+    id: 1,
+    state: State<Entry<int, int>>::Running,
+  };
+
+  if (j.state != State<Entry<int, int>>::Running) return 1;
+  return 0;
+}

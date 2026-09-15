@@ -530,12 +530,25 @@ const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode 
   let members: VEC::Vector = VEC::create_vector(sizeof<*byte>);
 
   p.consume(TOK::LumaTokenType::TOK_ENUM,   "Expected 'enum' keyword.");
+
+  // Generic enum — `enum<T, U> { ... }`. A fixed grammar slot right after
+  // the 'enum' keyword, mirroring `struct<T>` — no ambiguity to resolve.
+  // Luma enums are plain name constants (no associated data), so the type
+  // parameters act as phantom/type-tag placeholders: `State<int>` and
+  // `State<*byte>` become distinct nominal types with distinct (mangled)
+  // member constants. See docs/docs.md's Generics section.
+  let type_params: VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  if (p.current().kind == TOK::LumaTokenType::TOK_LT) {
+    type_params = parse_type_param_list(p);
+  }
+
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after enum name.");
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
     if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
       p.error("SyntaxError", "Expected identifier for enum member.");
       VEC::free_vector(&members);
+      VEC::free_vector(&type_params);
       return cast<*AST::AstNode>(0);
     }
     let member_name: *byte = p.get_name();
@@ -554,7 +567,12 @@ const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode 
     PARS::vec_to_byte_array(&members), members.size,
     is_public, line, col
   );
+  let edn: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(node);
+  edn.type_param_count = type_params.size;
+  edn.type_params = PARS::vec_to_byte_array(&type_params);
+
   VEC::free_vector(&members);
+  VEC::free_vector(&type_params);
   return node;
 }
 

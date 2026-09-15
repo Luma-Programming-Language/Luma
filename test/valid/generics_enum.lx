@@ -1,0 +1,33 @@
+@module "main"
+
+// Regression test for generic enums (`enum<T>`) — the same monomorphization
+// story as generic structs/functions: a concrete enum decl
+// (`main__State__int`, `main__State__byte`) is synthesized by tc_generics for
+// each distinct type-argument list, typechecked through the tc.lx drain, and
+// codegen'd via tc_core's generated-decl registry. Luma enums are plain
+// C-style name constants (no associated data), so T acts as a phantom/type
+// tag: `State<int>` and `State<*byte>` are distinct nominal types with
+// distinct (mangled) member constants. See docs/docs.md's Generics section.
+
+const State -> enum<T> {
+  Idle,
+  Running,
+  Done,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let s: State<int> = State<int>::Idle;
+
+  if (s != State<int>::Idle) return 1;
+
+  switch (s) {
+    State<int>::Idle -> {
+      // s is still the concrete `State<int>` nominal, so member comparisons
+      // keep typechecking after the switch arms are processed.
+      if (State<int>::Running != State<int>::Done) return 0;
+      return 1;
+    }
+    State<int>::Running -> return 1;
+    State<int>::Done -> return 1;
+  }
+}

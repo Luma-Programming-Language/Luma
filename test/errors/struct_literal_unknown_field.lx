@@ -1,0 +1,12 @@
+// error-type: Type Error
+@module "main"
+
+const Point -> struct { x: int, y: int };
+
+const make -> fn () Point {
+  return Point { x: 1, zzz: 2 };
+}
+
+pub const main -> fn () int {
+  return 0;
+}

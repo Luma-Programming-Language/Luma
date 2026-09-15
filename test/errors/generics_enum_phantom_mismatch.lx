@@ -1,0 +1,18 @@
+// error-type: Type Mismatch
+@module "main"
+
+// Enum type identity is per-instantiation: the `State<int>` value on the
+// right is a different nominal type (`State__int`) than the `State<*byte>`
+// variable on the left (`State___byte`), so the assignment is a type
+// mismatch — the phantom/type-tag argument is part of the enum's identity.
+
+const State -> enum<T> {
+  Idle,
+  Busy,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let a: State<int> = State<int>::Idle;
+  let b: State<*byte> = a;
+  return 0;
+}

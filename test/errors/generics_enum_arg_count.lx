@@ -1,0 +1,16 @@
+// error-type: Generics Error
+@module "main"
+
+// A generic enum reference must name exactly as many type arguments as the
+// template declares.
+
+const State -> enum<T> {
+  Idle,
+  Running,
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let s: State<int, bool> = State<int, bool>::Idle;
+  if (s == State<int, bool>::Idle) return 0;
+  return 1;
+}

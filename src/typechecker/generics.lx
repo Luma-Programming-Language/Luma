@@ -1,7 +1,8 @@
 @module "tc_generics"
 
-//! Monomorphization for `fn<T>`/`struct<T>` (see docs/docs.md's Generics
-//! section). An instantiation is just an ordinary, concrete FuncDeclNode
+//! Monomorphization for `fn<T>`/`struct<T>`/`enum<T>` (see docs/docs.md's
+//! Generics section). An instantiation is just an ordinary, concrete
+//! FuncDeclNode / StructDeclNode / EnumDeclNode
 //! with a mangled name and every type-parameter occurrence substituted for
 //! the caller's concrete type — synthesized once per unique
 //! (module, template name, concrete types) combination, then run through
@@ -95,7 +96,7 @@ const build_mangled_name -> fn (base_name: *byte, concretes: **AST::AstNode, cou
 pub const GenericTemplate -> struct {
   module_name: *byte,
   name:        *byte,
-  decl:        *AST::AstNode,  // raw FuncDeclNode or StructDeclNode, type params unresolved
+  decl:        *AST::AstNode,  // raw FuncDeclNode/StructDeclNode/EnumDeclNode, type params unresolved
   def_scope:   *CORE::Scope,   // where it was declared — NOT the caller's scope
 };
 
@@ -284,9 +285,62 @@ pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *Gen
   return ftype;
 }
 
-// ─── struct generics ────────────────────────────────────────────────────────
-// `Box<int>` in type position or `Box<int> { ... }` struct-literal position.
-// This mirrors instantiate_function_call but has no call site to hang the
+// ─── struct/enum generics ──────────────────────────────────────────────────
+// `Box<int>` in type position, `Box<int> { ... }` struct-literal position, or
+// `State<int>::Idle` enum-member position. The enum case mirrors the struct
+// case exactly: the trigger is a TYPE_BASIC leaf carrying a
+// `<int, ...>` type-argument list (tc_type.resolve_type_leaf,
+// tc_expr.tc_struct_expr, and tc_member's generic handling all route such
+// leaves through the shared core below). The leaf is rewritten in place to a
+// plain named type (e.g. `Box__int` / `State__int`), so every downstream
+// consumer — codegen included — just sees an ordinary concrete struct/enum;
+// the concrete decl itself is queued through the same pending queue and
+// drained by tc.lx like a function instantiation.
+
+// Both StructDeclNode and EnumDeclNode carry the identical
+// `type_params: **byte` / `type_param_count: int` pair that literal
+// initialization can't see statically, so branch to pull the right field.
+const decl_tp_count -> fn (decl: *AST::AstNode) int {
+  if (decl.kind == AST::NodeType::STMT_STRUCT) return cast<*AST::StructDeclNode>(decl).type_param_count;
+  if (decl.kind == AST::NodeType::STMT_ENUM)   return cast<*AST::EnumDeclNode>(decl).type_param_count;
+  return 0;
+}
+
+const decl_tp_names -> fn (decl: *AST::AstNode) **byte {
+  if (decl.kind == AST::NodeType::STMT_STRUCT) return cast<*AST::StructDeclNode>(decl).type_params;
+  if (decl.kind == AST::NodeType::STMT_ENUM)   return cast<*AST::EnumDeclNode>(decl).type_params;
+  return cast<**byte>(0);
+}
+
+const decl_base_name -> fn (decl: *AST::AstNode) *byte {
+  if (decl.kind == AST::NodeType::STMT_STRUCT) return cast<*AST::StructDeclNode>(decl).name;
+  if (decl.kind == AST::NodeType::STMT_ENUM)   return cast<*AST::EnumDeclNode>(decl).name;
+  return cast<*byte>(0);
+}
+
+// Frees + zeroes the `type_params`/`type_param_count` pair on the given
+// generic decl — called on a clone after substitution, turning it into an
+// ordinary concrete decl. (The commented code is the struct/enum-specific
+// reopen block that strips method type params / anything else kind-specific.)
+const degenericize_decl -> fn (cloned: *AST::AstNode) void {
+  if (cloned.kind == AST::NodeType::STMT_STRUCT) {
+    let csd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(cloned);
+    let tpi: int = 0;
+    loop (tpi < csd.type_param_count) { free(csd.type_params[tpi]); tpi = tpi + 1; }
+    free(csd.type_params);
+    csd.type_params = cast<**byte>(0);
+    csd.type_param_count = 0;
+    return;
+  }
+  if (cloned.kind == AST::NodeType::STMT_ENUM) {
+    let ced: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(cloned);
+    let tpi: int = 0;
+    loop (tpi < ced.type_param_count) { free(ced.type_params[tpi]); tpi = tpi + 1; }
+    free(ced.type_params);
+    ced.type_params = cast<**byte>(0);
+    ced.type_param_count = 0;
+  }
+}
 // A method inside a generic struct template inherits the struct's type params
 // (e.g. `fn<K, V> new(...)`). clone_node_substituting clones the body with
 // K/V substituted but leaves `FuncDeclNode.type_param_count` intact —
@@ -312,13 +366,6 @@ const strip_method_type_params -> fn (members: **AST::AstNode, count: int) void 
   }
 }
 
-// type arguments off of, so the trigger is a TYPE_BASIC leaf carrying a
-// `<int, ...>` type-argument list (tc_type.resolve_type_leaf and
-// tc_expr.tc_struct_expr both route such leaves through here). The leaf is
-// rewritten in place to a plain named type (`Box__int`), so every downstream
-// consumer — codegen included — just sees an ordinary concrete struct; the
-// concrete StructDeclNode itself is queued through the same pending queue
-// and drained by tc.lx like a function instantiation.
 #returns_ownership
 const scope_module_name -> fn (scope: *CORE::Scope) *byte {
   let s: *CORE::Scope = scope;
@@ -330,7 +377,7 @@ const scope_module_name -> fn (scope: *CORE::Scope) *byte {
 }
 
 #returns_ownership
-pub const resolve_struct_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
+pub const resolve_nominal_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (leaf == cast<*AST::AstNode>(0)) return leaf;
   if (leaf.kind != AST::NodeType::TYPE_BASIC) return leaf;
 
@@ -348,19 +395,19 @@ pub const resolve_struct_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scop
     ERR::tc_error_id(leaf, bn.name, "Generics Error", "generic type not found", "not found");
     return leaf;
   }
-  if (tmpl.decl.kind != AST::NodeType::STMT_STRUCT) {
-    ERR::tc_error_id(leaf, bn.name, "Generics Error", "not a generic struct", "expected struct template");
+  if (tmpl.decl.kind != AST::NodeType::STMT_STRUCT && tmpl.decl.kind != AST::NodeType::STMT_ENUM) {
+    ERR::tc_error_id(leaf, bn.name, "Generics Error", "not a generic struct or enum", "expected struct or enum template");
     return leaf;
   }
 
-  let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(tmpl.decl);
-  if (bn.type_arg_count != sd.type_param_count) {
+  let tp_count: int = decl_tp_count(tmpl.decl);
+  if (bn.type_arg_count != tp_count) {
     ERR::tc_error(leaf, "Generics Error",
-      "wrong number of explicit type arguments for this generic struct", "type argument count mismatch");
+      "wrong number of explicit type arguments for this generic struct or enum", "type argument count mismatch");
     return leaf;
   }
 
-  let count: int = sd.type_param_count;
+  let count: int = tp_count;
   let concretes: **AST::AstNode = cast<**AST::AstNode>(alloc(sizeof<*AST::AstNode> * count));
   let i: int = 0;
   loop (i < count) {
@@ -368,7 +415,7 @@ pub const resolve_struct_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scop
     i = i + 1;
   }
 
-  let mangled: *byte = build_mangled_name(sd.name, concretes, count);
+  let mangled: *byte = build_mangled_name(decl_base_name(tmpl.decl), concretes, count);
   let key: *byte = join2(tmpl.module_name, mangled);
 
   let existing: *Instantiation = find_instantiation(key);
@@ -376,21 +423,21 @@ pub const resolve_struct_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scop
     // First time for this concrete instantiation: clone the whole template
     // with every T/U/... substituted, give it the mangled name, and strip
     // its own generic markers — from here on it's an ordinary concrete
-    // struct (registered + typechecked by tc.lx's drain).
-    let cloned: *AST::AstNode = AST::clone_node_substituting(tmpl.decl, sd.type_params, concretes, count);
-    let csd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(cloned);
-
-    free(csd.name);
-    csd.name = dup_str(mangled); // ownership transferred to the node
-
-    let tpi: int = 0;
-    loop (tpi < csd.type_param_count) { free(csd.type_params[tpi]); tpi = tpi + 1; }
-    free(csd.type_params);
-    csd.type_params = cast<**byte>(0);
-    csd.type_param_count = 0;
-
-    strip_method_type_params(csd.public_members,  csd.public_count);
-    strip_method_type_params(csd.private_members, csd.private_count);
+    // struct/enum (registered + typechecked by tc.lx's drain).
+    let cloned: *AST::AstNode = AST::clone_node_substituting(tmpl.decl, decl_tp_names(tmpl.decl), concretes, count);
+    if (cloned.kind == AST::NodeType::STMT_STRUCT) {
+      let csd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(cloned);
+      free(csd.name);
+      csd.name = dup_str(mangled); // ownership transferred to the node
+      degenericize_decl(cloned);
+      strip_method_type_params(csd.public_members,  csd.public_count);
+      strip_method_type_params(csd.private_members, csd.private_count);
+    } else {
+      let ced: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(cloned);
+      free(ced.name);
+      ced.name = dup_str(mangled); // ownership transferred to the node
+      degenericize_decl(cloned);
+    }
 
     // `key` is retained (ownership passes to the Instantiation entry) so
     // later references to the same concrete type hit the cache — same

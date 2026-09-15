@@ -761,6 +761,14 @@ const format_enum_signature -> fn (ed: *AST::EnumDeclNode) *byte {
   let b: StrBuf = sb_init();
   sb_str(&b, "enum ");
   sb_str(&b, ed.name);
+  if (ed.type_param_count > 0) {
+    sb_str(&b, "<");
+    loop [i: int = 0](i < ed.type_param_count) : (++i) {
+      if (i > 0) { sb_str(&b, ", "); }
+      sb_str(&b, ed.type_params[i]);
+    }
+    sb_str(&b, ">");
+  }
   sb_str(&b, " { ");
   loop [i: int = 0](i < ed.member_count) : (++i) {
     if (i > 0) { sb_str(&b, ", "); }

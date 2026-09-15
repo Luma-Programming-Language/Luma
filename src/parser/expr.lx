@@ -154,8 +154,10 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
 }
 
 // Speculatively tries `left '<' Type (',' Type)* '>' (` — a generic call,
-// e.g. `add<int>(1, 2)` — or `left '<' Type (',' Type)* '>' {` — the
-// optional explicit generic struct literal, e.g. `Box<int> { value: 42 }`.
+// e.g. `add<int>(1, 2)` — `left '<' Type (',' Type)* '>' {` — the
+// optional explicit generic struct literal, e.g. `Box<int> { value: 42 }` —
+// or `left '<' Type (',' Type)* '>' '::' member` — a member of a generic
+// enum instantiation, e.g. `State<int>::Idle`.
 // `p.current().kind` is already TOK_LT (checked by led's caller). Only a
 // bare identifier or a module-qualified name (`ALIAS::func<T>(...)`, which
 // parses as a compiletime MemberNode) can plausibly be a generic template
@@ -163,11 +165,12 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
 // isn't even attempted.
 //
 // On success returns the built CallNode/StructExprNode with its type_args
-// attached. On failure (this wasn't that shape after all — most commonly
-// just an ordinary `a < b` comparison) rolls the parser back to exactly
-// where it started via Parser.save/restore, so the caller can fall through
-// to parsing `<` as plain less-than with no trace of the attempt left
-// behind (no partial AST, no recorded errors, no moved token position).
+// attached (or a MemberNode carrying them, for the `::member` case). On
+// failure (this wasn't that shape after all — most commonly just an
+// ordinary `a < b` comparison) rolls the parser back to exactly where it
+// started via Parser.save/restore, so the caller can fall through to
+// parsing `<` as plain less-than with no trace of the attempt left behind
+// (no partial AST, no recorded errors, no moved token position).
 #returns_ownership
 const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
   let ident_ok: bool = left.kind == AST::NodeType::EXPR_IDENTIFIER;
@@ -212,6 +215,28 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
       let sn: *AST::StructExprNode = cast<*AST::StructExprNode>(node);
       sn.type_arg_count = targs.size;
       sn.type_args = PARS::vec_to_node_array(&targs);
+      VEC::free_vector(&targs);
+      return node;
+    }
+  } elif (ok && p.current().kind == TOK::LumaTokenType::TOK_RESOLVE) {
+    // Generic enum member — `State<int>::Idle`. The type args ride on the
+    // resulting MemberNode (there's no dedicated node kind); tc_member
+    // instantiates the template and rewrites the object to the concrete
+    // mangled name before codegen.
+    let member_line: int = p.current().line;
+    let member_col:  int = p.current().col;
+    p.advance();
+    if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+      p.error("Syntax Error", "Expected identifier after '::' for member access.");
+      ok = false;
+    }
+    if (ok) {
+      let member: *byte = p.get_name();
+      p.advance();
+      let node: *AST::AstNode = EAST::make_member(left, member, 1, member_line, member_col);
+      let mn2: *AST::MemberNode = cast<*AST::MemberNode>(node);
+      mn2.type_arg_count = targs.size;
+      mn2.type_args = PARS::vec_to_node_array(&targs);
       VEC::free_vector(&targs);
       return node;
     }

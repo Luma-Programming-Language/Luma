@@ -197,6 +197,8 @@ pub const make_member -> fn (object: *AST::AstNode, member: *byte, is_compiletim
   n.is_compiletime = is_compiletime;
   n.object = object;
   n.member = member;
+  n.type_args = cast<**AST::AstNode>(0);
+  n.type_arg_count = 0;
 
   return cast<*AST::AstNode>(n);
 }

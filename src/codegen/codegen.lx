@@ -29,8 +29,8 @@
 // one to size another *file-scope* array ("variably modified ... at file
 // scope" — confirmed by trying it here). Named sizes only work for a
 // *local* array, where C allows a runtime-sized VLA.
-const KNOWN_LIBC_NAME_COUNT: int = 66;
-const known_libc_names: [*byte; 66] = [
+const KNOWN_LIBC_NAME_COUNT: int = 67;
+const known_libc_names: [*byte; 67] = [
   "printf", "puts", "putchar", "getchar", "fflush",
   "fopen", "fclose", "fread", "fwrite", "fgets", "fputs", "feof", "ferror",
   "rewind", "fseek", "ftell", "remove", "rename", "tmpfile",
@@ -41,7 +41,7 @@ const known_libc_names: [*byte; 66] = [
   "strchr", "strrchr", "strstr", "strtok",
   "memset", "memcpy", "memmove", "memcmp",
   "sqrt", "pow", "floor", "ceil", "fabs", "fmod", "log", "exp", "sin", "cos",
-  "usleep", "execv", "fork", "strerror", "access",
+  "usleep", "execv", "fork", "strerror", "access", "close",
 ];
 
 const is_known_libc_name -> fn (name: *byte) bool {
@@ -253,6 +253,13 @@ const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *by
 
   if (k == AST::NodeType::STMT_ENUM) {
     let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(decl);
+
+    // Same rule as structs/functions above: a generic template (`enum<T>`)
+    // itself is never codegen'd — only its concrete instantiations, which
+    // arrive separately as TCCORE-generated decls with type_param_count
+    // already zeroed.
+    if (ed.type_param_count > 0) return;
+
     let ei: CG::EnumInfo = CG::EnumInfo { name: ed.name, module_name: module_name, decl: ed };
     let ev: *VEC::Vector = &ctx.enums;
     ev.push_back(cast<*void>(&ei));

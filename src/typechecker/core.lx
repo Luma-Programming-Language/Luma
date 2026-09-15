@@ -1,6 +1,7 @@
 @module "tc_core"
 
 @use "std_vector" as VEC
+@use "std_cstring" as STR
 @use "ast"        as AST
 
 pub const TypeMatchResult -> enum {
@@ -159,4 +160,53 @@ pub const unresolved_type_name_count -> fn () int {
 pub const unresolved_type_name_at -> fn (i: int) *UnresolvedTypeName {
   unresolved_types_init();
   return cast<*UnresolvedTypeName>(g_unresolved_types.get(i));
+}
+
+// ─── nominal decl registry, for struct/enum literal member validation ───
+// Pass 3b needs the *declaration* (not just the scope symbols) of a struct to
+// distinguish real fields from promoted embedded ones when validating struct
+// -literal field names: promoted fields never get their own scope symbols
+// (register_field skips `...Embedded` members), only the embedding base's do.
+// Concrete generic instantiations register their concrete decls here too
+// (during the drain), and the origin templates stay reachable via
+// tc_generics.find_template, so literals in generic bodies validate against
+// the right member set regardless of drain order.
+pub const NominalDecl -> struct {
+  name: *byte,
+  decl: *AST::AstNode,
+};
+
+let g_nominals_ready: bool = false;
+let g_nominals: VEC::Vector;
+
+const nominals_init -> fn () void {
+  if (g_nominals_ready) return;
+  g_nominals_ready = true;
+  g_nominals = VEC::create_vector(sizeof<NominalDecl>);
+}
+
+// Reset per typecheck run (pairs with scope_arena_teardown): registered decl
+// pointers are only valid while the current run's AST is alive.
+pub const nominal_registry_clear -> fn () void {
+  if (g_nominals.data != cast<*void>(0)) {
+    VEC::free_vector(&g_nominals);
+  }
+  g_nominals_ready = true;
+  g_nominals = VEC::create_vector(sizeof<NominalDecl>);
+}
+
+pub const record_nominal_decl -> fn (name: *byte, decl: *AST::AstNode) void {
+  nominals_init();
+  let nd: NominalDecl = NominalDecl { name: name, decl: decl };
+  g_nominals.push_back(cast<*void>(&nd));
+}
+
+pub const find_nominal_decl -> fn (name: *byte) *AST::AstNode {
+  nominals_init();
+  let c: int = g_nominals.size;
+  loop [i: int = 0](i < c) : (++i) {
+    let nd: *NominalDecl = cast<*NominalDecl>(g_nominals.get(i));
+    if (STR::strcmp(nd.name, name) == 0) return nd.decl;
+  }
+  return cast<*AST::AstNode>(0);
 }

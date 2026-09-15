@@ -142,6 +142,7 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
   if (node == cast<*AST::AstNode>(0)) return true;
 
   SCOPE::scope_arena_init();
+  CORE::nominal_registry_clear();
   let root: *CORE::Scope = SCOPE::scope_init("global", config.check_mem, config.os);
 
   if (node.kind != AST::NodeType::PROGRAM) {
