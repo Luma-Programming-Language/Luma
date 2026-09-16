@@ -52,32 +52,46 @@ pub:
     free(self);
   },
 
-  insert -> fn (key: K, value: V) bool { 
+  insert -> fn (key: K, value: V) bool {
+    if (((self.len + self.tombstones) * 100 / self.cap)>= 70)
+      self.resize(self.cap * 2);
+
     let index: uint = self.hash(key) % self.cap;
 
     loop {
       let entry: *Entry<K, V> = &self.entries[index];
 
-      if (entry.state == EntryState::Empty) {
-        entry.key = key;
-        entry.value = value;
-        entry.state = EntryState::Occupied;
-
-        self.len = self.len + 1;
-        return true;
-      }
-
-      if (entry.state == EntryState::Occupied) {
-        if (self.equals(entry.key, key)) {
+      switch using EntryState (entry.state) {
+        Empty -> {
+          entry.key = key;
           entry.value = value;
-          return false;
+          entry.state = EntryState::Occupied;
+
+          self.len = self.len + 1;
+          return true; 
+        }
+        Deleted -> {
+          entry.key = key;
+          entry.value = value;
+          entry.state = EntryState::Occupied;
+
+          self.len = self.len + 1;
+          self.tombstones = self.tombstones - 1;
+
+          return true;
+        }
+        Occupied -> {
+          if (self.equals(entry.key, key)) {
+            entry.value = value;
+            return false;
+          }
         }
       }
 
       index = (index + 1) % self.cap;
     }
 
-    return false; 
+    return false;
   },
 
   get -> fn (key: K) V {
@@ -97,24 +111,51 @@ pub:
     }
   },
 
+  get_hash -> fn (key: K) uint { return self.hash(key) % self.cap; },
+
   contains -> fn (key: K) bool { 
     let index: uint = self.hash(key) % self.cap;
 
     loop {
       let entry: *Entry<K, V> = &self.entries[index];
 
-      if (entry.state == EntryState::Empty) 
-        return false;
-
-      if (entry.state == EntryState::Occupied) {
-        if (self.equals(entry.key, key)) return true;
+      switch using EntryState (entry.state) {
+        Empty -> return false;
+        Occupied -> {
+          if (self.equals(entry.key, key))
+            return true;
+        }
       }
 
       index = (index + 1) % self.cap;
     }
   },
 
-  remove -> fn (key: K) V { return cast<V>(0); },
+  remove -> fn (key: K) V { 
+    let index: uint = self.hash(key) % self.cap;
+
+    loop {
+      let entry: *Entry<K, V> = &self.entries[index];
+
+      switch using EntryState (entry.state) {
+        Empty -> return cast<V>(0);
+        Occupied -> {
+          if (self.equals(entry.key, key)) {
+            let value: V = entry.value;
+
+            entry.state = EntryState::Deleted;
+
+            self.len = self.len - 1;
+            self.tombstones = self.tombstones + 1;
+
+            return value;
+          }
+        }
+      }
+
+      index = (index + 1) % self.cap;
+    }
+  },
 
   resize -> fn (size: uint) void {},
 };

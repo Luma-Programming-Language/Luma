@@ -17,6 +17,7 @@ autom4te.cache
 # .github/workflows/{ci,release}.yml). It has no extension, so the blanket
 # rule above would otherwise ignore it.
 !bootstrap/luma-seed
+!LICENSE
 
 # Ignore Windows executables and their debug-info files (zig cc emits a
 # .pdb alongside cross-compiled .exe binaries)

@@ -213,54 +213,57 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
   // during the attempt is the real signal that this wasn't it.
   let ok: bool = ERR::error_get_count() == err_before;
 
-  // call()/enstruct() only ever return NULL or a node of exactly that
-  // kind (EXPR_CALL/EXPR_STRUCT respectively — see their own
-  // constructors) — no separate kind check needed, and one less
-  // (statically-unprovable-but-actually-dead) path for the leak analyzer
-  // to worry doesn't free `node`.
-  if (ok && p.current().kind == TOK::LumaTokenType::TOK_LPAREN) {
-    let node: *AST::AstNode = call(p, left, bp);
-    if (node != cast<*AST::AstNode>(0)) {
-      let cn: *AST::CallNode = cast<*AST::CallNode>(node);
-      cn.type_arg_count = targs.size;
-      cn.type_args = PARS::vec_to_node_array(&targs);
-      VEC::free_vector(&targs);
-      return node;
+  switch using TOK::LumaTokenType (p.current().kind) {
+    TOK_LPAREN -> {
+      if (!ok) break;
+
+      let node: *AST::AstNode = call(p, left, bp);
+      if (node != cast<*AST::AstNode>(0)) {
+        let cn: *AST::CallNode = cast<*AST::CallNode>(node);
+        cn.type_arg_count = targs.size;
+        cn.type_args = PARS::vec_to_node_array(&targs);
+        VEC::free_vector(&targs);
+        return node;
+      }
     }
-  } elif (ok && p.current().kind == TOK::LumaTokenType::TOK_LBRACE) {
-    let node: *AST::AstNode = enstruct(p, left, bp);
-    if (node != cast<*AST::AstNode>(0)) {
-      let sn: *AST::StructExprNode = cast<*AST::StructExprNode>(node);
-      sn.type_arg_count = targs.size;
-      sn.type_args = PARS::vec_to_node_array(&targs);
-      VEC::free_vector(&targs);
-      return node;
+    TOK_LBRACE -> {
+      if (!ok) break;
+
+      let node: *AST::AstNode = enstruct(p, left, bp);
+      if (node != cast<*AST::AstNode>(0)) {
+        let sn: *AST::StructExprNode = cast<*AST::StructExprNode>(node);
+        sn.type_arg_count = targs.size;
+        sn.type_args = PARS::vec_to_node_array(&targs);
+        VEC::free_vector(&targs);
+        return node;
+      }
     }
-  } elif (ok && p.current().kind == TOK::LumaTokenType::TOK_RESOLVE) {
-    // Generic enum member — `State<int>::Idle`. The type args ride on the
-    // resulting MemberNode (there's no dedicated node kind); tc_member
-    // instantiates the template and rewrites the object to the concrete
-    // mangled name before codegen.
-    let member_line: int = p.current().line;
-    let member_col:  int = p.current().col;
-    p.advance();
-    if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
-      p.error("Syntax Error", "Expected identifier after '::' for member access.");
-      ok = false;
-    }
-    if (ok) {
-      let member: *byte = p.get_name();
+    TOK_RESOLVE -> {
+      if (!ok) break;
+
+      let member_line: int = p.current().line;
+      let member_col:  int = p.current().col;
       p.advance();
-      let node: *AST::AstNode = EAST::make_member(left, member, 1, member_line, member_col);
-      let mn2: *AST::MemberNode = cast<*AST::MemberNode>(node);
-      mn2.type_arg_count = targs.size;
-      mn2.type_args = PARS::vec_to_node_array(&targs);
-      VEC::free_vector(&targs);
-      return node;
+      if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
+        p.error("Syntax Error", "Expected identifier after '::' for member access.");
+        ok = false;
+      }
+
+      if (ok) {
+        let member: *byte = p.get_name();
+        p.advance();
+        let node: *AST::AstNode = EAST::make_member(left, member, 1, member_line, member_col);
+        let mn2: *AST::MemberNode = cast<*AST::MemberNode>(node);
+        mn2.type_arg_count = targs.size;
+        mn2.type_args = PARS::vec_to_node_array(&targs);
+        VEC::free_vector(&targs);
+        return node;
+      }
     }
+
+    _ -> {}
   }
 
-  // Not a generic instantiation after all — undo everything.
   loop [i: int = 0](i < targs.size) : (i++) {
     AST::free_node(cast<**AST::AstNode>(targs.data)[i]);
   }
@@ -294,35 +297,36 @@ const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstN
 
   let struct_name: *byte = cast<*byte>(0);
   let struct_alias: *byte = cast<*byte>(0);
-
-  if (left.kind == AST::NodeType::EXPR_IDENTIFIER) {
-    let d: *AST::IdentifierNode = cast<*AST::IdentifierNode>(left);
-    let len: int = STRING::strlen(d.name);
-    struct_name = cast<*byte>(alloc(len + 1));
-    MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.name), len);
-    struct_name[len] = '\0';
-  } elif (left.kind == AST::NodeType::EXPR_MEMBER) {
-    let d: *AST::MemberNode = cast<*AST::MemberNode>(left);
-    let len: int = STRING::strlen(d.member);
-    struct_name = cast<*byte>(alloc(len + 1));
-    MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.member), len);
-    struct_name[len] = '\0';
-
-    // `ALIAS::StructName { ... }` — keep the alias so the typechecker can
-    // tell a qualified reference apart from a bare one (bare is only valid
-    // for locally-declared structs; see tc_expr.lx's tc_struct_expr).
-    let d_object: *AST::AstNode = d.object;
-    let d_object_kind: int = d_object.kind;
-    if (d_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
-      let aobj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(d_object);
-      let alen: int = STRING::strlen(aobj.name);
-      struct_alias = cast<*byte>(alloc(alen + 1));
-      MEM::memcpy(cast<*void>(struct_alias), cast<*void>(aobj.name), alen);
-      struct_alias[alen] = '\0';
+  
+  switch using AST::NodeType (left.kind) {
+    EXPR_IDENTIFIER -> {
+      let d: *AST::IdentifierNode = cast<*AST::IdentifierNode>(left);
+      let len: int = STRING::strlen(d.name);
+      struct_name = cast<*byte>(alloc(len + 1));
+      MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.name), len);
+      struct_name[len] = '\0'; 
     }
-  } else {
-    p.error("Syntax Error", "Expected identifier before '{' for named struct.");
-    return cast<*AST::AstNode>(0);
+    EXPR_MEMBER -> {
+      let d: *AST::MemberNode = cast<*AST::MemberNode>(left);
+      let len: int = STRING::strlen(d.member);
+      struct_name = cast<*byte>(alloc(len + 1));
+      MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.member), len);
+      struct_name[len] = '\0';
+
+      let d_object: *AST::AstNode = d.object;
+      let d_object_kind: int = d_object.kind;
+      if (d_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
+        let aobj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(d_object);
+        let alen: int = STRING::strlen(aobj.name);
+        struct_alias = cast<*byte>(alloc(alen + 1));
+        MEM::memcpy(cast<*void>(struct_alias), cast<*void>(aobj.name), alen);
+        struct_alias[alen] = '\0';
+      }
+    }
+    _ -> {
+      p.error("Syntax Error", "Expected identifier before '{' for named struct.");
+      return cast<*AST::AstNode>(0);
+    }
   }
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' for struct expression.");
