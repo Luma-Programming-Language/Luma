@@ -60,6 +60,20 @@ const make_token -> fn (val: *byte, kind: int, len: int, line: int,
                  col: col, whitespace_len: whitespace_len };
 }
 
+// Record a lexical error. The lexer can't report through error.lx itself
+// (no file path, no token table to render a line_text from), so it stashes
+// the kind + location here and parse_file re-issues them as diagnostics.
+const lexer_add_error -> fn (lx: *sym::Lexer, kind: int, line: int, col: int, len: int, bad: int) void {
+  lx.had_error = 1;
+  if (lx.error_count >= sym::MAX_LEX_ERRORS) return;
+  lx.errors[lx.error_count].kind = kind;
+  lx.errors[lx.error_count].line = line;
+  lx.errors[lx.error_count].col  = col;
+  lx.errors[lx.error_count].len  = len;
+  lx.errors[lx.error_count].bad  = cast<byte>(bad);
+  lx.error_count = lx.error_count + 1;
+}
+
 pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
   loop (1) {
     let ws: int = skip_whitespace(lx);
@@ -72,15 +86,34 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
     let line:  int   = lx.line;
     let col:   int   = lx.col;
 
+    // `//!` module doc comment — emitted as a token (not skipped) so the
+    // parser can attach it to the module node and the LSP can highlight it.
     if (c == '/' && lx.peek(1) == '/' && lx.peek(2) == '!') {
-      skip_line_comment(lx);
-      continue;
+      lx.advance(); // '/'
+      lx.advance(); // '/'
+      lx.advance(); // '!'
+      let inner_start: *byte = lx.current;
+      let len: int = 0;
+      loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
+        lx.advance();
+        len = len + 1;
+      }
+      return make_token(inner_start, sym::LumaTokenType::TOK_MODULE_DOC, len, line, col, ws);
     }
 
-    // /// item doc comment - skip it for now
+    // `///` item doc comment — same treatment as `//!` above; the parser's
+    // consume_doc_comments picks these up before each statement.
     if (c == '/' && lx.peek(1) == '/' && lx.peek(2) == '/') {
-      skip_line_comment(lx);
-      continue;
+      lx.advance(); // '/'
+      lx.advance(); // '/'
+      lx.advance(); // '/'
+      let inner_start: *byte = lx.current;
+      let len: int = 0;
+      loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
+        lx.advance();
+        len = len + 1;
+      }
+      return make_token(inner_start, sym::LumaTokenType::TOK_DOC_COMMENT, len, line, col, ws);
     }
 
     if (c == '@') {
@@ -94,6 +127,7 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
       let kind: int = sym::lookup_keyword(word);
       free(word);
       if (kind != -1) { return make_token(start, kind, len, line, col, ws); }
+      lexer_add_error(lx, sym::LEX_ERR_UNKNOWN_DIRECTIVE, line, col, len, 0);
       return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
     }
 
@@ -108,6 +142,7 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
       let kind: int = sym::lookup_keyword(word);
       free(word);
       if (kind != -1) { return make_token(start, kind, len, line, col, ws); }
+      lexer_add_error(lx, sym::LEX_ERR_UNKNOWN_DIRECTIVE, line, col, len, 0);
       return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
     }
 
@@ -116,6 +151,7 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
       let len: int = 0;
       loop (lx.is_end() == 0 && lx.peek(0) != '"') {
         if (lx.peek(0) == '\n') {
+          lexer_add_error(lx, sym::LEX_ERR_UNTERMINATED_STRING, line, col, len, 0);
           return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
         }
         // An escape sequence (`\"`, `\\`, `\n`, ...) consumes its backslash
@@ -134,6 +170,7 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
         }
       }
       if (lx.is_end() == 1) {
+        lexer_add_error(lx, sym::LEX_ERR_UNTERMINATED_STRING, line, col, len, 0);
         return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
       }
       lx.advance();
@@ -144,6 +181,10 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
     if (c == '\'') {
       lx.advance();
       if (lx.is_end() == 1 || lx.peek(0) == '\'') {
+        // `''` — nothing between the quotes. Eat the closing quote too so
+        // it isn't re-lexed as the start of yet another broken literal.
+        lexer_add_error(lx, sym::LEX_ERR_EMPTY_CHAR, line, col, 1, 0);
+        if (lx.peek(0) == '\'') { lx.advance(); }
         return make_token(start, sym::LumaTokenType::TOK_ERROR, 1, line, col, ws);
       }
       if (lx.peek(0) == '\\') {
@@ -153,6 +194,15 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
         lx.advance();
       }
       if (lx.peek(0) != '\'') {
+        // `'ab'` / `'abc` / `'ab` — more than one character (or no closing
+        // quote). Consume the rest of the literal so none of its parts get
+        // re-lexed as new tokens (which would re-trigger this same error).
+        lx.advance();
+        loop (lx.is_end() == 0 && lx.peek(0) != '\n' && lx.peek(0) != '\'') {
+          lx.advance();
+        }
+        if (lx.peek(0) == '\'') { lx.advance(); }
+        lexer_add_error(lx, sym::LEX_ERR_BAD_CHAR, line, col, 2, 0);
         return make_token(start, sym::LumaTokenType::TOK_ERROR, 2, line, col, ws);
       }
       lx.advance();
@@ -211,6 +261,10 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
       return make_token(start, kind, 1, line, col, ws);
     }
 
+    // No token for this character — record it instead of silently dropping
+    // it (dropping could otherwise produce a clean-looking but corrupted
+    // parse downstream).
+    lexer_add_error(lx, sym::LEX_ERR_INVALID_CHARACTER, line, col, 1, cast<int>(c));
     lx.advance();
   }
 

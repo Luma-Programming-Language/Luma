@@ -14,14 +14,14 @@
 @use "parser"       as PARS
 @use "ast"          as AST
 
-#returns_ownership const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AST::AstNode; 
+#returns_ownership const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode; 
 #returns_ownership const _fn    -> fn (p: *PARS::Parser, name: *byte, is_public: int, 
-                                           returns_ownership: int, takes_ownership: int) *AST::AstNode;
+                                           returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode;
 #returns_ownership const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: int) *AST::AstNode;
-#returns_ownership const _enum   -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode;
-#returns_ownership const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode;
+#returns_ownership const _enum   -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode;
+#returns_ownership const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode;
 #returns_ownership const parse_type_param_list -> fn (p: *PARS::Parser) VEC::Vector;
-#returns_ownership const var     -> fn (p: *PARS::Parser, is_public: int) *AST::AstNode;
+#returns_ownership const var     -> fn (p: *PARS::Parser, is_public: int, doc_comment: *byte) *AST::AstNode;
 #returns_ownership const infinite_loop_stmt  -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const for_loop_stmt       -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const print_stmt   -> fn (p: *PARS::Parser, ln: int) *AST::AstNode;
@@ -55,6 +55,17 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   let dll_conv: *byte;
   let lib_name: *byte;
   let dll_name: *byte;
+
+  // A lexer-detected problem (unknown directive, unterminated string/char,
+  // ...) already produced its own precise diagnostic during the token scan
+  // — don't also try to parse it as a statement and rain noise errors on
+  // top; skip it and keep parsing from the next token.
+  if (p.current().kind == TOK::LumaTokenType::TOK_ERROR) {
+    if (doc_comment != cast<*byte>(0)) free(doc_comment);
+    p.had_error = 1;
+    p.advance();
+    return cast<*AST::AstNode>(0);
+  }
 
   loop (p.current().kind == TOK::LumaTokenType::TOK_RETURNS_OWNERSHIP ||
         p.current().kind == TOK::LumaTokenType::TOK_TAKES_OWNERSHIP   ||
@@ -139,8 +150,8 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   switch using TOK::LumaTokenType (p.current().kind) {
     TOK_CONTINUE, TOK_BREAK 
       -> node = break_continue_stmt(p, -cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
-    TOK_CONST  -> node = _const(p, is_public, returns_ownership, takes_ownership);
-    TOK_VAR    -> node = var(p, is_public);
+    TOK_CONST  -> node = _const(p, is_public, returns_ownership, takes_ownership, doc_comment);
+    TOK_VAR    -> node = var(p, is_public, doc_comment);
     TOK_USE    -> node = use(p);
     TOK_RETURN -> node = return_stmt(p);
     TOK_LBRACE -> node = block(p);
@@ -170,12 +181,26 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
     apply_lib_import(node, lib_name);
   }
 
-  if (doc_comment != cast<*byte>(0)) free(doc_comment);
+  if (doc_comment != cast<*byte>(0)) {
+    let consumed: int = 0;
+    if (node != cast<*AST::AstNode>(0)) {
+      if (node.kind == AST::NodeType::STMT_VAR_DECL      ||
+          node.kind == AST::NodeType::STMT_CONST_DECL    ||
+          node.kind == AST::NodeType::STMT_FUNCTION      ||
+          node.kind == AST::NodeType::STMT_STRUCT        ||
+          node.kind == AST::NodeType::STMT_ENUM) {
+        consumed = 1;
+      }
+    }
+    if (consumed == 0) {
+      free(doc_comment);
+    }
+  }
   return node;
 }
 
 #returns_ownership
-const consume_doc_comments -> fn (p: *PARS::Parser) *byte {
+pub const consume_doc_comments -> fn (p: *PARS::Parser) *byte {
   let lines: VEC::Vector = VEC::create_vector(sizeof<*byte>);
 
   loop (p.has_tokens() &&
@@ -345,8 +370,7 @@ const link_stmt   -> fn (p: *PARS::Parser) *AST::AstNode {
 }
 
 #returns_ownership 
-const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, takes_ownership: int) *AST::AstNode {
-  let doc_comment: *byte = "";
+const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
@@ -380,9 +404,9 @@ const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, ta
   p.consume(TOK::LumaTokenType::TOK_RIGHT_ARROW, "Expected '->' after a const name.");
   
   switch(p.current().kind) {
-    TOK::LumaTokenType::TOK_FN     -> return _fn(p, name, is_public, returns_ownership, takes_ownership);
-    TOK::LumaTokenType::TOK_STRUCT -> return _struct(p, name, is_public);
-    TOK::LumaTokenType::TOK_ENUM   -> return _enum(p, name, is_public);
+    TOK::LumaTokenType::TOK_FN     -> return _fn(p, name, is_public, returns_ownership, takes_ownership, doc_comment);
+    TOK::LumaTokenType::TOK_STRUCT -> return _struct(p, name, is_public, doc_comment);
+    TOK::LumaTokenType::TOK_ENUM   -> return _enum(p, name, is_public, doc_comment);
     
     _ -> {
       free(name);
@@ -418,8 +442,7 @@ const parse_type_param_list -> fn (p: *PARS::Parser) VEC::Vector {
 }
 
 #returns_ownership
-const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownership: int, takes_ownership: int) *AST::AstNode {
-  let doc_comment: *byte = "";
+const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
@@ -522,8 +545,7 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
 }
 
 #returns_ownership
-const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode {
-  let doc_comment: *byte = "";
+const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
@@ -577,8 +599,7 @@ const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode 
 }
 
 #returns_ownership
-const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNode {
-  let doc_comment: *byte = "";
+const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
@@ -601,8 +622,19 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after struct name.");
 
   let public_member: int = 1;
+  let pending_doc: *byte = cast<*byte>(0);
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
+    // A `///` doc comment directly above a struct member belongs to that
+    // member (field or method). Consumed before the `pub:`/`priv:` checks
+    // and carried in `pending_doc` so a doc sitting above a visibility
+    // marker still lands on the member that follows it.
+    let consumed_doc: *byte = consume_doc_comments(p);
+    if (consumed_doc != cast<*byte>(0)) {
+      if (pending_doc != cast<*byte>(0)) free(pending_doc);
+      pending_doc = consumed_doc;
+    }
+
     if (p.current().kind == TOK::LumaTokenType::TOK_PUBLIC) {
       public_member = 1;
       p.advance();
@@ -615,6 +647,9 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
       p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after 'priv'.");
       continue;
     }
+
+    let field_doc: *byte = pending_doc;
+    pending_doc = cast<*byte>(0);
 
     // `...Type,` struct embedding.
     if (p.current().kind == TOK::LumaTokenType::TOK_ELLIPSIS) {
@@ -638,11 +673,12 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
         VEC::free_vector(&public_fields);
         VEC::free_vector(&private_fields);
         VEC::free_vector(&type_params);
+        if (field_doc != cast<*byte>(0)) free(field_doc);
         return cast<*AST::AstNode>(0);
       }
 
       let embed_decl: *AST::AstNode = SAST::make_field_decl(
-        name_copy, "", embed_type, cast<*AST::AstNode>(0), public_member, 1, 0, embed_line, embed_col
+        name_copy, field_doc, embed_type, cast<*AST::AstNode>(0), public_member, 1, 0, embed_line, embed_col
       );
 
       if (public_member == 1) {
@@ -686,10 +722,14 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
 
     let field_function: *AST::AstNode = cast<*AST::AstNode>(0);
     let field_type:     *AST::AstNode = cast<*AST::AstNode>(0);
+    let field_doc_taken: int = 0;
 
     if (p.current().kind == TOK::LumaTokenType::TOK_RIGHT_ARROW) {
       p.advance();
-      field_function = _fn(p, field_name, public_member, field_returns_ownership, field_takes_ownership);
+      field_function = _fn(p, field_name, public_member, field_returns_ownership, field_takes_ownership, field_doc);
+      if (field_function != cast<*AST::AstNode>(0)) {
+        field_doc_taken = 1;
+      }
 
       let len: int = STRING::strlen(field_name);
       let name_copy: *byte = cast<*byte>(alloc(len + 1));
@@ -702,6 +742,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
         VEC::free_vector(&public_fields);
         VEC::free_vector(&private_fields);
         VEC::free_vector(&type_params);
+        if (field_doc != cast<*byte>(0)) free(field_doc);
         return cast<*AST::AstNode>(0);
       }
       p.consume(TOK::LumaTokenType::TOK_COLON, "Expected ':' after field name.");
@@ -715,11 +756,19 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
       VEC::free_vector(&public_fields);
       VEC::free_vector(&private_fields);
       VEC::free_vector(&type_params);
+      if (field_doc_taken == 0 && field_doc != cast<*byte>(0)) free(field_doc);
       return cast<*AST::AstNode>(0);
     }
 
+    // The method decl already owns `field_doc` (see `_fn` above); passing it
+    // to the field decl too would double-free. Data fields get it here.
+    let field_decl_doc: *byte = field_doc;
+    if (field_doc_taken == 1) {
+      field_decl_doc = cast<*byte>(0);
+    }
+
     let field_decl: *AST::AstNode = SAST::make_field_decl(
-      field_name, "", field_type, field_function, public_member, 0, field_is_static, field_line, field_col
+      field_name, field_decl_doc, field_type, field_function, public_member, 0, field_is_static, field_line, field_col
     );
 
     if (public_member == 1) {
@@ -728,6 +777,10 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
       private_fields.push_back(cast<*void>(&field_decl));
     }
   }
+
+  // A doc comment that preceded the closing `}` (or was otherwise never
+  // attached to a member) has no declaration to own it.
+  if (pending_doc != cast<*byte>(0)) free(pending_doc);
 
   p.consume(TOK::LumaTokenType::TOK_RBRACE, "Expected '}' to end struct declaration.");
   p.consume(TOK::LumaTokenType::TOK_SEMI,   "Expected ';' after struct declaration.");
@@ -751,8 +804,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int) *AST::AstNod
 #returns_ownership const print -> fn (p: *PARS::Parser, ln: int) *AST::AstNode { return cast<*AST::AstNode>(0); }
 
 #returns_ownership
-const var -> fn (p: *PARS::Parser, is_public: int) *AST::AstNode {
-  let doc_comment: *byte = "";
+const var -> fn (p: *PARS::Parser, is_public: int, doc_comment: *byte) *AST::AstNode {
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
@@ -1168,7 +1220,7 @@ const loop_init -> fn (p: *PARS::Parser) *AST::AstNode {
   p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' after loop initializer type.");
   let initializer: *AST::AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
 
-  return SAST::make_var_decl(name, "", type, initializer, 1, 0, line, col);
+  return SAST::make_var_decl(name, cast<*byte>(0), type, initializer, 1, 0, line, col);
 }
 
 #returns_ownership

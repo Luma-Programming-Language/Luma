@@ -1,0 +1,16 @@
+// error-type: Generics Error
+
+@module "main"
+
+const Thing -> struct {
+  x: int,
+
+  static make -> fn<T> (kind: int, line: int) T {
+    return cast<T>(0);
+  },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  let a: *Thing = Thing::make<*Thing, int>(1, 2);
+  return 0;
+}

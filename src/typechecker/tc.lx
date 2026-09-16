@@ -230,7 +230,7 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
     let job: GEN::Pending = GEN::pending_pop();
     STMT::register_declaration(job.decl, job.def_scope);
     if (STMT::typecheck_statement(job.decl, job.def_scope) == false) ok = false;
-    CORE::record_generated_decl(job.module_name, job.decl);
+    CORE::record_generated_decl(job.module_name, job.decl, job.owner, job.is_static);
   }
 
   // Bare type names that matched nothing when resolved — now that every

@@ -1,0 +1,33 @@
+@module "main"
+
+// Regression test for generic methods on a *plain* (non-generic) struct —
+// `make -> fn<T> (...) T`, where the method owns its own type parameters
+// (unlike generics_struct_methods.lx, where the method rides the struct's
+// `K, V` template). Before this fix, `register_field` resolved the method's
+// `T` return type against the module scope (unresolved → "unknown type
+// name"), calls were never instantiated as fn templates, and codegen emitted
+// the raw template spilling `T` into the generated C.
+
+const Thing -> struct {
+  x: int,
+
+  static make -> fn<T> (kind: int, line: int) T {
+    return cast<T>(0);
+  },
+};
+
+pub const main -> fn (argc: int, argv: **byte) int {
+  // Each distinct concrete instantiation must be codegen'd under its own
+  // mangled name (Thing::make<*Thing>, Thing::make<int>, ...) with the
+  // return type substituted — exactly like AstNode::make in ast.lx.
+  let a: *Thing = Thing::make<*Thing>(1, 2);
+  if (a != cast<*Thing>(0)) return 1;
+
+  let c: int = Thing::make<int>(1, 2);
+  if (c != 0) return 2;
+
+  let d: **byte = Thing::make<**byte>(1, 2);
+  if (d != cast<**byte>(0)) return 3;
+
+  return 0;
+}

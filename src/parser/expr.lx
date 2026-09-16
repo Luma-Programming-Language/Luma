@@ -102,6 +102,14 @@ const current_bp     -> fn (p: *PARS::Parser) int;
 
 #returns_ownership
 const nud -> fn (p: *PARS::Parser) *AST::AstNode { 
+  // Lexer-detected problems already have their own precise diagnostic;
+  // don't turn them into a generic "Expected an expression."
+  if (p.current().kind == TOK::LumaTokenType::TOK_ERROR) {
+    p.had_error = 1;
+    p.advance();
+    return cast<*AST::AstNode>(0);
+  }
+
   switch using TOK::LumaTokenType (p.current().kind) {
     TOK_NUMBER,     TOK_NUM_FLOAT, TOK_STRING, TOK_CHAR_LITERAL, 
     TOK_IDENTIFIER, TOK_TRUE,      TOK_FALSE
@@ -177,7 +185,17 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
   let member_ok: bool = left.kind == AST::NodeType::EXPR_MEMBER;
   if (member_ok) {
     let mn: *AST::MemberNode = cast<*AST::MemberNode>(left);
-    member_ok = mn.is_compiletime == 1 && mn.object.kind == AST::NodeType::EXPR_IDENTIFIER;
+    // A compiletime member names a template either directly (`Box::make<T>`,
+    // object = identifier) or through a module alias (`HMAP::HashMap::new<T>`,
+    // object = the nested compiletime member `HMAP::HashMap`) — accept both.
+    if (mn.is_compiletime != 1) {
+      member_ok = false;
+    } elif (mn.object.kind != AST::NodeType::EXPR_IDENTIFIER) {
+      let inner: *AST::MemberNode = cast<*AST::MemberNode>(mn.object);
+      member_ok = mn.object.kind == AST::NodeType::EXPR_MEMBER &&
+                  inner.is_compiletime == 1 &&
+                  inner.object.kind == AST::NodeType::EXPR_IDENTIFIER;
+    }
   }
   if (ident_ok == false && member_ok == false) return cast<*AST::AstNode>(0);
 

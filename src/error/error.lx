@@ -44,6 +44,16 @@ pub const error_add -> fn (err: ErrorInformation) void {
   }
 }
 
+// Like error_add, but marks `message` as consumed: lets a caller hand over
+// an dynamically-built message the way tc_error does, without the static
+// analyzer reporting it as leaked (the queued error outlives this call and
+// is never freed — the compiler exits shortly after printing, and any
+// messages built from *byte literals are untouched).
+#takes_ownership
+pub const error_add_msg -> fn (message: *byte, err: ErrorInformation) void {
+  error_add(err);
+}
+
 pub const error_clear -> fn () void {
   error_count = 0;
 }
@@ -78,9 +88,13 @@ pub const generate_line -> fn (tokens: *TOK::Token, token_count: int, target_lin
     loop [i: int = 0](i < token_count) : (++i) {
         if (tokens[i].line == target_line) {
             total_len = total_len + tokens[i].whitespace_len + tokens[i].len;
-            if (tokens[i].kind == TOK::LumaTokenType::TOK_STRING) {
-                total_len = total_len + 2;
-            }
+        if (tokens[i].kind == TOK::LumaTokenType::TOK_STRING) {
+            total_len = total_len + 2;
+        }
+        if (tokens[i].kind == TOK::LumaTokenType::TOK_DOC_COMMENT ||
+            tokens[i].kind == TOK::LumaTokenType::TOK_MODULE_DOC) {
+            total_len = total_len + 3;
+        }
         }
     }
 
@@ -97,6 +111,14 @@ pub const generate_line -> fn (tokens: *TOK::Token, token_count: int, target_lin
 
         let is_string: bool = (tokens[i].kind == TOK::LumaTokenType::TOK_STRING);
         if (is_string) { result[pos] = '"'; pos = pos + 1; }
+
+        if (tokens[i].kind == TOK::LumaTokenType::TOK_DOC_COMMENT) {
+          result[pos] = '/'; result[pos + 1] = '/'; result[pos + 2] = '/';
+          pos = pos + 3;
+        } elif (tokens[i].kind == TOK::LumaTokenType::TOK_MODULE_DOC) {
+          result[pos] = '/'; result[pos + 1] = '/'; result[pos + 2] = '!';
+          pos = pos + 3;
+        }
 
         let src: *byte = tokens[i].val;
         loop [j: int = 0](j < tokens[i].len) : (++j) {

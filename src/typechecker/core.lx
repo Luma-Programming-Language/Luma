@@ -91,6 +91,11 @@ pub const ModuleDependency -> struct {
 pub const GeneratedDecl -> struct {
   module_name: *byte,
   decl:        *AST::AstNode,
+  // For instantiated generic *methods* (Thing::make<T>): the owning struct
+  // and static flag, so codegen registers the concrete method as a method
+  // of the struct rather than a standalone function. NULL / 0 otherwise.
+  owner:       *byte,
+  is_static:   int,
 };
 
 let g_generated_decls: VEC::Vector;
@@ -102,9 +107,9 @@ const generated_decls_init -> fn () void {
   g_generated_decls = VEC::create_vector(sizeof<GeneratedDecl>);
 }
 
-pub const record_generated_decl -> fn (module_name: *byte, decl: *AST::AstNode) void {
+pub const record_generated_decl -> fn (module_name: *byte, decl: *AST::AstNode, owner: *byte, is_static: int) void {
   generated_decls_init();
-  let gd: GeneratedDecl = GeneratedDecl { module_name: module_name, decl: decl };
+  let gd: GeneratedDecl = GeneratedDecl { module_name: module_name, decl: decl, owner: owner, is_static: is_static };
   g_generated_decls.push_back(cast<*void>(&gd));
 }
 

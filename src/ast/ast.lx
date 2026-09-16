@@ -132,6 +132,22 @@ pub const AstNode -> struct {
   // allocation; never freed via this field. Lets codegen read an already
   // -computed static type straight off the AST instead of re-inferring it.
   resolved_type: *AstNode,
+
+  #returns_ownership
+  static make -> fn<T> (
+    kind: NodeType, 
+    category: NodeCategory, 
+    line: int, col: int
+  ) *T {
+    let n: *T = cast<*T>(alloc(sizeof<T>));
+    
+    n.kind     = kind;
+    n.category = category;
+    n.line     = line;
+    n.col      = col;
+
+    return n;
+  },
 };
 
 // ─── Preprocessor Nodes ──────────────────────────────────────────────────────
@@ -518,6 +534,12 @@ pub const ResolutionNode -> struct {
   ...AstNode,
   parts:      **byte,
   part_count: int,
+  // Explicit type arguments on the resolved *last* component, e.g. the
+  // `<int>` in `Alias::Box<int>` — a qualified generic type reference.
+  // Same storage convention as BasicTypeNode's type_args (the node frees
+  // them at teardown).
+  type_args:      **AstNode,
+  type_arg_count: int,
 };
 
 #takes_ownership
@@ -537,6 +559,7 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.body);
     free(n.name);
+    if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
     free(n.tokens);
     free(n.source);
     free(node);
@@ -776,6 +799,7 @@ pub const free_node -> fn (node: *AstNode) void {
   if (kind == NodeType::STMT_VAR_DECL || kind == NodeType::STMT_CONST_DECL) {
     let n: *VarDeclNode = cast<*VarDeclNode>(node);
     free(n.name);
+    if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
     free_node(n.var_type);
     free_node(n.initializer);
     free(node);
@@ -793,6 +817,7 @@ pub const free_node -> fn (node: *AstNode) void {
     free(n.param_names);
     free(n.param_types);
     free(n.name);
+    if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
     free_node(n.return_type);
     free_node(n.body);
     let ti: int = 0;
@@ -820,6 +845,7 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.private_members);
     free(n.name);
+    if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
     let tk: int = 0;
     loop (tk < n.type_param_count) {
       free(n.type_params[tk]);
@@ -833,6 +859,7 @@ pub const free_node -> fn (node: *AstNode) void {
   if (kind == NodeType::STMT_FIELD_DECL) {
     let n: *FieldDeclNode = cast<*FieldDeclNode>(node);
     free(n.name);
+    if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
     free_node(n.type_node);
     free_node(n.function);
     free(node);
@@ -854,6 +881,7 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.type_params);
     free(n.name);
+    if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
     free(node);
     return;
   }
@@ -1037,6 +1065,12 @@ pub const free_node -> fn (node: *AstNode) void {
       i = i + 1;
     }
     free(n.parts);
+    let j: int = 0;
+    loop (j < n.type_arg_count) {
+      free_node(n.type_args[j]);
+      j = j + 1;
+    }
+    free(n.type_args);
     free(node);
     return;
   }
@@ -1551,6 +1585,8 @@ pub const clone_node -> fn (node: *AstNode) *AstNode {
     c.kind = n.kind; c.category = n.category; c.line = n.line; c.col = n.col;
     c.parts = dup_str_array(n.parts, n.part_count);
     c.part_count = n.part_count;
+    c.type_args = clone_node_array(n.type_args, n.type_arg_count);
+    c.type_arg_count = n.type_arg_count;
     return cast<*AstNode>(c);
   }
 

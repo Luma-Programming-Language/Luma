@@ -202,10 +202,34 @@ const register_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, struc
   if (f.function == cast<*AST::AstNode>(0)) return;
 
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(f.function);
+
+  // A generic method (`make -> fn<T> (...) T`) on an ordinary struct is a
+  // template — only its concrete instantiations (registered via the
+  // generated-decl path, see register_generated_method) are codegen'd.
+  // Emitting the raw template here would spill the unresolved `T` names.
+  if (fd.type_param_count > 0) return;
+
   let fi: CG::FuncInfo = CG::FuncInfo {
     name: fd.name, module_name: module_name, decl: fd,
     is_extern: fd.body == cast<*AST::AstNode>(0), is_main: false, owner: struct_name,
     is_static: f.is_static == 1,
+  };
+  let v: *VEC::Vector = &ctx.funcs;
+  v.push_back(cast<*void>(&fi));
+}
+
+// A concrete generic-method instantiation (`Thing::make<T>` -> a FuncDeclNode
+// with a mangled name) isn't nested in any struct body, so register_method
+// can't see it. Register it as a method directly, carrying the owner struct
+// name + static flag that tc_generics threaded through the pending queue —
+// emission (c_name_for_method, self handling) keys off owner/is_static just
+// like an ordinary method.
+const register_generated_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, owner: *byte, is_static: int, decl: *AST::AstNode) void {
+  let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(decl);
+  let fi: CG::FuncInfo = CG::FuncInfo {
+    name: fd.name, module_name: module_name, decl: fd,
+    is_extern: fd.body == cast<*AST::AstNode>(0), is_main: false, owner: owner,
+    is_static: is_static == 1,
   };
   let v: *VEC::Vector = &ctx.funcs;
   v.push_back(cast<*void>(&fi));
@@ -342,7 +366,13 @@ const run_pass_a -> fn (ctx: *CG::CodegenContext, prog: *AST::ProgramNode, os: *
   let gi: int = 0;
   loop (gi < TCCORE::generated_decl_count()) {
     let gd: *TCCORE::GeneratedDecl = TCCORE::generated_decl_at(gi);
-    register_decl(ctx, os, gd.module_name, gd.decl);
+    // A concrete generic method (Thing::make<T>) must be registered as a
+    // method — the owner + static flag live on the generated-decl record.
+    if (gd.owner != cast<*byte>(0)) {
+      register_generated_method(ctx, gd.module_name, gd.owner, gd.is_static, gd.decl);
+    } else {
+      register_decl(ctx, os, gd.module_name, gd.decl);
+    }
     gi = gi + 1;
   }
 }

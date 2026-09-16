@@ -4,11 +4,12 @@
 
 #returns_ownership
 pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AST::AstNode {
-  let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(alloc(sizeof<AST::BasicTypeNode>));
-  n.kind = AST::NodeType::TYPE_BASIC;
-  n.category = AST::NodeCategory::Node_Category_TYPE;
-  n.line = line;
-  n.col = col;
+  let n: *AST::BasicTypeNode = AST::AstNode::make<AST::BasicTypeNode>(
+    AST::NodeType::TYPE_BASIC,
+    AST::NodeCategory::Node_Category_TYPE,
+    line,
+    col
+  );
 
   n.name = name;
   n.type_args = cast<**AST::AstNode>(0);
@@ -18,22 +19,24 @@ pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AST::AstNode
 
 #returns_ownership
 pub const make_pointer_type -> fn (pointee_type: *AST::AstNode, line: int, col: int) *AST::AstNode {
-  let n: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(alloc(sizeof<AST::PointerTypeNode>));
-  n.kind = AST::NodeType::TYPE_POINTER;
-  n.category = AST::NodeCategory::Node_Category_TYPE;
-  n.line = line;
-  n.col = col;
+  let n: *AST::PointerTypeNode = AST::AstNode::make<AST::PointerTypeNode>(
+    AST::NodeType::TYPE_POINTER,
+    AST::NodeCategory::Node_Category_TYPE,
+    line,
+    col
+  );
   n.pointee_type = pointee_type;
   return cast<*AST::AstNode>(n);
 }
 
 #returns_ownership
 pub const make_array_type -> fn (element_type: *AST::AstNode, size: *AST::AstNode, line: int, col: int) *AST::AstNode {
-  let n: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(alloc(sizeof<AST::ArrayTypeNode>));
-  n.kind = AST::NodeType::TYPE_ARRAY;
-  n.category = AST::NodeCategory::Node_Category_TYPE;
-  n.line = line;
-  n.col = col;
+  let n: *AST::ArrayTypeNode = AST::AstNode::make<AST::ArrayTypeNode>(
+    AST::NodeType::TYPE_ARRAY,
+    AST::NodeCategory::Node_Category_TYPE,
+    line,
+    col
+  );
   n.element_type = element_type;
   n.size = size;
   return cast<*AST::AstNode>(n);
@@ -41,11 +44,12 @@ pub const make_array_type -> fn (element_type: *AST::AstNode, size: *AST::AstNod
 
 #returns_ownership
 pub const make_func_type -> fn (param_types: **AST::AstNode, param_count: int, return_type: *AST::AstNode, line: int, col: int) *AST::AstNode {
-  let n: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(alloc(sizeof<AST::FuncTypeNode>));
-  n.kind = AST::NodeType::TYPE_FUNCTION;
-  n.category = AST::NodeCategory::Node_Category_TYPE;
-  n.line = line;
-  n.col = col;
+  let n: *AST::FuncTypeNode = AST::AstNode::make<AST::FuncTypeNode>(
+    AST::NodeType::TYPE_FUNCTION,
+    AST::NodeCategory::Node_Category_TYPE,
+    line,
+    col
+  );
   n.param_types = param_types;
   n.param_count = param_count;
   n.return_type = return_type;
@@ -54,12 +58,15 @@ pub const make_func_type -> fn (param_types: **AST::AstNode, param_count: int, r
 
 #returns_ownership
 pub const make_resolution_type -> fn (parts: **byte, part_count: int, line: int, col: int) *AST::AstNode {
-  let n: *AST::ResolutionNode = cast<*AST::ResolutionNode>(alloc(sizeof<AST::ResolutionNode>));
-  n.kind = AST::NodeType::TYPE_RESOLUTION;
-  n.category = AST::NodeCategory::Node_Category_TYPE;
-  n.line = line;
-  n.col = col;
+  let n: *AST::ResolutionNode = AST::AstNode::make<AST::ResolutionNode>(
+    AST::NodeType::TYPE_RESOLUTION,
+    AST::NodeCategory::Node_Category_TYPE,
+    line,
+    col
+  );
   n.parts = parts;
   n.part_count = part_count;
+  n.type_args = cast<**AST::AstNode>(0);
+  n.type_arg_count = 0;
   return cast<*AST::AstNode>(n);
 }

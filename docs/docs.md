@@ -571,10 +571,17 @@ concrete types it belongs to.
   (no arguments) doesn't name any instantiation and is an error.
 - **Right arity is required** — naming more or fewer type arguments than the
   template declares is a `Generics Error` at the reference site.
-- **Same-module only (for now):** a concrete instantiation is only reachable
-  when the template is declared in the module you're compiling. Referencing a
-  generic struct or enum (or calling a generic function) from an imported
-  module isn't supported yet.
+- **Cross-module works** — an imported generic struct, enum, or function is
+  referenced as `ALIAS::Name<T,...>` / `ALIAS::Name::make<T>(...)`, and every
+  concrete instantiation is codegen'd in the module that uses it (mangled
+  `MOD__Name__T1__T2`, so the same template can be instantiated from several
+  modules).
+- **Generic methods on plain structs** — a non-generic struct may declare a
+  method with its own type parameters (`static make -> fn<T> (...) T`).
+  These are instantiated per call site exactly like a generic function
+  (`Thing::make<*Thing>` → `Thing_make___Thing`); the raw template is never
+  emitted to C, and the type parameters it owns must not escape to module
+  scope (that was the "unknown type name" bug).
 
 ---
 

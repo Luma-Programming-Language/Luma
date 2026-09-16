@@ -309,6 +309,19 @@ const register_field -> fn (struct_name: *byte, member: *AST::AstNode, scope: *C
 
   if (f.function != cast<*AST::AstNode>(0)) {
     let fn_node: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(f.function);
+
+    if (fn_node.type_param_count > 0) {
+      // Generic method on an ordinary struct — e.g. `static make -> fn<T>
+      // (...) T`. Its param/return types name the method's *own* placeholders
+      // (T, U, ...), which are not in the module scope, so resolving them
+      // here would leave a fake unresolved-name error. Register it as a
+      // template (qualified `Thing.make`) instead; each `Thing::make<Args>`
+      // call site clones + substitutes it. The concrete instantiation is
+      // checked by tc.lx's drain, mirroring module-level generic functions.
+      GEN::register_method_template(scope.module_name, struct_name, f.function, f.is_static, scope);
+      return;
+    }
+
     loop [i: int = 0](i < fn_node.param_count) : (++i) {
       fn_node.param_types[i] = TYPE::resolve_type_ref(fn_node.param_types[i], scope);
     }

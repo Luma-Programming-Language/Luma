@@ -537,11 +537,52 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
         let inner_object: *AST::AstNode = inner.object;
         if (inner_object.kind == AST::NodeType::EXPR_IDENTIFIER) {
           let iobj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(inner_object);
+
+          // Generic enum member through a module alias — `G::State<int>::Idle`.
+          // The type args ride on this (outer) MemberNode (the parser's
+          // try_generic_instantiation attached them there), naming the *inner*
+          // member (`State`) as the template. Instantiate against the defining
+          // module's registry and rewrite the inner member to the mangled
+          // concrete name, so codegen's nested-member path emits against
+          // `State__int::Idle`. Mirrors the bare `State<int>::Idle` handling
+          // above: return the concrete nominal type directly (the concrete
+          // enum's own members are only registered during tc.lx's drain).
+          if (n.type_arg_count > 0) {
+            let impg: *CORE::ModuleImport = SCOPE::find_module_import(scope, iobj.name);
+            if (impg != cast<*CORE::ModuleImport>(0)) {
+              let fake: *AST::AstNode = TAST::make_basic_type(dup_str(inner.member), expr.line, expr.col);
+              let fb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(fake);
+              fb.type_args = n.type_args;
+              fb.type_arg_count = n.type_arg_count;
+              let out: *AST::AstNode = GEN::resolve_nominal_type_ref_in(fake, scope, impg.module_name);
+              if (out != cast<*AST::AstNode>(0) && out.kind == AST::NodeType::TYPE_BASIC) {
+                let ob: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(out);
+                free(inner.member);
+                inner.member = dup_str(ob.name);
+                n.type_args = fb.type_args;
+                free(ob.name);
+                free(out);
+                return TYPE::make_named_type(inner.member);
+              }
+            }
+          }
+
           let imp2: *CORE::ModuleImport = SCOPE::find_module_import(scope, iobj.name);
           if (imp2 != cast<*CORE::ModuleImport>(0)) {
             let qname2: *byte = qualify(inner.member, n.member);
             let msym2: *CORE::Symbol = SCOPE::scope_lookup_in_module(imp2.module_scope, qname2);
             if (msym2 != cast<*CORE::Symbol>(0)) return msym2.type;
+            // `inner.member` may name a *generic* struct template in the
+            // imported module (`G::Box::make<int, ...>(...)`): its concrete
+            // static methods register under the mangled owner only at tc.lx
+            // drain time, and its template itself has no scope symbol — so
+            // a missing "Box.make" here isn't necessarily an error. Mirror
+            // tc_call's same-module permissive handling (struct template +
+            // codegen owner-embedding method lookup) and stay lenient.
+            let gtmpl: *GEN::GenericTemplate = GEN::find_template(imp2.module_name, inner.member);
+            if (gtmpl != cast<*GEN::GenericTemplate>(0) && gtmpl.decl.kind == AST::NodeType::STMT_STRUCT) {
+              return TYPE::make_named_type(inner.member);
+            }
             // Same reasoning as the single-level alias case above: `iobj.name`
             // is a confirmed module alias, so `EnumName::Member` not existing
             // in that module is a real error, not something to stay
@@ -642,6 +683,46 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
         if (tmpl != cast<*GEN::GenericTemplate>(0)) {
           is_generic_call = true;
           ct = GEN::instantiate_function_call(n, tmpl, scope);
+        }
+      } else {
+        // Same-module generic *method* on an ordinary struct —
+        // `Thing::make<T>(...)`. Method templates are registered under the
+        // qualified name `Thing.make`; a bare fall-through would resolve the
+        // member and fail on the unresolved T. See tc_generics.
+        let mscope: *CORE::Scope = SCOPE::find_containing_module(scope);
+        if (mscope != cast<*CORE::Scope>(0)) {
+          let qname: *byte = qualify(obj.name, mn.member);
+          let mtmpl: *GEN::GenericTemplate = GEN::find_template(mscope.module_name, qname);
+          free(qname);
+          if (mtmpl != cast<*GEN::GenericTemplate>(0) &&
+              mtmpl.decl.kind == AST::NodeType::STMT_FUNCTION) {
+            is_generic_call = true;
+            ct = GEN::instantiate_method_call(n, obj.name, mtmpl, scope);
+          }
+        }
+      }
+    }
+  }
+  // `ALIAS::Type::method<T>(...)` — a generic method on an imported struct,
+  // reached through the module alias (three-segment compiletime member).
+  // The inner `ALIAS::Type` resolves the import; the method template's
+  // qualified name is looked up in *Type's* defining module.
+  if (is_generic_call == false && n.type_arg_count > 0 && callee.kind == AST::NodeType::EXPR_MEMBER) {
+    let mn2: *AST::MemberNode = cast<*AST::MemberNode>(callee);
+    if (mn2.is_compiletime == 1 && mn2.object.kind == AST::NodeType::EXPR_MEMBER) {
+      let inner: *AST::MemberNode = cast<*AST::MemberNode>(mn2.object);
+      if (inner.is_compiletime == 1 && inner.object.kind == AST::NodeType::EXPR_IDENTIFIER) {
+        let alias: *AST::IdentifierNode = cast<*AST::IdentifierNode>(inner.object);
+        let imp2: *CORE::ModuleImport = SCOPE::find_module_import(scope, alias.name);
+        if (imp2 != cast<*CORE::ModuleImport>(0)) {
+          let qname2: *byte = qualify(inner.member, mn2.member);
+          let mtmpl2: *GEN::GenericTemplate = GEN::find_template(imp2.module_name, qname2);
+          free(qname2);
+          if (mtmpl2 != cast<*GEN::GenericTemplate>(0) &&
+              mtmpl2.decl.kind == AST::NodeType::STMT_FUNCTION) {
+            is_generic_call = true;
+            ct = GEN::instantiate_method_call(n, inner.member, mtmpl2, scope);
+          }
         }
       }
     }
@@ -929,22 +1010,35 @@ const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: 
 
   if (n.name != cast<*byte>(0)) {
     // Only bare literals (`Name { ... }`) — an `Alias::Name { ... }` literal
-    // names a struct in another module whose decl is out of reach here.
-    if (n.alias == cast<*byte>(0)) {
+    // names a struct in another module whose decl is out of reach here. A
+    // generic literal's concrete name isn't registered until tc.lx's drain,
+    // so its fields can only be validated against the raw template.
+    if (n.alias == cast<*byte>(0) && n.type_arg_count == 0) {
       validate_struct_literal_fields(expr, scope, n.name);
     }
-    // A generic struct literal `Box<int> { ... }` — instantiate the type
-    // reference and rewrite this node's name to the concrete mangled name
+    // A generic struct literal `Box<int> { ... }` / `Alias::Box<int> { ... }`
+    // — instantiate the type reference (through the defining module when
+    // aliased) and rewrite this node's name to the concrete mangled name
     // (`Box__int`), so codegen emits against the concrete struct. The bare
     // `Name` nominal check is skipped: the concrete name is only registered
     // during tc.lx's drain, after this pass.
-    if (n.type_arg_count > 0 && n.alias == cast<*byte>(0)) {
+    if (n.type_arg_count > 0) {
       let orig_tcount: int = n.type_arg_count;
       let fake: *AST::AstNode = TAST::make_basic_type(dup_str(n.name), expr.line, expr.col);
       let fb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(fake);
       fb.type_args = n.type_args;
       fb.type_arg_count = n.type_arg_count;
-      let out: *AST::AstNode = GEN::resolve_nominal_type_ref(fake, scope);
+      let out: *AST::AstNode = cast<*AST::AstNode>(0);
+      if (n.alias != cast<*byte>(0)) {
+        let imp: *CORE::ModuleImport = SCOPE::find_module_import(scope, n.alias);
+        if (imp == cast<*CORE::ModuleImport>(0)) {
+          ERR::tc_error_id(expr, n.alias, "Module Error", "unknown module alias", "not found");
+          return TYPE::make_named_type(n.name);
+        }
+        out = GEN::resolve_nominal_type_ref_in(fake, scope, imp.module_name);
+      } else {
+        out = GEN::resolve_nominal_type_ref(fake, scope);
+      }
       if (out != cast<*AST::AstNode>(0) && out.kind == AST::NodeType::TYPE_BASIC) {
         let ob: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(out);
         free(n.name);

@@ -1,123 +1,6 @@
 @module "main"
 
-const EntryState -> enum { Empty, Occupied, Deleted };
-const Entry -> struct<K, V> {
-  key:   K,
-  value: V,
-  state: EntryState,
-};
-
-const HashMap -> struct<K, V> {
-priv:
-  entries: *Entry<K, V>,
-  tombstones: uint,
-  cap:        uint,
-  len:        uint,
-
-  hash:   fn (K)    uint,
-  equals: fn (K, K) bool,
-
-pub:
-  #returns_ownership
-  static new -> fn<K, V> (
-    hash:   fn (K)    uint,
-    equals: fn (K, K) bool
-  ) *HashMap<K, V> { 
-    let map: *HashMap<K, V> = cast<*HashMap<K, V>>(
-      alloc(sizeof<HashMap<K, V>>)
-    );
- 
-    map.tombstones = 0;
-    map.cap = 8;
-    map.len = 0;
-
-    map.hash = hash;
-    map.equals = equals;
-
-    map.entries = cast<*Entry<K, V>>(
-      alloc(sizeof<Entry<K, V>> * map.cap)
-    );
-
-    loop [i: uint = 0](i >= map.cap) : (++i) {
-      let entry: *Entry<K, V> = &map.entries[i];
-      entry.state = EntryState::Empty;
-    }
-
-    return map;
-  },
-
-  #takes_ownership 
-  _free -> fn () void {
-    free(self.entries);
-    free(self);
-  },
-  
-  insert -> fn (key: K, value: V) bool { 
-    let index: uint = self.hash(key) % self.cap;
-
-    loop {
-      let entry: *Entry<K, V> = &self.entries[index];
-
-      if (entry.state == EntryState::Empty) {
-        entry.key = key;
-        entry.value = value;
-        entry.state = EntryState::Occupied;
-
-        self.len = self.len + 1;
-        return true;
-      }
-
-      if (entry.state == EntryState::Occupied) {
-        if (self.equals(entry.key, key)) {
-          entry.value = value;
-          return false;
-        }
-      }
-
-      index = (index + 1) % self.cap;
-    }
-
-    return false; 
-  },
-
-  get -> fn (key: K) V {
-    let index: uint = self.hash(key) % self.cap;
-
-    loop {
-      let entry: *Entry<K, V> = &self.entries[index];
-
-      if (entry.state == EntryState::Empty) 
-        return cast<V>(0);
-
-      if (entry.state == EntryState::Occupied) {
-        if (self.equals(entry.key, key)) return entry.value;
-      }
-
-      index = (index + 1) % self.cap;
-    }
-  },
-
-  contains -> fn (key: K) bool { 
-    let index: uint = self.hash(key) % self.cap;
-
-    loop {
-      let entry: *Entry<K, V> = &self.entries[index];
-
-      if (entry.state == EntryState::Empty) 
-        return false;
-
-      if (entry.state == EntryState::Occupied) {
-        if (self.equals(entry.key, key)) return true;
-      }
-
-      index = (index + 1) % self.cap;
-    }
-  },
-
-  remove -> fn (key: K) V { return cast<V>(0); },
-
-  resize -> fn (size: uint) void {},
-};
+@use "std_hashmap" as HMAP
 
 /* 
   const sort -> fn<@cmp<T>> ( // Means that there is something to compare on T, and that T must have some sort of compareson
@@ -139,7 +22,8 @@ const hash_int -> fn (value: int) uint {
 const int_equals -> fn (a: int, b: int) bool { return a == b; }
 
 pub const main -> fn () int {
-  let map: *HashMap<int, int> = HashMap::new<int, int>(hash_int, int_equals);
+  let map: *HMAP::HashMap<int, int> = 
+    HMAP::HashMap::new<int, int>(hash_int, int_equals);
   defer map._free();
 
   map.insert(0, 123);

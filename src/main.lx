@@ -67,8 +67,13 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
     let addr: *int = cast<*int>(ptr);
     let linked_module: *AST::AstNode = PFILE::parse_file(cast<*byte>(*addr));
-    if (linked_module != cast<*AST::AstNode>(0))
-      modules.push_back(cast<*void>(&linked_module));
+    // parse_file already reported the failure (and printed it); a missing
+    // `-l` dependency can't be silently dropped from the program.
+    if (linked_module == cast<*AST::AstNode>(0)) {
+      VEC::free_vector(&modules);
+      return 1;
+    }
+    modules.push_back(cast<*void>(&linked_module));
   }
   
   if (build_config.anim) {

@@ -116,11 +116,42 @@ pub const LumaTokenType -> enum {
   TOK_DOCUMENT     
 };
 
+// A lexical error the lexer noticed while scanning. The lexer only records
+// these (plus their source location): it can't render a line_text for the
+// error system (that needs the finished token table) and it doesn't know
+// the file path either — parse_file re-issues each one through error.lx
+// after the token scan, once both are available.
+pub const LexError -> struct {
+  kind: int,
+  line: int,
+  col:  int,
+  len:  int,
+  // The offending character, for LEX_ERR_INVALID_CHARACTER (0 otherwise)
+  // — lets the report name it.
+  bad:  byte,
+};
+
+pub const MAX_LEX_ERRORS: int = 32;
+
+pub const LEX_ERR_UNKNOWN_DIRECTIVE:   int = 0; /**< an @word or #word that isn't a keyword */
+pub const LEX_ERR_UNTERMINATED_STRING: int = 1; /**< string literal hitting \n or EOF without a closing " */
+pub const LEX_ERR_EMPTY_CHAR:          int = 2; /**< '' or an opening ' run into EOF */
+pub const LEX_ERR_BAD_CHAR:            int = 3; /**< 'a' missing its closing ', or 'ab' multi-char */
+pub const LEX_ERR_INVALID_CHARACTER:   int = 4; /**< a character Luma has no token for (silently skipped before) */
+
 pub const Lexer -> struct {
   current: *byte,
   src: *byte,
   line: int, 
   col: int,
+
+  errors:      [LexError; 32],
+  error_count: int,
+
+  // Set the moment any of the above is recorded, so parse_file can fail the
+  // parse even when the offending characters never became tokens (an
+  // unrecognized character is skipped, not tokenized).
+  had_error: int,
   
   is_end  -> fn () int { if(self.current[0] == '\0') return 1; return 0; },
   peek    -> fn (offset: int) byte { return self.current[offset]; },
@@ -162,7 +193,21 @@ pub const Token -> struct {
 };
 
 pub const create_lexer -> fn (src: *byte) Lexer {
-  return Lexer { line: 1, col: 0, current: src, src: src };
+  let lx: Lexer;
+  lx.current = src;
+  lx.src = src;
+  lx.line = 1;
+  lx.col = 0;
+  lx.had_error = 0;
+  lx.error_count = 0;
+  loop [i: int = 0](i < MAX_LEX_ERRORS) : (++i) {
+    lx.errors[i].kind = 0;
+    lx.errors[i].line = 0;
+    lx.errors[i].col  = 0;
+    lx.errors[i].len  = 0;
+    lx.errors[i].bad  = cast<byte>(0);
+  }
+  return lx;
 }
 
 const SINGLE_SYMBOL_COUNT: int = 24;

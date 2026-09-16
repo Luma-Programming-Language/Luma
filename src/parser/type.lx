@@ -186,6 +186,17 @@ const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   );
   VEC::free_vector(&parts);
 
+  // Qualified generic type reference — `Alias::Box<int>` / `A::B::Box<int>`.
+  // The type args apply to the resolved *last* component; like the bare
+  // `Box<int>` case above, type position is its own grammar (no competing
+  // '<' operator), so no ambiguity/backtracking needed.
+  if (p.current().kind == TOK::LumaTokenType::TOK_LT) {
+    let targs: VEC::Vector = parse_type_arg_list(p);
+    let rn: *AST::ResolutionNode = cast<*AST::ResolutionNode>(node);
+    rn.type_arg_count = targs.size;
+    rn.type_args = PARS::vec_to_node_array(&targs);
+  }
+
   return node;
 }
 

@@ -517,11 +517,14 @@ pub const lsp_analyze_and_publish -> fn (uri: *byte) void {
 // Document Symbols
 // ============================================================================
 
-const SK_FUNCTION: int = 12;
-const SK_STRUCT:   int = 23;
-const SK_ENUM:     int = 10;
-const SK_VARIABLE: int = 13;
-const SK_CONSTANT: int = 14;
+const SK_FUNCTION:   int = 12;
+const SK_STRUCT:     int = 23;
+const SK_ENUM:       int = 10;
+const SK_VARIABLE:   int = 13;
+const SK_CONSTANT:   int = 14;
+const SK_METHOD:     int = 6;
+const SK_FIELD:      int = 8;
+const SK_ENUM_MEMBER: int = 22;
 
 // `doc.ast` is the ProgramNode built for the single scratch file this
 // document was last analyzed as (see lsp_analyze) — unwrap to its one
@@ -548,7 +551,7 @@ const make_position -> fn (line: int, character: int) *J::JsonValue {
 // span the length of the name, anchored at the declaration's start. Good
 // enough to navigate to; not pixel-accurate around the identifier.
 #returns_ownership
-const make_symbol -> fn (name: *byte, kind: int, line: int, col: int) *J::JsonValue {
+const make_symbol -> fn (name: *byte, kind: int, line: int, col: int, children: *J::JsonValue) *J::JsonValue {
   // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
   let start_line: int = 0;
   if (line > 0) { start_line = line - 1; }
@@ -572,12 +575,51 @@ const make_symbol -> fn (name: *byte, kind: int, line: int, col: int) *J::JsonVa
   J::json_object_set(sym, "kind", J::json_int(kind));
   J::json_object_set(sym, "range", range);
   J::json_object_set(sym, "selectionRange", selection_range);
+  if (children != cast<*J::JsonValue>(0)) {
+    J::json_object_set(sym, "children", children);
+  }
   return sym;
 }
 
-// Flat (non-nested) list of the document's top-level declarations — enough
-// for an editor outline/breadcrumb view. Struct fields, enum members, and
-// nested scopes aren't walked yet.
+#returns_ownership
+const make_struct_symbol_children -> fn (sd: *AST::StructDeclNode) *J::JsonValue {
+  let arr: *J::JsonValue = J::json_array();
+  loop [i: int = 0](i < sd.public_count) : (++i) {
+    let f: *AST::AstNode = sd.public_members[i];
+    if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
+      let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+      let kind: int = SK_FIELD;
+      if (fld.function != cast<*AST::AstNode>(0)) { kind = SK_METHOD; }
+      J::json_array_push(arr, make_symbol(fld.name, kind, fld.line, fld.col, cast<*J::JsonValue>(0)));
+    }
+  }
+  loop [i: int = 0](i < sd.private_count) : (++i) {
+    let f: *AST::AstNode = sd.private_members[i];
+    if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
+      let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+      let kind: int = SK_FIELD;
+      if (fld.function != cast<*AST::AstNode>(0)) { kind = SK_METHOD; }
+      J::json_array_push(arr, make_symbol(fld.name, kind, fld.line, fld.col, cast<*J::JsonValue>(0)));
+    }
+  }
+  return arr;
+}
+
+#returns_ownership
+const make_enum_symbol_children -> fn (ed: *AST::EnumDeclNode) *J::JsonValue {
+  // Enum members are plain name constants with no per-member position, so
+  // every child is anchored at the enum declaration's line (see the
+  // `make_symbol` range approximation note above).
+  let arr: *J::JsonValue = J::json_array();
+  loop [i: int = 0](i < ed.member_count) : (++i) {
+    J::json_array_push(arr, make_symbol(ed.members[i], SK_ENUM_MEMBER, ed.line, ed.col, cast<*J::JsonValue>(0)));
+  }
+  return arr;
+}
+
+// List of the document's top-level declarations with struct/enum children
+// expanded — provides an editor's outline/breadcrumb view (LSP
+// `textDocument/documentSymbol`).
 #returns_ownership
 pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
   let arr: *J::JsonValue = J::json_array();
@@ -591,13 +633,15 @@ pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
 
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
       let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
-      J::json_array_push(arr, make_symbol(fd.name, SK_FUNCTION, bn.line, bn.col));
+      J::json_array_push(arr, make_symbol(fd.name, SK_FUNCTION, bn.line, bn.col, cast<*J::JsonValue>(0)));
     } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
       let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
-      J::json_array_push(arr, make_symbol(sd.name, SK_STRUCT, bn.line, bn.col));
+      let children: *J::JsonValue = make_struct_symbol_children(sd);
+      J::json_array_push(arr, make_symbol(sd.name, SK_STRUCT, bn.line, bn.col, children));
     } elif (bn.kind == AST::NodeType::STMT_ENUM) {
       let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
-      J::json_array_push(arr, make_symbol(ed.name, SK_ENUM, bn.line, bn.col));
+      let children: *J::JsonValue = make_enum_symbol_children(ed);
+      J::json_array_push(arr, make_symbol(ed.name, SK_ENUM, bn.line, bn.col, children));
     } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
       // The parser always emits STMT_VAR_DECL for both `let` and `const` —
       // is_mutable is what actually distinguishes them (STMT_CONST_DECL
@@ -606,7 +650,7 @@ pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
       let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
       let kind: int = SK_CONSTANT;
       if (vd.is_mutable == 1) { kind = SK_VARIABLE; }
-      J::json_array_push(arr, make_symbol(vd.name, kind, bn.line, bn.col));
+      J::json_array_push(arr, make_symbol(vd.name, kind, bn.line, bn.col, cast<*J::JsonValue>(0)));
     }
   }
 
@@ -713,6 +757,14 @@ const format_func_signature -> fn (fd: *AST::FuncDeclNode) *byte {
   let b: StrBuf = sb_init();
   sb_str(&b, "fn ");
   sb_str(&b, fd.name);
+  if (fd.type_param_count > 0) {
+    sb_str(&b, "<");
+    loop [i: int = 0](i < fd.type_param_count) : (++i) {
+      if (i > 0) { sb_str(&b, ", "); }
+      sb_str(&b, fd.type_params[i]);
+    }
+    sb_str(&b, ">");
+  }
   sb_str(&b, "(");
   loop [i: int = 0](i < fd.param_count) : (++i) {
     if (i > 0) { sb_str(&b, ", "); }
@@ -730,26 +782,62 @@ const format_func_signature -> fn (fd: *AST::FuncDeclNode) *byte {
 }
 
 #returns_ownership
+const format_struct_member -> fn (member: *AST::AstNode) *byte {
+  let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(member);
+  let b: StrBuf = sb_init();
+  if (fld.function != cast<*AST::AstNode>(0)) {
+    // Method: reuse the function formatter (it already knows the name), but
+    // surface the `static` keyword when the enclosing field says so.
+    if (fld.is_static == 1) { sb_str(&b, "static "); }
+    let ms: *byte = format_func_signature(cast<*AST::FuncDeclNode>(fld.function));
+    sb_str(&b, ms);
+    free(ms);
+  } else {
+    sb_str(&b, fld.name);
+    sb_str(&b, ": ");
+    if (fld.type_node != cast<*AST::AstNode>(0)) {
+      let t: *byte = TYPE::type_to_string(fld.type_node);
+      sb_str(&b, t);
+      free(t);
+    }
+  }
+  return sb_finish(&b);
+}
+
+#returns_ownership
 const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
   let b: StrBuf = sb_init();
   sb_str(&b, "struct ");
   sb_str(&b, sd.name);
+  if (sd.type_param_count > 0) {
+    sb_str(&b, "<");
+    loop [i: int = 0](i < sd.type_param_count) : (++i) {
+      if (i > 0) { sb_str(&b, ", "); }
+      sb_str(&b, sd.type_params[i]);
+    }
+    sb_str(&b, ">");
+  }
   sb_str(&b, " { ");
 
-  let field_count: int = 0;
+  let member_count: int = 0;
   loop [i: int = 0](i < sd.public_count) : (++i) {
     let f: *AST::AstNode = sd.public_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
-      let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
-      if (fld.function == cast<*AST::AstNode>(0)) { // plain data field, not a method
-        if (field_count > 0) { sb_str(&b, ", "); }
-        sb_str(&b, fld.name);
-        sb_str(&b, ": ");
-        let t: *byte = TYPE::type_to_string(fld.type_node);
-        sb_str(&b, t);
-        free(t);
-        field_count = field_count + 1;
-      }
+      if (member_count > 0) { sb_str(&b, ", "); }
+      let ms: *byte = format_struct_member(f);
+      sb_str(&b, ms);
+      free(ms);
+      member_count = member_count + 1;
+    }
+  }
+  loop [i: int = 0](i < sd.private_count) : (++i) {
+    let f: *AST::AstNode = sd.private_members[i];
+    if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
+      if (member_count > 0) { sb_str(&b, ", "); }
+      let ms: *byte = format_struct_member(f);
+      sb_str(&b, ms);
+      free(ms);
+      member_count = member_count + 1;
     }
   }
   sb_str(&b, " }");
@@ -790,6 +878,30 @@ const format_var_signature -> fn (vd: *AST::VarDeclNode) *byte {
     free(t);
   }
   return sb_finish(&b);
+}
+
+// Takes ownership of `sig` and returns it unchanged when there's no doc
+// comment, otherwise a new buffer `sig + '\n' + doc_comment` (the trailing
+// blank line the parser's consume_doc_comments leaves behind is trimmed so
+// markdown code blocks stay tidy).
+#returns_ownership
+const append_doc_comment -> fn (sig: *byte, doc_comment: *byte) *byte {
+  if (doc_comment == cast<*byte>(0) || doc_comment[0] == '\0') return sig;
+
+  let slen: int = STR::strlen(sig);
+  let dlen: int = STR::strlen(doc_comment);
+  loop (dlen > 0 && doc_comment[dlen - 1] == '\n') {
+    dlen = dlen - 1;
+  }
+  if (dlen == 0) return sig;
+
+  let out: *byte = cast<*byte>(alloc(slen + 1 + dlen + 1));
+  MEM::memcpy(cast<*void>(out), cast<*void>(sig), slen);
+  out[slen] = '\n';
+  MEM::memcpy(cast<*void>(cast<int>(out) + slen + 1), cast<*void>(doc_comment), dlen);
+  out[slen + 1 + dlen] = '\0';
+  free(sig);
+  return out;
 }
 
 // ── Locals & parameters ──────────────────────────────────────────────────────
@@ -951,27 +1063,280 @@ const find_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: boo
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
       let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
       if (STR::strcmp(fd.name, name) == 0 && (public_only == false || fd.is_public == 1)) {
-        return format_func_signature(fd);
+        return append_doc_comment(format_func_signature(fd), fd.doc_comment);
       }
     } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
       let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
       if (STR::strcmp(sd.name, name) == 0 && (public_only == false || sd.is_public == 1)) {
-        return format_struct_signature(sd);
+        return append_doc_comment(format_struct_signature(sd), sd.doc_comment);
       }
     } elif (bn.kind == AST::NodeType::STMT_ENUM) {
       let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
       if (STR::strcmp(ed.name, name) == 0 && (public_only == false || ed.is_public == 1)) {
-        return format_enum_signature(ed);
+        return append_doc_comment(format_enum_signature(ed), ed.doc_comment);
       }
     } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
       let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
       if (STR::strcmp(vd.name, name) == 0 && (public_only == false || vd.is_public == 1)) {
-        return format_var_signature(vd);
+        return append_doc_comment(format_var_signature(vd), vd.doc_comment);
       }
     }
   }
 
   return cast<*byte>(0);
+}
+
+// ── Generic type parameters ──────────────────────────────────────────────────
+//
+// `fn<T, U>` / `struct<T, U>` / `enum<T, U>` declare names that are only in
+// scope inside their own declaration. Top-level decls don't carry end
+// positions, so each generic decl's span is derived on demand: its end line
+// is the deepest line any node it contains reaches. That answers "which
+// generic declaration owns the cursor" precisely enough to resolve `T` for
+// hover and go-to-definition — for free functions, structs (whose methods
+// may be generic themselves, e.g. `static new -> fn<K, V>`, and shadow the
+// struct's own params), and enums (header only — plain name constants, no
+// body to reference `T` from).
+
+const max_line_in_stmt -> fn (stmt: *AST::AstNode) int {
+  if (stmt == cast<*AST::AstNode>(0)) return 0;
+
+  let best: int = stmt.line;
+
+  if (stmt.kind == AST::NodeType::STMT_BLOCK) {
+    let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
+    loop [i: int = 0](i < blk.stmt_count) : (++i) {
+      let m: int = max_line_in_stmt(blk.statements[i]);
+      if (m > best) { best = m; }
+    }
+  } elif (stmt.kind == AST::NodeType::STMT_IF) {
+    let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
+    let m: int = max_line_in_stmt(n.then_stmt);
+    if (m > best) { best = m; }
+    loop [i: int = 0](i < n.elif_count) : (++i) {
+      m = max_line_in_stmt(n.elif_stmts[i]);
+      if (m > best) { best = m; }
+    }
+    m = max_line_in_stmt(n.else_stmt);
+    if (m > best) { best = m; }
+  } elif (stmt.kind == AST::NodeType::STMT_LOOP) {
+    let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
+    loop [i: int = 0](i < n.init_count) : (++i) {
+      let m: int = max_line_in_stmt(n.initializer[i]);
+      if (m > best) { best = m; }
+    }
+    let mb: int = max_line_in_stmt(n.body);
+    if (mb > best) { best = mb; }
+  } elif (stmt.kind == AST::NodeType::STMT_SWITCH) {
+    let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
+    loop [i: int = 0](i < n.case_count) : (++i) {
+      let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
+      let mc: int = max_line_in_stmt(c.body);
+      if (mc > best) { best = mc; }
+    }
+    if (n.default_case != cast<*AST::AstNode>(0)) {
+      let d: *AST::DefaultNode = cast<*AST::DefaultNode>(n.default_case);
+      let md: int = max_line_in_stmt(d.body);
+      if (md > best) { best = md; }
+    }
+  } elif (stmt.kind == AST::NodeType::STMT_DEFER) {
+    let n: *AST::DeferNode = cast<*AST::DeferNode>(stmt);
+    let m: int = max_line_in_stmt(n.statement);
+    if (m > best) { best = m; }
+  }
+
+  return best;
+}
+
+const func_end_line -> fn (fd: *AST::FuncDeclNode) int {
+  if (fd.body == cast<*AST::AstNode>(0)) return fd.line;
+  return max_line_in_stmt(fd.body);
+}
+
+const field_end_line -> fn (f: *AST::AstNode) int {
+  let fl: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+  let end: int = fl.line;
+  if (fl.function != cast<*AST::AstNode>(0)) {
+    let fn_end: int = func_end_line(cast<*AST::FuncDeclNode>(fl.function));
+    if (fn_end > end) { end = fn_end; }
+  }
+  return end;
+}
+
+const struct_end_line -> fn (sd: *AST::StructDeclNode) int {
+  let end: int = sd.line;
+  loop [i: int = 0](i < sd.public_count) : (++i) {
+    let fe: int = field_end_line(sd.public_members[i]);
+    if (fe > end) { end = fe; }
+  }
+  loop [i: int = 0](i < sd.private_count) : (++i) {
+    let fe: int = field_end_line(sd.private_members[i]);
+    if (fe > end) { end = fe; }
+  }
+  return end;
+}
+
+const TypeParamHit -> struct {
+  found: bool,
+  node:  *AST::AstNode, // generic Func/Struct/Enum decl owning the type param
+  idx:   int,           // index into that node's type_params array
+};
+
+const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: int, word: *byte) TypeParamHit {
+  let miss: TypeParamHit = TypeParamHit { found: false, node: cast<*AST::AstNode>(0), idx: 0 };
+  let best: TypeParamHit = miss;
+
+  loop [i: int = 0](i < sd.public_count) : (++i) {
+    let f: *AST::AstNode = sd.public_members[i];
+    if (f.kind != AST::NodeType::STMT_FIELD_DECL) continue;
+    let fl: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+    if (fl.function == cast<*AST::AstNode>(0)) continue;
+    let mfn: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(fl.function);
+    if (mfn.type_param_count == 0) continue;
+    if (one_indexed_line < mfn.line || one_indexed_line > func_end_line(mfn)) continue;
+    loop [k: int = 0](k < mfn.type_param_count) : (++k) {
+      if (STR::strcmp(mfn.type_params[k], word) == 0) {
+        best = TypeParamHit { found: true, node: fl.function, idx: k };
+      }
+    }
+  }
+  loop [i: int = 0](i < sd.private_count) : (++i) {
+    let f: *AST::AstNode = sd.private_members[i];
+    if (f.kind != AST::NodeType::STMT_FIELD_DECL) continue;
+    let fl: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
+    if (fl.function == cast<*AST::AstNode>(0)) continue;
+    let mfn: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(fl.function);
+    if (mfn.type_param_count == 0) continue;
+    if (one_indexed_line < mfn.line || one_indexed_line > func_end_line(mfn)) continue;
+    loop [k: int = 0](k < mfn.type_param_count) : (++k) {
+      if (STR::strcmp(mfn.type_params[k], word) == 0) {
+        best = TypeParamHit { found: true, node: fl.function, idx: k };
+      }
+    }
+  }
+
+  return best;
+}
+
+const resolve_type_param -> fn (mod: *AST::ModuleNode, one_indexed_line: int, word: *byte) TypeParamHit {
+  let miss: TypeParamHit = TypeParamHit { found: false, node: cast<*AST::AstNode>(0), idx: 0 };
+  if (mod == cast<*AST::ModuleNode>(0)) return miss;
+
+  let best: TypeParamHit = miss;
+  let n: int = mod.body_count;
+  loop [i: int = 0](i < n) : (++i) {
+    let bn: *AST::AstNode = mod.body[i];
+
+    if (bn.kind == AST::NodeType::STMT_FUNCTION) {
+      let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
+      if (fd.type_param_count == 0) continue;
+      if (one_indexed_line < fd.line || one_indexed_line > func_end_line(fd)) continue;
+      loop [k: int = 0](k < fd.type_param_count) : (++k) {
+        if (STR::strcmp(fd.type_params[k], word) == 0) {
+          best = TypeParamHit { found: true, node: bn, idx: k };
+        }
+      }
+    } elif (bn.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
+      if (one_indexed_line < sd.line || one_indexed_line > struct_end_line(sd)) continue;
+      let mh: TypeParamHit = struct_method_hit(sd, one_indexed_line, word);
+      if (mh.found) { best = mh; continue; }
+      if (sd.type_param_count > 0) {
+        loop [k: int = 0](k < sd.type_param_count) : (++k) {
+          if (STR::strcmp(sd.type_params[k], word) == 0) {
+            best = TypeParamHit { found: true, node: bn, idx: k };
+          }
+        }
+      }
+    } elif (bn.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
+      if (ed.type_param_count == 0 || one_indexed_line != ed.line) continue;
+      loop [k: int = 0](k < ed.type_param_count) : (++k) {
+        if (STR::strcmp(ed.type_params[k], word) == 0) {
+          best = TypeParamHit { found: true, node: bn, idx: k };
+        }
+      }
+    }
+  }
+
+  return best;
+}
+
+#returns_ownership
+const format_type_param_hover -> fn (name: *byte, sig: *byte) *byte {
+  let b: StrBuf = sb_init();
+  sb_str(&b, "type parameter ");
+  sb_str(&b, name);
+  sb_str(&b, " of ");
+  sb_str(&b, sig);
+  free(sig);
+  return sb_finish(&b);
+}
+
+const ParamPos -> struct {
+  line: int, // 1-based source line
+  col:  int, // 0-based column
+  len:  int,
+};
+
+const line_start_offset -> fn (text: *byte, line_index: int) int {
+  let len: int = STR::strlen(text);
+  let i: int = 0;
+  let li: int = 0;
+  loop (i < len && li < line_index) {
+    if (text[i] == '\n') { li = li + 1; }
+    i = i + 1;
+  }
+  return i;
+}
+
+// Locates the hit's type parameter within its declaration's `<T, U>`
+// header (the keyword `fn`/`struct`/`enum` is `keylen` chars long, and the
+// list follows it on the same line). Falls back to just past the keyword if
+// the text doesn't line up with the AST, so the feature degrades gracefully.
+const locate_type_param -> fn (text: *byte, hit: TypeParamHit) ParamPos {
+  let owner: *AST::AstNode = hit.node;
+
+  let keylen: int = 0;
+  let params: **byte = cast<**byte>(0);
+  if (owner.kind == AST::NodeType::STMT_FUNCTION) {
+    keylen = 2; // "fn"
+    params = cast<*AST::FuncDeclNode>(owner).type_params;
+  } elif (owner.kind == AST::NodeType::STMT_STRUCT) {
+    keylen = 6; // "struct"
+    params = cast<*AST::StructDeclNode>(owner).type_params;
+  } else {
+    keylen = 4; // "enum"
+    params = cast<*AST::EnumDeclNode>(owner).type_params;
+  }
+
+  let miss: ParamPos = ParamPos { line: owner.line, col: owner.col + keylen, len: 1 };
+  if (params == cast<**byte>(0)) return miss;
+
+  let plen: int = STR::strlen(params[hit.idx]);
+  let line_index: int = owner.line - 1;
+  let ls: int = line_start_offset(text, line_index);
+  let le: int = ls;
+  loop (text[le] != cast<byte>(0) && text[le] != '\n') { le = le + 1; }
+
+  let p: int = ls + owner.col + keylen;
+  loop (p < le && (text[p] == ' ' || text[p] == '\t')) { p = p + 1; }
+  if (p >= le || text[p] != '<') return miss;
+  p = p + 1;
+
+  loop [i: int = 0](i < hit.idx) : (++i) {
+    loop (p < le && (text[p] == ' ' || text[p] == '\t')) { p = p + 1; }
+    loop (p < le && text[p] != ' ' && text[p] != '\t' && text[p] != ',' && text[p] != '>' && text[p] != '\n') { p = p + 1; }
+    loop (p < le && (text[p] == ' ' || text[p] == '\t')) { p = p + 1; }
+    if (p < le && text[p] == ',') { p = p + 1; } else { return miss; }
+  }
+  loop (p < le && (text[p] == ' ' || text[p] == '\t')) { p = p + 1; }
+  if (p >= le || p + plen > le) return miss;
+
+  // Guard against a text/AST mismatch before reporting a precise span.
+  if (STR::strncmp(cast<*byte>(cast<int>(text) + p), params[hit.idx], plen) != 0) return miss;
+
+  return ParamPos { line: line_index + 1, col: p - ls, len: plen };
 }
 
 #returns_ownership
@@ -987,6 +1352,24 @@ const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_index
   // the document's own file — check them before anything else.
   let local: LocalThing = find_local_thing(own_mod, zero_indexed_line + 1, name);
   if (local.found) return format_local_hover(name, local);
+
+  let tph: TypeParamHit = resolve_type_param(own_mod, zero_indexed_line + 1, name);
+  if (tph.found) {
+    let owner: *AST::AstNode = tph.node;
+    if (owner.kind == AST::NodeType::STMT_FUNCTION) {
+      let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(owner);
+      let sig: *byte = format_func_signature(fd);
+      return append_doc_comment(format_type_param_hover(name, sig), fd.doc_comment);
+    } elif (owner.kind == AST::NodeType::STMT_STRUCT) {
+      let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(owner);
+      let sig: *byte = format_struct_signature(sd);
+      return append_doc_comment(format_type_param_hover(name, sig), sd.doc_comment);
+    } elif (owner.kind == AST::NodeType::STMT_ENUM) {
+      let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(owner);
+      let sig: *byte = format_enum_signature(ed);
+      return append_doc_comment(format_type_param_hover(name, sig), ed.doc_comment);
+    }
+  }
 
   let own: *byte = find_in_module(own_mod, name, false);
   if (own != cast<*byte>(0)) return own;
@@ -1110,6 +1493,13 @@ pub const lsp_definition -> fn (uri: *byte, line: int, character: int) *J::JsonV
     return make_location_json(doc.uri, local.line, local.col, local.name_len);
   }
 
+  let tph: TypeParamHit = resolve_type_param(own_mod, line + 1, word);
+  if (tph.found) {
+    free(word);
+    let pos: ParamPos = locate_type_param(doc.text, tph);
+    return make_location_json(doc.uri, pos.line, pos.col, pos.len);
+  }
+
   let own_hit: DefHit = find_definition_in_module(own_mod, word, false);
   if (own_hit.found) {
     free(word);
@@ -1150,12 +1540,13 @@ const CK_CONSTANT:  int = 21;
 const CK_STRUCT:    int = 22;
 const CK_ENUM_MEMBER: int = 20;
 
-const KEYWORD_COUNT: int = 29;
-const KEYWORDS: [*byte; 29] = [
+const KEYWORD_COUNT: int = 37;
+const KEYWORDS: [*byte; 37] = [
   "let", "const", "pub", "fn", "struct", "enum", "if", "elif", "else",
   "loop", "switch", "return", "break", "continue", "defer", "cast",
   "sizeof", "output", "outputln", "true", "false", "null",
-  "int", "uint", "float", "double", "bool", "byte", "void"
+  "int", "uint", "float", "double", "bool", "byte", "void",
+  "priv", "using", "static", "input", "system", "alloc", "free", "as"
 ];
 
 #returns_ownership
@@ -1173,9 +1564,10 @@ const make_completion_item -> fn (label: *byte, kind: int, detail: *byte) *J::Js
 //
 // Tab-stop templates for the shapes of code that show up constantly in
 // real Luma (`${1:...}` placeholders, `$0` for where the cursor lands
-// last) — mirrors the old C LSP's completion snippet table, minus its
-// `fn<T>`/`struct<T>` generic-syntax entries, since this grammar doesn't
-// have generics (no TYPE_PARAMETER production anywhere in the parser).
+// last) — mirrors the old C LSP's completion snippet table, extended with
+// the `<T>` generic-declaration shapes (`fn<T>`/`struct<T>`/`enum<T>`, a
+// fixed grammar slot right after the keyword — see parser/stmt.lx), the
+// `static name -> fn ...` method form, and the `input<T>(...)` expression.
 // Every snippet here is real, verified syntax — lifted from or checked
 // against actual working code in this repo (e.g. #dll_import's exact
 // shape from std/io.lx, @link's from parser/stmt.lx's link_stmt).
@@ -1189,8 +1581,8 @@ const SnippetDef -> struct { label: *byte, snippet: *byte, detail: *byte, filter
 // e.g. the AST-node-kind dispatch `if (x.kind == ...) { let n: *T =
 // cast<*T>(x); ... }` shows up ~190 times across src/, the null-guard
 // early-return ~95 times, `alloc(sizeof<T>)` node construction ~70 times.
-const SNIPPET_COUNT: int = 42;
-const SNIPPETS: [SnippetDef; 42] = [
+const SNIPPET_COUNT: int = 47;
+const SNIPPETS: [SnippetDef; 47] = [
   SnippetDef { label: "const fn", snippet: "const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Function declaration", filter: "const fn" },
   SnippetDef { label: "pub const fn", snippet: "pub const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Public function declaration", filter: "pub const fn" },
   SnippetDef { label: "const struct", snippet: "const ${1:Name} -> struct {\n\t${2:field}: ${3:Type},$0\n};", detail: "Struct definition", filter: "const struct" },
@@ -1233,6 +1625,11 @@ const SNIPPETS: [SnippetDef; 42] = [
   SnippetDef { label: "vector create defer", snippet: "let ${1:vec}: VEC::Vector = VEC::create_vector(sizeof<${2:Type}>);\ndefer VEC::free_vector(&${1:vec});$0", detail: "New vector with matching cleanup", filter: "vector create_vector defer free" },
   SnippetDef { label: "doc comment", snippet: "/// $0", detail: "Item doc comment", filter: "/// doc comment" },
   SnippetDef { label: "module doc header", snippet: "//! ${1:One-line summary.}\n//!\n//! $0", detail: "Module-level doc header (top of file)", filter: "//! module doc header" },
+  SnippetDef { label: "const fn<T>", snippet: "const ${1:name} -> fn<${2:T}> (${3:params}) ${4:Type} {\n\t$0\n}", detail: "Generic function declaration", filter: "const fn generic T param" },
+  SnippetDef { label: "const struct<T>", snippet: "const ${1:Name} -> struct<${2:T}> {\n\t${3:field}: ${4:Type},$0\n};", detail: "Generic struct definition", filter: "const struct generic T param" },
+  SnippetDef { label: "const enum<T>", snippet: "const ${1:Name} -> enum<${2:T}> {\n\t${3:Variant},$0\n};", detail: "Generic enum definition", filter: "const enum generic T param" },
+  SnippetDef { label: "static method", snippet: "static ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Static method (no implicit self)", filter: "static method fn" },
+  SnippetDef { label: "input", snippet: "let ${1:value}: ${2:Type} = input<${2:Type}>(\"${3:prompt}\");$0", detail: "Prompt for typed input from stdin", filter: "input prompt read stdin" },
 ];
 
 #returns_ownership
@@ -2390,6 +2787,11 @@ pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
             // literal highlights, not just its inner text.
             let length: int = tok.len;
             if (tok.kind == TOK::LumaTokenType::TOK_STRING) { length = tok.len + 2; }
+            // Doc comments: `col`/`val` mark the `///` / `//!` opener, but
+            // `len`/`val` cover only the text after it (see lexer.lx) —
+            // extend the span so the marker highlights too.
+            if (tok.kind == TOK::LumaTokenType::TOK_DOC_COMMENT ||
+                tok.kind == TOK::LumaTokenType::TOK_MODULE_DOC) { length = tok.len + 3; }
             push_token(&final_tokens, tok.line, tok.col, length, cls.type_idx, cls.mods);
           }
         }

@@ -1,5 +1,7 @@
 @module "parser_file"
 
+@use "std_cstring" as STRING
+@use "std_memory"  as MEM
 @use "std_vector" as VEC
 @use "std_io"     as IO
 
@@ -12,6 +14,106 @@
 
 @use "parser"       as PARS
 @use "parse_stmt"   as PSTMT
+
+// Route the "could not read file" failure through the error system like
+// every other diagnostic (it used to be a bare stdout print). `message` is
+// stashed in the queued ErrorInformation for error_report() and never freed
+// — #takes_ownership lets the static analyzer treat passing the allocated
+// buffer here the same as an explicit free(), the error.lx standard.
+#takes_ownership
+const report_read_error -> fn (path: *byte, message: *byte) void {
+  let err: ERR::ErrorInformation = ERR::ErrorInformation {
+    error_type:   "IO Error",
+    file_path:    path,
+    message:      message,
+    line:         0,
+    col:          0,
+    line_text:    cast<*byte>(0),
+    token_length: 0,
+    label:        cast<*byte>(0),
+    note:         cast<*byte>(0),
+    help:         cast<*byte>(0),
+  };
+  ERR::error_add(err);
+  ERR::error_report();
+}
+
+// The lexer records lexical errors as it scans (unknown directive,
+// unterminated string/char, invalid character) but can't report them itself
+// — it has no file path yet and no finished token table to render the
+// source line from. Once the full token scan is done, re-issue each one as
+// a proper error.lx diagnostic.
+const post_lex_errors -> fn (lexer: *TOK::Lexer, tks: *TOK::Token, tok_count: int, file_path: *byte) void {
+  loop [i: int = 0](i < lexer.error_count) : (++i) {
+    let e: TOK::LexError = lexer.errors[i];
+    let error_type: *byte = "Syntax Error";
+    let message: *byte = cast<*byte>(0);
+    let label: *byte = cast<*byte>(0);
+    let help: *byte = cast<*byte>(0);
+    let dynamic_message: *byte = cast<*byte>(0);
+    let known: int = 1;
+
+    if (e.kind == TOK::LEX_ERR_UNKNOWN_DIRECTIVE) {
+      message = "unknown directive";
+      label = "unknown directive";
+      help = "known directives are @module, @use, @os, @link, #returns_ownership, #takes_ownership, #dll_import and #lib_import.";
+    } elif (e.kind == TOK::LEX_ERR_UNTERMINATED_STRING) {
+      message = "unterminated string literal";
+      label = "unterminated string literal";
+      help = "string literals must end with a closing \" on the same line.";
+    } elif (e.kind == TOK::LEX_ERR_EMPTY_CHAR) {
+      message = "empty character literal";
+      label = "empty character literal";
+      help = "use exactly one character or an escape, e.g. 'x' or '\\n'.";
+    } elif (e.kind == TOK::LEX_ERR_BAD_CHAR) {
+      message = "character literal must contain exactly one character";
+      label = "character literal";
+      help = "use a string literal, e.g. \"ab\", for more than one character.";
+    } elif (e.kind == TOK::LEX_ERR_INVALID_CHARACTER) {
+      // Name the offending character — "invalid character '$'" instead of a
+      // bare "invalid character" (the reconstructed source line can't show
+      // it: the character never became a token). Skip naming if the char
+      // would break the message (a quote, a backslash) or isn't printable.
+      let printable: bool = (e.bad >= 32 && e.bad < 127 && e.bad != '\'' && e.bad != '\\');
+      if (printable == true) {
+        let prefix: *byte = "invalid character '";
+        let plen: int = STRING::strlen(prefix);
+        let buf: *byte = cast<*byte>(alloc(plen + 3));
+        MEM::memcpy(cast<*void>(buf), cast<*void>(prefix), plen);
+        buf[plen] = e.bad;
+        buf[plen + 1] = '\'';
+        buf[plen + 2] = '\0';
+        dynamic_message = buf;
+        message = buf;
+      } else {
+        message = "invalid character";
+      }
+      label = "invalid character";
+      help = "this character is not part of the Luma language.";
+    } else {
+      known = 0;
+    }
+    if (known == 0) continue;
+
+    let err: ERR::ErrorInformation = ERR::ErrorInformation {
+      error_type:   error_type,
+      file_path:    file_path,
+      message:      message,
+      line:         e.line,
+      col:          e.col,
+      line_text:    ERR::generate_line(tks, tok_count, e.line),
+      token_length: e.len,
+      label:        label,
+      help:         help,
+      note:         cast<*byte>(0),
+    };
+    if (dynamic_message != cast<*byte>(0)) {
+      ERR::error_add_msg(dynamic_message, err);
+    } else {
+      ERR::error_add(err);
+    }
+  }
+}
 
 #takes_ownership
 const fail -> fn (
@@ -41,7 +143,14 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
 
   if (resolved != path) { free(resolved); }
   if (src == cast<*byte>(0)) {
-    output("Error: could not read file: ", path, "\n");
+    let prefix: *byte = "could not read file: ";
+    let plen: int = STRING::strlen(prefix);
+    let plen2: int = STRING::strlen(path);
+    let message: *byte = cast<*byte>(alloc(plen + plen2 + 1));
+    MEM::memcpy(cast<*void>(message), cast<*void>(prefix), plen);
+    MEM::memcpy(cast<*void>(cast<int>(message) + plen), cast<*void>(path), plen2);
+    message[plen + plen2] = '\0';
+    report_read_error(path, message);
     return cast<*AST::AstNode>(0);
   }
 
@@ -56,12 +165,22 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
   let tks: *TOK::Token = cast<*TOK::Token>(tokens.data);
   let p: *PARS::Parser = PARS::create_parser(tks, tokens.size, path);
 
+  // Lexer-detected problems become real diagnostics now that the token
+  // table (and file path) exist; any of them fails the parse.
+  post_lex_errors(&lexer, tks, tokens.size, path);
+  if (lexer.had_error == 1) { p.had_error = 1; }
+
+  // `//!` module doc comments at the very top of the file attach to the
+  // module node (surfaced by the LSP when hovering the module name).
+  let doc_comment: *byte = PSTMT::consume_doc_comments(p);
+
   let line: int = p.current().line;
   let col:  int = p.current().col;
 
   if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
     p.error("Parser Error", "Expected @module at the start of a file.");
     ERR::error_report();
+    if (doc_comment != cast<*byte>(0)) free(doc_comment);
     return fail(&tokens, cast<*VEC::Vector>(0), src, p);
   }
   p.advance();
@@ -70,6 +189,7 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
       p.current().kind != TOK::LumaTokenType::TOK_STRING) {
     p.error("Parser Error", "Expected module name after @module.");
     ERR::error_report();
+    if (doc_comment != cast<*byte>(0)) free(doc_comment);
     return fail(&tokens, cast<*VEC::Vector>(0), src, p);
   }
 
@@ -86,7 +206,7 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
   }
 
   let module_node: *AST::AstNode = MAST::make_module(
-    module_name, "", path,
+    module_name, doc_comment, path,
     PARS::vec_to_node_array(&stmts), stmts.size,
     line, col,
     src, tks, tokens.size

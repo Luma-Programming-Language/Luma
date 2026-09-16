@@ -11,6 +11,14 @@
 @use "ast_type" as TAST
 @use "error" as ERR
 
+#returns_ownership
+const dup_str -> fn (s: *byte) *byte {
+  let len: int = STR::strlen(s);
+  let out: *byte = cast<*byte>(alloc(len + 1));
+  MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
+  return out;
+}
+
 pub const type_is_kind -> fn (t: *AST::AstNode, kind: int) bool {
   if (t == cast<*AST::AstNode>(0)) return false;
   return t.kind == kind;
@@ -439,7 +447,37 @@ const resolve_type_leaf -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstN
       let imp: *CORE::ModuleImport = SCOPE::find_module_import(scope, alias);
       if (imp == cast<*CORE::ModuleImport>(0)) {
         ERR::tc_error_id(t, alias, "Module Error", "unknown module alias", "not found");
+        if (r.type_arg_count > 0) return t;
+        return make_named_type(name);
       }
+
+      // Qualified generic type reference — `Alias::Box<int>`. Monomorphize
+      // against the *defining* module's template registry (scope-based
+      // lookup would only find a same-module template), rewrite this node
+      // into the plain concrete named type (mangled `Box__int`), and hand
+      // it back. The concrete struct/enum is only registered later by the
+      // tc.lx drain, so — mirroring the bare `Box<int>` case above — no
+      // bare-name check runs on the mangled result.
+      if (r.type_arg_count > 0) {
+        let fake: *AST::AstNode = TAST::make_basic_type(dup_str(name), t.line, t.col);
+        let fb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(fake);
+        fb.type_args = r.type_args;
+        fb.type_arg_count = r.type_arg_count;
+        // The type-arg array's ownership moves to `fake` (the mangled
+        // rewrite keeps its own copy of the args with a zeroed count, as
+        // in the bare case). Zero this node's count so a later
+        // free_node(t) release of the parts can't also double-free them.
+        r.type_args = cast<**AST::AstNode>(0);
+        r.type_arg_count = 0;
+        let out: *AST::AstNode = GEN::resolve_nominal_type_ref_in(fake, scope, imp.module_name);
+        if (out != cast<*AST::AstNode>(0) && out.kind == AST::NodeType::TYPE_BASIC) {
+          AST::free_node(t);
+          return out;
+        }
+        AST::free_node(fake);
+        return t;
+      }
+
       return make_named_type(name);
     }
     return t;
