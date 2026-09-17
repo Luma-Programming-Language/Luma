@@ -1,12 +1,39 @@
-//! Input/Output operations module
+//! Input/output operations module
 //!
-//! PLATFORM: Linux x86_64, macOS x86_64/ARM64, and Windows x86_64
+//! Raw fd primitives backed by direct syscalls (POSIX) or the Win32 file and
+//! console API (Windows), plus higher-level helpers for whole-file reads,
+//! whole-buffer writes, and formatted output.
+//!
+//! The low-level layer is deliberately unbuffered and synchronous: it reads
+//! and writes exactly the requested byte count, with no stdio buffering that
+//! could hide bytes from exact-read/exact-write consumers (src/lsp/
+//! lsp_transport.lx's Content-Length framing depends on this).
+//!
+//! This module is completely self-contained — it imports no other std
+//! modules: the handful of memory/string primitives it needs (memcpy,
+//! realloc, strlen, integer-to-string) are defined here.
+//!
+//! PLATFORM: Linux x86_64, macOS x86_64/ARM64, Windows x86_64
+//!
+//! # Memory ownership
+//! * `read_file` returns a heap buffer owned by the caller (freed with
+//!   the built-in `free()`).
+//! * `read_binary`/`write_binary` never allocate — they touch caller buffers.
+//! * `print`/`print_err` own nothing on return.
 
 @module "std_io"
 
 // ============================================================================
-// PLATFORM: Syscall numbers (POSIX only)
+// Platform constants + Win32 imports
 // ============================================================================
+//
+// Only the active OS's arm compiles in, so the code below may reference
+// SYS_READ, O_RDONLY, STDERR, ... orthogonally to the target.
+//
+// NOTE: POSIX open() flag values are NOT identical across the two unix arms
+// here — O_CREAT/O_TRUNC differ between Linux (64/512) and macOS (512/1024)
+// — so local_open_create must combine per-OS constants rather than a magic
+// int.
 
 @os {
     "linux" -> {
@@ -15,7 +42,11 @@
         const SYS_OPEN: i64  = 2;
         const SYS_CLOSE: i64 = 3;
         const O_RDONLY: i64  = 0;
+        const O_WRONLY: i64  = 1;
         const O_RDWR: i64    = 2;
+        const O_CREAT: i64   = 64;   // 0o00000100
+        const O_TRUNC: i64   = 512;  // 0o00001000
+        const FILE_MODE: i64 = 420;  // 0o644 rw-r--r--
         const STDOUT: i64    = 1;
         const STDERR: i64    = 2;
     }
@@ -25,7 +56,11 @@
         const SYS_OPEN: i64  = 5;
         const SYS_CLOSE: i64 = 6;
         const O_RDONLY: i64  = 0;
+        const O_WRONLY: i64  = 1;
         const O_RDWR: i64    = 2;
+        const O_CREAT: i64   = 512;  // 0x0200
+        const O_TRUNC: i64   = 1024; // 0x0400
+        const FILE_MODE: i64 = 420;  // 0o644 rw-r--r--
         const STDOUT: i64    = 1;
         const STDERR: i64    = 2;
     }
@@ -34,10 +69,11 @@
         const GENERIC_WRITE: i64       = 1073741824; // 0x40000000
         const FILE_SHARE_READ: i64     = 1;
         const OPEN_EXISTING: i64       = 3;
+        const CREATE_ALWAYS: i64       = 2;
+        const FILE_ATTRIBUTE_NORMAL: i64 = 128;
         const INVALID_HANDLE_VALUE: i64 = -1;
         const STD_OUTPUT_HANDLE: i64   = -11;
         const STD_ERROR_HANDLE: i64    = -12;
-        const STD_INPUT_HANDLE: i64    = -10;
 
         #dll_import("kernel32.dll", callconv: "stdcall")
         pub const WriteFile -> fn (
@@ -80,8 +116,12 @@
 }
 
 // ============================================================================
-// Memory helpers (all platforms)
+// Internal memory/string primitives
 // ============================================================================
+//
+// Kept local so this module stands alone — the public std_memory/std_cstring
+// modules are the canonical home of the general-purpose versions; these are
+// only the exact pieces io.lx itself uses and are not part of its API.
 
 const local_memcpy -> fn (dest: *void, src: *void, n: i64) *void {
     let d: *byte = cast<*byte>(dest);
@@ -98,165 +138,18 @@ const local_realloc -> fn (ptr: *void, old_size: i64, new_size: i64) *void {
         return alloc(new_size);
     }
     let new_ptr: *void = alloc(new_size);
+    if (new_ptr == cast<*void>(0)) {
+        return cast<*void>(0); // caller still owns `ptr`
+    }
     local_memcpy(new_ptr, ptr, old_size);
     free(ptr);
     return new_ptr;
 }
 
-// ============================================================================
-// Low-level I/O — platform-specific
-// ============================================================================
-
-pub const local_write -> fn (fd: i64, buf: *void, count: i64) i64 {
-    @os {
-        "linux"   -> { return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count); }
-        "macos"   -> { return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count); }
-        "windows64" -> {
-            let written: i64 = 0;
-            WriteFile(fd, buf, count, &written, cast<*void>(0));
-            return written;
-        }
-    }
-}
-
-pub const local_read -> fn (fd: i64, buf: *void, count: i64) i64 {
-    @os {
-        "linux"   -> { return __syscall__(SYS_READ, fd, cast<i64>(buf), count); }
-        "macos"   -> { return __syscall__(SYS_READ, fd, cast<i64>(buf), count); }
-        "windows64" -> {
-            let bytes_read: i64 = 0;
-            let ok: i64 = ReadFile(fd, buf, count, &bytes_read, cast<*void>(0));
-            if (ok == 0) { return INVALID_HANDLE_VALUE; }
-            return bytes_read;
-        }
-    }
-}
-
-pub const local_open_read -> fn (path: *byte) i64 {
-    @os {
-        "linux"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDONLY, 0); }
-        "macos"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDONLY, 0); }
-        "windows64" -> {
-            return CreateFileA(
-                path, GENERIC_READ, FILE_SHARE_READ,
-                cast<*void>(0), OPEN_EXISTING, 128, 0
-            );
-        }
-    }
-}
-
-const local_open_write -> fn (path: *byte) i64 {
-    @os {
-        "linux"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDWR, 0); }
-        "macos"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDWR, 0); }
-        "windows64" -> {
-            return CreateFileA(
-                path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
-                cast<*void>(0), OPEN_EXISTING, 128, 0
-            );
-        }
-    }
-}
-
-pub const local_open_create -> fn (path: *byte) i64 {
-    @os {
-        "linux"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), 577, 420); }
-        "macos"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), 577, 420); }
-        "windows64" -> {
-            return CreateFileA(
-                path, GENERIC_WRITE, 0,
-                cast<*void>(0), 2, 128, 0
-            );
-        }
-    }
-}
-
-pub const local_close -> fn (fd: i64) i64 {
-    @os {
-        "linux"   -> { return __syscall__(SYS_CLOSE, fd); }
-        "macos"   -> { return __syscall__(SYS_CLOSE, fd); }
-        "windows64" -> { return CloseHandle(fd); }
-    }
-}
-
-pub const local_is_error -> fn (result: i64) bool {
-    @os {
-        "linux"   -> { return result < 0 && result >= -4095; }
-        "macos"   -> { return result < 0 && result >= -4095; }
-        "windows64" -> { return result == INVALID_HANDLE_VALUE; }
-    }
-}
-
-const local_write_str -> fn (fd: i64, s: *byte) i64 {
-    let len: i64 = 0;
-    loop (s[len] != cast<byte>(0)) : (++len) {}
-    return local_write(fd, cast<*void>(s), len);
-}
-
-const local_eprint -> fn (s: *byte) i64 {
-    @os {
-        "linux"   -> { return local_write_str(STDERR, s); }
-        "macos"   -> { return local_write_str(STDERR, s); }
-        "windows64" -> {
-            let handle: i64 = GetStdHandle(STD_ERROR_HANDLE);
-            return local_write_str(handle, s);
-        }
-    }
-}
-
-pub const write_binary -> fn (path: *byte, data: *void, size: i64) i64 {
-    let fd: i64 = local_open_write(path);
-    if (local_is_error(fd)) {
-        local_eprint("Error: Could not open file for binary write\n");
-        return -1;
-    }
-    let written: i64 = local_write(fd, data, size);
-    local_close(fd);
-    return written;
-}
-
-pub const read_binary -> fn (path: *byte, data: *void, size: i64) i64 {
-    let fd: i64 = local_open_read(path);
-    if (local_is_error(fd)) {
-        local_eprint("Error: Could not open file for binary read\n");
-        return -1;
-    }
-    let bytes_read: i64 = local_read(fd, data, size);
-    local_close(fd);
-    return bytes_read;
-}
-
-const INITIAL_BUFFER_SIZE: i64  = 4096;
-const BUFFER_GROWTH_FACTOR: i64 = 2;
-const ARG_INT: i64   = 0;
-const ARG_STR: i64   = 1;
-const ARG_BYTE: i64  = 2;
-const ARG_FLOAT: i64 = 3;
-
-pub const FormatArg -> struct {
-    tag: i64,
-    str_ptr: *byte,
-    int_val: i64,
-    byte_val: byte
-};
-
-pub const NULL_FORMAT_ARG: FormatArg = FormatArg {
-    tag: -1,
-    str_ptr: cast<*byte>(0),
-    int_val: 0,
-    byte_val: '\0'
-};
-
-pub const str_arg -> fn (arg: *byte) FormatArg {
-    return FormatArg { tag: ARG_STR, str_ptr: arg, int_val: 0, byte_val: '\0' };
-}
-
-pub const int_arg -> fn (arg: i64) FormatArg {
-    return FormatArg { tag: ARG_INT, str_ptr: "", int_val: arg, byte_val: '\0' };
-}
-
-pub const byte_arg -> fn (arg: byte) FormatArg {
-    return FormatArg { tag: ARG_BYTE, str_ptr: "", int_val: 0, byte_val: arg };
+const local_strlen -> fn (s: *byte) i64 {
+    let length: i64 = 0;
+    loop (s[length] != cast<byte>(0)) : (++length) {}
+    return length;
 }
 
 #returns_ownership
@@ -297,116 +190,294 @@ const from_int -> fn (n: i64) *byte {
     return s;
 }
 
-// print()/print_err()'s arg-count cap. Named here so the bound checks below
-// can't silently drift from each other or from what the two functions
-// actually mean by "too many args" — but the array-type positions in their
-// signatures below still have to repeat this as the literal 256: a
-// module-level global can't size a function parameter's array in its
-// *prototype* (only in the function's own definition, where per-function
-// codegen already has the right module context — narrow, cross-file
-// declaration-order limitation, not worth a bigger codegen rework for).
-const MAX_FORMAT_ARGS: i64 = 256;
+// ============================================================================
+// Low-level fd I/O — platform-specific syscall wrappers
+// ============================================================================
 
-pub const print -> fn (s: *byte, args: [FormatArg; 256]) i64 { // see MAX_FORMAT_ARGS above
-    let buffer: [byte; 1024];
-    let buf_index: i64 = 0;
-    let arg_index: i64 = 0;
-
-    let i: i64 = 0;
-    loop (s[i] != '\0') {
-        if (s[i] == '%' && arg_index < MAX_FORMAT_ARGS) {
-            let next: byte = s[i + 1];
-            let arg: FormatArg = args[arg_index];
-
-            switch (next) {
-                'd' -> {
-                    if (arg.tag == ARG_INT) {
-                        let num_str: *byte = from_int(arg.int_val);
-                        loop [j: i64 = 0](num_str[j] != '\0') : (++j) {
-                            buffer[buf_index] = num_str[j];
-                            buf_index = buf_index + 1;
-                        }
-                        arg_index = arg_index + 1;
-                        i = i + 2;
-                        free(num_str);
-                        continue;
-                    }
-                }
-                'c' -> {
-                    if (arg.tag == ARG_BYTE) {
-                        buffer[buf_index] = arg.byte_val;
-                        buf_index = buf_index + 1;
-                        arg_index = arg_index + 1;
-                        i = i + 2;
-                        continue;
-                    }
-                }
-                's' -> {
-                    if (arg.tag == ARG_STR) {
-                        let str_ptr: *byte = arg.str_ptr;
-                        loop [j: i64 = 0](str_ptr[j] != '\0') : (++j) {
-                            buffer[buf_index] = str_ptr[j];
-                            buf_index = buf_index + 1;
-                        }
-                        arg_index = arg_index + 1;
-                        i = i + 2;
-                        continue;
-                    }
-                }
-            }
-        }
-
-        buffer[buf_index] = s[i];
-        buf_index = buf_index + 1;
-        i = i + 1;
-    }
-
+/// Writes `count` bytes from `buf` to `fd`.
+///
+/// Returns the number of bytes actually written (may be fewer than `count`
+/// for a short write; callers that need a full write must loop).
+///
+/// # Parameters
+/// * `fd` - Target file descriptor (or Win32 handle)
+/// * `buf` - Bytes to write
+/// * `count` - Number of bytes to write
+pub const local_write -> fn (fd: i64, buf: *void, count: i64) i64 {
     @os {
-        "linux"   -> { return local_write(STDOUT, cast<*void>(&buffer), buf_index); }
-        "macos"   -> { return local_write(STDOUT, cast<*void>(&buffer), buf_index); }
+        "linux"     -> { return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count); }
+        "macos"     -> { return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count); }
         "windows64" -> {
-            let handle: i64 = GetStdHandle(STD_OUTPUT_HANDLE);
-            return local_write(handle, cast<*void>(&buffer), buf_index);
+            let written: i64 = 0;
+            WriteFile(fd, buf, count, &written, cast<*void>(0));
+            return written;
         }
     }
 }
 
-pub const print_err -> fn (s: *byte, args: [i64; 256]) i64 { // see MAX_FORMAT_ARGS above
-    let buffer: *byte = cast<*byte>(alloc(MAX_FORMAT_ARGS * sizeof<byte>));
-    let buf_index: i64 = 0;
-    let arg_index: i64 = 0;
-    defer { free(buffer); }
-
-    loop [i: i64 = 0](s[i] != '\0') : (++i) {
-        if (s[i] == '%' && s[i + 1] == 'd' && arg_index < MAX_FORMAT_ARGS) {
-            let num_str: *byte = from_int(args[arg_index]);
-            defer { free(num_str); }
-            loop [j: i64 = 0](num_str[j] != '\0') : (++j) {
-                buffer[buf_index] = num_str[j];
-                buf_index = buf_index + 1;
-            }
-            arg_index = arg_index + 1;
-            i = i + 1;
-        } else {
-            buffer[buf_index] = s[i];
-            buf_index = buf_index + 1;
+/// Reads up to `count` bytes from `fd` into `buf`.
+///
+/// Returns the number of bytes read: 0 on EOF, a negative error indicator on
+/// failure (check with `local_is_error`).
+///
+/// # Parameters
+/// * `fd` - Source file descriptor (or Win32 handle)
+/// * `buf` - Destination buffer
+/// * `count` - Maximum number of bytes to read
+pub const local_read -> fn (fd: i64, buf: *void, count: i64) i64 {
+    @os {
+        "linux"     -> { return __syscall__(SYS_READ, fd, cast<i64>(buf), count); }
+        "macos"     -> { return __syscall__(SYS_READ, fd, cast<i64>(buf), count); }
+        "windows64" -> {
+            let bytes_read: i64 = 0;
+            let ok: i64 = ReadFile(fd, buf, count, &bytes_read, cast<*void>(0));
+            if (ok == 0) { return INVALID_HANDLE_VALUE; }
+            return bytes_read;
         }
     }
-    buffer[buf_index] = '\0';
-    return local_eprint(buffer);
 }
 
+/// Opens an existing file read-only.
+///
+/// Returns an fd that must be closed with `local_close`, or a negative /
+/// INVALID_HANDLE_VALUE error on failure.
+///
+/// # Parameters
+/// * `path` - Null-terminated path to open
+pub const local_open_read -> fn (path: *byte) i64 {
+    @os {
+        "linux"     -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDONLY, 0); }
+        "macos"     -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDONLY, 0); }
+        "windows64" -> {
+            return CreateFileA(
+                path, GENERIC_READ, FILE_SHARE_READ,
+                cast<*void>(0), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+            );
+        }
+    }
+}
+
+/// Opens an existing file read-write. Does NOT create the file (O_RDWR with
+/// no O_CREAT); use `local_open_create` when the file may not exist yet.
+///
+/// Returns an fd that must be closed with `local_close`, or an error on
+/// failure.
+///
+/// # Parameters
+/// * `path` - Null-terminated path to open
+pub const local_open_write -> fn (path: *byte) i64 {
+    @os {
+        "linux"     -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDWR, 0); }
+        "macos"     -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDWR, 0); }
+        "windows64" -> {
+            return CreateFileA(
+                path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
+                cast<*void>(0), OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, 0
+            );
+        }
+    }
+}
+
+/// Opens a file for writing, creating and truncating it if necessary
+/// (O_WRONLY | O_CREAT | O_TRUNC), so the named file is guaranteed to exist
+/// and have zero length on success.
+///
+/// Returns an fd that must be closed with `local_close`, or an error on
+/// failure.
+///
+/// # Parameters
+/// * `path` - Null-terminated path to open
+pub const local_open_create -> fn (path: *byte) i64 {
+    @os {
+        "linux"     -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_WRONLY | O_CREAT | O_TRUNC, FILE_MODE); }
+        "macos"     -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_WRONLY | O_CREAT | O_TRUNC, FILE_MODE); }
+        "windows64" -> {
+            return CreateFileA(
+                path, GENERIC_WRITE, 0,
+                cast<*void>(0), CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, 0
+            );
+        }
+    }
+}
+
+/// Closes an fd (or Win32 handle) previously returned by an `local_open_*`.
+///
+/// # Parameters
+/// * `fd` - Handle to close
+pub const local_close -> fn (fd: i64) i64 {
+    @os {
+        "linux"     -> { return __syscall__(SYS_CLOSE, fd); }
+        "macos"     -> { return __syscall__(SYS_CLOSE, fd); }
+        "windows64" -> { return CloseHandle(fd); }
+    }
+}
+
+/// Detects the platform's "invalid handle / read or write failed" return
+/// value for the fds returned by `local_open_*`, reads, and writes.
+///
+/// # Parameters
+/// * `result` - Return value from an `local_*` operation to test
+pub const local_is_error -> fn (result: i64) bool {
+    @os {
+        "linux"     -> { return result < 0 && result >= -4095; }
+        "macos"     -> { return result < 0 && result >= -4095; }
+        "windows64" -> { return result == INVALID_HANDLE_VALUE; }
+    }
+}
+
+// ============================================================================
+// Internal text helpers
+// ============================================================================
+
+const local_write_str -> fn (fd: i64, s: *byte) i64 {
+    return local_write(fd, cast<*void>(s), local_strlen(s));
+}
+
+const local_eprint -> fn (s: *byte) i64 {
+    @os {
+        "linux"     -> { return local_write_str(STDERR, s); }
+        "macos"     -> { return local_write_str(STDERR, s); }
+        "windows64" -> {
+            let handle: i64 = GetStdHandle(STD_ERROR_HANDLE);
+            return local_write_str(handle, s);
+        }
+    }
+}
+
+// ============================================================================
+// Growable output builder (used by print/print_err)
+// ============================================================================
+//
+// print() and print_err() format into this instead of a fixed-size stack
+// buffer, so formatted output is never silently truncated regardless of how
+// long it gets. Not part of the public API.
+
+const INITIAL_BUFFER_SIZE: i64  = 4096;
+const BUFFER_GROWTH_FACTOR: i64 = 2;
+
+const FmtBuf -> struct {
+    data: *byte,
+    len:  i64,
+    cap:  i64,
+};
+
+const fmt_init -> fn (cap: i64) FmtBuf {
+    return FmtBuf { data: cast<*byte>(alloc(cap * sizeof<byte>)), len: 0, cap: cap };
+}
+
+const fmt_free -> fn (b: *FmtBuf) void {
+    free(b.data);
+    b.data = cast<*byte>(0);
+    b.len = 0;
+    b.cap = 0;
+}
+
+// Ensures at least `extra` more bytes fit. Returns -1 on allocation failure
+// (b is left untouched); 0 on success.
+const fmt_reserve -> fn (b: *FmtBuf, extra: i64) i64 {
+    if (b.len + extra < b.cap) return 0;
+
+    let new_cap: i64 = b.cap;
+    loop (new_cap <= b.len + extra) { new_cap = new_cap * 2; }
+
+    let grown: *byte = cast<*byte>(local_realloc(b.data, b.cap, new_cap));
+    if (grown == cast<*byte>(0)) return -1;
+
+    b.data = grown;
+    b.cap = new_cap;
+    return 0;
+}
+
+const fmt_str -> fn (b: *FmtBuf, s: *byte) i64 {
+    let n: i64 = local_strlen(s);
+    if (fmt_reserve(b, n + 1) == -1) return -1;
+    local_memcpy(cast<*void>(cast<i64>(b.data) + b.len), cast<*void>(s), n);
+    b.len = b.len + n;
+    return 0;
+}
+
+const fmt_char -> fn (b: *FmtBuf, c: byte) i64 {
+    if (fmt_reserve(b, 2) == -1) return -1;
+    b.data[b.len] = c;
+    b.len = b.len + 1;
+    return 0;
+}
+
+const fmt_int -> fn (b: *FmtBuf, n: i64) i64 {
+    let s: *byte = from_int(n);
+    if (s == cast<*byte>(0)) return -1;
+    let ok: i64 = fmt_str(b, s);
+    free(s);
+    return ok;
+}
+
+// ============================================================================
+// Whole-file helpers
+// ============================================================================
+
+/// Writes `size` raw bytes from `data` to `path`, creating the file first.
+///
+/// Returns the number of bytes written, or -1 if the file could not be opened.
+///
+/// # Parameters
+/// * `path` - Null-terminated destination path
+/// * `data` - Raw bytes to write
+/// * `size` - Number of bytes to write
+pub const write_binary -> fn (path: *byte, data: *void, size: i64) i64 {
+    let fd: i64 = local_open_create(path);
+    if (local_is_error(fd)) {
+        local_eprint("Error: Could not open file for binary write\n");
+        return -1;
+    }
+    let written: i64 = local_write(fd, data, size);
+    local_close(fd);
+    return written;
+}
+
+/// Reads up to `size` raw bytes from `path` into `data`.
+///
+/// Returns the number of bytes read (0 for an empty file), or -1 if the file
+/// could not be opened. The caller must ensure `data` can hold `size` bytes.
+///
+/// # Parameters
+/// * `path` - Null-terminated source path
+/// * `data` - Destination buffer
+/// * `size` - Maximum number of bytes to read
+pub const read_binary -> fn (path: *byte, data: *void, size: i64) i64 {
+    let fd: i64 = local_open_read(path);
+    if (local_is_error(fd)) {
+        local_eprint("Error: Could not open file for binary read\n");
+        return -1;
+    }
+    let bytes_read: i64 = local_read(fd, data, size);
+    local_close(fd);
+    return bytes_read;
+}
+
+/// Reads an entire text file into a single heap-allocated, NUL-terminated
+/// buffer, growing as needed.
+///
+/// The returned buffer is tightly sized to (content + 3) and its last three
+/// bytes are NUL, so tokenizers and LSP lookahead that sniff a byte or two
+/// past the terminator never read uninitialized heap — this matches the
+/// historical contract of this function. The caller owns the returned buffer
+/// and must `free()` it.
+///
+/// Returns NULL (0) on any open/read/allocation failure, after emitting a
+/// diagnostic on stderr.
+///
+/// # Parameters
+/// * `path` - Null-terminated path to read
 #returns_ownership
 pub const read_file -> fn (path: *byte) *byte {
     let fd: i64 = local_open_read(path);
-
     if (local_is_error(fd)) {
         local_eprint("Error: File does not exist, can not read from file\n");
         return cast<*byte>(0);
     }
 
-    let buffer_size: i64 = INITIAL_BUFFER_SIZE;
-    let buffer: *byte = cast<*byte>(alloc(buffer_size * sizeof<byte>));
+    let capacity: i64 = INITIAL_BUFFER_SIZE;
+    let buffer: *byte = cast<*byte>(alloc(capacity * sizeof<byte>));
     if (buffer == cast<*byte>(0)) {
         local_eprint("Error: Failed to allocate initial buffer\n");
         local_close(fd);
@@ -417,8 +488,12 @@ pub const read_file -> fn (path: *byte) *byte {
     let bytes_read: i64 = 0;
 
     loop {
-        let read_size: i64 = buffer_size - total_read - 1;
-        bytes_read = local_read(fd, cast<*void>(cast<i64>(buffer) + total_read), read_size);
+        // Leave one slot free so NULing the terminator always stays in bounds.
+        bytes_read = local_read(
+            fd,
+            cast<*void>(cast<i64>(buffer) + total_read),
+            capacity - total_read - 1
+        );
 
         if (local_is_error(bytes_read)) {
             local_eprint("Error: Failed to read from file\n");
@@ -427,48 +502,55 @@ pub const read_file -> fn (path: *byte) *byte {
             return cast<*byte>(0);
         }
 
-        if (bytes_read == 0) {
-            break;
-        }
+        if (bytes_read == 0) break;
 
         total_read = total_read + bytes_read;
 
-        if (total_read >= buffer_size - 1) {
-            let new_size: i64 = buffer_size * BUFFER_GROWTH_FACTOR;
-            let new_buffer: *byte = cast<*byte>(local_realloc(cast<*void>(buffer), buffer_size, new_size));
+        if (total_read >= capacity - 1) {
+            let new_capacity: i64 = capacity * BUFFER_GROWTH_FACTOR;
+            let grown: *byte = cast<*byte>(
+                local_realloc(cast<*void>(buffer), capacity, new_capacity)
+            );
 
-            if (new_buffer == cast<*byte>(0)) {
+            if (grown == cast<*byte>(0)) {
                 local_eprint("Error: Failed to grow buffer\n");
                 local_close(fd);
                 free(buffer);
                 return cast<*byte>(0);
             }
 
-            buffer = new_buffer;
-            buffer_size = new_size;
+            buffer = grown;
+            capacity = new_capacity;
         }
     }
 
     buffer[total_read] = cast<byte>(0);
+    local_close(fd);
 
-    if (total_read < buffer_size - 1) {
-        let final_buffer: *byte = cast<*byte>(alloc((total_read + 3) * sizeof<byte>));
-        if (final_buffer != cast<*byte>(0)) {
-            local_memcpy(cast<*void>(final_buffer), cast<*void>(buffer), total_read + 1);
-            final_buffer[total_read + 1] = cast<byte>(0);
-            final_buffer[total_read + 2] = cast<byte>(0);
-            free(buffer);
-            buffer = final_buffer;
-        }
-        buffer[total_read]     = cast<byte>(0);
-        buffer[total_read + 1] = cast<byte>(0);
-        buffer[total_read + 2] = cast<byte>(0);
+    // Shrink down to exactly content + terminator and pad with two guard NULs
+    // (see doc comment). If the tight allocation fails the read buffer is
+    // still valid — just larger than needed — so return it as-is.
+    let tight: *byte = cast<*byte>(alloc((total_read + 3) * sizeof<byte>));
+    if (tight != cast<*byte>(0)) {
+        local_memcpy(cast<*void>(tight), cast<*void>(buffer), total_read + 1);
+        tight[total_read + 1] = cast<byte>(0);
+        tight[total_read + 2] = cast<byte>(0);
+        free(buffer);
+        buffer = tight;
     }
 
-    local_close(fd);
     return buffer;
 }
 
+/// Writes the NUL-terminated `buffer` to `path`.
+///
+/// The target file must already exist (`local_open_write` does not create
+/// files); see `write_binary` for create-capable raw output. Returns the
+/// number of bytes written, or -1 on error.
+///
+/// # Parameters
+/// * `path` - Null-terminated destination path
+/// * `buffer` - Null-terminated text to write
 pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) i64 {
     let fd: i64 = local_open_write(path);
 
@@ -477,10 +559,7 @@ pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) i64 {
         return -1;
     }
 
-    let length: i64 = 0;
-    loop (buffer[length] != '\0') {
-        length = length + 1;
-    }
+    let length: i64 = local_strlen(buffer);
 
     if (length <= 0) {
         local_eprint("Error: buffer size <= 0.\n");
@@ -491,4 +570,158 @@ pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) i64 {
     let written: i64 = local_write(fd, cast<*void>(buffer), length);
     local_close(fd);
     return written;
+}
+
+// ============================================================================
+// Formatted output
+// ============================================================================
+
+const ARG_INT: i64  = 0;
+const ARG_STR: i64  = 1;
+const ARG_BYTE: i64 = 2;
+
+/// Type-tagged argument for `print`, so each specifier and the value bound to
+/// it stay in sync: %d takes `int_arg`, %c takes `byte_arg`, %s takes
+/// `str_arg`. A specifier whose argument has the wrong tag (or runs past the
+/// end of `args`) is emitted literally.
+pub const FormatArg -> struct {
+    tag: i64,
+    str_ptr: *byte,
+    int_val: i64,
+    byte_val: byte
+};
+
+/// Default/empty `FormatArg` sentinel (tag -1 matches no specifier).
+pub const NULL_FORMAT_ARG: FormatArg = FormatArg {
+    tag: -1,
+    str_ptr: cast<*byte>(0),
+    int_val: 0,
+    byte_val: '\0'
+};
+
+/// Builds a `%s` argument from a null-terminated string.
+///
+/// # Parameters
+/// * `arg` - String to render
+pub const str_arg -> fn (arg: *byte) FormatArg {
+    return FormatArg { tag: ARG_STR, str_ptr: arg, int_val: 0, byte_val: '\0' };
+}
+
+/// Builds a `%d` argument from an integer.
+///
+/// # Parameters
+/// * `arg` - Value to render
+pub const int_arg -> fn (arg: i64) FormatArg {
+    return FormatArg { tag: ARG_INT, str_ptr: "", int_val: arg, byte_val: '\0' };
+}
+
+/// Builds a `%c` argument from a single character.
+///
+/// # Parameters
+/// * `arg` - Character to render
+pub const byte_arg -> fn (arg: byte) FormatArg {
+    return FormatArg { tag: ARG_BYTE, str_ptr: "", int_val: 0, byte_val: arg };
+}
+
+// print()/print_err()'s arg-count cap. Named here so the bound checks below
+// can't silently drift from each other or from what the two functions
+// actually mean by "too many args" — but the array-type positions in their
+// signatures below still have to repeat this as the literal 256: a
+// module-level global can't size a function parameter's array in its
+// *prototype* (only in the function's own definition, where per-function
+// codegen already has the right module context — narrow, cross-file
+// declaration-order limitation, not worth a bigger codegen rework for).
+const MAX_FORMAT_ARGS: i64 = 256;
+
+const PRINTOUT: i64 = 1; // also the fd for stdout on unix
+const PRINTERR: i64 = 2; // also the fd for stderr on unix
+
+// Shared formatter behind print() and print_err(): walks `s`, desugars each
+// `%s`/`%d`/`%c` into the growable `buf`, then flushes `buf` to the chosen
+// standard stream in one write. A specifier with no remaining argument (or a
+// tag mismatch — print_err's args are all ARG_INT) is copied literally.
+// Returns bytes written, or -1 on allocation failure.
+const format_to -> fn (s: *byte, args: [FormatArg; 256], arg_count: i64, dest: i64) i64 {
+    let buf: FmtBuf = fmt_init(INITIAL_BUFFER_SIZE);
+    if (buf.data == cast<*byte>(0)) return -1;
+    defer { fmt_free(&buf); }
+
+    let arg_index: i64 = 0;
+    let i: i64 = 0;
+    loop (s[i] != '\0') {
+        let matched: i64 = 0;
+
+        if (s[i] == '%' && arg_index < arg_count) {
+            let next: byte = s[i + 1];
+            let arg: FormatArg = args[arg_index];
+
+            if (next == 's' && arg.tag == ARG_STR) {
+                if (fmt_str(&buf, arg.str_ptr) == -1) return -1;
+                matched = 1;
+            } elif (next == 'd' && arg.tag == ARG_INT) {
+                if (fmt_int(&buf, arg.int_val) == -1) return -1;
+                matched = 1;
+            } elif (next == 'c' && arg.tag == ARG_BYTE) {
+                if (fmt_char(&buf, arg.byte_val) == -1) return -1;
+                matched = 1;
+            }
+        }
+
+        if (matched == 1) {
+            arg_index = arg_index + 1;
+            i = i + 2; // skip the '%' and the specifier
+            continue;
+        }
+
+        if (fmt_char(&buf, s[i]) == -1) return -1;
+        i = i + 1;
+    }
+
+    @os {
+        "linux"     -> { return local_write(dest, cast<*void>(buf.data), buf.len); }
+        "macos"     -> { return local_write(dest, cast<*void>(buf.data), buf.len); }
+        "windows64" -> {
+            let handle: i64;
+            if (dest == PRINTOUT) {
+                handle = GetStdHandle(STD_OUTPUT_HANDLE);
+            } else {
+                handle = GetStdHandle(STD_ERROR_HANDLE);
+            }
+            return local_write(handle, cast<*void>(buf.data), buf.len);
+        }
+    }
+}
+
+/// printf-style output to stdout. `%s`, `%d` and `%c` each consume one
+/// `FormatArg` built via `str_arg`/`int_arg`/`byte_arg`; a specifier with no
+/// matching argument is emitted literally.
+///
+/// The result is buffered into a growable heap buffer and written in a single
+/// syscall, so output is never truncated. Returns the number of bytes written,
+/// or -1 on allocation failure.
+///
+/// # Parameters
+/// * `s` - Format string; `%s`, `%d` and `%c` are supported
+/// * `args` - One `FormatArg` per specifier used in `s`
+pub const print -> fn (s: *byte, args: [FormatArg; 256]) i64 { // see MAX_FORMAT_ARGS above
+    return format_to(s, args, MAX_FORMAT_ARGS, PRINTOUT);
+}
+
+/// printf-style output to stderr. Takes plain integers so error messages can
+/// be formatted inline without building `FormatArg` values: `%d` consumes one
+/// argument, everything else is copied literally.
+///
+/// The result is buffered into a growable heap buffer and written in a single
+/// syscall, so output is never truncated. Returns the number of bytes written,
+/// or -1 on allocation failure.
+///
+/// # Parameters
+/// * `s` - Format string; `%d` is supported
+/// * `args` - Integer values, one per `%d` in `s`
+pub const print_err -> fn (s: *byte, args: [i64; 256]) i64 { // see MAX_FORMAT_ARGS above
+    let tagged: [FormatArg; 256];
+    loop [i: i64 = 0](i < MAX_FORMAT_ARGS) : (++i) {
+        tagged[i] = int_arg(args[i]);
+    }
+    return format_to(s, tagged, MAX_FORMAT_ARGS, PRINTERR);
 }
