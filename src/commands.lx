@@ -49,6 +49,12 @@ pub const print_commands -> fn () void {
   output("  --no-anim            Disable the compiling bar animation\n");
   output("  -lsp, --lsp          Run as language server\n");
   output("\n");
+
+  output("  Documentation\n");
+  output("  ================================================\n");
+  output("  -docs [dir]          Generate Markdown API docs for the\n");
+  output("                       parsed program into dir (default: docs/api)\n");
+  output("\n");
 }
 
 pub const print_license -> fn () void {
@@ -132,6 +138,12 @@ pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildCo
     } elif (match_command(arg, ["-c", "--no-compile"], 2) == 1) {
       build_config.no_compile = true;
       build_config.save = true; // no point emitting C you then don't keep
+    } elif (match_command(arg, ["-docs", "--docs"], 2) == 1) {
+      build_config.docs = true;
+      if (i + 1 < args.len() && args.get(i + 1)[0] != '-') {
+        build_config.docs_dir = args.get(i + 1);
+        i = i + 1;
+      }
     }
   }
 

@@ -1,0 +1,781 @@
+//! Automatic API documentation generator.
+//!
+//! Walks a parsed program AST and emits Markdown: one `<output_dir>/<module>.md`
+//! per module plus an `<output_dir>/README.md` index. Doc comments on decls are
+//! reused verbatim, with `# Parameters` / `# Returns` / `# Example` sections
+//! extracted into their own blocks.
+//!
+//! This is a direct port of the C `doc_generator.c` (its `FILE *` sinks are
+//! replaced by `CG::Buf`, flushed with `IO::write_binary`).
+
+@module "auto_docs"
+
+@use "ast"        as AST
+@use "std_io"     as IO
+@use "std_cstring" as STR
+@use "std_libc"   as LIBC
+@use "cg_core"    as CG
+
+// ─── Markdown section markers ────────────────────────────────────────────────
+
+const MARKER_PARAMS:  *byte = "# Parameters";
+const MARKER_RETURNS: *byte = "# Returns";
+const MARKER_EXAMPLE: *byte = "# Example";
+
+const DOC_MARKERS: [*byte; 3] = [
+  "# Parameters",
+  "# Returns",
+  "# Example",
+];
+
+// ─── Configuration ───────────────────────────────────────────────────────────
+
+pub const DocGenConfig -> struct {
+  output_dir:           *byte,
+  format:               *byte,
+  include_private:      bool,
+  include_source_links: bool,
+  arena:                *void,
+};
+
+pub const create_doc_config -> fn (arena: *void, output_dir: *byte) DocGenConfig {
+  let dir: *byte = output_dir;
+  if (dir == cast<*byte>(0)) dir = "docs";
+
+  return DocGenConfig {
+    output_dir:           dir,
+    format:               "markdown",
+    include_private:      false,
+    include_source_links: false,
+    arena:                arena,
+  };
+}
+
+// ─── Forward declarations (mutual recursion) ─────────────────────────────────
+
+const generate_os_docs   -> fn (f: *CG::Buf, os_node: *AST::AstNode, config: DocGenConfig) void;
+const generate_link_docs -> fn (f: *CG::Buf, link_node: *AST::AstNode) void;
+
+// ─── Directory / file helpers ────────────────────────────────────────────────
+
+const ensure_directory -> fn (path: *byte) bool {
+  let cmd: *CG::Buf = CG::buf_init();
+  CG::buf_str(cmd, "mkdir -p '");
+  CG::buf_str(cmd, path);
+  CG::buf_str(cmd, "'");
+  let command: *byte = CG::buf_finish(cmd);
+
+  let rc: i64 = system(command);
+  free(command);
+
+  if (rc != 0) {
+    output("Failed to create directory: ", path, "\n");
+    return false;
+  }
+  return true;
+}
+
+// Writes a finished buffer to `path` and frees it. Returns true on success.
+const write_doc_file -> fn (path: *byte, content: *byte) bool {
+  let len: i64 = STR::strlen(content);
+  let written: i64 = IO::write_binary(path, cast<*void>(content), len);
+  free(content);
+  return written >= 0;
+}
+
+// ─── Doc-comment helpers ─────────────────────────────────────────────────────
+
+// Position of the earliest `# Parameters` / `# Returns` / `# Example` marker in
+// `doc`, or NULL when there is none.
+const first_doc_marker -> fn (doc: *byte) *byte {
+  if (doc == cast<*byte>(0)) return cast<*byte>(0);
+
+  let first: *byte = cast<*byte>(0);
+  loop [m: i64 = 0](m < 3) : (++m) {
+    let p: *byte = LIBC::strstr(doc, DOC_MARKERS[m]);
+    if (p != cast<*byte>(0)
+        && (first == cast<*byte>(0) || cast<i64>(p) < cast<i64>(first))) {
+      first = p;
+    }
+  }
+  return first;
+}
+
+// Writes every line of `doc` with `indent_level` levels of two-space indent.
+const write_doc_comment -> fn (f: *CG::Buf, doc: *byte, indent_level: i64) void {
+  if (doc == cast<*byte>(0) || doc[0] == '\0') return;
+
+  let line: *byte = doc;
+  loop {
+    let end: *byte = LIBC::strchr(line, 10);
+    if (end == cast<*byte>(0)) {
+      end = cast<*byte>(cast<i64>(line) + STR::strlen(line));
+    }
+
+    loop [i: i64 = 0](i < indent_level) : (++i) {
+      CG::buf_str(f, "  ");
+    }
+
+    CG::buf_nstr(f, line, cast<i64>(end) - cast<i64>(line));
+    CG::buf_char(f, '\n');
+
+    if (end[0] == 10) {
+      line = cast<*byte>(cast<i64>(end) + 1);
+    } else {
+      break;
+    }
+  }
+}
+
+// Writes `doc` up to (but not including) the `stop` marker position. A NULL
+// `stop` writes the whole comment.
+const write_doc_comment_until_marker -> fn (f: *CG::Buf, doc: *byte, stop: *byte) void {
+  if (doc == cast<*byte>(0) || doc[0] == '\0') return;
+
+  let end: *byte = stop;
+  if (end == cast<*byte>(0)) {
+    end = cast<*byte>(cast<i64>(doc) + STR::strlen(doc));
+  }
+
+  let line: *byte = doc;
+  loop (cast<i64>(line) < cast<i64>(end)) {
+    let line_end: *byte = LIBC::strchr(line, 10);
+    if (line_end == cast<*byte>(0) || cast<i64>(line_end) >= cast<i64>(end)) {
+      line_end = end;
+    }
+
+    if (line_end == end && line == line_end) break;
+
+    CG::buf_nstr(f, line, cast<i64>(line_end) - cast<i64>(line));
+    CG::buf_char(f, '\n');
+
+    if (line_end[0] == 10) {
+      line = cast<*byte>(cast<i64>(line_end) + 1);
+    } else {
+      break;
+    }
+  }
+}
+
+// Extracts `# Parameters` / `# Returns` / `# Example` sections from `doc` and
+// renders each as a bolded block. Shared by functions and methods.
+const print_doc_sections -> fn (f: *CG::Buf, doc: *byte) void {
+  if (doc == cast<*byte>(0)) return;
+
+  loop [m: i64 = 0](m < 3) : (++m) {
+    let marker: *byte = DOC_MARKERS[m];
+    let sec_start: *byte = LIBC::strstr(doc, marker);
+    if (sec_start != cast<*byte>(0)) {
+      let sec_end: *byte = cast<*byte>(0);
+      loop [n: i64 = m + 1](n < 3) : (++n) {
+        let p: *byte = LIBC::strstr(cast<*byte>(cast<i64>(sec_start) + 1), DOC_MARKERS[n]);
+        if (p != cast<*byte>(0)
+            && (sec_end == cast<*byte>(0) || cast<i64>(p) < cast<i64>(sec_end))) {
+          sec_end = p;
+        }
+      }
+      if (sec_end == cast<*byte>(0)) {
+        sec_end = cast<*byte>(cast<i64>(sec_start) + STR::strlen(sec_start));
+      }
+
+      // "**Parameters:**" — skip the "# " prefix of the marker.
+      CG::buf_str(f, "**");
+      CG::buf_str(f, cast<*byte>(cast<i64>(marker) + 2));
+      CG::buf_str(f, ":**\n");
+
+      let marker_len: i64 = STR::strlen(marker);
+      let line: *byte = sec_start;
+      loop (cast<i64>(line) < cast<i64>(sec_end)) {
+        let line_end: *byte = LIBC::strchr(line, 10);
+        if (line_end == cast<*byte>(0) || cast<i64>(line_end) >= cast<i64>(sec_end)) {
+          line_end = sec_end;
+        }
+
+        if (STR::strncmp(line, marker, marker_len) != 0) {
+          CG::buf_nstr(f, line, cast<i64>(line_end) - cast<i64>(line));
+          CG::buf_char(f, '\n');
+        }
+
+        if (line_end[0] == 10) {
+          line = cast<*byte>(cast<i64>(line_end) + 1);
+        } else {
+          break;
+        }
+      }
+      CG::buf_char(f, '\n');
+    }
+  }
+}
+
+// ─── Type rendering ──────────────────────────────────────────────────────────
+
+const print_type -> fn (f: *CG::Buf, type: *AST::AstNode) void {
+  if (type == cast<*AST::AstNode>(0)) {
+    CG::buf_str(f, "?");
+    return;
+  }
+
+  let kind: i64 = type.kind;
+
+  if (kind == AST::NodeType::TYPE_BASIC) {
+    let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(type);
+    CG::buf_str(f, n.name);
+    return;
+  }
+
+  if (kind == AST::NodeType::TYPE_POINTER) {
+    let n: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(type);
+    CG::buf_str(f, "*");
+    print_type(f, n.pointee_type);
+    return;
+  }
+
+  if (kind == AST::NodeType::TYPE_ARRAY) {
+    let n: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(type);
+    CG::buf_str(f, "[");
+    print_type(f, n.element_type);
+    CG::buf_str(f, "; ");
+    if (n.size != cast<*AST::AstNode>(0)) {
+      if (n.size.kind == AST::NodeType::EXPR_LITERAL
+          && cast<*AST::LiteralNode>(n.size).lit_type == AST::LiteralType::LITERAL_INT) {
+        CG::buf_int(f, cast<*AST::LiteralNode>(n.size).int_val);
+      } else {
+        CG::buf_str(f, "N");
+      }
+    }
+    CG::buf_str(f, "]");
+    return;
+  }
+
+  if (kind == AST::NodeType::TYPE_FUNCTION) {
+    let n: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(type);
+    CG::buf_str(f, "fn(");
+    loop [i: i64 = 0](i < n.param_count) : (++i) {
+      if (i > 0) CG::buf_str(f, ", ");
+      print_type(f, n.param_types[i]);
+    }
+    CG::buf_str(f, ") ");
+    print_type(f, n.return_type);
+    return;
+  }
+
+  if (kind == AST::NodeType::TYPE_RESOLUTION) {
+    let n: *AST::ResolutionNode = cast<*AST::ResolutionNode>(type);
+    loop [i: i64 = 0](i < n.part_count) : (++i) {
+      if (i > 0) CG::buf_str(f, "::");
+      CG::buf_str(f, n.parts[i]);
+    }
+    return;
+  }
+
+  CG::buf_str(f, "UnknownType");
+}
+
+// ─── Function docs ───────────────────────────────────────────────────────────
+
+// Emits the `#dll_import` / `#lib_import` / ownership attribute lines that
+// precede a function signature.
+const write_func_attributes -> fn (f: *CG::Buf, fd: *AST::FuncDeclNode) void {
+  if (fd.dll_import == 1) {
+    CG::buf_str(f, "#dll_import(\"");
+    if (fd.dll_name != cast<*byte>(0)) CG::buf_str(f, fd.dll_name);
+    if (fd.dll_callconv != cast<*byte>(0)) {
+      CG::buf_str(f, ", callconv: \"");
+      CG::buf_str(f, fd.dll_callconv);
+      CG::buf_str(f, "\"");
+    }
+    CG::buf_str(f, ")\n");
+  }
+  if (fd.lib_import == 1) {
+    CG::buf_str(f, "#lib_import(\"");
+    if (fd.lib_name != cast<*byte>(0)) CG::buf_str(f, fd.lib_name);
+    CG::buf_str(f, "\")\n");
+  }
+  if (fd.returns_ownership == 1) CG::buf_str(f, "#returns_ownership\n");
+  if (fd.takes_ownership == 1)   CG::buf_str(f, "#takes_ownership\n");
+}
+
+// Emits a `name -> fn(\n    param: T,\n) Ret` block into a fenced code block.
+const write_func_signature -> fn (f: *CG::Buf, fd: *AST::FuncDeclNode, header: *byte) void {
+  write_func_attributes(f, fd);
+  CG::buf_str(f, header);
+  CG::buf_str(f, " -> fn(\n");
+
+  loop [i: i64 = 0](i < fd.param_count) : (++i) {
+    CG::buf_str(f, "    ");
+    CG::buf_str(f, fd.param_names[i]);
+    CG::buf_str(f, ": ");
+    if (fd.param_types != cast<**AST::AstNode>(0) && fd.param_types[i] != cast<*AST::AstNode>(0)) {
+      print_type(f, fd.param_types[i]);
+    } else {
+      CG::buf_str(f, "?");
+    }
+    if (i < fd.param_count - 1) CG::buf_str(f, ",");
+    CG::buf_char(f, '\n');
+  }
+
+  CG::buf_str(f, ") ");
+  if (fd.return_type != cast<*AST::AstNode>(0)) {
+    print_type(f, fd.return_type);
+  } else {
+    CG::buf_str(f, "void");
+  }
+  CG::buf_str(f, "\n```\n\n");
+}
+
+const generate_function_docs -> fn (f: *CG::Buf, func: *AST::AstNode, config: DocGenConfig) void {
+  let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(func);
+  let name: *byte = fd.name;
+  let doc: *byte = fd.doc_comment;
+  let is_public: bool = fd.is_public == 1;
+
+  if (!is_public && !config.include_private) return;
+
+  let first_marker: *byte = first_doc_marker(doc);
+
+  CG::buf_str(f, "### `");
+  CG::buf_str(f, name);
+  CG::buf_str(f, "`\n\n");
+
+  if (doc != cast<*byte>(0) && doc[0] != '\0') {
+    write_doc_comment_until_marker(f, doc, first_marker);
+    CG::buf_char(f, '\n');
+  }
+
+  CG::buf_str(f, "```luma\n");
+  if (is_public) CG::buf_str(f, "pub");
+  else           CG::buf_str(f, "     ");
+  CG::buf_str(f, " ");
+  write_func_signature(f, fd, name);
+
+  print_doc_sections(f, doc);
+}
+
+// ─── Struct docs ─────────────────────────────────────────────────────────────
+
+// Writes a member's single-line description (up to the first newline).
+const write_inline_doc -> fn (f: *CG::Buf, doc: *byte) void {
+  if (doc == cast<*byte>(0) || doc[0] == '\0') return;
+  let end: *byte = LIBC::strchr(doc, 10);
+  if (end != cast<*byte>(0)) {
+    CG::buf_nstr(f, doc, cast<i64>(end) - cast<i64>(doc));
+  } else {
+    CG::buf_str(f, doc);
+  }
+}
+
+const generate_struct_docs -> fn (f: *CG::Buf, strct: *AST::AstNode, config: DocGenConfig) void {
+  let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(strct);
+  let name: *byte = sd.name;
+  let doc: *byte = sd.doc_comment;
+  let is_public: bool = sd.is_public == 1;
+
+  if (!is_public && !config.include_private) return;
+
+  CG::buf_str(f, "### `");
+  CG::buf_str(f, name);
+  CG::buf_str(f, "`\n\n");
+
+  if (doc != cast<*byte>(0) && doc[0] != '\0') {
+    let fields_marker: *byte = LIBC::strstr(doc, "# Fields");
+    if (fields_marker != cast<*byte>(0)) {
+      let line: *byte = doc;
+      loop (cast<i64>(line) < cast<i64>(fields_marker)) {
+        let line_end: *byte = LIBC::strchr(line, 10);
+        if (line_end == cast<*byte>(0) || cast<i64>(line_end) >= cast<i64>(fields_marker)) break;
+        CG::buf_nstr(f, line, cast<i64>(line_end) - cast<i64>(line));
+        CG::buf_char(f, '\n');
+        line = cast<*byte>(cast<i64>(line_end) + 1);
+      }
+    } else {
+      write_doc_comment(f, doc, 0);
+    }
+    CG::buf_char(f, '\n');
+  }
+
+  // Public data fields (non-method members).
+  let has_public_fields: bool = false;
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
+    let field: *AST::AstNode = sd.public_members[i];
+    if (field.kind == AST::NodeType::STMT_FIELD_DECL
+        && cast<*AST::FieldDeclNode>(field).function == cast<*AST::AstNode>(0)) {
+      has_public_fields = true;
+    }
+  }
+
+  if (has_public_fields) {
+    CG::buf_str(f, "| Field | Type | Description |\n");
+    CG::buf_str(f, "|-------|------|-------------|\n");
+    loop [i: i64 = 0](i < sd.public_count) : (++i) {
+      let field: *AST::AstNode = sd.public_members[i];
+      if (field.kind == AST::NodeType::STMT_FIELD_DECL) {
+        let fd: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(field);
+        if (fd.function == cast<*AST::AstNode>(0)) {
+          CG::buf_str(f, "| `");
+          CG::buf_str(f, fd.name);
+          CG::buf_str(f, "` | ");
+          if (fd.type_node != cast<*AST::AstNode>(0)) print_type(f, fd.type_node);
+          else                                       CG::buf_str(f, "?");
+          CG::buf_str(f, " | ");
+          write_inline_doc(f, fd.doc_comment);
+          CG::buf_str(f, " |\n");
+        }
+      }
+    }
+    CG::buf_char(f, '\n');
+  }
+
+  // Public methods.
+  let has_public_methods: bool = false;
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
+    let field: *AST::AstNode = sd.public_members[i];
+    if (field.kind == AST::NodeType::STMT_FIELD_DECL
+        && cast<*AST::FieldDeclNode>(field).function != cast<*AST::AstNode>(0)) {
+      has_public_methods = true;
+    }
+  }
+
+  if (has_public_methods) {
+    CG::buf_str(f, "**Methods:**\n\n");
+    loop [i: i64 = 0](i < sd.public_count) : (++i) {
+      let field: *AST::AstNode = sd.public_members[i];
+      if (field.kind == AST::NodeType::STMT_FIELD_DECL) {
+        let md: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(field);
+        let method_func: *AST::AstNode = md.function;
+        if (method_func != cast<*AST::AstNode>(0)) {
+          let method_name: *byte = md.name;
+          let method_doc: *byte = md.doc_comment;
+          let method_first: *byte = first_doc_marker(method_doc);
+
+          CG::buf_str(f, "#### `");
+          CG::buf_str(f, method_name);
+          CG::buf_str(f, "()`\n\n");
+
+          if (method_doc != cast<*byte>(0) && method_doc[0] != '\0') {
+            write_doc_comment_until_marker(f, method_doc, method_first);
+            CG::buf_char(f, '\n');
+          }
+
+          if (method_func.kind == AST::NodeType::STMT_FUNCTION) {
+            let mf: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(method_func);
+            CG::buf_str(f, "```luma\n");
+            write_func_signature(f, mf, method_name);
+          }
+
+          print_doc_sections(f, method_doc);
+        }
+      }
+    }
+  }
+
+  // Private members omitted for brevity — add similar formatting if needed.
+}
+
+// ─── Enum docs ───────────────────────────────────────────────────────────────
+
+const generate_enum_docs -> fn (f: *CG::Buf, enm: *AST::AstNode, config: DocGenConfig) void {
+  let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(enm);
+  let name: *byte = ed.name;
+  let doc: *byte = ed.doc_comment;
+  let is_public: bool = ed.is_public == 1;
+
+  if (!is_public && !config.include_private) return;
+
+  CG::buf_str(f, "### ");
+  if (is_public) CG::buf_str(f, "pub");
+  else           CG::buf_str(f, "priv");
+  CG::buf_str(f, " `");
+  CG::buf_str(f, name);
+  CG::buf_str(f, "`\n\n");
+
+  if (doc != cast<*byte>(0) && doc[0] != '\0') {
+    write_doc_comment(f, doc, 0);
+    CG::buf_char(f, '\n');
+  }
+
+  CG::buf_str(f, "**Values:**\n\n");
+  loop [i: i64 = 0](i < ed.member_count) : (++i) {
+    CG::buf_str(f, "- `");
+    CG::buf_str(f, ed.members[i]);
+    CG::buf_str(f, "`\n");
+  }
+  CG::buf_char(f, '\n');
+}
+
+// ─── Variable docs ───────────────────────────────────────────────────────────
+
+const generate_var_docs -> fn (f: *CG::Buf, var: *AST::AstNode) void {
+  let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(var);
+
+  CG::buf_str(f, "- **`");
+  CG::buf_str(f, vd.name);
+  CG::buf_str(f, "`** : ");
+  if (vd.var_type != cast<*AST::AstNode>(0)) print_type(f, vd.var_type);
+  else                                       CG::buf_str(f, "inferred");
+
+  if (vd.is_mutable == 1) CG::buf_str(f, " *(mutable)*");
+  else                    CG::buf_str(f, " *(constant)*");
+
+  if (vd.doc_comment != cast<*byte>(0) && vd.doc_comment[0] != '\0') {
+    CG::buf_str(f, " — ");
+    write_inline_doc(f, vd.doc_comment);
+  }
+  CG::buf_char(f, '\n');
+}
+
+// ─── Block / @os / @link docs ────────────────────────────────────────────────
+
+const generate_block_decls -> fn (f: *CG::Buf, block: *AST::AstNode, config: DocGenConfig) void {
+  if (block == cast<*AST::AstNode>(0) || block.kind != AST::NodeType::STMT_BLOCK) return;
+
+  let blk: *AST::BlockNode = cast<*AST::BlockNode>(block);
+  loop [i: i64 = 0](i < blk.stmt_count) : (++i) {
+    let node: *AST::AstNode = blk.statements[i];
+    if (node != cast<*AST::AstNode>(0)) {
+      let kind: i64 = node.kind;
+      if (kind == AST::NodeType::STMT_STRUCT) {
+        generate_struct_docs(f, node, config);
+      } elif (kind == AST::NodeType::STMT_ENUM) {
+        generate_enum_docs(f, node, config);
+      } elif (kind == AST::NodeType::STMT_FUNCTION) {
+        generate_function_docs(f, node, config);
+      } elif (kind == AST::NodeType::STMT_VAR_DECL) {
+        generate_var_docs(f, node);
+      } elif (kind == AST::NodeType::PREPROCESSOR_OS) {
+        generate_os_docs(f, node, config);
+      } elif (kind == AST::NodeType::PREPROCESSOR_LINK) {
+        generate_link_docs(f, node);
+      }
+    }
+  }
+}
+
+const generate_os_docs -> fn (f: *CG::Buf, os_node: *AST::AstNode, config: DocGenConfig) void {
+  let on: *AST::OsNode = cast<*AST::OsNode>(os_node);
+
+  loop [i: i64 = 0](on.platforms[i] != cast<*byte>(0)) : (++i) {
+    CG::buf_str(f, "### `\"");
+    CG::buf_str(f, on.platforms[i]);
+    CG::buf_str(f, "\"`\n\n");
+    generate_block_decls(f, on.bodies[i], config);
+    CG::buf_char(f, '\n');
+  }
+
+  if (on.has_default == 1 && on.default_body != cast<*AST::AstNode>(0)) {
+    CG::buf_str(f, "### Default `_`\n\n");
+    generate_block_decls(f, on.default_body, config);
+    CG::buf_char(f, '\n');
+  }
+}
+
+const generate_link_docs -> fn (f: *CG::Buf, link_node: *AST::AstNode) void {
+  let ln: *AST::LinkNode = cast<*AST::LinkNode>(link_node);
+  CG::buf_str(f, "> **FFI library:** `");
+  if (ln.lib_name != cast<*byte>(0)) CG::buf_str(f, ln.lib_name);
+  else                               CG::buf_str(f, "unknown");
+  CG::buf_str(f, "`\n>\n");
+}
+
+// ─── Module docs ─────────────────────────────────────────────────────────────
+
+pub const generate_module_docs -> fn (module: *AST::AstNode, config: DocGenConfig, f: *CG::Buf) bool {
+  if (module == cast<*AST::AstNode>(0) || module.kind != AST::NodeType::PREPROCESSOR_MODULE) {
+    return false;
+  }
+
+  let mn: *AST::ModuleNode = cast<*AST::ModuleNode>(module);
+  let module_name: *byte = mn.name;
+  let module_doc: *byte = mn.doc_comment;
+
+  CG::buf_str(f, "# Module: ");
+  if (module_name != cast<*byte>(0)) CG::buf_str(f, module_name);
+  else                               CG::buf_str(f, "unnamed");
+  CG::buf_str(f, "\n\n");
+
+  if (module_doc != cast<*byte>(0) && module_doc[0] != '\0') {
+    write_doc_comment(f, module_doc, 0);
+    CG::buf_char(f, '\n');
+  }
+
+  CG::buf_str(f, "## Table of Contents\n\n");
+  CG::buf_str(f, "- [Structures](#structures)\n");
+  CG::buf_str(f, "- [Enumerations](#enumerations)\n");
+  CG::buf_str(f, "- [Functions](#functions)\n");
+  CG::buf_str(f, "- [Variables](#variables)\n");
+
+  let has_os: bool = false;
+  let has_links: bool = false;
+  loop [i: i64 = 0](i < mn.body_count) : (++i) {
+    let node: *AST::AstNode = mn.body[i];
+    if (node != cast<*AST::AstNode>(0)) {
+      if (node.kind == AST::NodeType::PREPROCESSOR_OS)   has_os = true;
+      if (node.kind == AST::NodeType::PREPROCESSOR_LINK) has_links = true;
+    }
+  }
+  if (has_os)    CG::buf_str(f, "- [OS-Specific](#os-specific)\n");
+  if (has_links) CG::buf_str(f, "- [Linked Libraries](#linked-libraries)\n");
+  CG::buf_char(f, '\n');
+
+  if (mn.body != cast<**AST::AstNode>(0)) {
+    let has_structs: bool = false;
+    let has_enums: bool = false;
+    let has_functions: bool = false;
+    let has_vars: bool = false;
+
+    loop [i: i64 = 0](i < mn.body_count) : (++i) {
+      let node: *AST::AstNode = mn.body[i];
+      if (node != cast<*AST::AstNode>(0)) {
+        let kind: i64 = node.kind;
+        if (kind == AST::NodeType::STMT_STRUCT) {
+          has_structs = true;
+        } elif (kind == AST::NodeType::STMT_ENUM) {
+          has_enums = true;
+        } elif (kind == AST::NodeType::STMT_FUNCTION) {
+          has_functions = true;
+        } elif (kind == AST::NodeType::STMT_VAR_DECL) {
+          if (cast<*AST::VarDeclNode>(node).doc_comment != cast<*byte>(0)) has_vars = true;
+        }
+      }
+    }
+
+    if (has_structs) {
+      CG::buf_str(f, "---\n\n## Structures\n\n");
+      loop [i: i64 = 0](i < mn.body_count) : (++i) {
+        let node: *AST::AstNode = mn.body[i];
+        if (node != cast<*AST::AstNode>(0) && node.kind == AST::NodeType::STMT_STRUCT) {
+          generate_struct_docs(f, node, config);
+        }
+      }
+    }
+
+    if (has_enums) {
+      CG::buf_str(f, "\n## Enumerations\n\n");
+      loop [i: i64 = 0](i < mn.body_count) : (++i) {
+        let node: *AST::AstNode = mn.body[i];
+        if (node != cast<*AST::AstNode>(0) && node.kind == AST::NodeType::STMT_ENUM) {
+          generate_enum_docs(f, node, config);
+        }
+      }
+    }
+
+    if (has_functions) {
+      CG::buf_str(f, "\n## Functions\n\n");
+      loop [i: i64 = 0](i < mn.body_count) : (++i) {
+        let node: *AST::AstNode = mn.body[i];
+        if (node != cast<*AST::AstNode>(0) && node.kind == AST::NodeType::STMT_FUNCTION) {
+          generate_function_docs(f, node, config);
+        }
+      }
+    }
+
+    if (has_vars) {
+      CG::buf_str(f, "\n## Variables\n\n");
+      loop [i: i64 = 0](i < mn.body_count) : (++i) {
+        let node: *AST::AstNode = mn.body[i];
+        if (node != cast<*AST::AstNode>(0) && node.kind == AST::NodeType::STMT_VAR_DECL) {
+          generate_var_docs(f, node);
+        }
+      }
+    }
+
+    if (has_os) {
+      CG::buf_str(f, "\n## OS-Specific\n\n");
+      loop [i: i64 = 0](i < mn.body_count) : (++i) {
+        let node: *AST::AstNode = mn.body[i];
+        if (node != cast<*AST::AstNode>(0) && node.kind == AST::NodeType::PREPROCESSOR_OS) {
+          generate_os_docs(f, node, config);
+        }
+      }
+    }
+
+    if (has_links) {
+      CG::buf_str(f, "\n## Linked Libraries\n\n");
+      CG::buf_str(f, "External native libraries linked by this module.\n\n");
+      loop [i: i64 = 0](i < mn.body_count) : (++i) {
+        let node: *AST::AstNode = mn.body[i];
+        if (node != cast<*AST::AstNode>(0) && node.kind == AST::NodeType::PREPROCESSOR_LINK) {
+          generate_link_docs(f, node);
+        }
+      }
+      CG::buf_char(f, '\n');
+    }
+  }
+
+  return true;
+}
+
+// ─── Top-level entry point ───────────────────────────────────────────────────
+
+pub const generate_documentation -> fn (program: *AST::AstNode, config: DocGenConfig) bool {
+  if (program == cast<*AST::AstNode>(0) || program.kind != AST::NodeType::PROGRAM) {
+    output("Invalid program node for documentation generation\n");
+    return false;
+  }
+
+  if (!ensure_directory(config.output_dir)) return false;
+
+  output("Generating documentation in ", config.output_dir, "/...\n");
+
+  let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(program);
+
+  let path_buf: *CG::Buf = CG::buf_init();
+  CG::buf_str(path_buf, config.output_dir);
+  CG::buf_str(path_buf, "/README.md");
+  let index_path: *byte = CG::buf_finish(path_buf);
+
+  let index: *CG::Buf = CG::buf_init();
+  CG::buf_str(index, "# API Documentation\n\n");
+  CG::buf_str(index, "Generated documentation for the project.\n\n");
+  CG::buf_str(index, "## Modules\n\n");
+
+  let success: bool = true;
+  loop [i: i64 = 0](i < prog.module_count) : (++i) {
+    let module: *AST::AstNode = prog.modules[i];
+    if (module != cast<*AST::AstNode>(0) && module.kind == AST::NodeType::PREPROCESSOR_MODULE) {
+      let mn: *AST::ModuleNode = cast<*AST::ModuleNode>(module);
+      let module_name: *byte = mn.name;
+      if (module_name == cast<*byte>(0)) module_name = "unnamed";
+
+      CG::buf_str(index, "- [");
+      CG::buf_str(index, module_name);
+      CG::buf_str(index, "](");
+      CG::buf_str(index, module_name);
+      CG::buf_str(index, ".md)\n");
+
+      let doc_path_buf: *CG::Buf = CG::buf_init();
+      CG::buf_str(doc_path_buf, config.output_dir);
+      CG::buf_str(doc_path_buf, "/");
+      CG::buf_str(doc_path_buf, module_name);
+      CG::buf_str(doc_path_buf, ".md");
+      let doc_path: *byte = CG::buf_finish(doc_path_buf);
+
+      let doc: *CG::Buf = CG::buf_init();
+      if (!generate_module_docs(module, config, doc)) {
+        output("Failed to generate documentation for module: ", module_name, "\n");
+        success = false;
+      }
+
+      let content: *byte = CG::buf_finish(doc);
+      if (write_doc_file(doc_path, content)) {
+        output("  Generated: ", doc_path, "\n");
+      } else {
+        output("Failed to create documentation file: ", doc_path, "\n");
+        success = false;
+      }
+      free(doc_path);
+    }
+  }
+
+  let index_content: *byte = CG::buf_finish(index);
+  if (!write_doc_file(index_path, index_content)) {
+    output("Failed to create index file: ", index_path, "\n");
+    success = false;
+  }
+  free(index_path);
+
+  if (success) {
+    output("✓ Documentation generated successfully in ", config.output_dir, "/\n");
+  }
+
+  return success;
+}

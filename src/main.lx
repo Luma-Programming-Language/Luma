@@ -14,6 +14,7 @@
 @use "tc"           as TC
 @use "codegen"      as CODEGEN
 @use "lsp_main"     as LSP
+@use "auto_docs"    as DOCS
 
 @use "progress_bar" as PBAR
 
@@ -91,7 +92,18 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
   VEC::free_vector(&build_config.link_files);
 
   // PRINT::print_node(program, 0);
-  
+
+  // `-docs` is a pure AST pass: it reads declarations and emits Markdown, so
+  // it runs on the freshly parsed program without typechecking or codegen.
+  if (build_config.docs) {
+    let doc_config: DOCS::DocGenConfig =
+      DOCS::create_doc_config(cast<*void>(0), build_config.docs_dir);
+    let docs_ok: bool = DOCS::generate_documentation(program, doc_config);
+    AST::free_node(program);
+    if (docs_ok == false) return CONST::LumaErrorCode::Runtime_Error;
+    return 0;
+  }
+
   if (build_config.anim) {
     bar.update("Typechecking", "\\");
     bar.render();
