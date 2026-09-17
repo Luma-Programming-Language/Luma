@@ -7,6 +7,11 @@ const is_alpha -> fn (c: byte) bool {
 }
 const is_digit -> fn (c: byte) bool { return (c >= '0' && c <= '9'); }
 const is_alnum -> fn (c: byte) bool { return is_alpha(c) || is_digit(c); }
+const is_hex_digit -> fn (c: byte) bool {
+  return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
+}
+const is_bin_digit -> fn (c: byte) bool { return (c == '0' || c == '1'); }
+const is_oct_digit -> fn (c: byte) bool { return (c >= '0' && c <= '7'); }
 
 const skip_line_comment -> fn (lx: *sym::Lexer) void {
   loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
@@ -17,6 +22,9 @@ const skip_line_comment -> fn (lx: *sym::Lexer) void {
 const skip_block_comment -> fn (lx: *sym::Lexer) void {
   lx.advance(); // skip /
   lx.advance(); // skip *
+  // NOTE: block comments do not nest — `/* /* */` ends at the first `*/`.
+  // This matches C and is intentional so that toggling a commented-out block
+  // via `/* */` doesn't hide a nested `*/`.
   loop (lx.is_end() == 0) {
     if (lx.peek(0) == '*' && lx.peek(1) == '/') {
       lx.advance(); // skip *
@@ -54,6 +62,103 @@ const skip_whitespace -> fn (lx: *sym::Lexer) int {
   return count;
 }
 
+// Scan the text after a `//!` or `///` opener (none of the three bytes
+// consumed yet) up to end of line and emit it as a doc-comment token.
+const scan_doc_comment -> fn (lx: *sym::Lexer, kind: int, start: *byte,
+                              line: int, col: int, ws: int) sym::Token {
+  lx.advance(); // '/'
+  lx.advance(); // '/'
+  lx.advance(); // '!' or '/'
+  let inner_start: *byte = lx.current;
+  let len: int = 0;
+  loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
+    lx.advance();
+    len = len + 1;
+  }
+  return make_token(inner_start, kind, len, line, col, ws);
+}
+
+// An `@word` / `#word` directive — the `@`/`#` prefix has already been
+// consumed by the caller. Known words become their directive/attribute
+// token via the binary-search keyword lookup; anything else is recorded as
+// LEX_ERR_UNKNOWN_DIRECTIVE and returned as a TOK_ERROR token.
+const scan_prefixed_word -> fn (lx: *sym::Lexer, start: *byte,
+                                line: int, col: int, ws: int) sym::Token {
+  let len: int = 1; // the '@' or '#' prefix
+  loop (lx.is_end() == 0 && is_alnum(lx.peek(0))) {
+    lx.advance();
+    len = len + 1;
+  }
+  let kind: int = sym::lookup_keyword(start, len);
+  if (kind != -1) { return make_token(start, kind, len, line, col, ws); }
+  lexer_add_error(lx, sym::LEX_ERR_UNKNOWN_DIRECTIVE, line, col, len, 0);
+  return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
+}
+
+// Consume a numeric literal and return its token kind. Handles decimal,
+// hex (0x/0X), binary (0b/0B) and octal (0o/0O) literals, `_` digit
+// separators, a fractional part (TOK_NUM_FLOAT) and an optional trailing
+// type suffix (`42u8`, `0xFFi32`, `3.14f64` — atio() stops at the first
+// non-numeric character, so the value is unaffected). The prefixed forms are
+// only entered when a valid digit actually follows, so `0` before an
+// identifier still lexes as `0` + identifier (e.g. the `0..` range).
+const scan_number -> fn (lx: *sym::Lexer) int {
+  let kind: int = sym::LumaTokenType::TOK_NUMBER;
+  let prefixed: int = 0;
+
+  if (lx.peek(0) == '0') {
+    let p1: byte = lx.peek(1);
+    if ((p1 == 'x' || p1 == 'X') && is_hex_digit(lx.peek(2))) {
+      lx.advance();
+      lx.advance();
+      loop (lx.is_end() == 0 && (is_hex_digit(lx.peek(0)) || lx.peek(0) == '_')) {
+        lx.advance();
+      }
+      prefixed = 1;
+    } elif ((p1 == 'b' || p1 == 'B') && is_bin_digit(lx.peek(2))) {
+      lx.advance();
+      lx.advance();
+      loop (lx.is_end() == 0 && (is_bin_digit(lx.peek(0)) || lx.peek(0) == '_')) {
+        lx.advance();
+      }
+      prefixed = 1;
+    } elif ((p1 == 'o' || p1 == 'O') && is_oct_digit(lx.peek(2))) {
+      lx.advance();
+      lx.advance();
+      loop (lx.is_end() == 0 && (is_oct_digit(lx.peek(0)) || lx.peek(0) == '_')) {
+        lx.advance();
+      }
+      prefixed = 1;
+    }
+  }
+
+  // Only decimal literals can have a fractional part — `0x2.8` is nonsense.
+  if (prefixed == 0) {
+    loop (lx.is_end() == 0 && (is_digit(lx.peek(0)) || lx.peek(0) == '_')) {
+      lx.advance();
+    }
+    // A `.` only starts a fraction when a digit follows, so `0..` (double
+    // dot operator) keeps lexing as decimal `.` `.`.
+    if (lx.is_end() == 0 && lx.peek(0) == '.' && is_digit(lx.peek(1))) {
+      lx.advance();
+      kind = sym::LumaTokenType::TOK_NUM_FLOAT;
+      loop (lx.is_end() == 0 && (is_digit(lx.peek(0)) || lx.peek(0) == '_')) {
+        lx.advance();
+      }
+    }
+  }
+
+  // Optional type suffix — a letter can't legally begin anything valid
+  // directly after a numeric literal, so grab the alphanumeric run.
+  if (lx.is_end() == 0 && is_alpha(lx.peek(0))) {
+    loop (lx.is_end() == 0 && is_alnum(lx.peek(0))) {
+      lx.advance();
+    }
+  }
+
+  return kind;
+}
+
 const make_token -> fn (val: *byte, kind: int, len: int, line: int, 
                         col: int, whitespace_len: int) sym::Token {
   return sym::Token { val: val, kind: kind, len: len, line: line, 
@@ -89,61 +194,23 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
     // `//!` module doc comment — emitted as a token (not skipped) so the
     // parser can attach it to the module node and the LSP can highlight it.
     if (c == '/' && lx.peek(1) == '/' && lx.peek(2) == '!') {
-      lx.advance(); // '/'
-      lx.advance(); // '/'
-      lx.advance(); // '!'
-      let inner_start: *byte = lx.current;
-      let len: int = 0;
-      loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
-        lx.advance();
-        len = len + 1;
-      }
-      return make_token(inner_start, sym::LumaTokenType::TOK_MODULE_DOC, len, line, col, ws);
+      return scan_doc_comment(lx, sym::LumaTokenType::TOK_MODULE_DOC, start, line, col, ws);
     }
 
     // `///` item doc comment — same treatment as `//!` above; the parser's
     // consume_doc_comments picks these up before each statement.
     if (c == '/' && lx.peek(1) == '/' && lx.peek(2) == '/') {
-      lx.advance(); // '/'
-      lx.advance(); // '/'
-      lx.advance(); // '/'
-      let inner_start: *byte = lx.current;
-      let len: int = 0;
-      loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
-        lx.advance();
-        len = len + 1;
-      }
-      return make_token(inner_start, sym::LumaTokenType::TOK_DOC_COMMENT, len, line, col, ws);
+      return scan_doc_comment(lx, sym::LumaTokenType::TOK_DOC_COMMENT, start, line, col, ws);
     }
 
     if (c == '@') {
       lx.advance();
-      let len: int = 1;
-      loop (lx.is_end() == 0 && is_alnum(lx.peek(0))) {
-        lx.advance();
-        len = len + 1;
-      }
-      let word: *byte = sym::create_word(start, len);
-      let kind: int = sym::lookup_keyword(word);
-      free(word);
-      if (kind != -1) { return make_token(start, kind, len, line, col, ws); }
-      lexer_add_error(lx, sym::LEX_ERR_UNKNOWN_DIRECTIVE, line, col, len, 0);
-      return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
+      return scan_prefixed_word(lx, start, line, col, ws);
     }
 
     if (c == '#') {
       lx.advance();
-      let len: int = 1;
-      loop (lx.is_end() == 0 && (is_alnum(lx.peek(0)) || lx.peek(0) == '_')) {
-        lx.advance();
-        len = len + 1;
-      }
-      let word: *byte = sym::create_word(start, len);
-      let kind: int = sym::lookup_keyword(word);
-      free(word);
-      if (kind != -1) { return make_token(start, kind, len, line, col, ws); }
-      lexer_add_error(lx, sym::LEX_ERR_UNKNOWN_DIRECTIVE, line, col, len, 0);
-      return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
+      return scan_prefixed_word(lx, start, line, col, ws);
     }
 
     if (c == '"') {
@@ -211,21 +278,9 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
     }
 
     if (is_digit(c)) {
-      let len: int = 0;
-      loop (lx.is_end() == 0 && is_digit(lx.peek(0))) {
-        lx.advance();
-        len = len + 1;
-      }
-      if (lx.is_end() == 0 && lx.peek(0) == '.' && is_digit(lx.peek(1))) {
-        lx.advance();
-        len = len + 1;
-        loop (lx.is_end() == 0 && is_digit(lx.peek(0))) {
-          lx.advance();
-          len = len + 1;
-        }
-        return make_token(start, sym::LumaTokenType::TOK_NUM_FLOAT, len, line, col, ws);
-      }
-      return make_token(start, sym::LumaTokenType::TOK_NUMBER, len, line, col, ws);
+      let kind: int = scan_number(lx);
+      let len: int = cast<int>(lx.current) - cast<int>(start);
+      return make_token(start, kind, len, line, col, ws);
     }
 
     if (is_alpha(c)) {
@@ -234,9 +289,7 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
         lx.advance();
         len = len + 1;
       }
-      let word: *byte = sym::create_word(start, len);
-      let kw_kind: int = sym::lookup_keyword(word);
-      free(word);
+      let kw_kind: int = sym::lookup_keyword(start, len);
       if (kw_kind != -1) return make_token(start, kw_kind, len, line, col, ws);
       return make_token(start, sym::LumaTokenType::TOK_IDENTIFIER, len, line, col, ws);
     }

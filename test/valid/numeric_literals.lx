@@ -1,0 +1,29 @@
+@module "numeric_literals"
+
+// Regression test: the lexer was upgraded to support hex (0x), binary (0b),
+// octal (0o) literals, underscore digit separators, and optional type suffixes
+// (which are harmlessly ignored by atio). scan_number must also leave existing
+// behavior intact: plain decimal integers and floats (`.` only consumed when
+// followed by a digit).
+
+const main -> fn () int {
+  let hex:    int = 0xFF;
+  let bin:    int = 0b1010;
+  let oct:    int = 0o17;
+  let under:  int = 1_000_000;
+  let mix:    int = 0xFF_FF;
+  let u32v:   int = 42u32;
+  let small:  int = 0b1_010_1;
+
+  if (hex != 255)        return 1;
+  if (bin != 10)         return 2;
+  if (oct != 15)         return 3;
+  if (under != 1000000)  return 4;
+  if (mix != 65535)      return 5;
+  if (small != 21)       return 6;
+
+  // Literal `0xF` followed by identifier `foo_val` — must not mislex.
+  let foo_val: int = 0xF;
+
+  return 0;
+}

@@ -573,8 +573,10 @@ pub const is_alnum -> fn (ch: byte) bool {
 
 /// Converts ASCII string to integer
 ///
-/// Parses digits from the string until a non-digit character is encountered.
-/// Does not handle negative numbers or leading whitespace.
+/// Supports decimal (no prefix), hex (0x), binary (0b) and octal (0o) literals
+/// and skips underscore (`_`) digit separators. Stops at the first character
+/// that is not a valid digit for the detected base (so a trailing type suffix
+/// like `u8` is harmlessly ignored). Does not handle negative numbers.
 ///
 /// # Parameters
 /// * `value` - String to parse
@@ -584,18 +586,43 @@ pub const is_alnum -> fn (ch: byte) bool {
 ///
 /// # Example
 /// ```luma
-/// let num: int = string::atio("12345");
-/// // num will be 12345
+/// let a: int = string::atio("12345");   // 12345
+/// let b: int = string::atio("0xFF");    // 255
+/// let c: int = string::atio("0b1010");  // 10
+/// let d: int = string::atio("1_000");   // 1000
 /// ```
 pub const atio -> fn (value: *byte) int {
   let num: int = 0;
-  loop [i: int = 0](value[i] != '\0') : (++i) { 
-    if (cast<int>(value[i]) >= 48 && cast<int>(value[i]) <= 57) { 
-      num = num * 10 + (cast<int>(value[i]) - 48); 
-    } else { 
-      break; 
+  let base: int = 10;
+  let i: int = 0;
+
+  // 0x / 0b / 0o prefixed literals select a base (the lexer emits these as
+  // single TOK_NUMBER tokens).
+  if (value[0] == '0') {
+    let p1: byte = value[1];
+    if (p1 == 'x' || p1 == 'X')   { base = 16; i = 2; }
+    elif (p1 == 'b' || p1 == 'B') { base = 2;  i = 2; }
+    elif (p1 == 'o' || p1 == 'O') { base = 8;  i = 2; }
+  }
+
+  loop (value[i] != '\0') {
+    let c: int = cast<int>(value[i]);
+    if (c == '_') {
+      i = i + 1;
+    } else {
+      let digit: int = -1;
+      if (c >= 48 && c <= 57)     digit = c - 48;     // '0'..'9'
+      elif (c >= 97 && c <= 102)  digit = c - 87;     // 'a'..'f'
+      elif (c >= 65 && c <= 70)   digit = c - 55;     // 'A'..'F'
+      if (digit >= 0 && digit < base) {
+        num = num * base + digit;
+        i = i + 1;
+      } else {
+        break;
+      }
     }
   }
+
   return num;
 }
 

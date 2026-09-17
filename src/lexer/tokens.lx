@@ -1,7 +1,5 @@
 @module "lexer_tokens"
 
-@use "std_cstring" as STRING
-
 pub const LumaTokenType -> enum {
   TOK_EOF,          /**< End of file/input */
   TOK_ERROR,        /**< Error token */
@@ -152,6 +150,27 @@ pub const Lexer -> struct {
   // parse even when the offending characters never became tokens (an
   // unrecognized character is skipped, not tokenized).
   had_error: int,
+
+  static make -> fn (src: *byte) Lexer {
+    let lx: Lexer = Lexer {
+      current: src,
+      src: src,
+      line: 1,
+      col:  0,
+      had_error: 0,
+      error_count: 0,
+    };
+
+    loop [i: int = 0](i < MAX_LEX_ERRORS) : (++i) {
+      lx.errors[i].kind = 0;
+      lx.errors[i].line = 0;
+      lx.errors[i].col  = 0;
+      lx.errors[i].len  = 0;
+      lx.errors[i].bad  = cast<byte>(0);
+    }
+
+    return lx;
+  },
   
   is_end  -> fn () int { if(self.current[0] == '\0') return 1; return 0; },
   peek    -> fn (offset: int) byte { return self.current[offset]; },
@@ -192,173 +211,170 @@ pub const Token -> struct {
   },
 };
 
-pub const create_lexer -> fn (src: *byte) Lexer {
-  let lx: Lexer;
-  lx.current = src;
-  lx.src = src;
-  lx.line = 1;
-  lx.col = 0;
-  lx.had_error = 0;
-  lx.error_count = 0;
-  loop [i: int = 0](i < MAX_LEX_ERRORS) : (++i) {
-    lx.errors[i].kind = 0;
-    lx.errors[i].line = 0;
-    lx.errors[i].col  = 0;
-    lx.errors[i].len  = 0;
-    lx.errors[i].bad  = cast<byte>(0);
-  }
-  return lx;
-}
-
-const SINGLE_SYMBOL_COUNT: int = 24;
-const SingleSymbol -> struct { val: byte, kind: int };
-const single_symbol_map: [SingleSymbol; 24] = [
-  SingleSymbol { val: '(', kind: LumaTokenType::TOK_LPAREN  },
-  SingleSymbol { val: ')', kind: LumaTokenType::TOK_RPAREN  },
-  SingleSymbol { val: ';', kind: LumaTokenType::TOK_SEMI    },
-  SingleSymbol { val: ':', kind: LumaTokenType::TOK_COLON   },
-  SingleSymbol { val: '@', kind: LumaTokenType::TOK_AT      },
-  SingleSymbol { val: '+', kind: LumaTokenType::TOK_PLUS    }, 
-  SingleSymbol { val: '-', kind: LumaTokenType::TOK_MINUS   },
-  SingleSymbol { val: '*', kind: LumaTokenType::TOK_STAR    }, 
-  SingleSymbol { val: '/', kind: LumaTokenType::TOK_SLASH   },
-  SingleSymbol { val: '^', kind: LumaTokenType::TOK_CARET   },
-  SingleSymbol { val: '%', kind: LumaTokenType::TOK_MODL    },
-  SingleSymbol { val: '<', kind: LumaTokenType::TOK_LT      },
-  SingleSymbol { val: '>', kind: LumaTokenType::TOK_GT      },
-  SingleSymbol { val: '{', kind: LumaTokenType::TOK_LBRACE  },
-  SingleSymbol { val: '}', kind: LumaTokenType::TOK_RBRACE  },
-  SingleSymbol { val: '[', kind: LumaTokenType::TOK_LBRACKET},
-  SingleSymbol { val: ']', kind: LumaTokenType::TOK_RBRACKET},
-  SingleSymbol { val: ',', kind: LumaTokenType::TOK_COMMA   },
-  SingleSymbol { val: '.', kind: LumaTokenType::TOK_DOT     },
-  SingleSymbol { val: '=', kind: LumaTokenType::TOK_EQUAL   },
-  SingleSymbol { val: '&', kind: LumaTokenType::TOK_AMP     },
-  SingleSymbol { val: '|', kind: LumaTokenType::TOK_PIPE    },
-  SingleSymbol { val: '~', kind: LumaTokenType::TOK_TILDE   },
-  SingleSymbol { val: '!', kind: LumaTokenType::TOK_BANG    },
-];
-
-pub const lookup_single -> fn (val: byte) int {
-  loop [i: int = 0](i < SINGLE_SYMBOL_COUNT) : (++i) {
-    if (single_symbol_map[i].val == val) 
-      return single_symbol_map[i].kind;
+// Single-character symbols, resolved with a switch (a constant-time jump
+// table in the generated C) instead of the previous linear scan over a
+// lookup table. The `@`/`#` prefixed words never reach this — the lexer
+// handles those before falling through to symbol lookup.
+pub const lookup_single -> fn (c: byte) int {
+  switch (c) {
+    '(' -> return LumaTokenType::TOK_LPAREN;
+    ')' -> return LumaTokenType::TOK_RPAREN;
+    ';' -> return LumaTokenType::TOK_SEMI;
+    ':' -> return LumaTokenType::TOK_COLON;
+    '@' -> return LumaTokenType::TOK_AT;
+    '+' -> return LumaTokenType::TOK_PLUS;
+    '-' -> return LumaTokenType::TOK_MINUS;
+    '*' -> return LumaTokenType::TOK_STAR;
+    '/' -> return LumaTokenType::TOK_SLASH;
+    '^' -> return LumaTokenType::TOK_CARET;
+    '%' -> return LumaTokenType::TOK_MODL;
+    '<' -> return LumaTokenType::TOK_LT;
+    '>' -> return LumaTokenType::TOK_GT;
+    '{' -> return LumaTokenType::TOK_LBRACE;
+    '}' -> return LumaTokenType::TOK_RBRACE;
+    '[' -> return LumaTokenType::TOK_LBRACKET;
+    ']' -> return LumaTokenType::TOK_RBRACKET;
+    ',' -> return LumaTokenType::TOK_COMMA;
+    '.' -> return LumaTokenType::TOK_DOT;
+    '=' -> return LumaTokenType::TOK_EQUAL;
+    '&' -> return LumaTokenType::TOK_AMP;
+    '|' -> return LumaTokenType::TOK_PIPE;
+    '~' -> return LumaTokenType::TOK_TILDE;
+    '!' -> return LumaTokenType::TOK_BANG;
+    _   -> return -1;
   }
   return -1;
 }
 
-const DOUBLE_SYMBOL_COUNT: int = 13;
-const DoubleSymbol -> struct { val: *byte, kind: int };
-const double_symbol_map: [DoubleSymbol; 13] = [
-  DoubleSymbol { val: "==", kind: LumaTokenType::TOK_EQEQ        },
-  DoubleSymbol { val: "!=", kind: LumaTokenType::TOK_NEQ         },
-  DoubleSymbol { val: "<=", kind: LumaTokenType::TOK_LE          },
-  DoubleSymbol { val: ">=", kind: LumaTokenType::TOK_GE          },
-  DoubleSymbol { val: "&&", kind: LumaTokenType::TOK_AND         },
-  DoubleSymbol { val: "||", kind: LumaTokenType::TOK_OR          },
-  DoubleSymbol { val: "::", kind: LumaTokenType::TOK_RESOLVE     },
-  DoubleSymbol { val: "++", kind: LumaTokenType::TOK_PLUSPLUS    },
-  DoubleSymbol { val: "--", kind: LumaTokenType::TOK_MINUSMINUS  },
-  DoubleSymbol { val: "<<", kind: LumaTokenType::TOK_SHIFT_LEFT  },
-  DoubleSymbol { val: "..", kind: LumaTokenType::TOK_RANGE       },
-  DoubleSymbol { val: "->", kind: LumaTokenType::TOK_RIGHT_ARROW },
-  DoubleSymbol { val: "<-", kind: LumaTokenType::TOK_LEFT_ARROW  },
-];
-
+// Two-character operators, resolved by a first-char switch (again replacing
+// a linear scan). NOTE: there is deliberately no `>>` arm — `>>` lexes as
+// two `>` tokens so nested generic closes like `cast<Box<int>>` split
+// cleanly, and the parser reassembles adjacent `>` `>` into a right shift in
+// an expression (see is_shift_right in src/parser/expr.lx). `...` is caught
+// before this in the lexer, so `.` `.` here always means TOK_RANGE.
 pub const lookup_double -> fn (c: byte, c2: byte) int {
-  loop [i: int = 0](i < DOUBLE_SYMBOL_COUNT) : (++i) {
-    let sym: *byte = double_symbol_map[i].val;
-    if (sym[0] == c && sym[1] == c2)
-      return double_symbol_map[i].kind;
+  switch (c) {
+    '=' -> { if (c2 == '=') return LumaTokenType::TOK_EQEQ;    }
+    '!' -> { if (c2 == '=') return LumaTokenType::TOK_NEQ;     }
+    '<' -> {
+      if (c2 == '=') return LumaTokenType::TOK_LE;
+      if (c2 == '<') return LumaTokenType::TOK_SHIFT_LEFT;
+      if (c2 == '-') return LumaTokenType::TOK_LEFT_ARROW;
+    }
+    '>' -> { if (c2 == '=') return LumaTokenType::TOK_GE;      }
+    '&' -> { if (c2 == '&') return LumaTokenType::TOK_AND;     }
+    '|' -> { if (c2 == '|') return LumaTokenType::TOK_OR;      }
+    ':' -> { if (c2 == ':') return LumaTokenType::TOK_RESOLVE; }
+    '+' -> { if (c2 == '+') return LumaTokenType::TOK_PLUSPLUS; }
+    '-' -> {
+      if (c2 == '-') return LumaTokenType::TOK_MINUSMINUS;
+      if (c2 == '>') return LumaTokenType::TOK_RIGHT_ARROW;
+    }
+    '.' -> { if (c2 == '.') return LumaTokenType::TOK_RANGE;   }
   }
   return -1;
 }
 
 const KEYWORD_COUNT: int = 46;
 const Keyword -> struct { val: *byte, kind: int };
+// Sorted ascending for lookup_keyword's binary search (compare_word defines
+// the ordering: byte-lexicographic, shorter-prefix-first). Do NOT reorder
+// for readability — an unsorted map silently breaks the lookup.
 pub const keyword_map: [Keyword; 46] = [
-  // Primitive Types
-  Keyword { val: "int",    kind: LumaTokenType::TOK_INT },
-  Keyword { val: "double", kind: LumaTokenType::TOK_DOUBLE },
-  Keyword { val: "uint",   kind: LumaTokenType::TOK_UINT },
-  Keyword { val: "float",  kind: LumaTokenType::TOK_FLOAT },
-  Keyword { val: "bool",   kind: LumaTokenType::TOK_BOOL },
-  Keyword { val: "void",   kind: LumaTokenType::TOK_VOID },
-  Keyword { val: "byte",   kind: LumaTokenType::TOK_CHAR },
-
-  // Preprocessor Directives
-  Keyword { val: "@module", kind: LumaTokenType::TOK_MODULE },
-  Keyword { val: "@use",    kind: LumaTokenType::TOK_USE },
-  Keyword { val: "@os",     kind: LumaTokenType::TOK_OS },
-  Keyword { val: "@link",   kind: LumaTokenType::TOK_LINK },
-
-  // Function Attributes
+  // Function attributes
+  Keyword { val: "#dll_import",        kind: LumaTokenType::TOK_DLL_IMPORT },
+  Keyword { val: "#lib_import",        kind: LumaTokenType::TOK_LIB_IMPORT },
   Keyword { val: "#returns_ownership", kind: LumaTokenType::TOK_RETURNS_OWNERSHIP },
   Keyword { val: "#takes_ownership",   kind: LumaTokenType::TOK_TAKES_OWNERSHIP },
-  Keyword { val: "#dll_import",        kind: LumaTokenType::TOK_DLL_IMPORT },  
-  Keyword { val: "#lib_import",        kind: LumaTokenType::TOK_LIB_IMPORT },
 
-  // Built-in Functions
+  // Preprocessor directives
+  Keyword { val: "@link",   kind: LumaTokenType::TOK_LINK },
+  Keyword { val: "@module", kind: LumaTokenType::TOK_MODULE },
+  Keyword { val: "@os",     kind: LumaTokenType::TOK_OS },
+  Keyword { val: "@use",    kind: LumaTokenType::TOK_USE },
+
+  // Built-in functions
   Keyword { val: "__syscall__", kind: LumaTokenType::TOK_SYSCALL },
-  Keyword { val: "alloc",       kind: LumaTokenType::TOK_ALLOC },
-  Keyword { val: "free",        kind: LumaTokenType::TOK_FREE },
-  Keyword { val: "input",       kind: LumaTokenType::TOK_INPUT },
-  Keyword { val: "cast",        kind: LumaTokenType::TOK_CAST },
-  Keyword { val: "sizeof",     kind: LumaTokenType::TOK_SIZE_OF },
-  Keyword { val: "system",      kind: LumaTokenType::TOK_SYSTEM },
 
-  // Control Flow
-  Keyword { val: "if",       kind: LumaTokenType::TOK_IF },
-  Keyword { val: "elif",     kind: LumaTokenType::TOK_ELIF },
-  Keyword { val: "else",     kind: LumaTokenType::TOK_ELSE },
-  Keyword { val: "loop",     kind: LumaTokenType::TOK_LOOP },
-  Keyword { val: "return",   kind: LumaTokenType::TOK_RETURN },
-  Keyword { val: "break",    kind: LumaTokenType::TOK_BREAK },
+  // Keywords (control flow, declarations, literals, types, builtins)
+  Keyword { val: "alloc",   kind: LumaTokenType::TOK_ALLOC },
+  Keyword { val: "as",      kind: LumaTokenType::TOK_AS },
+  Keyword { val: "bool",    kind: LumaTokenType::TOK_BOOL },
+  Keyword { val: "break",   kind: LumaTokenType::TOK_BREAK },
+  Keyword { val: "byte",    kind: LumaTokenType::TOK_CHAR },
+  Keyword { val: "cast",    kind: LumaTokenType::TOK_CAST },
+  Keyword { val: "const",   kind: LumaTokenType::TOK_CONST },
   Keyword { val: "continue", kind: LumaTokenType::TOK_CONTINUE },
-  Keyword { val: "switch",   kind: LumaTokenType::TOK_SWITCH },
-  Keyword { val: "using",    kind: LumaTokenType::TOK_USING },
-  Keyword { val: "static",   kind: LumaTokenType::TOK_STATIC },
-  Keyword { val: "in",       kind: LumaTokenType::TOK_IN },
-  Keyword { val: "defer",    kind: LumaTokenType::TOK_DEFER },
-
-  // Declarations / Visibility
-  Keyword { val: "struct", kind: LumaTokenType::TOK_STRUCT },
-  Keyword { val: "enum",   kind: LumaTokenType::TOK_ENUM },
-  Keyword { val: "impl",   kind: LumaTokenType::TOK_IMPL },
-  Keyword { val: "fn",     kind: LumaTokenType::TOK_FN },
-  Keyword { val: "let",    kind: LumaTokenType::TOK_VAR },
-  Keyword { val: "const",  kind: LumaTokenType::TOK_CONST },
-  Keyword { val: "pub",    kind: LumaTokenType::TOK_PUBLIC },
-  Keyword { val: "priv",   kind: LumaTokenType::TOK_PRIVATE },
-  Keyword { val: "import", kind: LumaTokenType::TOK_IMPORT },
-  // NOTE: no "mod" keyword entry — TOK_MOD (below) is unused by the parser
+  Keyword { val: "defer",   kind: LumaTokenType::TOK_DEFER },
+  Keyword { val: "double",  kind: LumaTokenType::TOK_DOUBLE },
+  Keyword { val: "elif",    kind: LumaTokenType::TOK_ELIF },
+  Keyword { val: "else",    kind: LumaTokenType::TOK_ELSE },
+  Keyword { val: "enum",    kind: LumaTokenType::TOK_ENUM },
+  Keyword { val: "false",   kind: LumaTokenType::TOK_FALSE },
+  Keyword { val: "float",   kind: LumaTokenType::TOK_FLOAT },
+  Keyword { val: "fn",      kind: LumaTokenType::TOK_FN },
+  Keyword { val: "free",    kind: LumaTokenType::TOK_FREE },
+  Keyword { val: "if",      kind: LumaTokenType::TOK_IF },
+  Keyword { val: "impl",    kind: LumaTokenType::TOK_IMPL },
+  Keyword { val: "import",  kind: LumaTokenType::TOK_IMPORT },
+  Keyword { val: "in",      kind: LumaTokenType::TOK_IN },
+  Keyword { val: "input",   kind: LumaTokenType::TOK_INPUT },
+  Keyword { val: "int",     kind: LumaTokenType::TOK_INT },
+  Keyword { val: "let",     kind: LumaTokenType::TOK_VAR },
+  Keyword { val: "loop",    kind: LumaTokenType::TOK_LOOP },
+  Keyword { val: "priv",    kind: LumaTokenType::TOK_PRIVATE },
+  Keyword { val: "pub",     kind: LumaTokenType::TOK_PUBLIC },
+  Keyword { val: "return",  kind: LumaTokenType::TOK_RETURN },
+  Keyword { val: "sizeof",  kind: LumaTokenType::TOK_SIZE_OF },
+  Keyword { val: "static",  kind: LumaTokenType::TOK_STATIC },
+  Keyword { val: "struct",  kind: LumaTokenType::TOK_STRUCT },
+  Keyword { val: "switch",  kind: LumaTokenType::TOK_SWITCH },
+  Keyword { val: "system",  kind: LumaTokenType::TOK_SYSTEM },
+  Keyword { val: "true",    kind: LumaTokenType::TOK_TRUE },
+  Keyword { val: "uint",    kind: LumaTokenType::TOK_UINT },
+  Keyword { val: "using",   kind: LumaTokenType::TOK_USING },
+  Keyword { val: "void",    kind: LumaTokenType::TOK_VOID },
+  // NOTE: no "mod" keyword entry — TOK_MOD is unused by the parser
   // (the real modulo operator is the `%` symbol, tokenized separately as
   // TOK_MODL), and `mod` is an extremely common local variable name
   // throughout this codebase (e.g. `let mod: *ModuleNode = ...`). Reserving
   // it as a keyword made the self-hosted lexer misparse most of its own
   // source — see the "unknown type Token" / cascading parser-error
   // investigation this fixed.
-
-  // Literals / Helpers
-  Keyword { val: "true",  kind: LumaTokenType::TOK_TRUE },
-  Keyword { val: "false", kind: LumaTokenType::TOK_FALSE },
-  Keyword { val: "as",    kind: LumaTokenType::TOK_AS },
 ];
 
-#returns_ownership
-pub const create_word -> fn (start: *byte, len: int) *byte {
-  let word: *byte = cast<*byte>(alloc((len + 1) * sizeof<byte>));
-
-  loop [i: int = 0](i < len) : (++i) { word[i] = start[i]; }
-  word[len] = '\0';
-
-  return word;
+// Byte-lexicographic compare between a length-delimited candidate (val, len)
+// and a NUL-terminated keyword literal, returning -1 / 0 / 1 for
+// val < kw / equal / val > kw. Reads at most len + 1 bytes of kw, so a
+// keyword sharing no prefix with the candidate (the common case — most
+// identifiers are not keywords) fails on its first byte. No allocation, no
+// strlen. Shorter-prefix-sorts-first: a candidate that runs out before kw is
+// "less" (e.g. "in" < "input").
+const compare_word -> fn (val: *byte, len: int, kw: *byte) int {
+  loop [i: int = 0](i < len) : (++i) {
+    let kc: byte = kw[i];
+    if (kc == '\0')  return 1;   // kw shorter -> val is greater
+    if (val[i] < kc) return -1;
+    if (val[i] > kc) return 1;
+  }
+  if (kw[len] != '\0') return -1;   // kw longer -> val is less
+  return 0;
 }
 
-pub const lookup_keyword -> fn (val: *byte) int {
-  loop [i: int = 0](i < KEYWORD_COUNT) : (++i) {
-    if (STRING::strcmp(keyword_map[i].val, val) == 0)
-      return keyword_map[i].kind;
+// Keyword/directive lookup — the hot path for every identifier in the
+// source, so it's a binary search over the sorted map above with an
+// allocation-free in-place compare. (Previously this heap-allocated a word
+// copy via create_word and linearly strcmp'd all 46 entries, once per
+// identifier.)
+pub const lookup_keyword -> fn (val: *byte, len: int) int {
+  let lo: int = 0;
+  let hi: int = KEYWORD_COUNT - 1;
+  loop (lo <= hi) {
+    let mid: int = (lo + hi) / 2;
+    let cmp: int = compare_word(val, len, keyword_map[mid].val);
+    if (cmp == 0) return keyword_map[mid].kind;
+    if (cmp < 0) { hi = mid - 1; }
+    else         { lo = mid + 1; }
   }
   return -1;
 }

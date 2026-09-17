@@ -155,7 +155,7 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
   }
 
   let tokens: VEC::Vector = VEC::create_vector(sizeof<TOK::Token>);
-  let lexer: TOK::Lexer = TOK::create_lexer(src);
+  let lexer: TOK::Lexer = TOK::Lexer::make(src);
 
   loop (lexer.is_end() == 0) {
     let tok: TOK::Token = LEXER::next_token(&lexer);
