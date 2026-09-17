@@ -18,10 +18,6 @@
 
 // ─── Markdown section markers ────────────────────────────────────────────────
 
-const MARKER_PARAMS:  *byte = "# Parameters";
-const MARKER_RETURNS: *byte = "# Returns";
-const MARKER_EXAMPLE: *byte = "# Example";
-
 const DOC_MARKERS: [*byte; 3] = [
   "# Parameters",
   "# Returns",
@@ -101,12 +97,63 @@ const first_doc_marker -> fn (doc: *byte) *byte {
   return first;
 }
 
+// Returns a cleaned copy of a doc comment: one leading space stripped from
+// each line, trailing whitespace removed, and leading/trailing blank lines
+// dropped. Interior blank lines (paragraph breaks) are preserved. The caller
+// owns the result and must `free()` it.
+#returns_ownership
+const clean_doc -> fn (doc: *byte) *byte {
+  if (doc == cast<*byte>(0)) return cast<*byte>(0);
+
+  let out: *CG::Buf = CG::buf_init();
+  let last_content_len: i64 = 0;
+
+  let line: *byte = doc;
+  loop {
+    if (line[0] == '\0') break;
+
+    let end: *byte = LIBC::strchr(line, 10);
+    if (end == cast<*byte>(0)) {
+      end = cast<*byte>(cast<i64>(line) + STR::strlen(line));
+    }
+
+    let s: i64 = cast<i64>(line);
+    let e: i64 = cast<i64>(end);
+    if (s < e && cast<*byte>(s)[0] == ' ') s = s + 1;
+    loop {
+      if (e <= s) break;
+      let c: byte = cast<*byte>(e - 1)[0];
+      if (c == ' ' || c == '\t' || c == 13) e = e - 1;
+      else break;
+    }
+
+    if (e > s) {
+      CG::buf_nstr(out, cast<*byte>(s), e - s);
+      CG::buf_char(out, '\n');
+      last_content_len = out.len;
+    } elif (out.len > 0) {
+      CG::buf_char(out, '\n');
+    }
+
+    if (end[0] == 10) {
+      line = cast<*byte>(cast<i64>(end) + 1);
+    } else {
+      break;
+    }
+  }
+
+  out.len = last_content_len;
+  return CG::buf_finish(out);
+}
+
 // Writes every line of `doc` with `indent_level` levels of two-space indent.
 const write_doc_comment -> fn (f: *CG::Buf, doc: *byte, indent_level: i64) void {
   if (doc == cast<*byte>(0) || doc[0] == '\0') return;
 
   let line: *byte = doc;
   loop {
+    if (line[0] == '\0') break;
+
     let end: *byte = LIBC::strchr(line, 10);
     if (end == cast<*byte>(0)) {
       end = cast<*byte>(cast<i64>(line) + STR::strlen(line));
@@ -139,6 +186,8 @@ const write_doc_comment_until_marker -> fn (f: *CG::Buf, doc: *byte, stop: *byte
 
   let line: *byte = doc;
   loop (cast<i64>(line) < cast<i64>(end)) {
+    if (line[0] == '\0') break;
+
     let line_end: *byte = LIBC::strchr(line, 10);
     if (line_end == cast<*byte>(0) || cast<i64>(line_end) >= cast<i64>(end)) {
       line_end = end;
@@ -295,10 +344,22 @@ const write_func_attributes -> fn (f: *CG::Buf, fd: *AST::FuncDeclNode) void {
   if (fd.takes_ownership == 1)   CG::buf_str(f, "#takes_ownership\n");
 }
 
+// Writes `<T, U>` for a generic declaration, or nothing when it has none.
+const write_type_params -> fn (f: *CG::Buf, params: **byte, count: i64) void {
+  if (params == cast<**byte>(0) || count == 0) return;
+  CG::buf_str(f, "<");
+  loop [i: i64 = 0](i < count) : (++i) {
+    if (i > 0) CG::buf_str(f, ", ");
+    CG::buf_str(f, params[i]);
+  }
+  CG::buf_str(f, ">");
+}
+
 // Emits a `name -> fn(\n    param: T,\n) Ret` block into a fenced code block.
 const write_func_signature -> fn (f: *CG::Buf, fd: *AST::FuncDeclNode, header: *byte) void {
   write_func_attributes(f, fd);
   CG::buf_str(f, header);
+  write_type_params(f, fd.type_params, fd.type_param_count);
   CG::buf_str(f, " -> fn(\n");
 
   loop [i: i64 = 0](i < fd.param_count) : (++i) {
@@ -326,15 +387,16 @@ const write_func_signature -> fn (f: *CG::Buf, fd: *AST::FuncDeclNode, header: *
 const generate_function_docs -> fn (f: *CG::Buf, func: *AST::AstNode, config: DocGenConfig) void {
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(func);
   let name: *byte = fd.name;
-  let doc: *byte = fd.doc_comment;
   let is_public: bool = fd.is_public == 1;
 
   if (!is_public && !config.include_private) return;
 
+  let doc: *byte = clean_doc(fd.doc_comment);
   let first_marker: *byte = first_doc_marker(doc);
 
   CG::buf_str(f, "### `");
   CG::buf_str(f, name);
+  write_type_params(f, fd.type_params, fd.type_param_count);
   CG::buf_str(f, "`\n\n");
 
   if (doc != cast<*byte>(0) && doc[0] != '\0') {
@@ -349,31 +411,46 @@ const generate_function_docs -> fn (f: *CG::Buf, func: *AST::AstNode, config: Do
   write_func_signature(f, fd, name);
 
   print_doc_sections(f, doc);
+
+  if (doc != cast<*byte>(0)) free(doc);
 }
 
 // ─── Struct docs ─────────────────────────────────────────────────────────────
 
-// Writes a member's single-line description (up to the first newline).
+// Writes a member's single-line description (up to the first newline), with
+// the doc comment's leading space and any trailing whitespace trimmed.
 const write_inline_doc -> fn (f: *CG::Buf, doc: *byte) void {
   if (doc == cast<*byte>(0) || doc[0] == '\0') return;
-  let end: *byte = LIBC::strchr(doc, 10);
-  if (end != cast<*byte>(0)) {
-    CG::buf_nstr(f, doc, cast<i64>(end) - cast<i64>(doc));
-  } else {
-    CG::buf_str(f, doc);
+
+  let start: i64 = cast<i64>(doc);
+  let e: i64 = start;
+  loop {
+    let ch: byte = cast<*byte>(e)[0];
+    if (ch == '\0' || ch == 10) break;
+    e = e + 1;
   }
+  if (e > start && cast<*byte>(start)[0] == ' ') start = start + 1;
+  loop {
+    if (e <= start) break;
+    let c: byte = cast<*byte>(e - 1)[0];
+    if (c == ' ' || c == '\t' || c == 13) e = e - 1;
+    else break;
+  }
+  if (e > start) CG::buf_nstr(f, cast<*byte>(start), e - start);
 }
 
 const generate_struct_docs -> fn (f: *CG::Buf, strct: *AST::AstNode, config: DocGenConfig) void {
   let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(strct);
   let name: *byte = sd.name;
-  let doc: *byte = sd.doc_comment;
   let is_public: bool = sd.is_public == 1;
 
   if (!is_public && !config.include_private) return;
 
+  let doc: *byte = clean_doc(sd.doc_comment);
+
   CG::buf_str(f, "### `");
   CG::buf_str(f, name);
+  write_type_params(f, sd.type_params, sd.type_param_count);
   CG::buf_str(f, "`\n\n");
 
   if (doc != cast<*byte>(0) && doc[0] != '\0') {
@@ -444,10 +521,12 @@ const generate_struct_docs -> fn (f: *CG::Buf, strct: *AST::AstNode, config: Doc
         let method_func: *AST::AstNode = md.function;
         if (method_func != cast<*AST::AstNode>(0)) {
           let method_name: *byte = md.name;
-          let method_doc: *byte = md.doc_comment;
+          let method_doc: *byte = clean_doc(md.doc_comment);
           let method_first: *byte = first_doc_marker(method_doc);
 
           CG::buf_str(f, "#### `");
+          CG::buf_str(f, name);
+          CG::buf_str(f, "::");
           CG::buf_str(f, method_name);
           CG::buf_str(f, "()`\n\n");
 
@@ -459,16 +538,27 @@ const generate_struct_docs -> fn (f: *CG::Buf, strct: *AST::AstNode, config: Doc
           if (method_func.kind == AST::NodeType::STMT_FUNCTION) {
             let mf: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(method_func);
             CG::buf_str(f, "```luma\n");
-            write_func_signature(f, mf, method_name);
+            if (md.is_static == 1) CG::buf_str(f, "static ");
+
+            let qualified: *CG::Buf = CG::buf_init();
+            CG::buf_str(qualified, name);
+            CG::buf_str(qualified, "::");
+            CG::buf_str(qualified, method_name);
+            let header: *byte = CG::buf_finish(qualified);
+
+            write_func_signature(f, mf, header);
+            free(header);
           }
 
           print_doc_sections(f, method_doc);
+          if (method_doc != cast<*byte>(0)) free(method_doc);
         }
       }
     }
   }
 
   // Private members omitted for brevity — add similar formatting if needed.
+  if (doc != cast<*byte>(0)) free(doc);
 }
 
 // ─── Enum docs ───────────────────────────────────────────────────────────────
@@ -476,16 +566,18 @@ const generate_struct_docs -> fn (f: *CG::Buf, strct: *AST::AstNode, config: Doc
 const generate_enum_docs -> fn (f: *CG::Buf, enm: *AST::AstNode, config: DocGenConfig) void {
   let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(enm);
   let name: *byte = ed.name;
-  let doc: *byte = ed.doc_comment;
   let is_public: bool = ed.is_public == 1;
 
   if (!is_public && !config.include_private) return;
+
+  let doc: *byte = clean_doc(ed.doc_comment);
 
   CG::buf_str(f, "### ");
   if (is_public) CG::buf_str(f, "pub");
   else           CG::buf_str(f, "priv");
   CG::buf_str(f, " `");
   CG::buf_str(f, name);
+  write_type_params(f, ed.type_params, ed.type_param_count);
   CG::buf_str(f, "`\n\n");
 
   if (doc != cast<*byte>(0) && doc[0] != '\0') {
@@ -500,12 +592,16 @@ const generate_enum_docs -> fn (f: *CG::Buf, enm: *AST::AstNode, config: DocGenC
     CG::buf_str(f, "`\n");
   }
   CG::buf_char(f, '\n');
+
+  if (doc != cast<*byte>(0)) free(doc);
 }
 
 // ─── Variable docs ───────────────────────────────────────────────────────────
 
-const generate_var_docs -> fn (f: *CG::Buf, var: *AST::AstNode) void {
+const generate_var_docs -> fn (f: *CG::Buf, var: *AST::AstNode, config: DocGenConfig) void {
   let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(var);
+
+  if (vd.is_public != 1 && !config.include_private) return;
 
   CG::buf_str(f, "- **`");
   CG::buf_str(f, vd.name);
@@ -513,8 +609,8 @@ const generate_var_docs -> fn (f: *CG::Buf, var: *AST::AstNode) void {
   if (vd.var_type != cast<*AST::AstNode>(0)) print_type(f, vd.var_type);
   else                                       CG::buf_str(f, "inferred");
 
-  if (vd.is_mutable == 1) CG::buf_str(f, " *(mutable)*");
-  else                    CG::buf_str(f, " *(constant)*");
+  if (vd.is_mutable == 1) CG::buf_str(f, " *(let)*");
+  else                    CG::buf_str(f, " *(const)*");
 
   if (vd.doc_comment != cast<*byte>(0) && vd.doc_comment[0] != '\0') {
     CG::buf_str(f, " — ");
@@ -539,8 +635,8 @@ const generate_block_decls -> fn (f: *CG::Buf, block: *AST::AstNode, config: Doc
         generate_enum_docs(f, node, config);
       } elif (kind == AST::NodeType::STMT_FUNCTION) {
         generate_function_docs(f, node, config);
-      } elif (kind == AST::NodeType::STMT_VAR_DECL) {
-        generate_var_docs(f, node);
+      } elif (kind == AST::NodeType::STMT_VAR_DECL || kind == AST::NodeType::STMT_CONST_DECL) {
+        generate_var_docs(f, node, config);
       } elif (kind == AST::NodeType::PREPROCESSOR_OS) {
         generate_os_docs(f, node, config);
       } elif (kind == AST::NodeType::PREPROCESSOR_LINK) {
@@ -585,42 +681,34 @@ pub const generate_module_docs -> fn (module: *AST::AstNode, config: DocGenConfi
 
   let mn: *AST::ModuleNode = cast<*AST::ModuleNode>(module);
   let module_name: *byte = mn.name;
-  let module_doc: *byte = mn.doc_comment;
+  if (module_name == cast<*byte>(0)) module_name = "unnamed";
+
+  let module_doc: *byte = clean_doc(mn.doc_comment);
 
   CG::buf_str(f, "# Module: ");
-  if (module_name != cast<*byte>(0)) CG::buf_str(f, module_name);
-  else                               CG::buf_str(f, "unnamed");
+  CG::buf_str(f, module_name);
   CG::buf_str(f, "\n\n");
+
+  if (mn.file_path != cast<*byte>(0)) {
+    CG::buf_str(f, "*Source: `");
+    CG::buf_str(f, mn.file_path);
+    CG::buf_str(f, "`*\n\n");
+  }
 
   if (module_doc != cast<*byte>(0) && module_doc[0] != '\0') {
     write_doc_comment(f, module_doc, 0);
     CG::buf_char(f, '\n');
   }
 
-  CG::buf_str(f, "## Table of Contents\n\n");
-  CG::buf_str(f, "- [Structures](#structures)\n");
-  CG::buf_str(f, "- [Enumerations](#enumerations)\n");
-  CG::buf_str(f, "- [Functions](#functions)\n");
-  CG::buf_str(f, "- [Variables](#variables)\n");
-
-  let has_os: bool = false;
-  let has_links: bool = false;
-  loop [i: i64 = 0](i < mn.body_count) : (++i) {
-    let node: *AST::AstNode = mn.body[i];
-    if (node != cast<*AST::AstNode>(0)) {
-      if (node.kind == AST::NodeType::PREPROCESSOR_OS)   has_os = true;
-      if (node.kind == AST::NodeType::PREPROCESSOR_LINK) has_links = true;
-    }
-  }
-  if (has_os)    CG::buf_str(f, "- [OS-Specific](#os-specific)\n");
-  if (has_links) CG::buf_str(f, "- [Linked Libraries](#linked-libraries)\n");
-  CG::buf_char(f, '\n');
-
   if (mn.body != cast<**AST::AstNode>(0)) {
+    // One pass to discover which sections are present, so the TOC only lists
+    // what actually follows.
     let has_structs: bool = false;
     let has_enums: bool = false;
     let has_functions: bool = false;
     let has_vars: bool = false;
+    let has_os: bool = false;
+    let has_links: bool = false;
 
     loop [i: i64 = 0](i < mn.body_count) : (++i) {
       let node: *AST::AstNode = mn.body[i];
@@ -632,10 +720,26 @@ pub const generate_module_docs -> fn (module: *AST::AstNode, config: DocGenConfi
           has_enums = true;
         } elif (kind == AST::NodeType::STMT_FUNCTION) {
           has_functions = true;
-        } elif (kind == AST::NodeType::STMT_VAR_DECL) {
-          if (cast<*AST::VarDeclNode>(node).doc_comment != cast<*byte>(0)) has_vars = true;
+        } elif (kind == AST::NodeType::STMT_VAR_DECL || kind == AST::NodeType::STMT_CONST_DECL) {
+          let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(node);
+          if (vd.is_public == 1 || config.include_private) has_vars = true;
+        } elif (kind == AST::NodeType::PREPROCESSOR_OS) {
+          has_os = true;
+        } elif (kind == AST::NodeType::PREPROCESSOR_LINK) {
+          has_links = true;
         }
       }
+    }
+
+    if (has_structs || has_enums || has_functions || has_vars || has_os || has_links) {
+      CG::buf_str(f, "## Table of Contents\n\n");
+      if (has_structs)   CG::buf_str(f, "- [Structures](#structures)\n");
+      if (has_enums)     CG::buf_str(f, "- [Enumerations](#enumerations)\n");
+      if (has_functions) CG::buf_str(f, "- [Functions](#functions)\n");
+      if (has_vars)      CG::buf_str(f, "- [Variables](#variables)\n");
+      if (has_os)        CG::buf_str(f, "- [OS-Specific](#os-specific)\n");
+      if (has_links)     CG::buf_str(f, "- [Linked Libraries](#linked-libraries)\n");
+      CG::buf_char(f, '\n');
     }
 
     if (has_structs) {
@@ -672,8 +776,10 @@ pub const generate_module_docs -> fn (module: *AST::AstNode, config: DocGenConfi
       CG::buf_str(f, "\n## Variables\n\n");
       loop [i: i64 = 0](i < mn.body_count) : (++i) {
         let node: *AST::AstNode = mn.body[i];
-        if (node != cast<*AST::AstNode>(0) && node.kind == AST::NodeType::STMT_VAR_DECL) {
-          generate_var_docs(f, node);
+        if (node != cast<*AST::AstNode>(0)
+            && (node.kind == AST::NodeType::STMT_VAR_DECL
+                || node.kind == AST::NodeType::STMT_CONST_DECL)) {
+          generate_var_docs(f, node, config);
         }
       }
     }
@@ -701,6 +807,7 @@ pub const generate_module_docs -> fn (module: *AST::AstNode, config: DocGenConfi
     }
   }
 
+  if (module_doc != cast<*byte>(0)) free(module_doc);
   return true;
 }
 
@@ -726,6 +833,7 @@ pub const generate_documentation -> fn (program: *AST::AstNode, config: DocGenCo
   let index: *CG::Buf = CG::buf_init();
   CG::buf_str(index, "# API Documentation\n\n");
   CG::buf_str(index, "Generated documentation for the project.\n\n");
+  CG::buf_str(index, "> Auto-generated from doc comments by `luma -docs`. Do not edit by hand.\n\n");
   CG::buf_str(index, "## Modules\n\n");
 
   let success: bool = true;
@@ -740,7 +848,24 @@ pub const generate_documentation -> fn (program: *AST::AstNode, config: DocGenCo
       CG::buf_str(index, module_name);
       CG::buf_str(index, "](");
       CG::buf_str(index, module_name);
-      CG::buf_str(index, ".md)\n");
+      CG::buf_str(index, ".md)");
+
+      // Append the module doc's first line as a one-line summary, unless it
+      // is itself a heading (those read poorly in a link list).
+      if (mn.doc_comment != cast<*byte>(0)) {
+        let summary: *byte = clean_doc(mn.doc_comment);
+        if (summary != cast<*byte>(0) && summary[0] != '\0' && summary[0] != '#') {
+          let nl: *byte = LIBC::strchr(summary, 10);
+          let len: i64 = STR::strlen(summary);
+          if (nl != cast<*byte>(0)) len = cast<i64>(nl) - cast<i64>(summary);
+          if (len > 0) {
+            CG::buf_str(index, " — ");
+            CG::buf_nstr(index, summary, len);
+          }
+        }
+        if (summary != cast<*byte>(0)) free(summary);
+      }
+      CG::buf_char(index, '\n');
 
       let doc_path_buf: *CG::Buf = CG::buf_init();
       CG::buf_str(doc_path_buf, config.output_dir);

@@ -193,6 +193,7 @@ cc output/main.c -lm -o main
 - [Luma Website](https://luma-website-mu.vercel.app/index.html)
 - [Discord community](https://discord.gg/gqnwasvqd9)
 - [Language reference](docs.md)
+- [API reference](api/)
 - [Contributing guidelines](CONTRIBUTING.md)
 
 ---
