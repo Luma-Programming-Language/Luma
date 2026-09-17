@@ -1,6 +1,6 @@
 @module "main"
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let p: *byte = cast<*byte>(alloc(8));
     free(p);
     return 0;

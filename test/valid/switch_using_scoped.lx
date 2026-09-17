@@ -2,7 +2,7 @@
 
 const Color -> enum { Red, Green, Blue };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let c: Color = Color::Red;
     // `using` lets each case label be written bare instead of `Color::Red`,
     // etc. — desugars to exactly the fully-qualified form, so exhaustiveness

@@ -7,7 +7,7 @@
   "windows64" -> { const GREETING: *byte = "hello windows"; }
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     output(GREETING, "\n");
     return 0;
 }

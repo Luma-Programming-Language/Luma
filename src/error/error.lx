@@ -22,20 +22,20 @@ pub const ErrorInformation -> struct {
   file_path:    *byte,
   message:      *byte,
 
-  line:         int,
-  col:          int,
+  line:         i64,
+  col:          i64,
 
   line_text:    *byte,
-  token_length: int,
+  token_length: i64,
 
   label:        *byte,
   note:         *byte,
   help:         *byte,
 };
 
-const MAX_ERRORS: int = 256;
+const MAX_ERRORS: i64 = 256;
 let error_list: [ErrorInformation; 256];
-let error_count: int = 0;
+let error_count: i64 = 0;
 
 pub const error_add -> fn (err: ErrorInformation) void {
   if (error_count < MAX_ERRORS) {
@@ -58,34 +58,34 @@ pub const error_clear -> fn () void {
   error_count = 0;
 }
 
-pub const error_get_count -> fn () int {
+pub const error_get_count -> fn () i64 {
   return error_count;
 }
 
-pub const error_truncate -> fn (n: int) void {
+pub const error_truncate -> fn (n: i64) void {
   if (n < error_count) error_count = n;
 }
 
-pub const error_has_errors -> fn () int {
+pub const error_has_errors -> fn () i64 {
   if (error_count > 0) return 1;
   return 0;
 }
 
-pub const error_get_at_index -> fn (index: int) *ErrorInformation {
+pub const error_get_at_index -> fn (index: i64) *ErrorInformation {
   if (index < 0 || index >= error_count) return cast<*ErrorInformation>(0);
   return &error_list[index];
 }
 
 #returns_ownership
-pub const generate_line -> fn (tokens: *TOK::Token, token_count: int, target_line: int) *byte {
+pub const generate_line -> fn (tokens: *TOK::Token, token_count: i64, target_line: i64) *byte {
     if (target_line < 0 || tokens == cast<*TOK::Token>(0)) {
         let empty: *byte = cast<*byte>(alloc(1));
         empty[0] = '\0';
         return empty;
     }
 
-    let total_len: int = 1;
-    loop [i: int = 0](i < token_count) : (++i) {
+    let total_len: i64 = 1;
+    loop [i: i64 = 0](i < token_count) : (++i) {
         if (tokens[i].line == target_line) {
             total_len = total_len + tokens[i].whitespace_len + tokens[i].len;
         if (tokens[i].kind == TOK::LumaTokenType::TOK_STRING) {
@@ -99,12 +99,12 @@ pub const generate_line -> fn (tokens: *TOK::Token, token_count: int, target_lin
     }
 
     let result: *byte = cast<*byte>(alloc(total_len * sizeof<byte>));
-    let pos: int = 0;
+    let pos: i64 = 0;
 
-    loop [i: int = 0](i < token_count) : (++i) {
+    loop [i: i64 = 0](i < token_count) : (++i) {
         if (tokens[i].line != target_line) continue;
 
-        loop [j: int = 0](j < tokens[i].whitespace_len) : (++j) {
+        loop [j: i64 = 0](j < tokens[i].whitespace_len) : (++j) {
             result[pos] = ' ';
             pos = pos + 1;
         }
@@ -121,7 +121,7 @@ pub const generate_line -> fn (tokens: *TOK::Token, token_count: int, target_lin
         }
 
         let src: *byte = tokens[i].val;
-        loop [j: int = 0](j < tokens[i].len) : (++j) {
+        loop [j: i64 = 0](j < tokens[i].len) : (++j) {
             result[pos] = src[j];
             pos = pos + 1;
         }
@@ -133,9 +133,9 @@ pub const generate_line -> fn (tokens: *TOK::Token, token_count: int, target_lin
     return result;
 }
 
-const get_line_width -> fn (line: int) int {
-  let width: int = 1;
-  let temp: int = line;
+const get_line_width -> fn (line: i64) i64 {
+  let width: i64 = 1;
+  let temp: i64 = line;
   loop (temp >= 10) {
     width = width + 1;
     temp = temp / 10;
@@ -143,28 +143,28 @@ const get_line_width -> fn (line: int) int {
   return width;
 }
 
-const get_max_line_width -> fn () int {
-  let max_width: int = 1;
-  loop [i: int = 0](i < error_count) : (++i) {
-    let width: int = get_line_width(error_list[i].line);
+const get_max_line_width -> fn () i64 {
+  let max_width: i64 = 1;
+  loop [i: i64 = 0](i < error_count) : (++i) {
+    let width: i64 = get_line_width(error_list[i].line);
     if (width > max_width) { max_width = width; }
   }
   return max_width;
 }
 
-const print_line_padding -> fn (current_line: int, max_width: int) void {
-  let current_width: int = get_line_width(current_line);
-  let padding: int = max_width - current_width;
-  loop [i: int = 0](i < padding) : (++i) { output(" "); }
+const print_line_padding -> fn (current_line: i64, max_width: i64) void {
+  let current_width: i64 = get_line_width(current_line);
+  let padding: i64 = max_width - current_width;
+  loop [i: i64 = 0](i < padding) : (++i) { output(" "); }
 }
 
-const print_gutter -> fn (max_width: int) void {
+const print_gutter -> fn (max_width: i64) void {
   output(" ");
-  loop [i: int = 0](i < max_width) : (++i) { output(" "); }
+  loop [i: i64 = 0](i < max_width) : (++i) { output(" "); }
   c_blue(); output(" |"); c_reset(); output(" ");
 }
 
-const print_source_line -> fn (line: int, text: *byte, max_width: int) void {
+const print_source_line -> fn (line: i64, text: *byte, max_width: i64) void {
   output(" ");
   print_line_padding(line, max_width);
   c_bold_blue(); output(line, " |"); c_reset();
@@ -174,28 +174,28 @@ const print_source_line -> fn (line: int, text: *byte, max_width: int) void {
   output("\n");
 }
 
-const print_indicator -> fn (col: int, length: int, max_width: int, label: *byte) void {
+const print_indicator -> fn (col: i64, length: i64, max_width: i64, label: *byte) void {
   print_gutter(max_width);
-  let actual_col: int = col;
+  let actual_col: i64 = col;
   if (actual_col < 0) { actual_col = 0; }
-  loop [i: int = 0](i < actual_col) : (++i) { output(" "); }
+  loop [i: i64 = 0](i < actual_col) : (++i) { output(" "); }
   c_bold_yellow();
-  let indicator_length: int = length;
+  let indicator_length: i64 = length;
   if (indicator_length <= 0) { indicator_length = 1; }
-  loop [i: int = 0](i < indicator_length) : (++i) { output("^"); }
+  loop [i: i64 = 0](i < indicator_length) : (++i) { output("^"); }
   if (label != cast<*byte>(0)) { output(" ", label); }
   c_reset();
   output("\n");
 }
 
-pub const error_report -> fn () int {
+pub const error_report -> fn () i64 {
   if (error_count == 0) return 0;
 
-  let max_width: int = get_max_line_width();
+  let max_width: i64 = get_max_line_width();
 
   output("\n");
 
-  loop [i: int = 0](i < error_count) : (++i) {
+  loop [i: i64 = 0](i < error_count) : (++i) {
     let e: *ErrorInformation = &error_list[i];
 
     // Error header

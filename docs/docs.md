@@ -19,13 +19,13 @@ Here's a complete Luma program that demonstrates the core language features:
 
 const Point -> struct {
 pub:
-    x: int,
-    y: int,
+    x: i64,
+    y: i64,
 
-    distance_to -> fn (other: Point) float {
-        let dx: int = other.x - self.x;
-        let dy: int = other.y - self.y;
-        return cast<float>(sqrt(cast<double>(dx * dx + dy * dy)));
+    distance_to -> fn (other: Point) f32 {
+        let dx: i64 = other.x - self.x;
+        let dy: i64 = other.y - self.y;
+        return cast<f32>(sqrt(cast<f64>(dx * dx + dy * dy)));
     },
 };
 
@@ -35,7 +35,7 @@ const Status -> enum {
     Pending,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let origin: Point = Point { x: 0, y: 0 };
     let destination: Point = Point { x: 3, y: 4 };
     let current_status: Status = Status::Active;
@@ -71,10 +71,16 @@ Luma provides a straightforward type system with both primitive and compound typ
 ### Primitive Types (Quick Reference)
 
 ```text
-int      - Signed integer (64-bit)
-uint     - Unsigned integer (64-bit)
-float    - Floating point (32-bit)
-double   - Floating point (64-bit)
+i8       - Signed 8-bit integer
+i16      - Signed 16-bit integer
+i32      - Signed 32-bit integer (default type of integer literals)
+i64      - Signed 64-bit integer
+u8       - Unsigned 8-bit integer
+u16      - Unsigned 16-bit integer
+u32      - Unsigned 32-bit integer
+u64      - Unsigned 64-bit integer
+f32      - Single-precision floating point (32-bit, default type of float literals)
+f64      - Double-precision floating point (64-bit)
 bool     - Boolean (1 byte)
 byte     - Single byte (1 byte)
 *byte    - Character pointer / C-style string
@@ -104,9 +110,9 @@ void     - No value (used for function return types and generic pointers)
 **Example:**
 
 ```luma
-let x: int = 42;           // x is an int
-let ptr: *int = &x;        // ptr is a pointer to int, holds address of x
-let value: int = *ptr;     // value is 42 (dereferenced ptr)
+let x: i64 = 42;           // x is an i64
+let ptr: *i64 = &x;        // ptr is a pointer to i64, holds address of x
+let value: i64 = *ptr;     // value is 42 (dereferenced ptr)
 ```
 
 ### Enumerations
@@ -123,8 +129,8 @@ const Direction -> enum {
 
 const current_direction: Direction = Direction::North;
 
-// Can cast to int if needed
-let dir_value: int = cast<int>(Direction::North);  // 0
+// Can cast to i64 if needed
+let dir_value: i64 = cast<i64>(Direction::North);  // 0
 ```
 
 ### Structures
@@ -133,15 +139,15 @@ Structures group related data with optional access control:
 
 ```luma
 const Point -> struct {
-    x: int,
-    y: int
+    x: i64,
+    y: i64
 };
 
 // With explicit access modifiers and methods
 const Player -> struct {
 pub:
     name: *byte,
-    score: int,
+    score: i64,
 
     // Methods can be defined inside structs — fields are reached through
     // `self`, never as bare names. Currently, a method must be declared in
@@ -151,7 +157,7 @@ pub:
         outputln("Player: ", self.name, " Score: ", self.score);
     },
 priv:
-    internal_id: int,
+    internal_id: i64,
 };
 ```
 
@@ -179,12 +185,12 @@ player.get_info();            // Player: Alice Score: 100
 Unlike C, there's no separate `->` operator — `.` works the same way whether you have a struct value or a pointer to one, auto-dereferencing either way:
 
 ```luma
-const move_point -> fn (p: *Point, dx: int, dy: int) void {
+const move_point -> fn (p: *Point, dx: i64, dy: i64) void {
     p.x = p.x + dx;   // not p->x
     p.y = p.y + dy;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let p: Point = Point { x: 1, y: 2 };
     let ptr: *Point = &p;
 
@@ -209,7 +215,7 @@ pub:
     end: Point,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let line: Line = Line {
         start: Point { x: 0, y: 0 },
         end: Point { x: 5, y: 5 },
@@ -232,10 +238,10 @@ A struct can embed another by value with `...Type,` as a member. The embedded st
 ```luma
 const Entity -> struct {
 pub:
-    x: float,
-    y: float,
+    x: f32,
+    y: f32,
 
-    move -> fn (dx: float, dy: float) void {
+    move -> fn (dx: f32, dy: f32) void {
         self.x = self.x + dx;
         self.y = self.y + dy;
     },
@@ -248,13 +254,13 @@ pub:
 
     // Defining `move` here shadows Entity's — a direct member always wins
     // over a promoted one of the same name.
-    move -> fn (dx: float, dy: float) void {
+    move -> fn (dx: f32, dy: f32) void {
         self.x = self.x + (dx * 2.0);
         self.y = self.y + (dy * 2.0);
     },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     // `x`/`y` are promoted fields — the literal initializes them exactly
     // like `name`, even though they live on the embedded `Entity`.
     let player: Player = Player { x: 0.0, y: 0.0, name: "Connor" };
@@ -274,7 +280,7 @@ pub:
     ...Entity,
     name: *byte,
 
-    move -> fn (dx: float, dy: float) void {
+    move -> fn (dx: f32, dy: f32) void {
         Entity.move(dx, dy);  // delegates to Entity's own move, unmodified
     },
 };
@@ -289,24 +295,24 @@ A method declared `static` has no implicit `self` and is called on the type itse
 ```luma
 const Point -> struct {
 pub:
-    x: float,
-    y: float,
+    x: f32,
+    y: f32,
 
     static origin -> fn () Point {
         return Point { x: 0.0, y: 0.0 };
     },
 
-    static at -> fn (x: float, y: float) Point {
+    static at -> fn (x: f32, y: f32) Point {
         return Point { x: x, y: y };
     },
 
-    move -> fn (dx: float, dy: float) void {
+    move -> fn (dx: f32, dy: f32) void {
         self.x = self.x + dx;
         self.y = self.y + dy;
     },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let a: Point = Point::origin();   // static — no instance needed
     let b: Point = Point::at(3.0, 4.0);
     a.move(1.0, 1.0);                 // instance method — needs `a`
@@ -331,10 +337,10 @@ A `static` "constructor" returning a pointer, paired with an instance "destructo
 const Person -> struct {
 pub:
     name: *byte,  // owned
-    age: int,
+    age: i64,
 
     #returns_ownership
-    static create -> fn (name: *byte, age: int) *Person {
+    static create -> fn (name: *byte, age: i64) *Person {
         let p: *Person = cast<*Person>(alloc(sizeof<Person>));
         p.name = name;
         p.age = age;
@@ -346,7 +352,7 @@ pub:
     },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let alice: *Person = Person::create(cast<*byte>(alloc(6)), 30);
     defer { alice.destroy(); free(alice); }
 
@@ -361,15 +367,15 @@ pub const main -> fn (argc: int, argv: **byte) int {
 
 ```luma
 // Same types
-let x: int = 42;
-let y: int = x;  // OK
+let x: i64 = 42;
+let y: i64 = x;  // OK
 
 // Different types require explicit cast
-let f: float = cast<float>(x);  // OK
-let z: int = f;  // ERROR: must use cast<int>(f)
+let f: f32 = cast<f32>(x);  // OK
+let z: i64 = f;  // ERROR: must use cast<i64>(f)
 
 // Pointer type safety
-let int_ptr: *int = &x;
+let int_ptr: *i64 = &x;
 let void_ptr: *void = cast<*void>(int_ptr);  // Explicit cast required
 ```
 
@@ -408,32 +414,32 @@ const identity -> fn<T> (x: T) T {
 ### Using Generic Functions
 
 Generic functions require **explicit type arguments** at the call site —
-`add<int>(1, 2)`, not just `add(1, 2)`:
+`add<i64>(1, 2)`, not just `add(1, 2)`:
 
 ```luma
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     // Integer arithmetic
-    outputln("add(1, 2) = ", add<int>(1, 2));
+    outputln("add(1, 2) = ", add<i64>(1, 2));
 
     // Floating-point arithmetic
-    outputln("add(1.5, 2.5) = ", add<float>(1.5, 2.5));
+    outputln("add(1.5, 2.5) = ", add<f32>(1.5, 2.5));
 
     // Swapping integers
-    let x: int = 5;
-    let y: int = 10;
-    swap<int>(&x, &y);
+    let x: i64 = 5;
+    let y: i64 = 10;
+    swap<i64>(&x, &y);
     outputln("After swap: x = ", x, ", y = ", y);
 
-    // identity<*byte> and identity<int> are two independent instantiations
+    // identity<*byte> and identity<i64> are two independent instantiations
     let s: *byte = identity<*byte>("hello");
-    let n: int = identity<int>(42);
+    let n: i64 = identity<i64>(42);
 
     return 0;
 }
 ```
 
 Why explicit, rather than inferring `T` from the arguments the way most
-languages with generics do: `add<int>(...)` and `a < int > (...)` (a chained
+languages with generics do: `add<i64>(...)` and `a < i64 > (...)` (a chained
 comparison) are genuinely ambiguous to parse — Luma's parser has no symbol
 table, so it can't tell "add" apart from an ordinary variable at parse time.
 It resolves this the same way C++ effectively does: on seeing `ident <`, it
@@ -453,7 +459,7 @@ time it's used — not type erasure, and not a runtime dispatch of any kind.
 const identity -> fn<T> (x: T) T { return x; }
 
 // These calls generate two independent, separately-typechecked functions:
-let a: int   = identity<int>(42);        // -> identity__int
+let a: i64   = identity<i64>(42);        // -> identity__int
 let c: *byte = identity<*byte>("hello"); // -> identity___byte
 ```
 
@@ -476,7 +482,7 @@ const Entry -> struct<K, V> {
 };
 
 const Map -> struct<K, V> {
-    size: int,
+    size: i64,
     first: *Entry<K, V>,
 };
 ```
@@ -485,11 +491,11 @@ A concrete struct is named with explicit type arguments in **type position**,
 the same `Name<T, ...>` shape generic calls use:
 
 ```luma
-let e: Entry<int, int> = Entry<int, int> { key: 7, val: 9 };  // type + literal
+let e: Entry<i64, i64> = Entry<i64, i64> { key: 7, val: 9 };  // type + literal
 ```
 
 Both the type reference and the generic struct literal
-(`Entry<int, int> { ... }`) monomorphize the template to a concrete
+(`Entry<i64, i64> { ... }`) monomorphize the template to a concrete
 `Entry__int__int`. Fields that reference generic types (`*Entry<K, V>` inside
 `Map`) are substituted with the caller's concrete types during
 instantiation, so nested generics work.
@@ -502,7 +508,7 @@ parameters — no need to redeclare them on the method:
 ```luma
 const Box -> struct<K, V> {
     content: *Entry<K, V>,
-    cap: uint,
+    cap: u64,
 
     #returns_ownership
     static make -> fn (key: K, value: V) *Box<K, V> {
@@ -519,7 +525,7 @@ const Box -> struct<K, V> {
 ```
 
 A static method is called with explicit type arguments, as a function would
-be: `Box::make<int, *byte>(7, "seven")`. `Box<K, V>` stays valid in type
+be: `Box::make<i64, *byte>(7, "seven")`. `Box<K, V>` stays valid in type
 position inside the template itself (`sizeof<Box<K, V>>`, `*Box<K, V>`),
 substituted and mangled per instantiation.
 
@@ -537,7 +543,7 @@ const State -> enum<T> {
 
 Because Luma enums are plain C-style name constants — they carry no
 associated data — there is no field of type `T` to store. The type
-parameter instead acts as a **phantom/type tag**: `State<int>` and
+parameter instead acts as a **phantom/type tag**: `State<i64>` and
 `State<*byte>` are distinct nominal types, each with its own set of
 (mangled) member constants, generated by the same monomorphization that
 drives generic structs.
@@ -546,17 +552,17 @@ Members are written with the explicit type arguments on the left of the
 `::`, matching the `Name::Member` syntax ordinary enums use:
 
 ```luma
-let s: State<int> = State<int>::Idle;
+let s: State<i64> = State<i64>::Idle;
 
 switch (s) {
-    State<int>::Idle    -> { /* ... */ }
-    State<int>::Running -> outputln("running");
-    State<int>::Done    -> return 0;
+    State<i64>::Idle    -> { /* ... */ }
+    State<i64>::Running -> outputln("running");
+    State<i64>::Done    -> return 0;
 }
 ```
 
 Type compatibility is **per-instantiation**: the phantom argument is part of
-the enum's identity. A `State<int>` value isn't assignable to a `State<*byte>`
+the enum's identity. A `State<i64>` value isn't assignable to a `State<*byte>`
 variable without an explicit cast — they name different nominal types
 (`State__int` vs `State___byte`, following the same mangling as generic
 functions). This makes a generic enum a safe way to tag a value with which
@@ -592,10 +598,10 @@ Luma uses the `const` keyword as a **unified declaration mechanism** for all top
 ### Declaration Examples
 
 ```luma
-const NUM: int = 42;                                  // Immutable variable
+const NUM: i64 = 42;                                  // Immutable variable
 const Direction -> enum { North, South, East, West };  // Enum definition
-const Point -> struct { x: int, y: int };              // Struct definition
-const add -> fn (a: int, b: int) int {                 // Function definition
+const Point -> struct { x: i64, y: i64 };              // Struct definition
+const add -> fn (a: i64, b: i64) i64 {                 // Function definition
     return a + b;
 }
 ```
@@ -615,10 +621,10 @@ const add -> fn (a: int, b: int) int {                 // Function definition
 ### Important Notes
 
 ```luma
-const x: int = 5;
+const x: i64 = 5;
 x = 10; // Error: `x` is immutable
 
-const add -> fn (a: int, b: int) int { return a + b; }
+const add -> fn (a: i64, b: i64) i64 { return a + b; }
 add = something_else; // Error: cannot reassign function binding
 ```
 
@@ -629,14 +635,14 @@ add = something_else; // Error: cannot reassign function binding
 Inside functions, use `let` to declare local variables:
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
-    let x: int = 10;        // Mutable local variable
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let x: i64 = 10;        // Mutable local variable
     x = 20;                 // Can be reassigned
 
-    let y: int = 5;
+    let y: i64 = 5;
     y = y + 1;              // Can be modified
 
-    let counter: int = 0;
+    let counter: i64 = 0;
     loop (counter < 10) {
         counter = counter + 1;  // Mutating in loop
     }
@@ -660,7 +666,7 @@ Functions are first-class values in Luma.
 
 ```luma
 // Basic function
-const add -> fn (a: int, b: int) int {
+const add -> fn (a: i64, b: i64) i64 {
     return a + b;
 }
 
@@ -670,7 +676,7 @@ const greet -> fn () void {
 }
 
 // Function with no return value
-const print_number -> fn (n: int) void {
+const print_number -> fn (n: i64) void {
     outputln("Number: ", n);
 }
 ```
@@ -679,18 +685,18 @@ A function declaration's closing `}` never takes a trailing `;` — that's only 
 
 ### main()
 
-`main` can declare zero, one, or two parameters — `argc: int` and `argv: **byte`, in that order. Its C-level signature is always `int main(int, char**)` regardless; declaring fewer just leaves the rest unnamed on the Luma side.
+`main` can declare zero, one, or two parameters — `argc: i64` and `argv: **byte`, in that order. Its C-level signature is always `int main(int, char**)` regardless; declaring fewer just leaves the rest unnamed on the Luma side.
 
 ```luma
-pub const main -> fn () int {
+pub const main -> fn () i64 {
     return 0;
 }
 
-pub const main -> fn (argc: int) int {
+pub const main -> fn (argc: i64) i64 {
     return 0;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     return 0;
 }
 ```
@@ -698,8 +704,8 @@ pub const main -> fn (argc: int, argv: **byte) int {
 ### Function Calls
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
-    let result: int = add(5, 3);
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let result: i64 = add(5, 3);
     outputln("5 + 3 = ", result);
 
     greet();
@@ -714,12 +720,12 @@ const main -> fn (argc: int, argv: **byte) int {
 Parameters are passed by value by default:
 
 ```luma
-const modify -> fn (x: int) void {
+const modify -> fn (x: i64) void {
     x = 100;  // Modifies local copy only
 }
 
-const main -> fn (argc: int, argv: **byte) int {
-    let num: int = 10;
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let num: i64 = 10;
     modify(num);
     outputln(num);  // Still 10
     return 0;
@@ -729,12 +735,12 @@ const main -> fn (argc: int, argv: **byte) int {
 To modify the caller's variable, use pointers:
 
 ```luma
-const modify_ptr -> fn (x: *int) void {
+const modify_ptr -> fn (x: *i64) void {
     *x = 100;  // Modifies original value
 }
 
-const main -> fn (argc: int, argv: **byte) int {
-    let num: int = 10;
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let num: i64 = 10;
     modify_ptr(&num);  // Pass address
     outputln(num);     // Now 100
     return 0;
@@ -745,24 +751,24 @@ const main -> fn (argc: int, argv: **byte) int {
 
 ```luma
 // Single return value
-const square -> fn (x: int) int {
+const square -> fn (x: i64) i64 {
     return x * x;
 }
 
 // Multiple return values via struct
 const DivResult -> struct {
-    quotient: int,
-    remainder: int
+    quotient: i64,
+    remainder: i64
 };
 
-const divide -> fn (a: int, b: int) DivResult {
+const divide -> fn (a: i64, b: i64) DivResult {
     return DivResult {
         quotient: a / b,
         remainder: a % b
     };
 }
 
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     let result: DivResult = divide(17, 5);
     outputln("17 / 5 = ", result.quotient, " R ", result.remainder);
     return 0;
@@ -772,8 +778,8 @@ const main -> fn (argc: int, argv: **byte) int {
 ### Early Returns
 
 ```luma
-const find_positive -> fn (numbers: *int, size: int) int {
-    loop [i: int = 0](i < size) : (++i) {
+const find_positive -> fn (numbers: *i64, size: i64) i64 {
+    loop [i: i64 = 0](i < size) : (++i) {
         if (numbers[i] > 0) {
             return numbers[i];  // Early return
         }
@@ -815,7 +821,7 @@ let point: Point = Point { x: 10, y: 20 };
 outputln(point.x);  // Access field at runtime
 
 // Method calls on instances
-let distance: float = origin.distance_to(destination);
+let distance: f32 = origin.distance_to(destination);
 ```
 
 ### Benefits of This Distinction
@@ -836,7 +842,7 @@ Luma provides clean, flexible control flow constructs that handle most programmi
 Use `if`, `elif`, and `else` for branching logic:
 
 ```luma
-const x: int = 7;
+const x: i64 = 7;
 
 if (x > 10) {
     outputln("Large number");
@@ -855,23 +861,23 @@ The `loop` keyword provides several iteration patterns:
 
 ```luma
 // Basic for loop
-loop [i: int = 0](i < 10) {
+loop [i: i64 = 0](i < 10) {
     outputln("Iteration: ", i);
     ++i;
 }
 
 // For loop with post-increment
-loop [i: int = 0](i < 10) : (++i) {
+loop [i: i64 = 0](i < 10) : (++i) {
     outputln("i = ", i);
 }
 
 ```
 
-**Not currently working**: multiple loop-init variables (`loop [i: int = 0, j: int = 0](...) ...`) parse but generate invalid C (`for (long long i = 0, long long j = 0; ...)`, which repeats the type where C expects a bare `j = 0`) — the build fails at the C compile step. For now, declare the second counter with `let` above the loop instead:
+**Not currently working**: multiple loop-init variables (`loop [i: i64 = 0, j: i64 = 0](...) ...`) parse but generate invalid C (`for (long long i = 0, long long j = 0; ...)`, which repeats the type where C expects a bare `j = 0`) — the build fails at the C compile step. For now, declare the second counter with `let` above the loop instead:
 
 ```luma
-let j: int = 0;
-loop [i: int = 0](i < 10) : (++i) {
+let j: i64 = 0;
+loop [i: i64 = 0](i < 10) : (++i) {
     outputln("i = ", i, ", j = ", j);
     ++j;
 }
@@ -881,14 +887,14 @@ loop [i: int = 0](i < 10) : (++i) {
 
 ```luma
 // Condition-only loop
-let counter: int = 0;
+let counter: i64 = 0;
 loop (counter < 5) {
     outputln("Count: ", counter);
     counter = counter + 1;
 }
 
 // While loop with post-action
-let j: int = 0;
+let j: i64 = 0;
 loop (j < 10) : (++j) {
     outputln("Processing: ", j);
 }
@@ -910,7 +916,7 @@ loop {
 
 ```luma
 // Break: exit loop early
-loop [i: int = 0](i < 100) : (++i) {
+loop [i: i64 = 0](i < 100) : (++i) {
     if (i == 50) {
         break;  // Exit loop
     }
@@ -918,7 +924,7 @@ loop [i: int = 0](i < 100) : (++i) {
 }
 
 // Continue: skip to next iteration
-loop [i: int = 0](i < 10) : (++i) {
+loop [i: i64 = 0](i < 10) : (++i) {
     if (i % 2 == 0) {
         continue;  // Skip even numbers
     }
@@ -957,7 +963,7 @@ const classify_day -> fn (day: WeekDay) void {
     }
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     classify_day(WeekDay::Monday);   // Output: Weekday => 1
     classify_day(WeekDay::Saturday); // Output: Weekend => 6
     return 0;
@@ -969,7 +975,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
 When you need to handle unexpected values or want a catch-all case, use the default wildcard pattern `_`:
 
 ```luma
-const handle_status_code -> fn (code: int) void {
+const handle_status_code -> fn (code: i64) void {
     switch (code) {
         200 -> outputln("OK");
         404 -> outputln("Not Found");
@@ -1031,10 +1037,10 @@ Use the `@use` directive to import other modules:
 @use "std_libc" as c
 @use "std_cstring" as string
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     // Access imported functions with namespace
-    let result: double = c::sqrt(16.0);
-    let len: int = string::strlen("hello");
+    let result: f64 = c::sqrt(16.0);
+    let len: i64 = string::strlen("hello");
 
     outputln("sqrt(16): ", result);
     outputln("Length: ", len);
@@ -1089,12 +1095,12 @@ The `@os` block selects code based on the target operating system. This is how t
 ```luma
 @os {
     "linux" -> {
-        pub const SYS_WRITE: int = 1;
-        pub const O_CREAT: int   = 64;
+        pub const SYS_WRITE: i64 = 1;
+        pub const O_CREAT: i64   = 64;
     }
     "macos" -> {
-        pub const SYS_WRITE: int = 4;
-        pub const O_CREAT: int   = 512;
+        pub const SYS_WRITE: i64 = 4;
+        pub const O_CREAT: i64   = 512;
     }
     "windows" -> {
         // Windows-specific declarations...
@@ -1105,10 +1111,10 @@ The `@os` block selects code based on the target operating system. This is how t
 You can also use `@os` inline inside function bodies:
 
 ```luma
-const write_out -> fn (s: *byte) int {
+const write_out -> fn (s: *byte) i64 {
     @os {
-        "linux"   -> { return __syscall__(1, 1, cast<int>(s), len); }
-        "macos"   -> { return __syscall__(4, 1, cast<int>(s), len); }
+        "linux"   -> { return __syscall__(1, 1, cast<i64>(s), len); }
+        "macos"   -> { return __syscall__(4, 1, cast<i64>(s), len); }
         "windows" -> { /* use WriteFile */ }
     }
 }
@@ -1131,9 +1137,9 @@ Luma can call into native shared libraries and DLLs through two complementary di
 
 @link("libc.so.6")
 
-pub const puts    -> fn (s: *byte) int;
-pub const printf  -> fn (fmt: *byte, val: *byte) int;
-pub const malloc  -> fn (size: int) *void;
+pub const puts    -> fn (s: *byte) i64;
+pub const printf  -> fn (fmt: *byte, val: *byte) i64;
+pub const malloc  -> fn (size: i64) *void;
 // ...
 ```
 
@@ -1149,18 +1155,18 @@ When individual functions within a module come from a *different* library than t
 @link("libc.so.6")
 
 // Most functions come from libc.so.6 via @link above:
-pub const malloc -> fn (size: int) *void;
+pub const malloc -> fn (size: i64) *void;
 pub const free   -> fn (ptr: *void) void;
 
 // Math functions need libm — override per-function:
 #lib_import("libm.so")
-pub const sqrt -> fn (x: double) double;
+pub const sqrt -> fn (x: f64) f64;
 
 #lib_import("libm.so")
-pub const pow  -> fn (base: double, exp: double) double;
+pub const pow  -> fn (base: f64, exp: f64) f64;
 
 #lib_import("libm.so")
-pub const sin  -> fn (x: double) double;
+pub const sin  -> fn (x: f64) f64;
 ```
 
 Place `#lib_import(...)` on the line immediately before the `pub const` it applies to.
@@ -1173,22 +1179,22 @@ On Windows, use `#dll_import` instead. It accepts the DLL name and an optional c
 #dll_import("kernel32.dll", callconv: "stdcall")
 pub const CreateFileA -> fn (
     lpFileName: *byte,
-    dwDesiredAccess: int,
-    dwShareMode: int,
+    dwDesiredAccess: i64,
+    dwShareMode: i64,
     lpSecurityAttributes: *void,
-    dwCreationDisposition: int,
-    dwFlagsAndAttributes: int,
-    hTemplateFile: int
-) int;
+    dwCreationDisposition: i64,
+    dwFlagsAndAttributes: i64,
+    hTemplateFile: i64
+) i64;
 
 #dll_import("kernel32.dll", callconv: "stdcall")
 pub const WriteFile -> fn (
-    hFile: int,
+    hFile: i64,
     lpBuffer: *void,
-    nNumberOfBytesToWrite: int,
-    lpNumberOfBytesWritten: *int,
+    nNumberOfBytesToWrite: i64,
+    lpNumberOfBytesWritten: *i64,
     lpOverlapped: *void
-) int;
+) i64;
 ```
 
 `#dll_import` can also appear inside `@os { "windows" -> { ... } }` blocks so the same source file compiles cross-platform:
@@ -1197,7 +1203,7 @@ pub const WriteFile -> fn (
 @os {
     "windows" -> {
         #dll_import("kernel32.dll", callconv: "stdcall")
-        pub const GetStdHandle -> fn (nStdHandle: int) int;
+        pub const GetStdHandle -> fn (nStdHandle: i64) i64;
     }
 }
 ```
@@ -1211,11 +1217,11 @@ The `std_libc` module wraps the C standard library (stdio, stdlib, string, and m
 
 @use "std_libc" as c
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     c::puts("hello from libc");
 
-    let n: int = c::atoi("42");
-    let r: double = c::sqrt(144.0);
+    let n: i64 = c::atoi("42");
+    let r: f64 = c::sqrt(144.0);
 
     return 0;
 }
@@ -1237,12 +1243,12 @@ outputln(...)    // Print values with newline
 Both functions are **variadic** - they accept any number of arguments of any type:
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     output("Hello", " ", "World");           // Hello World
     outputln("The answer is:", 42);          // The answer is: 42\n
 
-    let x: int = 10;
-    let y: float = 3.14;
+    let x: i64 = 10;
+    let y: f32 = 3.14;
     outputln("x = ", x, ", y = ", y);       // x = 10, y = 3.14\n
 
     return 0;
@@ -1258,10 +1264,10 @@ input<T>(prompt: *byte) -> T    // Read typed input
 `input<T>` parses and typechecks — the intended shape is generic, reading a value of the specified type:
 
 ```luma
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let name: *byte = input<*byte>("Enter your name: ");
-    let age: int = input<int>("Enter your age: ");
-    let height: double = input<double>("Enter height (meters): ");
+    let age: i64 = input<i64>("Enter your age: ");
+    let height: f64 = input<f64>("Enter height (meters): ");
 
     outputln("Name: ", name);
     outputln("Age: ", age);
@@ -1272,7 +1278,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
 ```
 
 `input<T>` prints `prompt` (skipped if empty), then reads a line from stdin and
-parses it as `T`. Supported `T`: `int`, `uint`, `float`, `double`, `bool`,
+parses it as `T`. Supported `T`: `i64`, `u64`, `f32`, `f64`, `bool`,
 `byte`, and `*byte` (string). `byte` is the exception to "a line" — it reads a
 single raw byte (via `read(2)`, not line-buffered stdio), which is what
 `std/terminal.lx`'s raw-mode key readers (`getch`, `getch_raw`, `getpass`, ...)
@@ -1282,13 +1288,13 @@ to a zeroed value.
 ### System Commands
 
 ```luma
-system(command: *byte) -> int    // Execute system command
+system(command: *byte) -> i64    // Execute system command
 ```
 
 Execute shell commands from your program:
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     system("clear");  // Clear terminal (Linux/Mac)
     system("stty -icanon -echo");  // Configure terminal
     return 0;
@@ -1298,19 +1304,19 @@ const main -> fn (argc: int, argv: **byte) int {
 ### Type Information
 
 ```luma
-sizeof<T> -> int    // Size of type in bytes
+sizeof<T> -> i64    // Size of type in bytes
 ```
 
 Get the size of any type at compile time:
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
-    outputln("int: ", sizeof<int>);           // 8
+const main -> fn (argc: i64, argv: **byte) i64 {
+    outputln("i64: ", sizeof<i64>);           // 8
     outputln("byte: ", sizeof<byte>);         // 1
-    outputln("double: ", sizeof<double>);     // 8
+    outputln("f64: ", sizeof<f64>);     // 8
 
     // Use in allocations
-    let buffer: *int = cast<*int>(alloc(100 * sizeof<int>));
+    let buffer: *i64 = cast<*i64>(alloc(100 * sizeof<i64>));
     defer free(buffer);
 
     return 0;
@@ -1332,18 +1338,18 @@ cast<TargetType>(expression)
 ### Numeric Conversions
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
-    // Integer to float
-    let i: int = 42;
-    let f: float = cast<float>(i);        // 42.0
+const main -> fn (argc: i64, argv: **byte) i64 {
+    // Integer to f32
+    let i: i64 = 42;
+    let f: f32 = cast<f32>(i);        // 42.0
 
     // Float to integer (truncates)
-    let pi: double = 3.14159;
-    let rounded: int = cast<int>(pi);     // 3
+    let pi: f64 = 3.14159;
+    let rounded: i64 = cast<i64>(pi);     // 3
 
     // Between integer types
     let small: byte = cast<byte>(65);     // 'A'
-    let large: int = cast<int>(small);    // 65
+    let large: i64 = cast<i64>(small);    // 65
 
     return 0;
 }
@@ -1352,15 +1358,15 @@ const main -> fn (argc: int, argv: **byte) int {
 ### Pointer Casting
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     // void* to typed pointer
-    let raw: *void = alloc(sizeof<int>);
-    let typed: *int = cast<*int>(raw);
+    let raw: *void = alloc(sizeof<i64>);
+    let typed: *i64 = cast<*i64>(raw);
     *typed = 42;
     free(raw);
 
     // Between pointer types
-    let int_ptr: *int = cast<*int>(alloc(sizeof<int>));
+    let int_ptr: *i64 = cast<*i64>(alloc(sizeof<i64>));
     let void_ptr: *void = cast<*void>(int_ptr);
     free(int_ptr);
 
@@ -1371,15 +1377,15 @@ const main -> fn (argc: int, argv: **byte) int {
 ### Pointer to Integer (and back)
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     let ptr: *byte = cast<*byte>(alloc(10));
     defer free(ptr);
 
     // Pointer to integer
-    let addr: int = cast<int>(ptr);
+    let addr: i64 = cast<i64>(ptr);
 
     // Add offset (pointer arithmetic)
-    let offset_addr: int = addr + 5;
+    let offset_addr: i64 = addr + 5;
 
     // Back to pointer
     let offset_ptr: *byte = cast<*byte>(offset_addr);
@@ -1398,26 +1404,26 @@ Luma supports fixed-size arrays with compile-time known sizes.
 
 ```luma
 // Syntax: [Type; Size]
-let numbers: [int; 10];           // Array of 10 integers
+let numbers: [i64; 10];           // Array of 10 integers
 let bytes: [byte; 256];           // Array of 256 bytes
-let buffer: [double; 100];        // Array of 100 doubles
+let buffer: [f64; 100];        // Array of 100 doubles
 
 // Constants can be arrays too
-const PRIMES: [int; 5] = [2, 3, 5, 7, 11];
+const PRIMES: [i64; 5] = [2, 3, 5, 7, 11];
 ```
 
 ### Array Initialization
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     // Uninitialized (contains garbage)
-    let data: [int; 5];
+    let data: [i64; 5];
 
     // Initialize with literal
-    let primes: [int; 5] = [2, 3, 5, 7, 11];
+    let primes: [i64; 5] = [2, 3, 5, 7, 11];
 
     // Initialize element by element
-    let scores: [int; 3];
+    let scores: [i64; 3];
     scores[0] = 95;
     scores[1] = 87;
     scores[2] = 92;
@@ -1429,18 +1435,18 @@ const main -> fn (argc: int, argv: **byte) int {
 ### Array Access
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
-    let numbers: [int; 5] = [10, 20, 30, 40, 50];
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let numbers: [i64; 5] = [10, 20, 30, 40, 50];
 
     // Read elements
-    let first: int = numbers[0];    // 10
-    let last: int = numbers[4];     // 50
+    let first: i64 = numbers[0];    // 10
+    let last: i64 = numbers[4];     // 50
 
     // Write elements
     numbers[2] = 99;
 
     // Loop through array
-    loop [i: int = 0](i < 5) : (++i) {
+    loop [i: i64 = 0](i < 5) : (++i) {
         outputln("numbers[", i, "] = ", numbers[i]);
     }
 
@@ -1457,7 +1463,7 @@ const main -> fn (argc: int, argv: **byte) int {
 String literals are null-terminated byte arrays:
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     // String literal - type is *byte
     let message: *byte = "Hello, World!";
     outputln(message);
@@ -1471,7 +1477,7 @@ const main -> fn (argc: int, argv: **byte) int {
 Single characters use single quotes:
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     let letter: byte = 'A';           // Character literal
     let newline: byte = '\n';         // Escape sequence
     let tab: byte = '\t';             // Tab character
@@ -1503,19 +1509,19 @@ Luma supports pointer arithmetic for low-level memory manipulation.
 ### Basic Pattern
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
-    let arr: *int = cast<*int>(alloc(5 * sizeof<int>));
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let arr: *i64 = cast<*i64>(alloc(5 * sizeof<i64>));
     defer free(arr);
 
     // Initialize
-    loop [i: int = 0](i < 5) : (++i) {
+    loop [i: i64 = 0](i < 5) : (++i) {
         arr[i] = i * 10;
     }
 
-    // Pointer arithmetic: convert to int, add offset, convert back
-    let addr: int = cast<int>(arr);
-    let new_addr: int = addr + (2 * sizeof<int>);
-    let new_ptr: *int = cast<*int>(new_addr);
+    // Pointer arithmetic: convert to i64, add offset, convert back
+    let addr: i64 = cast<i64>(arr);
+    let new_addr: i64 = addr + (2 * sizeof<i64>);
+    let new_ptr: *i64 = cast<*i64>(new_addr);
 
     outputln(*new_ptr);  // arr[2] = 20
 
@@ -1535,14 +1541,14 @@ Use `pub` to export items from a module:
 @module "math"
 
 // Public - accessible from other modules
-pub const PI: double = 3.14159265359;
+pub const PI: f64 = 3.14159265359;
 
-pub const sqrt -> fn (x: double) double {
+pub const sqrt -> fn (x: f64) f64 {
     return x;
 }
 
 // Private - only within this module
-const INTERNAL_CONSTANT: int = 42;
+const INTERNAL_CONSTANT: i64 = 42;
 ```
 
 ### Struct Access Control
@@ -1551,11 +1557,11 @@ const INTERNAL_CONSTANT: int = 42;
 const Person -> struct {
 pub:
     name: *byte,
-    age: int,
+    age: i64,
 
 priv:
     ssn: *byte,
-    internal_id: int
+    internal_id: i64
 };
 ```
 
@@ -1568,17 +1574,17 @@ Luma provides explicit memory management with safety-oriented features.
 ### Basic Memory Operations
 
 ```luma
-alloc(size: int) -> *void    // Allocate memory
+alloc(size: i64) -> *void    // Allocate memory
 free(ptr: *void)             // Deallocate memory
-sizeof<T> -> int             // Size of type
+sizeof<T> -> i64             // Size of type
 ```
 
 ### Example Usage
 
 ```luma
-const main -> fn (argc: int, argv: **byte) int {
+const main -> fn (argc: i64, argv: **byte) i64 {
     // Allocate memory
-    let ptr: *int = cast<*int>(alloc(sizeof<int>));
+    let ptr: *i64 = cast<*i64>(alloc(sizeof<i64>));
 
     // Use the memory
     *ptr = 42;
@@ -1596,7 +1602,7 @@ Ensure cleanup with `defer` statements that execute when leaving scope:
 
 ```luma
 const process_data -> fn () void {
-    let buffer: *int = cast<*int>(alloc(100 * sizeof<int>));
+    let buffer: *i64 = cast<*i64>(alloc(100 * sizeof<i64>));
     defer free(buffer);  // Guaranteed to run when function exits
 
     let file: *File = open_file("data.txt");
@@ -1639,13 +1645,13 @@ Marks functions that allocate and return pointers:
 
 ```luma
 #returns_ownership
-const create_buffer -> fn (size: int) *int {
-    let buffer: *int = cast<*int>(alloc(size * sizeof<int>));
+const create_buffer -> fn (size: i64) *i64 {
+    let buffer: *i64 = cast<*i64>(alloc(size * sizeof<i64>));
     return buffer;  // Caller now owns this memory
 }
 
-const main -> fn (argc: int, argv: **byte) int {
-    let data: *int = create_buffer(100);
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let data: *i64 = create_buffer(100);
     defer free(data);  // Caller must free
     return 0;
 }
@@ -1657,13 +1663,13 @@ Marks functions that take ownership of pointer arguments:
 
 ```luma
 #takes_ownership
-const consume_buffer -> fn (buffer: *int) void {
+const consume_buffer -> fn (buffer: *i64) void {
     outputln("Processing: ", *buffer);
     free(buffer);  // Function owns and frees the buffer
 }
 
-const main -> fn (argc: int, argv: **byte) int {
-    let data: *int = cast<*int>(alloc(sizeof<int>));
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let data: *i64 = cast<*i64>(alloc(sizeof<i64>));
     *data = 42;
 
     consume_buffer(data);  // Ownership transferred
@@ -1691,25 +1697,25 @@ Luma's compiler includes a static analyzer that tracks memory at compile time to
 
 ```luma
 const good_memory_usage -> fn () void {
-    let ptr: *int = cast<*int>(alloc(sizeof<int>));
+    let ptr: *i64 = cast<*i64>(alloc(sizeof<i64>));
     defer free(ptr);  // Analyzer confirms cleanup
     *ptr = 42;
 }  // No leak reported
 
 const bad_memory_usage -> fn () void {
-    let ptr: *int = cast<*int>(alloc(sizeof<int>));
+    let ptr: *i64 = cast<*i64>(alloc(sizeof<i64>));
     *ptr = 42;
     // Compiler error: memory leak - ptr never freed
 }
 
 #returns_ownership
-const create_buffer -> fn (size: int) *int {
-    let buffer: *int = cast<*int>(alloc(size));
+const create_buffer -> fn (size: i64) *i64 {
+    let buffer: *i64 = cast<*i64>(alloc(size));
     return buffer;  // Ownership transferred to caller
 }  // No leak reported - caller is responsible
 
-const main -> fn (argc: int, argv: **byte) int {
-    let data: *int = create_buffer(100);
+const main -> fn (argc: i64, argv: **byte) i64 {
+    let data: *i64 = create_buffer(100);
     defer free(data);  // Caller properly handles ownership
     return 0;
 }
@@ -1727,7 +1733,7 @@ The analyzer understands three ownership patterns:
 
 ```luma
 #returns_ownership
-const create_arena_sized -> fn (size: int) Arena {
+const create_arena_sized -> fn (size: i64) Arena {
     let a: Arena;
     a.buf = alloc(size);  // Not tracked - inside #returns_ownership
     return a;
@@ -1750,8 +1756,8 @@ The analyzer currently has limitations in these areas:
 
    ```luma
    const Container -> struct {
-       data1: *int,
-       data2: *int
+       data1: *i64,
+       data2: *i64
    };
 
    let c: Container;
@@ -1763,9 +1769,9 @@ The analyzer currently has limitations in these areas:
 2. **Conditional Allocations**: The analyzer may report false positives for conditional paths:
 
    ```luma
-   let ptr: *int;
+   let ptr: *i64;
    if (condition) {
-       ptr = alloc(sizeof<int>);
+       ptr = alloc(sizeof<i64>);
    }
    // May warn even if you don't need to free in else branch
    ```
@@ -1773,8 +1779,8 @@ The analyzer currently has limitations in these areas:
 3. **Allocations in Loops**: Each loop iteration's allocations should be independent, but edge cases may exist:
 
    ```luma
-   loop [i: int = 0](i < 10) : (++i) {
-       let temp: *int = alloc(4);
+   loop [i: i64 = 0](i < 10) : (++i) {
+       let temp: *i64 = alloc(4);
        // Use temp...
        free(temp);  // Should work correctly
    }
@@ -1783,8 +1789,8 @@ The analyzer currently has limitations in these areas:
 4. **Early Returns with Defer**: While generally working, complex control flow with multiple early returns may need testing:
 
    ```luma
-   const process -> fn () int {
-       let a: *int = alloc(sizeof<int>);
+   const process -> fn () i64 {
+       let a: *i64 = alloc(sizeof<i64>);
        defer free(a);
 
        if (error) { return -1; }  // Defer should fire
@@ -1796,8 +1802,8 @@ The analyzer currently has limitations in these areas:
 5. **Stack vs Heap**: The analyzer doesn't currently detect returning pointers to stack variables:
 
    ```luma
-   const dangerous -> fn () *int {
-       let local: int = 42;
+   const dangerous -> fn () *i64 {
+       let local: i64 = 42;
        return &local;  // NOT DETECTED - returns dangling pointer
    }
    ```
@@ -1805,9 +1811,9 @@ The analyzer currently has limitations in these areas:
 6. **Arrays of Pointers**: Complex allocation patterns may not be fully tracked:
 
    ```luma
-   let arr: [*int; 5];
-   loop [i: int = 0](i < 5) : (++i) {
-       arr[i] = alloc(sizeof<int>);  // Each needs individual free
+   let arr: [*i64; 5];
+   loop [i: i64 = 0](i < 5) : (++i) {
+       arr[i] = alloc(sizeof<i64>);  // Each needs individual free
    }
    ```
 
@@ -1839,8 +1845,8 @@ const add -> fn<T> (a: T, b: T) T {
 }
 
 // These calls compile to separate, optimized functions:
-let x: int = add<int>(1, 2);        // Same as: x = 1 + 2
-let y: float = add<float>(1.0, 2.0); // Same as: y = 1.0 + 2.0
+let x: i64 = add<i64>(1, 2);        // Same as: x = 1 + 2
+let y: f32 = add<f32>(1.0, 2.0); // Same as: y = 1.0 + 2.0
 ```
 
 **No runtime dispatch** - generic instantiations are resolved at compile time through monomorphization.
@@ -1857,7 +1863,7 @@ const max -> fn<T> (a: T, b: T) T {
 
 // Compiler generates, on first use of each:
 // max__int(a: long long, b: long long) -> long long { ... }
-// max__float(a: float, b: float) -> float { ... }
+// max__float(a: f32, b: f32) -> f32 { ... }
 ```
 
 **Benefits:**
@@ -1877,15 +1883,15 @@ const max -> fn<T> (a: T, b: T) T {
 
 ```luma
 const Point -> struct {
-    x: int,    // Offset 0, 8 bytes
-    y: int     // Offset 8, 8 bytes
+    x: i64,    // Offset 0, 8 bytes
+    y: i64     // Offset 8, 8 bytes
 };  // Total: 16 bytes
 ```
 
 **Array layout is contiguous:**
 
 ```luma
-let arr: [int; 10];  // 80 contiguous bytes
+let arr: [i64; 10];  // 80 contiguous bytes
 // arr[0] at offset 0, arr[1] at offset 8, arr[2] at offset 16...
 ```
 
@@ -1895,7 +1901,7 @@ let arr: [int; 10];  // 80 contiguous bytes
 
 ```luma
 const fast_function -> fn () void {
-    let buffer: [int; 1024];  // Stack allocated - instant
+    let buffer: [i64; 1024];  // Stack allocated - instant
     // Use buffer...
 }  // Automatically cleaned up
 ```
@@ -1904,7 +1910,7 @@ const fast_function -> fn () void {
 
 ```luma
 const slower_function -> fn () void {
-    let buffer: *int = cast<*int>(alloc(1024 * sizeof<int>));
+    let buffer: *i64 = cast<*i64>(alloc(1024 * sizeof<i64>));
     defer free(buffer);
     // Use buffer...
 }
@@ -1915,26 +1921,26 @@ const slower_function -> fn () void {
 **1. Prefer stack allocation when possible:**
 
 ```luma
-let temp: [int; 100];  // Good for small, fixed-size data
+let temp: [i64; 100];  // Good for small, fixed-size data
 ```
 
 **2. Minimize pointer indirection:**
 
 ```luma
 // Better: direct access
-let ptr: *int;
-let value: int = *ptr;   // One memory load
+let ptr: *i64;
+let value: i64 = *ptr;   // One memory load
 
 // Best: value directly
-let value2: int = 42;     // No memory load
+let value2: i64 = 42;     // No memory load
 ```
 
 **3. Batch operations:**
 
 ```luma
 // Good: one large allocation
-let buffer: *int = cast<*int>(alloc(1000 * sizeof<int>));
-loop [i: int = 0](i < 1000) : (++i) {
+let buffer: *i64 = cast<*i64>(alloc(1000 * sizeof<i64>));
+loop [i: i64 = 0](i < 1000) : (++i) {
     // Use buffer[i]...
 }
 free(buffer);
@@ -2047,8 +2053,8 @@ Access:      .   ::  []  *  &
 ### Primitive Types
 
 ```txt
-int     double    bool    *T      [T; N]
-uint    float     byte    void
+i8      i16     i32     i64     u8      u16     u32     u64
+f32     f64     bool    byte    void    *T      [T; N]
 ```
 
 ### Common Patterns
@@ -2059,7 +2065,7 @@ let ptr: *T = cast<*T>(alloc(sizeof<T>));
 defer free(ptr);
 
 // Array iteration
-loop [i: int = 0](i < size) : (++i) {
+loop [i: i64 = 0](i < size) : (++i) {
     array[i] = value;
 }
 
@@ -2070,19 +2076,19 @@ if (ptr == cast<*T>(0)) {
 
 // Module usage
 @use "std_module" as m
-let x: int = m::function();
+let x: i64 = m::function();
 
 // FFI — link a shared library (POSIX)
 @link("libsomething.so")
-pub const some_fn -> fn (x: int) int;
+pub const some_fn -> fn (x: i64) i64;
 
 // FFI — per-function library override
 #lib_import("libm.so")
-pub const sqrt -> fn (x: double) double;
+pub const sqrt -> fn (x: f64) f64;
 
 // FFI — Windows DLL
 #dll_import("user32.dll", callconv: "stdcall")
-pub const MessageBoxA -> fn (hwnd: int, text: *byte, caption: *byte, utype: int) int;
+pub const MessageBoxA -> fn (hwnd: i64, text: *byte, caption: *byte, utype: i64) i64;
 
 // Platform-conditional code
 @os {

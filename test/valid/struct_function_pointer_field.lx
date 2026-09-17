@@ -20,8 +20,8 @@ const commands: [Commands; 2] = [
   Commands {name: "b", execute: echo },
 ];
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let i: int = 0;
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let i: i64 = 0;
     loop (i < 2) {
         commands[i].execute(commands[i].name);
         i = i + 1;

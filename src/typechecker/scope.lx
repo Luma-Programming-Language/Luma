@@ -7,7 +7,7 @@
 @use "tc_core" as CORE
 @use "ast"     as AST
 
-const SCOPE_VEC_CAPACITY: int = 64;
+const SCOPE_VEC_CAPACITY: i64 = 64;
 
 // Every Scope/StaticMemoryAnalyzer struct created during a single
 // `TC::typecheck()` call comes from this bump arena instead of a one-off
@@ -19,7 +19,7 @@ const SCOPE_VEC_CAPACITY: int = 64;
 // headroom (each struct is under 150 bytes; even a huge multi-module
 // program is a few hundred KB of scopes) and is only a virtual-memory
 // reservation until touched.
-const SCOPE_ARENA_SIZE: int = 64 * 1024 * 1024;
+const SCOPE_ARENA_SIZE: i64 = 64 * 1024 * 1024;
 
 let g_scope_arena:       ARENA::Arena;
 let g_scope_arena_ready: bool = false;
@@ -43,8 +43,8 @@ pub const scope_arena_init -> fn () void {
 pub const scope_arena_teardown -> fn () void {
   if (g_scope_arena_ready == false) return;
 
-  let n: int = g_all_scopes.size;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = g_all_scopes.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let s: *CORE::Scope = cast<**CORE::Scope>(g_all_scopes.data)[i];
     VEC::free_vector(s.symbols);
     VEC::free_vector(s.imported_modules);
@@ -68,7 +68,7 @@ const track_scope -> fn (s: *CORE::Scope) void {
 }
 
 #returns_ownership
-const new_vector -> fn (elem_size: int) *VEC::Vector {
+const new_vector -> fn (elem_size: i64) *VEC::Vector {
   // The Vector struct is fixed-size (unlike .data, it never grows/reallocs)
   // so it comes from the arena too — scope_arena_teardown only needs to
   // free .data via VEC::free_vector, not the struct itself.
@@ -180,8 +180,8 @@ pub const find_module_import -> fn (scope: *CORE::Scope, alias: *byte) *CORE::Mo
   let s: *CORE::Scope = scope;
   loop (s != cast<*CORE::Scope>(0)) {
     let v: *VEC::Vector = s.imported_modules;
-    let count: int = v.size;
-    loop [i: int = 0](i < count) : (++i) {
+    let count: i64 = v.size;
+    loop [i: i64 = 0](i < count) : (++i) {
       let imp: *CORE::ModuleImport = cast<*CORE::ModuleImport>(v.get(i));
       if (STR::strcmp(imp.alias, alias) == 0) return imp;
     }
@@ -192,8 +192,8 @@ pub const find_module_import -> fn (scope: *CORE::Scope, alias: *byte) *CORE::Mo
 
 pub const scope_lookup_current -> fn (scope: *CORE::Scope, name: *byte) *CORE::Symbol {
   let v: *VEC::Vector = scope.symbols;
-  let count: int = v.size;
-  loop [i: int = 0](i < count) : (++i) {
+  let count: i64 = v.size;
+  loop [i: i64 = 0](i < count) : (++i) {
     let sym: *CORE::Symbol = cast<*CORE::Symbol>(v.get(i));
     if (STR::strcmp(sym.name, name) == 0) return sym;
   }
@@ -235,8 +235,8 @@ pub const scope_lookup -> fn (scope: *CORE::Scope, name: *byte) *CORE::Symbol {
 
     // Search modules imported at this scope level.
     let v: *VEC::Vector = s.imported_modules;
-    let count: int = v.size;
-    loop [i: int = 0](i < count) : (++i) {
+    let count: i64 = v.size;
+    loop [i: i64 = 0](i < count) : (++i) {
       let imp: *CORE::ModuleImport = cast<*CORE::ModuleImport>(v.get(i));
       let mscope: *CORE::Scope = imp.module_scope;
       if (mscope != cast<*CORE::Scope>(0)) {
@@ -268,8 +268,8 @@ pub const get_enclosing_function_name -> fn (scope: *CORE::Scope) *byte {
 
 pub const analyzer_find -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byte, func_name: *byte) *CORE::StaticAllocation {
   let v: *VEC::Vector = analyzer.allocations;
-  let count: int = v.size;
-  loop [i: int = 0](i < count) : (++i) {
+  let count: i64 = v.size;
+  loop [i: i64 = 0](i < count) : (++i) {
     let a: *CORE::StaticAllocation = cast<*CORE::StaticAllocation>(v.get(i));
     if (STR::strcmp(a.variable_name, name) == 0 && STR::strcmp(a.function_name, func_name) == 0) return a;
   }
@@ -277,14 +277,14 @@ pub const analyzer_find -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byt
   // Not tracked under its own name — check whether `name` is a known alias of
   // some other tracked allocation (`let b = a; free(b);` must satisfy a's
   // has_matching_free, not leave `a` looking un-freed).
-  loop [i: int = 0](i < count) : (++i) {
+  loop [i: i64 = 0](i < count) : (++i) {
     let a: *CORE::StaticAllocation = cast<*CORE::StaticAllocation>(v.get(i));
     if (STR::strcmp(a.function_name, func_name) != 0) continue;
     if (a.aliases == cast<*VEC::Vector>(0)) continue;
 
     let av: *VEC::Vector = a.aliases;
-    let ac: int = av.size;
-    loop [j: int = 0](j < ac) : (++j) {
+    let ac: i64 = av.size;
+    loop [j: i64 = 0](j < ac) : (++j) {
       let alias_name: *byte = cast<**byte>(av.data)[j];
       if (STR::strcmp(alias_name, name) == 0) return a;
     }
@@ -294,7 +294,7 @@ pub const analyzer_find -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byt
 }
 
 pub const analyzer_track_alloc -> fn (analyzer: *CORE::StaticMemoryAnalyzer, name: *byte, func_name: *byte,
-                                      file_path: *byte, line: int, col: int) void {
+                                      file_path: *byte, line: i64, col: i64) void {
   if (analyzer.skip_memory_tracking) return;
 
   let a: CORE::StaticAllocation = CORE::StaticAllocation {
@@ -366,13 +366,13 @@ pub const find_enum_members -> fn (scope: *CORE::Scope, enum_name: *byte) VEC::V
   let mscope: *CORE::Scope = find_containing_module(scope);
   if (mscope == cast<*CORE::Scope>(0)) return result;
 
-  let elen: int = STR::strlen(enum_name);
+  let elen: i64 = STR::strlen(enum_name);
   let v: *VEC::Vector = mscope.symbols;
-  let count: int = v.size;
-  loop [i: int = 0](i < count) : (++i) {
+  let count: i64 = v.size;
+  loop [i: i64 = 0](i < count) : (++i) {
     let sym: *CORE::Symbol = cast<*CORE::Symbol>(v.get(i));
 
-    let namelen: int = STR::strlen(sym.name);
+    let namelen: i64 = STR::strlen(sym.name);
     if (namelen > elen) {
       if (STR::strncmp(sym.name, enum_name, elen) == 0) {
         if (sym.name[elen] == '.') {

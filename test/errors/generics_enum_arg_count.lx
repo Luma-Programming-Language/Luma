@@ -9,8 +9,8 @@ const State -> enum<T> {
   Running,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  let s: State<int, bool> = State<int, bool>::Idle;
-  if (s == State<int, bool>::Idle) return 0;
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  let s: State<i64, bool> = State<i64, bool>::Idle;
+  if (s == State<i64, bool>::Idle) return 0;
   return 1;
 }

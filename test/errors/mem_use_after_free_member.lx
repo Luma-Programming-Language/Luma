@@ -3,11 +3,11 @@
 
 const Point -> struct {
 pub:
-  x: int,
-  y: int,
+  x: i64,
+  y: i64,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let p: *Point = cast<*Point>(alloc(sizeof<Point>));
     free(p);
     output(p.x, "\n");

@@ -11,21 +11,21 @@
 // something actually consumes the expression's value, e.g. as a function
 // argument.
 
-const get -> fn (arr: [int; 4], idx: int) int {
+const get -> fn (arr: [i64; 4], idx: i64) i64 {
   return arr[idx];
 }
 
-const main -> fn () int {
-  let arr: [int; 4] = [10, 20, 30, 40];
-  let i: int = 0;
+const main -> fn () i64 {
+  let arr: [i64; 4] = [10, 20, 30, 40];
+  let i: i64 = 0;
 
   // ++i must yield the NEW value (1), so this should read arr[1] == 20.
-  let r: int = get(arr, ++i);
+  let r: i64 = get(arr, ++i);
   if (r != 20) return 1;
   if (i != 1) return 1;
 
-  let j: int = 5;
-  let pre: int = ++j;
+  let j: i64 = 5;
+  let pre: i64 = ++j;
   if (pre != 6) return 1;
   if (j != 6) return 1;
 

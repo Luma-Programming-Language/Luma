@@ -3,7 +3,7 @@
 
 const Color -> enum { Red, Green };
 
-pub const main -> fn () int {
+pub const main -> fn () i64 {
   let c: Color = Color::Red;
   if (c == Color::Blurp) return 1;
   return 0;

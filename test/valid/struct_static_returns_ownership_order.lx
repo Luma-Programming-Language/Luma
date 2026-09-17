@@ -6,10 +6,10 @@
 const Person -> struct {
 pub:
     name: *byte,
-    age: int,
+    age: i64,
 
     #returns_ownership
-    static create -> fn (name: *byte, age: int) *Person {
+    static create -> fn (name: *byte, age: i64) *Person {
         let p: *Person = cast<*Person>(alloc(sizeof<Person>));
         p.name = name;
         p.age = age;
@@ -21,7 +21,7 @@ pub:
     },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let alice: *Person = Person::create(cast<*byte>(alloc(6)), 30);
     defer { alice.destroy(); free(alice); }
     output(alice.age, "\n");

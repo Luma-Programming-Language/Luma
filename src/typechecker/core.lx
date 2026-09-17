@@ -12,20 +12,20 @@ pub const TypeMatchResult -> enum {
 
 pub const TypeError -> struct {
   message: *byte,
-  line:    int,
-  col:     int,
+  line:    i64,
+  col:     i64,
   context: *byte,
 };
 
 pub const StaticAllocation -> struct {
-  line:                 int,
-  col:                  int,
+  line:                 i64,
+  col:                  i64,
   variable_name:        *byte,
   original_variable:    *byte,
   has_matching_free:    bool,
-  free_count:           int,
-  conditional_free:     int,
-  use_after_free_count: int,
+  free_count:           i64,
+  conditional_free:     i64,
+  use_after_free_count: i64,
   aliases:              *VEC::Vector,
   reported:             bool,
   address_taken:        bool,
@@ -43,7 +43,7 @@ pub const Symbol -> struct {
   type:              *AST::AstNode,
   is_public:         bool,
   is_mutable:        bool,
-  scope_depth:       int,
+  scope_depth:       i64,
   returns_ownership: bool,
   takes_ownership:   bool,
 };
@@ -52,7 +52,7 @@ pub const Scope -> struct {
   parent:            *Scope,
   symbols:           *VEC::Vector,
   scope_name:        *byte,
-  depth:             int,
+  depth:             i64,
   is_function_scope: bool,
   associated_node:   *AST::AstNode,
 
@@ -95,7 +95,7 @@ pub const GeneratedDecl -> struct {
   // and static flag, so codegen registers the concrete method as a method
   // of the struct rather than a standalone function. NULL / 0 otherwise.
   owner:       *byte,
-  is_static:   int,
+  is_static:   i64,
 };
 
 let g_generated_decls: VEC::Vector;
@@ -107,18 +107,18 @@ const generated_decls_init -> fn () void {
   g_generated_decls = VEC::create_vector(sizeof<GeneratedDecl>);
 }
 
-pub const record_generated_decl -> fn (module_name: *byte, decl: *AST::AstNode, owner: *byte, is_static: int) void {
+pub const record_generated_decl -> fn (module_name: *byte, decl: *AST::AstNode, owner: *byte, is_static: i64) void {
   generated_decls_init();
   let gd: GeneratedDecl = GeneratedDecl { module_name: module_name, decl: decl, owner: owner, is_static: is_static };
   g_generated_decls.push_back(cast<*void>(&gd));
 }
 
-pub const generated_decl_count -> fn () int {
+pub const generated_decl_count -> fn () i64 {
   generated_decls_init();
   return g_generated_decls.size;
 }
 
-pub const generated_decl_at -> fn (i: int) *GeneratedDecl {
+pub const generated_decl_at -> fn (i: i64) *GeneratedDecl {
   generated_decls_init();
   return cast<*GeneratedDecl>(g_generated_decls.get(i));
 }
@@ -148,8 +148,8 @@ const unresolved_types_init -> fn () void {
 
 pub const record_unresolved_type_name -> fn (module_scope: *Scope, name: *byte, err_node: *AST::AstNode) void {
   unresolved_types_init();
-  let c: int = g_unresolved_types.size;
-  loop [i: int = 0](i < c) : (++i) {
+  let c: i64 = g_unresolved_types.size;
+  loop [i: i64 = 0](i < c) : (++i) {
     let e: *UnresolvedTypeName = cast<*UnresolvedTypeName>(g_unresolved_types.get(i));
     if (e.err_node == err_node) return;
   }
@@ -157,12 +157,12 @@ pub const record_unresolved_type_name -> fn (module_scope: *Scope, name: *byte, 
   g_unresolved_types.push_back(cast<*void>(&u));
 }
 
-pub const unresolved_type_name_count -> fn () int {
+pub const unresolved_type_name_count -> fn () i64 {
   unresolved_types_init();
   return g_unresolved_types.size;
 }
 
-pub const unresolved_type_name_at -> fn (i: int) *UnresolvedTypeName {
+pub const unresolved_type_name_at -> fn (i: i64) *UnresolvedTypeName {
   unresolved_types_init();
   return cast<*UnresolvedTypeName>(g_unresolved_types.get(i));
 }
@@ -208,8 +208,8 @@ pub const record_nominal_decl -> fn (name: *byte, decl: *AST::AstNode) void {
 
 pub const find_nominal_decl -> fn (name: *byte) *AST::AstNode {
   nominals_init();
-  let c: int = g_nominals.size;
-  loop [i: int = 0](i < c) : (++i) {
+  let c: i64 = g_nominals.size;
+  loop [i: i64 = 0](i < c) : (++i) {
     let nd: *NominalDecl = cast<*NominalDecl>(g_nominals.get(i));
     if (STR::strcmp(nd.name, name) == 0) return nd.decl;
   }

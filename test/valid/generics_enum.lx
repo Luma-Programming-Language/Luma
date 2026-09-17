@@ -6,7 +6,7 @@
 // each distinct type-argument list, typechecked through the tc.lx drain, and
 // codegen'd via tc_core's generated-decl registry. Luma enums are plain
 // C-style name constants (no associated data), so T acts as a phantom/type
-// tag: `State<int>` and `State<*byte>` are distinct nominal types with
+// tag: `State<i64>` and `State<*byte>` are distinct nominal types with
 // distinct (mangled) member constants. See docs/docs.md's Generics section.
 
 const State -> enum<T> {
@@ -15,19 +15,19 @@ const State -> enum<T> {
   Done,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  let s: State<int> = State<int>::Idle;
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  let s: State<i64> = State<i64>::Idle;
 
-  if (s != State<int>::Idle) return 1;
+  if (s != State<i64>::Idle) return 1;
 
   switch (s) {
-    State<int>::Idle -> {
-      // s is still the concrete `State<int>` nominal, so member comparisons
+    State<i64>::Idle -> {
+      // s is still the concrete `State<i64>` nominal, so member comparisons
       // keep typechecking after the switch arms are processed.
-      if (State<int>::Running != State<int>::Done) return 0;
+      if (State<i64>::Running != State<i64>::Done) return 0;
       return 1;
     }
-    State<int>::Running -> return 1;
-    State<int>::Done -> return 1;
+    State<i64>::Running -> return 1;
+    State<i64>::Done -> return 1;
   }
 }

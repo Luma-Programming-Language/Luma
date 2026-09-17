@@ -1,9 +1,9 @@
 // error-type: Type Error
 @module "main"
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let a: float = 3.5;
-    let b: float = 2.0;
-    let bad: float = a % b;
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let a: f32 = 3.5;
+    let b: f32 = 2.0;
+    let bad: f32 = a % b;
     return 0;
 }

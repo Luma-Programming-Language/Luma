@@ -121,10 +121,10 @@ pub const NodeCategory -> enum {
 // ─── Base Node ───────────────────────────────────────────────────────────────
 
 pub const AstNode -> struct {
-  kind:     int,
-  category: int,
-  line:     int,
-  col:      int,
+  kind:     i64,
+  category: i64,
+  line:     i64,
+  col:      i64,
 
   // Filled in by the typechecker (tc_expr's `typecheck_expression` wrapper)
   // for every expression node it successfully checks. Not owned — points at
@@ -137,7 +137,7 @@ pub const AstNode -> struct {
   static make -> fn<T> (
     kind: NodeType, 
     category: NodeCategory, 
-    line: int, col: int
+    line: i64, col: i64
   ) *T {
     let n: *T = cast<*T>(alloc(sizeof<T>));
     
@@ -158,13 +158,13 @@ pub const ModuleNode -> struct {
   doc_comment: *byte,
   file_path:   *byte,
   body:        **AstNode,
-  body_count:  int,
+  body_count:  i64,
 
   // Owned for the lifetime of the module so the typechecker can regenerate
   // source lines for diagnostics (see tc_error_init / generate_line).
   source:      *byte,
   tokens:      *TOK::Token,
-  token_count: int,
+  token_count: i64,
 };
 
 pub const UseNode -> struct {
@@ -177,7 +177,7 @@ pub const OsNode -> struct {
   ...AstNode,
   platforms: **byte,
   bodies: **AstNode,
-  has_default: int,
+  has_default: i64,
   default_body: *AstNode,
 };
 
@@ -190,12 +190,12 @@ pub const LinkNode -> struct {
 
 pub const LiteralNode -> struct {
   ...AstNode,
-  lit_type:   int,
-  int_val:    int,
-  float_val:  int,
+  lit_type:   i64,
+  int_val:    i64,
+  float_val:  i64,
   string_val: *byte,
   char_val:   byte,
-  bool_val:   int,
+  bool_val:   i64,
 };
 
 pub const IdentifierNode -> struct {
@@ -205,14 +205,14 @@ pub const IdentifierNode -> struct {
 
 pub const BinaryNode -> struct {
   ...AstNode,
-  op:    int,
+  op:    i64,
   left:  *AstNode,
   right: *AstNode,
 };
 
 pub const UnaryNode -> struct {
   ...AstNode,
-  op:      int,
+  op:      i64,
   operand: *AstNode,
 };
 
@@ -220,12 +220,12 @@ pub const CallNode -> struct {
   ...AstNode,
   callee:    *AstNode,
   args:      **AstNode,
-  arg_count: int,
+  arg_count: i64,
 
-  // Generics: explicit `<int>` in `add<int>(1, 2)` — empty/0 for an
+  // Generics: explicit `<i64>` in `add<i64>(1, 2)` — empty/0 for an
   // ordinary call.
   type_args:      **AstNode,
-  type_arg_count: int,
+  type_arg_count: i64,
 };
 
 pub const AssignNode -> struct {
@@ -243,18 +243,18 @@ pub const TernaryNode -> struct {
 
 pub const MemberNode -> struct {
   ...AstNode,
-  is_compiletime: int,
+  is_compiletime: i64,
   object:         *AstNode,
   member:         *byte,
 
   // Explicit type arguments for a *generic* qualified name —
-  // `State<int>::Idle` — parsed by try_generic_instantiation. Empty/0 for
+  // `State<i64>::Idle` — parsed by try_generic_instantiation. Empty/0 for
   // every ordinary `Name.member` / `Name::member`. tc_member uses them to
   // instantiate the enum template and rewrite `object` to the concrete
   // mangled name before codegen; ownership follows the same convention as
   // EXPR_STRUCT's type_args (the node frees them at teardown).
   type_args:       **AstNode,
-  type_arg_count:  int,
+  type_arg_count:  i64,
 };
 
 pub const IndexNode -> struct {
@@ -266,8 +266,8 @@ pub const IndexNode -> struct {
 pub const ArrayNode -> struct {
   ...AstNode,
   elements:      **AstNode,
-  element_count: int,
-  target_size:   int,
+  element_count: i64,
+  target_size:   i64,
 };
 
 pub const CastNode -> struct {
@@ -296,13 +296,13 @@ pub const MemcpyNode -> struct {
 pub const SizeofNode -> struct {
   ...AstNode,
   object:  *AstNode,
-  is_type: int,
+  is_type: i64,
 };
 
 pub const SyscallNode -> struct {
   ...AstNode,
   args:  **AstNode,
-  count: int,
+  count: i64,
 };
 
 pub const StructExprNode -> struct {
@@ -314,13 +314,13 @@ pub const StructExprNode -> struct {
   alias:       *byte,
   field_names: **byte,
   field_vals:  **AstNode,
-  field_count: int,
+  field_count: i64,
 
-  // Generics: the optional explicit form `Box<int> { value: 42 }` — empty/0
+  // Generics: the optional explicit form `Box<i64> { value: 42 }` — empty/0
   // when omitted, which is the common case (T is inferred from context
   // instead; see tc_expr.lx's tc_struct_expr).
   type_args:      **AstNode,
-  type_arg_count: int,
+  type_arg_count: i64,
 };
 
 // ─── Statement Nodes ─────────────────────────────────────────────────────────
@@ -328,7 +328,7 @@ pub const StructExprNode -> struct {
 pub const ProgramNode -> struct {
   ...AstNode,
   modules:      **AstNode,
-  module_count: int,
+  module_count: i64,
 };
 
 pub const ExprStmtNode -> struct {
@@ -342,8 +342,8 @@ pub const VarDeclNode -> struct {
   doc_comment: *byte,
   var_type:    *AstNode,
   initializer: *AstNode,
-  is_mutable:  int,
-  is_public:   int,
+  is_mutable:  i64,
+  is_public:   i64,
 };
 
 pub const FuncDeclNode -> struct {
@@ -352,18 +352,18 @@ pub const FuncDeclNode -> struct {
   doc_comment:       *byte,
   param_names:       **byte,
   param_types:       **AstNode,
-  param_count:       int,
+  param_count:       i64,
   return_type:       *AstNode,
-  is_public:         int,
+  is_public:         i64,
   body:              *AstNode,
-  returns_ownership: int,
-  takes_ownership:   int,
-  forward_declared:  int,
-  dll_import:        int,
+  returns_ownership: i64,
+  takes_ownership:   i64,
+  forward_declared:  i64,
+  dll_import:        i64,
   dll_name:          *byte,
   dll_callconv:      *byte,
 
-  lib_import:        int,
+  lib_import:        i64,
   lib_name:          *byte,
 
   // Generics: names only (`T`, `U`, ...), no bounds. Empty/0 for an
@@ -371,7 +371,7 @@ pub const FuncDeclNode -> struct {
   // codegen'd directly — see tc_generics' instantiation cache, which
   // clones this node per concrete call-site type argument list.
   type_params:       **byte,
-  type_param_count:  int,
+  type_param_count:  i64,
 };
 
 pub const StructDeclNode -> struct {
@@ -379,14 +379,14 @@ pub const StructDeclNode -> struct {
   name:            *byte,
   doc_comment:     *byte,
   public_members:  **AstNode,
-  public_count:    int,
+  public_count:    i64,
   private_members: **AstNode,
-  private_count:   int,
-  is_public:       int,
+  private_count:   i64,
+  is_public:       i64,
 
   // Generics — see FuncDeclNode.type_params above; same rules.
   type_params:       **byte,
-  type_param_count:  int,
+  type_param_count:  i64,
 };
 
 pub const FieldDeclNode -> struct {
@@ -395,15 +395,15 @@ pub const FieldDeclNode -> struct {
   doc_comment: *byte,
   type_node:   *AstNode,
   function:    *AstNode,
-  is_public:   int,
+  is_public:   i64,
   // `...Type,` struct embedding (e.g. `...AstNode,`) — `name`/`type_node` are
   // still the embedded type's name, so existing consumers that don't care
   // about embedding keep working; is_embedded distinguishes it from a
   // same-named regular data field.
-  is_embedded: int,
+  is_embedded: i64,
   // `static name -> fn (...) T { ... }` — a method with no implicit `self`,
   // called as `Type::name(...)` instead of `instance.name(...)`.
-  is_static: int,
+  is_static: i64,
 };
 
 pub const EnumDeclNode -> struct {
@@ -411,16 +411,16 @@ pub const EnumDeclNode -> struct {
   name:         *byte,
   doc_comment:  *byte,
   members:      **byte,
-  member_count: int,
-  is_public:    int,
+  member_count: i64,
+  is_public:    i64,
 
   // Generics — see FuncDeclNode.type_params above; same rules. A member of
   // a generic enum can't carry a value of type T (Luma enums are plain
   // C-style name constants), so T acts as a phantom/type-tag that makes
-  // `State<int>` and `State<*byte>` distinct nominal types with their own
+  // `State<i64>` and `State<*byte>` distinct nominal types with their own
   // (mangled) member constants.
   type_params:       **byte,
-  type_param_count:  int,
+  type_param_count:  i64,
 };
 
 pub const IfStmtNode -> struct {
@@ -428,7 +428,7 @@ pub const IfStmtNode -> struct {
   condition:  *AstNode,
   then_stmt:  *AstNode,
   elif_stmts: **AstNode,
-  elif_count: int,
+  elif_count: i64,
   else_stmt:  *AstNode,
 };
 
@@ -438,7 +438,7 @@ pub const LoopStmtNode -> struct {
   optional:    *AstNode,
   body:        *AstNode,
   initializer: **AstNode,
-  init_count:  int,
+  init_count:  i64,
 };
 
 pub const ReturnStmtNode -> struct {
@@ -449,19 +449,19 @@ pub const ReturnStmtNode -> struct {
 pub const BlockNode -> struct {
   ...AstNode,
   statements: **AstNode,
-  stmt_count: int,
+  stmt_count: i64,
 };
 
 pub const PrintStmtNode -> struct {
   ...AstNode,
   expressions: **AstNode,
-  expr_count:  int,
-  ln:          int,
+  expr_count:  i64,
+  ln:          i64,
 };
 
 pub const BreakContinueNode -> struct {
   ...AstNode,
-  is_continue: int,
+  is_continue: i64,
 };
 
 pub const DeferNode -> struct {
@@ -473,7 +473,7 @@ pub const SwitchNode -> struct {
   ...AstNode,
   condition:    *AstNode,
   cases:        **AstNode,
-  case_count:   int,
+  case_count:   i64,
   default_case: *AstNode,
 };
 
@@ -482,15 +482,15 @@ pub const ImplNode -> struct {
   function_name_list:  **byte,
   function_type_list:  **AstNode,
   struct_name_list:    **byte,
-  function_name_count: int,
-  struct_name_count:   int,
+  function_name_count: i64,
+  struct_name_count:   i64,
   body:                *AstNode,
 };
 
 pub const CaseNode -> struct {
   ...AstNode,
   values:      **AstNode,
-  value_count: int,
+  value_count: i64,
   body:        *AstNode,
 };
 
@@ -505,11 +505,11 @@ pub const BasicTypeNode -> struct {
   ...AstNode,
   name: *byte,
 
-  // Generics: `Box<int>`'s `<int>` — empty/0 for every ordinary type name,
+  // Generics: `Box<i64>`'s `<i64>` — empty/0 for every ordinary type name,
   // which is the overwhelming majority of BasicTypeNodes; every existing
   // switch on TYPE_BASIC keeps working unchanged.
   type_args:       **AstNode,
-  type_arg_count:  int,
+  type_arg_count:  i64,
 };
 
 pub const PointerTypeNode -> struct {
@@ -526,33 +526,33 @@ pub const ArrayTypeNode -> struct {
 pub const FuncTypeNode -> struct {
   ...AstNode,
   param_types: **AstNode,
-  param_count: int,
+  param_count: i64,
   return_type: *AstNode,
 };
 
 pub const ResolutionNode -> struct {
   ...AstNode,
   parts:      **byte,
-  part_count: int,
+  part_count: i64,
   // Explicit type arguments on the resolved *last* component, e.g. the
-  // `<int>` in `Alias::Box<int>` — a qualified generic type reference.
+  // `<i64>` in `Alias::Box<i64>` — a qualified generic type reference.
   // Same storage convention as BasicTypeNode's type_args (the node frees
   // them at teardown).
   type_args:      **AstNode,
-  type_arg_count: int,
+  type_arg_count: i64,
 };
 
 #takes_ownership
 pub const free_node -> fn (node: *AstNode) void {
   if (node == cast<*AstNode>(0)) return;
 
-  let kind: int = node.kind;
+  let kind: i64 = node.kind;
 
   // ── Preprocessor ──────────────────────────────────────────────────────────
 
   if (kind == NodeType::PREPROCESSOR_MODULE) {
     let n: *ModuleNode = cast<*ModuleNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.body_count) {
       free_node(n.body[i]);
       i = i + 1;
@@ -576,7 +576,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::PREPROCESSOR_OS) {
     let n: *OsNode = cast<*OsNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (n.platforms[i] != cast<*byte>(0)) {
       free(n.platforms[i]);
       free_node(n.bodies[i]);
@@ -636,13 +636,13 @@ pub const free_node -> fn (node: *AstNode) void {
   if (kind == NodeType::EXPR_CALL) {
     let n: *CallNode = cast<*CallNode>(node);
     free_node(n.callee);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.arg_count) {
       free_node(n.args[i]);
       i = i + 1;
     }
     free(n.args);
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < n.type_arg_count) {
       free_node(n.type_args[j]);
       j = j + 1;
@@ -673,7 +673,7 @@ pub const free_node -> fn (node: *AstNode) void {
     let n: *MemberNode = cast<*MemberNode>(node);
     free_node(n.object);
     free(n.member);
-    let ti: int = 0;
+    let ti: i64 = 0;
     loop (ti < n.type_arg_count) {
       free_node(n.type_args[ti]);
       ti = ti + 1;
@@ -693,7 +693,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::EXPR_ARRAY) {
     let n: *ArrayNode = cast<*ArrayNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.element_count) {
       free_node(n.elements[i]);
       i = i + 1;
@@ -743,7 +743,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::EXPR_SYSCALL) {
     let n: *SyscallNode = cast<*SyscallNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.count) {
       free_node(n.args[i]);
       i = i + 1;
@@ -755,7 +755,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::EXPR_STRUCT) {
     let n: *StructExprNode = cast<*StructExprNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.field_count) {
       free(n.field_names[i]);
       free_node(n.field_vals[i]);
@@ -763,7 +763,7 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.field_names);
     free(n.field_vals);
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < n.type_arg_count) {
       free_node(n.type_args[j]);
       j = j + 1;
@@ -779,7 +779,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::PROGRAM) {
     let n: *ProgramNode = cast<*ProgramNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.module_count) {
       free_node(n.modules[i]);
       i = i + 1;
@@ -808,7 +808,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::STMT_FUNCTION) {
     let n: *FuncDeclNode = cast<*FuncDeclNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.param_count) {
       free(n.param_names[i]);
       free_node(n.param_types[i]);
@@ -820,7 +820,7 @@ pub const free_node -> fn (node: *AstNode) void {
     if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
     free_node(n.return_type);
     free_node(n.body);
-    let ti: int = 0;
+    let ti: i64 = 0;
     loop (ti < n.type_param_count) {
       free(n.type_params[ti]);
       ti = ti + 1;
@@ -832,13 +832,13 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::STMT_STRUCT) {
     let n: *StructDeclNode = cast<*StructDeclNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.public_count) {
       free_node(n.public_members[i]);
       i = i + 1;
     }
     free(n.public_members);
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < n.private_count) {
       free_node(n.private_members[j]);
       j = j + 1;
@@ -846,7 +846,7 @@ pub const free_node -> fn (node: *AstNode) void {
     free(n.private_members);
     free(n.name);
     if (n.doc_comment != cast<*byte>(0)) free(n.doc_comment);
-    let tk: int = 0;
+    let tk: i64 = 0;
     loop (tk < n.type_param_count) {
       free(n.type_params[tk]);
       tk = tk + 1;
@@ -868,13 +868,13 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::STMT_ENUM) {
     let n: *EnumDeclNode = cast<*EnumDeclNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.member_count) {
       free(n.members[i]);
       i = i + 1;
     }
     free(n.members);
-    let tp: int = 0;
+    let tp: i64 = 0;
     loop (tp < n.type_param_count) {
       free(n.type_params[tp]);
       tp = tp + 1;
@@ -890,7 +890,7 @@ pub const free_node -> fn (node: *AstNode) void {
     let n: *IfStmtNode = cast<*IfStmtNode>(node);
     free_node(n.condition);
     free_node(n.then_stmt);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.elif_count) {
       free_node(n.elif_stmts[i]);
       i = i + 1;
@@ -906,7 +906,7 @@ pub const free_node -> fn (node: *AstNode) void {
     free_node(n.condition);
     free_node(n.optional);
     free_node(n.body);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.init_count) {
       free_node(n.initializer[i]);
       i = i + 1;
@@ -925,7 +925,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::STMT_BLOCK) {
     let n: *BlockNode = cast<*BlockNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.stmt_count) {
       free_node(n.statements[i]);
       i = i + 1;
@@ -937,7 +937,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::STMT_PRINT) {
     let n: *PrintStmtNode = cast<*PrintStmtNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.expr_count) {
       free_node(n.expressions[i]);
       i = i + 1;
@@ -962,7 +962,7 @@ pub const free_node -> fn (node: *AstNode) void {
   if (kind == NodeType::STMT_SWITCH) {
     let n: *SwitchNode = cast<*SwitchNode>(node);
     free_node(n.condition);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.case_count) {
       free_node(n.cases[i]);
       i = i + 1;
@@ -975,7 +975,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::STMT_IMPL) {
     let n: *ImplNode = cast<*ImplNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.function_name_count) {
       free(n.function_name_list[i]);
       free_node(n.function_type_list[i]);
@@ -983,7 +983,7 @@ pub const free_node -> fn (node: *AstNode) void {
     }
     free(n.function_name_list);
     free(n.function_type_list);
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < n.struct_name_count) {
       free(n.struct_name_list[j]);
       j = j + 1;
@@ -996,7 +996,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::STMT_CASE) {
     let n: *CaseNode = cast<*CaseNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.value_count) {
       free_node(n.values[i]);
       i = i + 1;
@@ -1019,7 +1019,7 @@ pub const free_node -> fn (node: *AstNode) void {
   if (kind == NodeType::TYPE_BASIC) {
     let n: *BasicTypeNode = cast<*BasicTypeNode>(node);
     free(n.name);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.type_arg_count) {
       free_node(n.type_args[i]);
       i = i + 1;
@@ -1046,7 +1046,7 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::TYPE_FUNCTION) {
     let n: *FuncTypeNode = cast<*FuncTypeNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.param_count) {
       free_node(n.param_types[i]);
       i = i + 1;
@@ -1059,13 +1059,13 @@ pub const free_node -> fn (node: *AstNode) void {
 
   if (kind == NodeType::TYPE_RESOLUTION) {
     let n: *ResolutionNode = cast<*ResolutionNode>(node);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.part_count) {
       free(n.parts[i]);
       i = i + 1;
     }
     free(n.parts);
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < n.type_arg_count) {
       free_node(n.type_args[j]);
       j = j + 1;
@@ -1106,7 +1106,7 @@ pub const clone_node -> fn (node: *AstNode) *AstNode;
 // changes clone_node's behavior for any non-generics caller.
 let g_subst_names: **byte    = cast<**byte>(0);
 let g_subst_types: **AstNode = cast<**AstNode>(0);
-let g_subst_count: int       = 0;
+let g_subst_count: i64       = 0;
 
 // Deep-clones `node`, substituting every bare type name in `names[i]` for
 // a clone of `types[i]` wherever clone_node's traversal reaches it (see
@@ -1116,10 +1116,10 @@ let g_subst_count: int       = 0;
 // generic template's body calling another generic function) saves and
 // restores the outer table around its own, narrower one.
 #returns_ownership
-pub const clone_node_substituting -> fn (node: *AstNode, names: **byte, types: **AstNode, count: int) *AstNode {
+pub const clone_node_substituting -> fn (node: *AstNode, names: **byte, types: **AstNode, count: i64) *AstNode {
   let save_names: **byte    = g_subst_names;
   let save_types: **AstNode = g_subst_types;
-  let save_count: int       = g_subst_count;
+  let save_count: i64       = g_subst_count;
 
   g_subst_names = names;
   g_subst_types = types;
@@ -1137,17 +1137,17 @@ pub const clone_node_substituting -> fn (node: *AstNode, names: **byte, types: *
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
   if (s == cast<*byte>(0)) return cast<*byte>(0);
-  let len: int = STR::strlen(s);
+  let len: i64 = STR::strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
   MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
   return out;
 }
 
 #returns_ownership
-const clone_node_array -> fn (arr: **AstNode, count: int) **AstNode {
+const clone_node_array -> fn (arr: **AstNode, count: i64) **AstNode {
   if (count == 0) return cast<**AstNode>(0);
   let out: **AstNode = cast<**AstNode>(alloc(sizeof<*AstNode> * count));
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < count) {
     out[i] = clone_node(arr[i]);
     i = i + 1;
@@ -1156,10 +1156,10 @@ const clone_node_array -> fn (arr: **AstNode, count: int) **AstNode {
 }
 
 #returns_ownership
-const dup_str_array -> fn (arr: **byte, count: int) **byte {
+const dup_str_array -> fn (arr: **byte, count: i64) **byte {
   if (count == 0) return cast<**byte>(0);
   let out: **byte = cast<**byte>(alloc(sizeof<*byte> * count));
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < count) {
     out[i] = dup_str(arr[i]);
     i = i + 1;
@@ -1170,7 +1170,7 @@ const dup_str_array -> fn (arr: **byte, count: int) **byte {
 #returns_ownership
 pub const clone_node -> fn (node: *AstNode) *AstNode {
   if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);
-  let kind: int = node.kind;
+  let kind: i64 = node.kind;
 
   if (kind == NodeType::EXPR_LITERAL) {
     let n: *LiteralNode = cast<*LiteralNode>(node);
@@ -1536,7 +1536,7 @@ pub const clone_node -> fn (node: *AstNode) *AstNode {
     // through here. A name matching one of the active generic's type
     // parameters (`T`, `U`, ...) clones the caller's concrete type instead
     // of the placeholder.
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < g_subst_count) {
       if (STR::strcmp(n.name, g_subst_names[i]) == 0) {
         return clone_node(g_subst_types[i]);

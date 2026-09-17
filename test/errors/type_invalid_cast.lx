@@ -5,7 +5,7 @@ const do_nothing -> fn () void {
     return;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let x: int = cast<int>(do_nothing());
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let x: i64 = cast<i64>(do_nothing());
     return 0;
 }

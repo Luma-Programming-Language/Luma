@@ -39,7 +39,7 @@ const gen_local_var_decl -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *
     if (t != cast<*AST::AstNode>(0)) {
       if (TCT::is_array_type(t)) {
         let init_node: *AST::AstNode = n.initializer;
-        let init_kind: int = init_node.kind;
+        let init_kind: i64 = init_node.kind;
         if (init_kind == AST::NodeType::EXPR_ARRAY) { is_direct_array_init = true; }
       }
     }
@@ -70,15 +70,15 @@ const push_defer -> fn (ctx: *CG::CodegenContext, stmt: *AST::AstNode) void {
   v.push_back(cast<*void>(&target));
 }
 
-const defer_at -> fn (ctx: *CG::CodegenContext, i: int) *AST::AstNode {
+const defer_at -> fn (ctx: *CG::CodegenContext, i: i64) *AST::AstNode {
   let v: *VEC::Vector = &ctx.defer_stack;
   return cast<**AST::AstNode>(v.data)[i];
 }
 
 // Emits (in LIFO order) every deferred statement pushed since `from_len`.
-const flush_defers_from -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, from_len: int) void {
+const flush_defers_from -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, from_len: i64) void {
   let v: *VEC::Vector = &ctx.defer_stack;
-  let i: int = v.size - 1;
+  let i: i64 = v.size - 1;
   loop (i >= from_len) {
     gen_stmt(ctx, buf, defer_at(ctx, i));
     i = i - 1;
@@ -90,7 +90,7 @@ const flush_defers_from -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, from_len
 const gen_return -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::ReturnStmtNode = cast<*AST::ReturnStmtNode>(stmt);
   let v: *VEC::Vector = &ctx.defer_stack;
-  let pending: int = v.size;
+  let pending: i64 = v.size;
 
   if (pending == 0) {
     if (n.value == cast<*AST::AstNode>(0)) { CG::buf_str(buf, "return;\n"); return; }
@@ -116,12 +116,12 @@ const gen_return -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::Ast
 const gen_block -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
   let v: *VEC::Vector = &ctx.defer_stack;
-  let start_len: int = v.size;
+  let start_len: i64 = v.size;
   let lv: *VEC::Vector = &ctx.locals;
-  let locals_start: int = lv.size;
+  let locals_start: i64 = lv.size;
 
   CG::buf_str(buf, "{\n");
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < n.stmt_count) {
     gen_stmt(ctx, buf, n.statements[i]);
     i = i + 1;
@@ -141,7 +141,7 @@ const gen_if -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode
   CG::buf_str(buf, ") ");
   gen_stmt(ctx, buf, n.then_stmt);
 
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < n.elif_count) {
     CG::buf_str(buf, "else if (");
     // elif branches are nested IfStmtNodes; pull condition/body directly
@@ -162,11 +162,11 @@ const gen_if -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode
 const gen_loop -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
   let lv: *VEC::Vector = &ctx.locals;
-  let locals_start: int = lv.size;
+  let locals_start: i64 = lv.size;
 
   CG::buf_str(buf, "for (");
 
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < n.init_count) {
     if (i > 0) CG::buf_str(buf, ", ");
     let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(n.initializer[i]);
@@ -195,10 +195,10 @@ const gen_switch -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::Ast
   CGE::gen_expr(ctx, buf, n.condition);
   CG::buf_str(buf, ") {\n");
 
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < n.case_count) {
     let cn: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < cn.value_count) {
       CG::buf_str(buf, "case ");
       CGE::gen_expr(ctx, buf, cn.values[j]);
@@ -224,7 +224,7 @@ const gen_switch -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::Ast
 
 pub const gen_stmt -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   if (stmt == cast<*AST::AstNode>(0)) return;
-  let k: int = stmt.kind;
+  let k: i64 = stmt.kind;
 
   if (k == AST::NodeType::STMT_VAR_DECL)   { gen_local_var_decl(ctx, buf, stmt); return; }
   if (k == AST::NodeType::STMT_CONST_DECL) { gen_local_var_decl(ctx, buf, stmt); return; }
@@ -260,7 +260,7 @@ pub const gen_stmt -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::A
     if (body.kind != AST::NodeType::STMT_BLOCK) { gen_stmt(ctx, buf, body); return; }
 
     let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < blk.stmt_count) {
       gen_stmt(ctx, buf, blk.statements[i]);
       i = i + 1;

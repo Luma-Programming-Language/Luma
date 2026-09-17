@@ -3,7 +3,7 @@
 @use "ast" as AST
 
 #returns_ownership
-pub const make_program -> fn (modules: **AST::AstNode, module_count: int, line: int, col: int) *AST::AstNode {
+pub const make_program -> fn (modules: **AST::AstNode, module_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ProgramNode = AST::AstNode::make<AST::ProgramNode>(
     AST::NodeType::PROGRAM, 
     AST::NodeCategory::Node_Category_STMT,
@@ -18,7 +18,7 @@ pub const make_program -> fn (modules: **AST::AstNode, module_count: int, line: 
 }
 
 #returns_ownership
-pub const make_expr_stmt -> fn (expression: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_expr_stmt -> fn (expression: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ExprStmtNode = AST::AstNode::make<AST::ExprStmtNode>(
     AST::NodeType::STMT_EXPRESSION, 
     AST::NodeCategory::Node_Category_STMT,
@@ -33,7 +33,7 @@ pub const make_expr_stmt -> fn (expression: *AST::AstNode, line: int, col: int) 
 
 #returns_ownership
 pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST::AstNode,
-                               initializer: *AST::AstNode, is_mutable: int, is_public: int, line: int, col: int) *AST::AstNode {
+                               initializer: *AST::AstNode, is_mutable: i64, is_public: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::VarDeclNode = AST::AstNode::make<AST::VarDeclNode>(
     AST::NodeType::STMT_VAR_DECL, 
     AST::NodeCategory::Node_Category_STMT,
@@ -53,7 +53,7 @@ pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST::
 
 #returns_ownership
 pub const make_const_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST::AstNode,
-                                 initializer: *AST::AstNode, is_public: int, line: int, col: int) *AST::AstNode {
+                                 initializer: *AST::AstNode, is_public: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::VarDeclNode = AST::AstNode::make<AST::VarDeclNode>(
     AST::NodeType::STMT_CONST_DECL,
     AST::NodeCategory::Node_Category_STMT,
@@ -73,9 +73,9 @@ pub const make_const_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST
 
 #returns_ownership
 pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **byte, param_types: **AST::AstNode,
-                                param_count: int, return_type: *AST::AstNode, is_public: int, body: *AST::AstNode,
-                                returns_ownership: int, takes_ownership: int,
-                                forward_declared: int, line: int, col: int) *AST::AstNode {
+                                param_count: i64, return_type: *AST::AstNode, is_public: i64, body: *AST::AstNode,
+                                returns_ownership: i64, takes_ownership: i64,
+                                forward_declared: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::FuncDeclNode = AST::AstNode::make<AST::FuncDeclNode>(
     AST::NodeType::STMT_FUNCTION,
     AST::NodeCategory::Node_Category_STMT,
@@ -107,8 +107,8 @@ pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **
 
 #returns_ownership
 pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_members: **AST::AstNode,
-                                  public_count: int, private_members: **AST::AstNode, private_count: int,
-                                  is_public: int, line: int, col: int) *AST::AstNode {
+                                  public_count: i64, private_members: **AST::AstNode, private_count: i64,
+                                  is_public: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::StructDeclNode = AST::AstNode::make<AST::StructDeclNode>(
     AST::NodeType::STMT_STRUCT,
     AST::NodeCategory::Node_Category_STMT,
@@ -131,8 +131,8 @@ pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_member
 
 #returns_ownership
 pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AST::AstNode,
-                                 function: *AST::AstNode, is_public: int, is_embedded: int,
-                                 is_static: int, line: int, col: int) *AST::AstNode {
+                                 function: *AST::AstNode, is_public: i64, is_embedded: i64,
+                                 is_static: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::FieldDeclNode = AST::AstNode::make<AST::FieldDeclNode>(
     AST::NodeType::STMT_FIELD_DECL,
     AST::NodeCategory::Node_Category_STMT,
@@ -153,7 +153,7 @@ pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AS
 
 #returns_ownership
 pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte,
-                                member_count: int, is_public: int, line: int, col: int) *AST::AstNode {
+                                member_count: i64, is_public: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::EnumDeclNode = AST::AstNode::make<AST::EnumDeclNode>(
     AST::NodeType::STMT_ENUM,
     AST::NodeCategory::Node_Category_STMT,
@@ -174,7 +174,7 @@ pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte
 
 #returns_ownership
 pub const make_if_stmt -> fn (condition: *AST::AstNode, then_stmt: *AST::AstNode, elif_stmts: **AST::AstNode,
-                              elif_count: int, else_stmt: *AST::AstNode, line: int, col: int) *AST::AstNode {
+                              elif_count: i64, else_stmt: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::IfStmtNode = AST::AstNode::make<AST::IfStmtNode>(
     AST::NodeType::STMT_IF,
     AST::NodeCategory::Node_Category_STMT,
@@ -193,7 +193,7 @@ pub const make_if_stmt -> fn (condition: *AST::AstNode, then_stmt: *AST::AstNode
 
 #returns_ownership
 pub const make_loop_stmt -> fn (condition: *AST::AstNode, optional: *AST::AstNode, body: *AST::AstNode,
-                                initializer: **AST::AstNode, init_count: int, line: int, col: int) *AST::AstNode {
+                                initializer: **AST::AstNode, init_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::LoopStmtNode = AST::AstNode::make<AST::LoopStmtNode>(
     AST::NodeType::STMT_LOOP,
     AST::NodeCategory::Node_Category_STMT,
@@ -211,7 +211,7 @@ pub const make_loop_stmt -> fn (condition: *AST::AstNode, optional: *AST::AstNod
 }
 
 #returns_ownership
-pub const make_return_stmt -> fn (value: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_return_stmt -> fn (value: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ReturnStmtNode = AST::AstNode::make<AST::ReturnStmtNode>(
     AST::NodeType::STMT_RETURN,
     AST::NodeCategory::Node_Category_STMT,
@@ -225,7 +225,7 @@ pub const make_return_stmt -> fn (value: *AST::AstNode, line: int, col: int) *AS
 }
 
 #returns_ownership
-pub const make_block -> fn (statements: **AST::AstNode, stmt_count: int, line: int, col: int) *AST::AstNode {
+pub const make_block -> fn (statements: **AST::AstNode, stmt_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::BlockNode = AST::AstNode::make<AST::BlockNode>(
     AST::NodeType::STMT_BLOCK,
     AST::NodeCategory::Node_Category_STMT,
@@ -240,7 +240,7 @@ pub const make_block -> fn (statements: **AST::AstNode, stmt_count: int, line: i
 }
 
 #returns_ownership
-pub const make_print_stmt -> fn (expressions: **AST::AstNode, expr_count: int, ln: int, line: int, col: int) *AST::AstNode {
+pub const make_print_stmt -> fn (expressions: **AST::AstNode, expr_count: i64, ln: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::PrintStmtNode = AST::AstNode::make<AST::PrintStmtNode>(
     AST::NodeType::STMT_PRINT,
     AST::NodeCategory::Node_Category_STMT,
@@ -256,7 +256,7 @@ pub const make_print_stmt -> fn (expressions: **AST::AstNode, expr_count: int, l
 }
 
 #returns_ownership
-pub const make_break_continue -> fn (is_continue: int, line: int, col: int) *AST::AstNode {
+pub const make_break_continue -> fn (is_continue: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::BreakContinueNode = AST::AstNode::make<AST::BreakContinueNode>(
     AST::NodeType::STMT_BREAK_CONTINUE,
     AST::NodeCategory::Node_Category_STMT,
@@ -270,7 +270,7 @@ pub const make_break_continue -> fn (is_continue: int, line: int, col: int) *AST
 }
 
 #returns_ownership
-pub const make_defer_stmt -> fn (statement: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_defer_stmt -> fn (statement: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::DeferNode = AST::AstNode::make<AST::DeferNode>(
     AST::NodeType::STMT_DEFER,
     AST::NodeCategory::Node_Category_STMT,
@@ -284,8 +284,8 @@ pub const make_defer_stmt -> fn (statement: *AST::AstNode, line: int, col: int) 
 }
 
 #returns_ownership
-pub const make_switch_stmt -> fn (condition: *AST::AstNode, cases: **AST::AstNode, case_count: int,
-                                  default_case: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_switch_stmt -> fn (condition: *AST::AstNode, cases: **AST::AstNode, case_count: i64,
+                                  default_case: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::SwitchNode = AST::AstNode::make<AST::SwitchNode>(
     AST::NodeType::STMT_SWITCH,
     AST::NodeCategory::Node_Category_STMT,
@@ -303,8 +303,8 @@ pub const make_switch_stmt -> fn (condition: *AST::AstNode, cases: **AST::AstNod
 
 #returns_ownership
 pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: **AST::AstNode, struct_name_list: **byte,
-                                function_name_count: int, struct_name_count: int, body: *AST::AstNode,
-                                line: int, col: int) *AST::AstNode {
+                                function_name_count: i64, struct_name_count: i64, body: *AST::AstNode,
+                                line: i64, col: i64) *AST::AstNode {
   let n: *AST::ImplNode = AST::AstNode::make<AST::ImplNode>(
     AST::NodeType::STMT_IMPL,
     AST::NodeCategory::Node_Category_STMT,
@@ -323,7 +323,7 @@ pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: 
 }
 
 #returns_ownership
-pub const make_case_stmt -> fn (values: **AST::AstNode, value_count: int, body: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_case_stmt -> fn (values: **AST::AstNode, value_count: i64, body: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::CaseNode = AST::AstNode::make<AST::CaseNode>(
     AST::NodeType::STMT_CASE,
     AST::NodeCategory::Node_Category_STMT,
@@ -339,7 +339,7 @@ pub const make_case_stmt -> fn (values: **AST::AstNode, value_count: int, body: 
 }
 
 #returns_ownership
-pub const make_default_stmt -> fn (body: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_default_stmt -> fn (body: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::DefaultNode = AST::AstNode::make<AST::DefaultNode>(
     AST::NodeType::STMT_DEFAULT,
     AST::NodeCategory::Node_Category_STMT,

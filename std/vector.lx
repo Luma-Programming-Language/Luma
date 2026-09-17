@@ -6,27 +6,27 @@
 //!
 //! # Example
 //! ```luma
-//! let v: Vector = create_vector(sizeof<int>);
+//! let v: Vector = create_vector(sizeof<i64>);
 //! defer free_vector(&v);
 //! 
-//! let x: int = 42;
+//! let x: i64 = 42;
 //! v.push_back(cast<*void>(&x));
 //! ```
 
 @module "std_vector"
 
 /// Default initial capacity for vectors (1024 elements)
-const DEFAULT_VECTOR_CAPACITY: int = 1024;
+const DEFAULT_VECTOR_CAPACITY: i64 = 1024;
 
 /// Null pointer constant
 const NULL: *void = cast<*void>(0);
 
 /// Local allocation functions
-const local_memcpy -> fn (dest: *void, src: *void, n: int) *void {
+const local_memcpy -> fn (dest: *void, src: *void, n: i64) *void {
     let d: *byte = cast<*byte>(dest);
     let s: *byte = cast<*byte>(src);
 
-    loop [i: int = 0](i < n) : (++i) {
+    loop [i: i64 = 0](i < n) : (++i) {
         d[i] = s[i];
     }
 
@@ -34,7 +34,7 @@ const local_memcpy -> fn (dest: *void, src: *void, n: int) *void {
 }
 
 #returns_ownership
-const local_realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
+const local_realloc -> fn (ptr: *void, old_size: i64, new_size: i64) *void {
     if (ptr == cast<*void>(0)) {
         return alloc(new_size);
     }
@@ -46,15 +46,15 @@ const local_realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
 
 pub const VectorIter -> struct {
     data: *void,
-    index: int,
-    size: int,
-    element_size: int,
+    index: i64,
+    size: i64,
+    element_size: i64,
 
     next -> fn () *void {
         if (self.index >= self.size) return NULL;
 
         let elem: *void = cast<*void>(
-            cast<int>(self.data) + (self.index * self.element_size)
+            cast<i64>(self.data) + (self.index * self.element_size)
         );
 
         self.index = self.index + 1;
@@ -75,9 +75,9 @@ pub const VectorIter -> struct {
 /// - `element_size`: Size in bytes of each element
 pub const Vector -> struct {
     data: *void,        /// Pointer to contiguous data buffer
-    capacity: int,      /// Maximum elements before resize
-    size: int,          /// Current number of elements
-    element_size: int,  /// Size of each element in bytes
+    capacity: i64,      /// Maximum elements before resize
+    size: i64,          /// Current number of elements
+    element_size: i64,  /// Size of each element in bytes
 
     /// Inserts an element at a specific index.
     ///
@@ -90,29 +90,29 @@ pub const Vector -> struct {
     ///
     /// # Example
     /// ```luma
-    /// let v: Vector = create_vector(sizeof<int>);
-    /// let x: int = 10;
+    /// let v: Vector = create_vector(sizeof<i64>);
+    /// let x: i64 = 10;
     /// v.insert(cast<*void>(&x), 0); // Insert at beginning
     /// ```
-    insert -> fn (elem: *void, index: int) int {
+    insert -> fn (elem: *void, index: i64) i64 {
         if (index < 0 || index > self.size) return 0;
 
         if (self.size >= self.capacity) {
-            let old_size: int = self.capacity * self.element_size;
+            let old_size: i64 = self.capacity * self.element_size;
             self.capacity = self.capacity * 2;
             self.data = local_realloc(self.data, old_size, self.capacity * self.element_size);
         }
 
         // shift elements right
         let src: *void = cast<*void>(
-            cast<int>(self.data) + (index * self.element_size)
+            cast<i64>(self.data) + (index * self.element_size)
         );
 
         let dst: *void = cast<*void>(
-            cast<int>(self.data) + ((index + 1) * self.element_size)
+            cast<i64>(self.data) + ((index + 1) * self.element_size)
         );
 
-        let bytes: int = (self.size - index) * self.element_size;
+        let bytes: i64 = (self.size - index) * self.element_size;
         local_memcpy(dst, src, bytes);
 
         // write new element
@@ -130,21 +130,21 @@ pub const Vector -> struct {
     ///
     /// # Example
     /// ```luma
-    /// let v: Vector = create_vector(sizeof<int>);
-    /// let nums: [int; 3] = [1, 2, 3];
-    /// loop [i: int = 0](i < 3) : (++i) {
+    /// let v: Vector = create_vector(sizeof<i64>);
+    /// let nums: [i64; 3] = [1, 2, 3];
+    /// loop [i: i64 = 0](i < 3) : (++i) {
     ///     v.push_back(cast<*void>(&nums[i]));
     /// }
     /// ```
     push_back -> fn (elem: *void) void {
         if (self.size >= self.capacity) {
-            let old_size: int = self.capacity * self.element_size;
+            let old_size: i64 = self.capacity * self.element_size;
             self.capacity = self.capacity * 2;
             self.data = local_realloc(self.data, old_size, self.capacity * self.element_size);
         }
 
         let dest: *void = cast<*void>(
-            cast<int>(self.data) + (self.size * self.element_size)
+            cast<i64>(self.data) + (self.size * self.element_size)
         );
 
         local_memcpy(dest, elem, self.element_size);
@@ -158,21 +158,21 @@ pub const Vector -> struct {
     ///
     /// # Example
     /// ```luma
-    /// let v: Vector = create_vector(sizeof<int>);
+    /// let v: Vector = create_vector(sizeof<i64>);
     /// // ... add elements ...
-    /// let value: int;
+    /// let value: i64;
     /// if (v.pop_back(cast<*void>(&value))) {
     ///     outputln("Popped: ", value);
     /// }
     /// ```
-    pop_back -> fn (out: *void) int {
+    pop_back -> fn (out: *void) i64 {
         if (self.size == 0) return 0;
 
         self.size = self.size - 1;
 
         if (out != NULL) {
             let src: *void = cast<*void>(
-                cast<int>(self.data) + (self.size * self.element_size)
+                cast<i64>(self.data) + (self.size * self.element_size)
             );
             local_memcpy(out, src, self.element_size);
         }
@@ -190,22 +190,22 @@ pub const Vector -> struct {
     ///
     /// # Example
     /// ```luma
-    /// let v: Vector = create_vector(sizeof<int>);
+    /// let v: Vector = create_vector(sizeof<i64>);
     /// // ... add elements ...
     /// v.remove_at(2); // Remove third element
     /// ```
-    remove_at -> fn (index: int) int {
+    remove_at -> fn (index: i64) i64 {
         if (index < 0 || index >= self.size) return 0;
 
         let src: *void = cast<*void>(
-            cast<int>(self.data) + ((index + 1) * self.element_size)
+            cast<i64>(self.data) + ((index + 1) * self.element_size)
         );
 
         let dst: *void = cast<*void>(
-            cast<int>(self.data) + (index * self.element_size)
+            cast<i64>(self.data) + (index * self.element_size)
         );
 
-        let bytes_to_move: int =
+        let bytes_to_move: i64 =
             (self.size - index - 1) * self.element_size;
 
         local_memcpy(dst, src, bytes_to_move);
@@ -224,17 +224,17 @@ pub const Vector -> struct {
     ///
     /// # Example
     /// ```luma
-    /// let v: Vector = create_vector(sizeof<int>);
+    /// let v: Vector = create_vector(sizeof<i64>);
     /// // ... add elements ...
-    /// let ptr: *int = cast<*int>(v.get(0));
-    /// if (ptr != cast<*int>(0)) {
+    /// let ptr: *i64 = cast<*i64>(v.get(0));
+    /// if (ptr != cast<*i64>(0)) {
     ///     outputln("First element: ", *ptr);
     /// }
     /// ```
-    get -> fn (index: int) *void {
+    get -> fn (index: i64) *void {
         if (index < 0 || index >= self.size) return NULL;
         return cast<*void>(
-            cast<int>(self.data) + (index * self.element_size)
+            cast<i64>(self.data) + (index * self.element_size)
         );
     },
 
@@ -260,12 +260,12 @@ pub const Vector -> struct {
 ///
 /// # Example
 /// ```luma
-/// let v: Vector = create_vector_capacity(100, sizeof<double>);
+/// let v: Vector = create_vector_capacity(100, sizeof<f64>);
 /// defer free_vector(&v);
 /// // Vector can hold 100 doubles before first reallocation
 /// ```
 #returns_ownership
-pub const create_vector_capacity -> fn (init_capacity: int, element_size: int) Vector {
+pub const create_vector_capacity -> fn (init_capacity: i64, element_size: i64) Vector {
     let v: Vector;
     v.data = cast<*void>(alloc(init_capacity * element_size));
     v.size = 0;
@@ -284,15 +284,15 @@ pub const create_vector_capacity -> fn (init_capacity: int, element_size: int) V
 ///
 /// # Example
 /// ```luma
-/// let v: Vector = create_vector(sizeof<int>);
+/// let v: Vector = create_vector(sizeof<i64>);
 /// defer free_vector(&v);
 /// 
-/// loop [i: int = 0](i < 10) : (++i) {
+/// loop [i: i64 = 0](i < 10) : (++i) {
 ///     v.push_back(cast<*void>(&i));
 /// }
 /// ```
 #returns_ownership
-pub const create_vector -> fn (element_size: int) Vector {
+pub const create_vector -> fn (element_size: i64) Vector {
     return create_vector_capacity(DEFAULT_VECTOR_CAPACITY, element_size);
 }
 
@@ -305,7 +305,7 @@ pub const create_vector -> fn (element_size: int) Vector {
 ///
 /// # Example
 /// ```luma
-/// let v: Vector = create_vector(sizeof<int>);
+/// let v: Vector = create_vector(sizeof<i64>);
 /// // ... use vector ...
 /// free_vector(&v);
 /// // v is now invalid

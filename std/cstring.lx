@@ -20,18 +20,18 @@ pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte;
 /// String slice with pointer and length
 pub const Slice -> struct {
     ptr: *byte, 
-    len: int,
+    len: i64,
 
     slice_end -> fn () *byte { 
-        return cast<*byte>(cast<int>(self.ptr) + self.len); 
+        return cast<*byte>(cast<i64>(self.ptr) + self.len); 
     },
 
     null_terminated_slice -> fn (s: *byte) Slice {
-        let len: int = 0;
+        let len: i64 = 0;
         let cursor: *byte = s;
 
         loop (cursor != cast<*byte>(0) && *cursor != '\0')
-            : (cursor = cast<*byte>(cast<int>(cursor) + 1)) {
+            : (cursor = cast<*byte>(cast<i64>(cursor) + 1)) {
             len++;
         }
 
@@ -42,15 +42,15 @@ pub const Slice -> struct {
 /// String with slice and capacity
 pub const String -> struct {
     slice: Slice, 
-    cap: int,
+    cap: i64,
 
     #returns_ownership
-    concat_strs -> fn (start: *Slice, len: int) String {
-        let end: *Slice = cast<*Slice>(cast<int>(start) + len * sizeof<Slice>);
-        let total_len: int = 0;
+    concat_strs -> fn (start: *Slice, len: i64) String {
+        let end: *Slice = cast<*Slice>(cast<i64>(start) + len * sizeof<Slice>);
+        let total_len: i64 = 0;
 
         loop [cursor: *Slice = start](cursor != end)
-            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
+            : (cursor = cast<*Slice>(cast<i64>(cursor) + sizeof<Slice>)) {
             total_len = total_len + cursor.len;
         }
 
@@ -58,14 +58,14 @@ pub const String -> struct {
         let out_cursor: *byte = ptr;
 
         loop [cursor: *Slice = start](cursor != end)
-            : (cursor = cast<*Slice>(cast<int>(cursor) + sizeof<Slice>)) {
+            : (cursor = cast<*Slice>(cast<i64>(cursor) + sizeof<Slice>)) {
 
             let slice_end: *byte = cursor.slice_end();
 
             loop [slice_cursor: *byte = cursor.ptr](slice_cursor != slice_end)
-                : (slice_cursor = cast<*byte>(cast<int>(slice_cursor) + 1)) {
+                : (slice_cursor = cast<*byte>(cast<i64>(slice_cursor) + 1)) {
                 *out_cursor = *slice_cursor;
-                out_cursor = cast<*byte>(cast<int>(out_cursor) + 1);
+                out_cursor = cast<*byte>(cast<i64>(out_cursor) + 1);
             }
         }
         *out_cursor = '\0';
@@ -93,11 +93,11 @@ pub const free_string -> fn (s: *String) void {
 ///
 /// # Example
 /// ```luma
-/// let len: int = string::strlen("Hello");
+/// let len: i64 = string::strlen("Hello");
 /// // len will be 5
 /// ```
-pub const strlen -> fn (s: *byte) int {
-  let length: int = 0;
+pub const strlen -> fn (s: *byte) i64 {
+  let length: i64 = 0;
   loop (s[length] != cast<byte>(0)) : (++length) {}
   return length;
 }
@@ -114,7 +114,7 @@ pub const strlen -> fn (s: *byte) int {
 /// Newly allocated copy of `s`; caller must free it
 #returns_ownership
 pub const dup -> fn (s: *byte) *byte {
-  let len: int = strlen(s);
+  let len: i64 = strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
   copy(out, s);
   return out;
@@ -161,23 +161,23 @@ pub const from_byte -> fn (c: byte) *byte {
 /// output(str); // Prints "-42"
 /// ```
 #returns_ownership
-pub const from_int -> fn (n: int) *byte {
+pub const from_int -> fn (n: i64) *byte {
   if (n == 0) {
     return from_byte(cast<byte>('0'));
   }
 
-  let negative: int = 0;
+  let negative: i64 = 0;
   if (n < 0) {
     negative = 1;
     n = -n;
   }
 
-  let buffer: [byte; 20]; // enough for 64-bit int
-  let i: int = 0;
+  let buffer: [byte; 20]; // enough for an i64
+  let i: i64 = 0;
 
   loop (n != 0) {
-    let digit: int = n % 10;
-    buffer[i] = cast<byte>(digit + cast<int>('0'));
+    let digit: i64 = n % 10;
+    buffer[i] = cast<byte>(digit + cast<i64>('0'));
     n = n / 10;
     i = i + 1;
   }
@@ -189,7 +189,7 @@ pub const from_int -> fn (n: int) *byte {
 
   // Reverse the string
   let s: *byte = cast<*byte>(alloc((i + 1) * sizeof<byte>));
-  loop [j: int = 0](j < i) : (j = j + 1) {
+  loop [j: i64 = 0](j < i) : (j = j + 1) {
     s[j] = buffer[i - j - 1];
   }
   s[i] = cast<byte>(0); // null terminator
@@ -197,7 +197,7 @@ pub const from_int -> fn (n: int) *byte {
   return s;
 }
 
-/// Converts a float to a string with specified precision
+/// Converts an f32 to a string with specified precision
 ///
 /// Separates integer and fractional parts, then combines them with
 /// a decimal point. Precision determines number of decimal places.
@@ -207,7 +207,7 @@ pub const from_int -> fn (n: int) *byte {
 /// * `precision` - Number of decimal places to include
 ///
 /// # Returns
-/// Newly allocated string representation of the float
+/// Newly allocated string representation of an f32
 ///
 /// # Example
 /// ```luma
@@ -216,9 +216,9 @@ pub const from_int -> fn (n: int) *byte {
 /// output(str); // Prints "3.14"
 /// ```
 #returns_ownership
-pub const from_float -> fn (f: float, precision: int) *byte {
-  let int_part: int = cast<int>(f);
-  let frac_part: float = f - cast<float>(int_part);
+pub const from_float -> fn (f: f32, precision: i64) *byte {
+  let int_part: i64 = cast<i64>(f);
+  let frac_part: f32 = f - cast<f32>(int_part);
   
   let int_str: *byte = from_int(int_part);
   defer { free(int_str); }
@@ -226,16 +226,16 @@ pub const from_float -> fn (f: float, precision: int) *byte {
   let frac_str: *byte = cast<*byte>(alloc((precision + 2) * sizeof<byte>)); // +1 for '.' +1 for null
   frac_str[0] = '.';
   
-  loop [i: int = 1](i <= precision) : (++i) {
+  loop [i: i64 = 1](i <= precision) : (++i) {
     frac_part = frac_part * 10.0;
-    let digit: int = cast<int>(frac_part);
-    frac_str[i] = cast<byte>(digit + cast<int>('0'));
-    frac_part = frac_part - cast<float>(digit);
+    let digit: i64 = cast<i64>(frac_part);
+    frac_str[i] = cast<byte>(digit + cast<i64>('0'));
+    frac_part = frac_part - cast<f32>(digit);
   }
   
   frac_str[precision + 1] = cast<byte>(0); // null terminator
   
-  let result_len: int = strlen(int_str) + strlen(frac_str) + 1;
+  let result_len: i64 = strlen(int_str) + strlen(frac_str) + 1;
   let result: *byte = cast<*byte>(alloc(result_len * sizeof<byte>));
   
   cat(result, int_str, frac_str);
@@ -259,9 +259,9 @@ pub const from_float -> fn (f: float, precision: int) *byte {
 /// string::int_to_str(12345, &buffer[0], 32);
 /// output(&buffer[0]); // Prints "12345"
 /// ```
-pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
-  let idx: int = 0;
-  let temp: int = num;
+pub const int_to_str -> fn (num: i64, buf: *byte, buf_size: i64) void {
+  let idx: i64 = 0;
+  let temp: i64 = num;
   
   if (temp == 0) {
     buf[0] = '0';
@@ -276,7 +276,7 @@ pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
   }
   
   // Reverse the digits
-  let j: int = 0;
+  let j: i64 = 0;
   loop (j < idx / 2) {
     let tmp: byte = buf[j];
     buf[j] = buf[idx - 1 - j];
@@ -308,21 +308,21 @@ pub const int_to_str -> fn (num: int, buf: *byte, buf_size: int) void {
 ///     output("Strings are equal\n");
 /// }
 /// ```
-pub const strcmp -> fn (s1: *byte, s2: *byte) int {
-  let ls1: int = strlen(s1);
-  let ls2: int = strlen(s2);
+pub const strcmp -> fn (s1: *byte, s2: *byte) i64 {
+  let ls1: i64 = strlen(s1);
+  let ls2: i64 = strlen(s2);
 
   if (ls1 != ls2) { return -1; }
 
-  loop[i: int = 0](i < ls1) : (++i) {
+  loop[i: i64 = 0](i < ls1) : (++i) {
     if (s1[i] != s2[i]) { return 1; }
   }
 
   return 0;
 }
 
-pub const strncmp -> fn (s1: *byte, s2: *byte, n: int) int {
-  loop [i: int = 0](i < n) : (++i) {
+pub const strncmp -> fn (s1: *byte, s2: *byte, n: i64) i64 {
+  loop [i: i64 = 0](i < n) : (++i) {
     if (s1[i] != s2[i]) { return 1; }
     if (s1[i] == cast<byte>(0) || s2[i] == cast<byte>(0)) { break; }
   }
@@ -336,20 +336,20 @@ pub const strncmp -> fn (s1: *byte, s2: *byte, n: int) int {
 ///
 /// # Parameters
 /// * `s` - String to search
-/// * `c` - Character to find (as int)
+/// * `c` - Character to find (as i64)
 ///
 /// # Returns
 /// The matching character if found, null byte otherwise
 ///
 /// # Example
 /// ```luma
-/// let ch: byte = string::s_byte("Hello", cast<int>('l'));
+/// let ch: byte = string::s_byte("Hello", cast<i64>('l'));
 /// if (ch != cast<byte>(0)) {
 ///     output("Found 'l'\n");
 /// }
 /// ```
-pub const s_byte -> fn (s: *byte, c: int) byte{
-  loop [i: int = 0](s[i] != cast<byte>(0)) : (++i) {
+pub const s_byte -> fn (s: *byte, c: i64) byte{
+  loop [i: i64 = 0](s[i] != cast<byte>(0)) : (++i) {
     if (s[i] == cast<byte>(c)) {
       return s[i];
     }
@@ -374,7 +374,7 @@ pub const s_byte -> fn (s: *byte, c: int) byte{
 /// }
 /// ```
 pub const contains_char -> fn (s: *byte, c: byte) bool {
-  loop [i: int = 0](s[i] != cast<byte>(0)) : (++i) {
+  loop [i: i64 = 0](s[i] != cast<byte>(0)) : (++i) {
     if (s[i] == c) {
       return true;
     }
@@ -400,7 +400,7 @@ pub const contains_char -> fn (s: *byte, c: byte) bool {
 /// string::copy(&buffer[0], "Hello");
 /// ```
 pub const copy -> fn (dest: *byte, src: *byte) *byte {
-  let i: int = 0;
+  let i: i64 = 0;
   loop((dest[i] = src[i]) != cast<byte>(0)) : (++i) {}
   return dest;
 }
@@ -422,8 +422,8 @@ pub const copy -> fn (dest: *byte, src: *byte) *byte {
 /// let buffer: [byte; 10];
 /// string::n_copy(&buffer[0], "Hello World", 5); // Copies "Hello"
 /// ```
-pub const n_copy -> fn (dest: *byte, src: *byte, n: int) *byte {
-  let i: int = 0;
+pub const n_copy -> fn (dest: *byte, src: *byte, n: i64) *byte {
+  let i: i64 = 0;
   loop(i < n && src[i] != cast<byte>(0)) : (++i) {
     dest[i] = src[i];
   }
@@ -449,10 +449,10 @@ pub const n_copy -> fn (dest: *byte, src: *byte, n: int) *byte {
 /// output(&buffer[0]); // Prints "Hello World"
 /// ```
 pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
-  let ls1: int = strlen(s1);
-  let lt: int = ls1 + strlen(s2) + 1;
+  let ls1: i64 = strlen(s1);
+  let lt: i64 = ls1 + strlen(s2) + 1;
 
-  loop [i: int = 0](i < lt) : (++i) {
+  loop [i: i64 = 0](i < lt) : (++i) {
     if (i < ls1) {
       dest[i] = s1[i];
     } else {
@@ -475,21 +475,21 @@ pub const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
 /// * `c` - Character to output
 ///
 /// # Returns
-/// The character as an int
+/// The character as an i64
 ///
 /// # Example
 /// ```luma
 /// string::putbyte('A');
 /// string::putbyte('\n');
 /// ```
-pub const putbyte -> fn(c: byte) int {
+pub const putbyte -> fn(c: byte) i64 {
   // allocate buffer for command + escaped byte (32 bytes is enough)
   let cmd: *byte = cast<*byte>(alloc(32 * sizeof<byte>));
   defer { free(cmd); }
 
   // build command inline
   // Use integer values instead of character literals with escapes
-  let byte_val: int = cast<int>(c);
+  let byte_val: i64 = cast<i64>(c);
   
   switch(byte_val) {
       10 -> { system("echo"); }                                        // '\n'
@@ -509,7 +509,7 @@ pub const putbyte -> fn(c: byte) int {
 
   if (byte_val != 10 && byte_val != 9) { system(cmd); }
   
-  return cast<int>(c);
+  return cast<i64>(c);
 }
 
 /// Checks if a character is a digit (0-9)
@@ -586,15 +586,15 @@ pub const is_alnum -> fn (ch: byte) bool {
 ///
 /// # Example
 /// ```luma
-/// let a: int = string::atio("12345");   // 12345
-/// let b: int = string::atio("0xFF");    // 255
-/// let c: int = string::atio("0b1010");  // 10
-/// let d: int = string::atio("1_000");   // 1000
+/// let a: i64 = string::atio("12345");   // 12345
+/// let b: i64 = string::atio("0xFF");    // 255
+/// let c: i64 = string::atio("0b1010");  // 10
+/// let d: i64 = string::atio("1_000");   // 1000
 /// ```
-pub const atio -> fn (value: *byte) int {
-  let num: int = 0;
-  let base: int = 10;
-  let i: int = 0;
+pub const atio -> fn (value: *byte) i64 {
+  let num: i64 = 0;
+  let base: i64 = 10;
+  let i: i64 = 0;
 
   // 0x / 0b / 0o prefixed literals select a base (the lexer emits these as
   // single TOK_NUMBER tokens).
@@ -606,11 +606,11 @@ pub const atio -> fn (value: *byte) int {
   }
 
   loop (value[i] != '\0') {
-    let c: int = cast<int>(value[i]);
+    let c: i64 = cast<i64>(value[i]);
     if (c == '_') {
       i = i + 1;
     } else {
-      let digit: int = -1;
+      let digit: i64 = -1;
       if (c >= 48 && c <= 57)     digit = c - 48;     // '0'..'9'
       elif (c >= 97 && c <= 102)  digit = c - 87;     // 'a'..'f'
       elif (c >= 65 && c <= 70)   digit = c - 55;     // 'A'..'F'
@@ -646,29 +646,29 @@ pub const atio -> fn (value: *byte) int {
 /// ```
 #returns_ownership
 pub const string_add -> fn (num1: *byte, num2: *byte) *byte {
-  let len1: int = strlen(num1);
-  let len2: int = strlen(num2);
-  let max_len: int = 0;
+  let len1: i64 = strlen(num1);
+  let len2: i64 = strlen(num2);
+  let max_len: i64 = 0;
   if (len1 > len2) max_len = len1; else max_len = len2;
   
   // Result can be at most max_len + 1 digits
   let result: *byte = cast<*byte>(alloc(max_len + 2));
-  let carry: int = 0;
-  let result_idx: int = 0;
+  let carry: i64 = 0;
+  let result_idx: i64 = 0;
   
-  let i1: int = len1 - 1;
-  let i2: int = len2 - 1;
+  let i1: i64 = len1 - 1;
+  let i2: i64 = len2 - 1;
   
   // Add digits from right to left
   loop (i1 >= 0 || i2 >= 0 || carry > 0) {
-    let digit1: int = 0;
-    let digit2: int = 0;
+    let digit1: i64 = 0;
+    let digit2: i64 = 0;
 
-    if (i1 >= 0) digit1 = (cast<int>(num1[i1]) - 48); else digit1 = 0;
-    if (i2 >= 0) digit2 = (cast<int>(num2[i2]) - 48); else digit2 = 0;
+    if (i1 >= 0) digit1 = (cast<i64>(num1[i1]) - 48); else digit1 = 0;
+    if (i2 >= 0) digit2 = (cast<i64>(num2[i2]) - 48); else digit2 = 0;
 
     
-    let sum: int = digit1 + digit2 + carry;
+    let sum: i64 = digit1 + digit2 + carry;
     carry = sum / 10;
     result[result_idx++] = cast<byte>((sum % 10) + 48);
     
@@ -677,7 +677,7 @@ pub const string_add -> fn (num1: *byte, num2: *byte) *byte {
   }
   
   // Reverse the result
-  loop [i: int = 0](i < result_idx / 2) : (++i) {
+  loop [i: i64 = 0](i < result_idx / 2) : (++i) {
     let temp: byte = result[i];
     result[i] = result[result_idx - 1 - i];
     result[result_idx - 1 - i] = temp;

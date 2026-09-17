@@ -2,7 +2,7 @@
 
 // A zero-parameter main must still generate a C definition matching the
 // fixed `int main(int, char**)` prototype the runtime expects.
-pub const main -> fn () int {
+pub const main -> fn () i64 {
     output("ok\n");
     return 0;
 }

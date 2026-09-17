@@ -9,8 +9,8 @@
   ) void;
 */
 
-const hash_int -> fn (value: int) uint {
-  let x: uint = cast<uint>(value);
+const hash_int -> fn (value: i64) u64 {
+  let x: u64 = cast<u64>(value);
 
   x = (x ^ (x >> 30)) * 13787848793156543929;
   x = (x ^ (x >> 27)) * 10723151780598845931;
@@ -19,11 +19,11 @@ const hash_int -> fn (value: int) uint {
   return x;
 }
 
-const int_equals -> fn (a: int, b: int) bool { return a == b; }
+const int_equals -> fn (a: i64, b: i64) bool { return a == b; }
 
-pub const main -> fn () int {
-  let map: *HMAP::HashMap<int, int> = 
-    HMAP::HashMap::new<int, int>(hash_int, int_equals);
+pub const main -> fn () i64 {
+  let map: *HMAP::HashMap<i64, i64> = 
+    HMAP::HashMap::new<i64, i64>(hash_int, int_equals);
   defer map._free();
 
   map.insert(0, 123);

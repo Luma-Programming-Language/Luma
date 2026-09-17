@@ -8,12 +8,12 @@
 const Foo -> struct<T> {
   data: T,
 
-  static make -> fn (x: int) Foo<T> {
+  static make -> fn (x: i64) Foo<T> {
     return Foo<T> { data: x };
   },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  let x: int = Foo::does_not_exist<int>(3);
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  let x: i64 = Foo::does_not_exist<i64>(3);
   return x;
 }

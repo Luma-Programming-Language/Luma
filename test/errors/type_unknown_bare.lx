@@ -6,7 +6,7 @@
 // codegen, which would emit the verbatim name and let cc fail with a cryptic
 // `unknown type name 'KNonexistentType'`.
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let x: KNonexistentType = 5;
     return 0;
 }

@@ -7,27 +7,27 @@
 //! ```luma
 //! let start: Timer = time::timer_start();
 //! // ... do work ...
-//! let elapsed: int = time::timer_elapsed_ms(start);
+//! let elapsed: i64 = time::timer_elapsed_ms(start);
 //! outputln("Took ", elapsed, " milliseconds");
 //! ```
 
 @module "std_time"
 
 /// Nanosleep system call number
-const NANOSLEEP: int = 35; 
+const NANOSLEEP: i64 = 35; 
 /// Clock_gettime system call number
-const CLOCK_GETTIME: int = 228;
+const CLOCK_GETTIME: i64 = 228;
 /// Realtime clock ID
-const CLOCK_REALTIME: int = 0;
+const CLOCK_REALTIME: i64 = 0;
 
 /// Nanosecond precision time specification
 ///
 /// Represents a point in time with second and nanosecond components.
 const TimeSpec -> struct {
    /// Seconds since Unix epoch
-   sec: int,
+   sec: i64,
    /// Nanoseconds (0-999,999,999)
-   nsec: int,
+   nsec: i64,
 };
 
 /// Timer for measuring elapsed time
@@ -52,13 +52,13 @@ const Timer -> struct {
 /// ```luma
 /// time::usleep(500000); // Sleep for 0.5 seconds
 /// ```
-pub const usleep -> fn (usec: int) int {
+pub const usleep -> fn (usec: i64) i64 {
     let req: TimeSpec;
 
     req.sec = usec / 1000000;
     req.nsec = (usec % 1000000) * 1000;
 
-    return __syscall__(NANOSLEEP, cast<*int>(&req), 0);
+    return __syscall__(NANOSLEEP, cast<*i64>(&req), 0);
 }
 
 /// Converts TimeSpec to milliseconds
@@ -68,7 +68,7 @@ pub const usleep -> fn (usec: int) int {
 ///
 /// # Returns
 /// Time in milliseconds
-pub const to_millis -> fn (t: TimeSpec) int {
+pub const to_millis -> fn (t: TimeSpec) i64 {
     return (t.sec * 1000) + (t.nsec / 1000000);
 }
 
@@ -79,7 +79,7 @@ pub const to_millis -> fn (t: TimeSpec) int {
 ///
 /// # Returns
 /// Time in microseconds
-pub const to_micros -> fn (t: TimeSpec) int {
+pub const to_micros -> fn (t: TimeSpec) i64 {
     return (t.sec * 1000000) + (t.nsec / 1000);
 }
 
@@ -90,7 +90,7 @@ pub const to_micros -> fn (t: TimeSpec) int {
 ///
 /// # Returns
 /// Time in nanoseconds
-pub const to_nanos -> fn (t: TimeSpec) int {
+pub const to_nanos -> fn (t: TimeSpec) i64 {
     return (t.sec * 1000000000) + t.nsec;
 }
 
@@ -102,8 +102,8 @@ pub const to_nanos -> fn (t: TimeSpec) int {
 ///
 /// # Returns
 /// 0 on success, negative error code on failure
-pub const clock_gettime -> fn (clk_id: int, ts: *TimeSpec) int {
-    return __syscall__(CLOCK_GETTIME, clk_id, cast<*int>(ts));
+pub const clock_gettime -> fn (clk_id: i64, ts: *TimeSpec) i64 {
+    return __syscall__(CLOCK_GETTIME, clk_id, cast<*i64>(ts));
 }
 
 /// Gets current time
@@ -132,7 +132,7 @@ pub const now -> fn () TimeSpec {
 /// ```luma
 /// let timer: Timer = time::timer_start();
 /// // ... do work ...
-/// let ms: int = time::timer_elapsed_ms(timer);
+/// let ms: i64 = time::timer_elapsed_ms(timer);
 /// ```
 pub const timer_start -> fn () Timer {
     let t: Timer;
@@ -178,9 +178,9 @@ pub const timespec_sub -> fn (a: TimeSpec, b: TimeSpec) TimeSpec {
 /// let start: TimeSpec = time::now();
 /// // ... do work ...
 /// let end: TimeSpec = time::now();
-/// let ms: int = time::elapsed_ms(start, end);
+/// let ms: i64 = time::elapsed_ms(start, end);
 /// ```
-pub const elapsed_ms -> fn (start: TimeSpec, end: TimeSpec) int {
+pub const elapsed_ms -> fn (start: TimeSpec, end: TimeSpec) i64 {
     let diff: TimeSpec = timespec_sub(end, start);
     return to_millis(diff);
 }
@@ -199,7 +199,7 @@ pub const elapsed_ms -> fn (start: TimeSpec, end: TimeSpec) int {
 /// // ... do work ...
 /// outputln("Elapsed: ", time::timer_elapsed_ms(timer), "ms");
 /// ```
-pub const timer_elapsed_ms -> fn (t: Timer) int {
+pub const timer_elapsed_ms -> fn (t: Timer) i64 {
     let end: TimeSpec = now();
     return elapsed_ms(t.start_time, end);
 }

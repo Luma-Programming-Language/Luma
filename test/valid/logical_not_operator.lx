@@ -12,12 +12,12 @@ const is_false -> fn (a: bool) bool {
   return x;
 }
 
-const guard -> fn (a: bool) int {
+const guard -> fn (a: bool) i64 {
   if (!a) return 1;
   return 0;
 }
 
-const main -> fn () int {
+const main -> fn () i64 {
   if (is_false(false) != true)  return 1;
   if (is_false(true)  != false) return 1;
   if (guard(false) != 1)        return 1;

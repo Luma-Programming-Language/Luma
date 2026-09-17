@@ -3,9 +3,9 @@
 @use "std_libc"   as LIBC
 @use "std_thread" as THREAD
 
-const Timeval -> struct { tv_sec: int, tv_usec: int };
-const gettimeofday -> fn (tv: *Timeval, tz: *void) int;
-const usleep -> fn (usec: int) int;
+const Timeval -> struct { tv_sec: i64, tv_usec: i64 };
+const gettimeofday -> fn (tv: *Timeval, tz: *void) i64;
+const usleep -> fn (usec: i64) i64;
 
 const now -> fn () Timeval {
   let tv: Timeval = Timeval { tv_sec: 0, tv_usec: 0 };
@@ -15,32 +15,32 @@ const now -> fn () Timeval {
 
 const ProgressBar -> struct {
 priv:
-    total:      int,
-    curr:       int,
-    percentage: float,
+    total:      i64,
+    curr:       i64,
+    percentage: f32,
     stage:      *byte,      // The current stage it is in, e.g. "Compiling", "Linking", etc.
     spin:       *byte,      // The current spin character it is on, e.g. "|", "/", "-", "\\"
     spin_chars: **byte,     // The characters used for the spinner animation
-    spin_idx:   int,        // Which spin_chars entry is currently shown
+    spin_idx:   i64,        // Which spin_chars entry is currently shown
     running:    bool,       // Read by the Linux animator thread; see start/stop below
     start_time: Timeval,    // now() at new() — everything shown is elapsed since here
 
 pub:
-    elapsed_parts -> fn (whole: *int, tenth: *int) void {
+    elapsed_parts -> fn (whole: *i64, tenth: *i64) void {
       let t: Timeval = now();
-      let sec_diff:  int = t.tv_sec - self.start_time.tv_sec;
-      let usec_diff: int = t.tv_usec - self.start_time.tv_usec;
+      let sec_diff:  i64 = t.tv_sec - self.start_time.tv_sec;
+      let usec_diff: i64 = t.tv_usec - self.start_time.tv_usec;
       if (usec_diff < 0) {
         sec_diff = sec_diff - 1;
         usec_diff = usec_diff + 1000000;
       }
-      let tenths_total: int = (sec_diff * 10) + (usec_diff / 100000);
+      let tenths_total: i64 = (sec_diff * 10) + (usec_diff / 100000);
       *whole = tenths_total / 10;
       *tenth = tenths_total % 10;
     },
 
     #returns_ownership
-    static new -> fn (total: int) ProgressBar {
+    static new -> fn (total: i64) ProgressBar {
       let bar: ProgressBar = ProgressBar{
           total:      total,
           curr:       0,
@@ -68,7 +68,7 @@ pub:
     update -> fn (stage: *byte, spin: *byte) void {
       self.curr = self.curr + 1;
       self.stage = stage;
-      self.percentage = (cast<float>(self.curr - 1) / cast<float>(self.total)) * 100.0;
+      self.percentage = (cast<f32>(self.curr - 1) / cast<f32>(self.total)) * 100.0;
       self.spin = spin;
     },
 
@@ -79,10 +79,10 @@ pub:
     },
 
     render -> fn () void {
-      let whole: int = 0;
-      let tenth: int = 0;
+      let whole: i64 = 0;
+      let tenth: i64 = 0;
       self.elapsed_parts(&whole, &tenth);
-      output("\r\x1b[K[", self.spin, "] ", self.stage, " ", cast<int>(self.percentage), "% (", whole, ".", tenth, "s)");
+      output("\r\x1b[K[", self.spin, "] ", self.stage, " ", cast<i64>(self.percentage), "% (", whole, ".", tenth, "s)");
       LIBC::fflush(cast<*void>(0));
     },
 
@@ -90,8 +90,8 @@ pub:
       self.curr = self.total;
       self.percentage = 100.0;
       self.stage = "Done";
-      let whole: int = 0;
-      let tenth: int = 0;
+      let whole: i64 = 0;
+      let tenth: i64 = 0;
       self.elapsed_parts(&whole, &tenth);
       output("\r\x1b[K[", self.spin, "] Done 100% in ", whole, ".", tenth, "s\n");
       LIBC::fflush(cast<*void>(0));
@@ -109,28 +109,28 @@ pub:
       return cast<*void>(0);
     }
 
-    pub const start -> fn (bar: *ProgressBar) int {
+    pub const start -> fn (bar: *ProgressBar) i64 {
       bar.running = true;
-      let tid: int = 0;
+      let tid: i64 = 0;
       THREAD::pthread_create(&tid, cast<*void>(0), spin_loop, cast<*void>(bar));
       return tid;
     }
 
-    pub const stop -> fn (tid: int, bar: *ProgressBar) void {
+    pub const stop -> fn (tid: i64, bar: *ProgressBar) void {
       bar.running = false;
       THREAD::pthread_join(tid, cast<**void>(0));
     }
   }
   "macos" -> {
-    pub const start -> fn (bar: *ProgressBar) int { return -1; }
-    pub const stop  -> fn (tid: int, bar: *ProgressBar) void { }
+    pub const start -> fn (bar: *ProgressBar) i64 { return -1; }
+    pub const stop  -> fn (tid: i64, bar: *ProgressBar) void { }
   }
   "windows64" -> {
-    pub const start -> fn (bar: *ProgressBar) int { return -1; }
-    pub const stop  -> fn (tid: int, bar: *ProgressBar) void { }
+    pub const start -> fn (bar: *ProgressBar) i64 { return -1; }
+    pub const stop  -> fn (tid: i64, bar: *ProgressBar) void { }
   }
   "windows32" -> {
-    pub const start -> fn (bar: *ProgressBar) int { return -1; }
-    pub const stop  -> fn (tid: int, bar: *ProgressBar) void { }
+    pub const start -> fn (bar: *ProgressBar) i64 { return -1; }
+    pub const stop  -> fn (tid: i64, bar: *ProgressBar) void { }
   }
 }

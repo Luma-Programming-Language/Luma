@@ -13,13 +13,13 @@
 
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
-  let len: int = STR::strlen(s);
+  let len: i64 = STR::strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
   MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
   return out;
 }
 
-pub const type_is_kind -> fn (t: *AST::AstNode, kind: int) bool {
+pub const type_is_kind -> fn (t: *AST::AstNode, kind: i64) bool {
   if (t == cast<*AST::AstNode>(0)) return false;
   return t.kind == kind;
 }
@@ -30,13 +30,19 @@ pub const basic_name -> fn (t: *AST::AstNode) *byte {
 }
 
 pub const is_builtin_name -> fn (name: *byte) bool {
-  if (STR::strcmp(name, "int")    == 0) return true;
-  if (STR::strcmp(name, "uint")   == 0) return true;
-  if (STR::strcmp(name, "float")  == 0) return true;
-  if (STR::strcmp(name, "double") == 0) return true;
-  if (STR::strcmp(name, "bool")   == 0) return true;
-  if (STR::strcmp(name, "void")   == 0) return true;
-  if (STR::strcmp(name, "byte")   == 0) return true;
+  if (STR::strcmp(name, "i8")    == 0) return true;
+  if (STR::strcmp(name, "i16")   == 0) return true;
+  if (STR::strcmp(name, "i32")   == 0) return true;
+  if (STR::strcmp(name, "i64")   == 0) return true;
+  if (STR::strcmp(name, "u8")    == 0) return true;
+  if (STR::strcmp(name, "u16")   == 0) return true;
+  if (STR::strcmp(name, "u32")   == 0) return true;
+  if (STR::strcmp(name, "u64")   == 0) return true;
+  if (STR::strcmp(name, "f32")   == 0) return true;
+  if (STR::strcmp(name, "f64")   == 0) return true;
+  if (STR::strcmp(name, "bool")  == 0) return true;
+  if (STR::strcmp(name, "void")  == 0) return true;
+  if (STR::strcmp(name, "byte")  == 0) return true;
   return false;
 }
 
@@ -48,20 +54,52 @@ pub const is_basic_named -> fn (t: *AST::AstNode, name: *byte) bool {
 pub const is_numeric_type -> fn (t: *AST::AstNode) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   let n: *byte = basic_name(t);
-  if (STR::strcmp(n, "int")    == 0) return true;
-  if (STR::strcmp(n, "uint")   == 0) return true;
-  if (STR::strcmp(n, "float")  == 0) return true;
-  if (STR::strcmp(n, "double") == 0) return true;
-  if (STR::strcmp(n, "byte")   == 0) return true;
+  if (STR::strcmp(n, "i8")    == 0) return true;
+  if (STR::strcmp(n, "i16")   == 0) return true;
+  if (STR::strcmp(n, "i32")   == 0) return true;
+  if (STR::strcmp(n, "i64")   == 0) return true;
+  if (STR::strcmp(n, "u8")    == 0) return true;
+  if (STR::strcmp(n, "u16")   == 0) return true;
+  if (STR::strcmp(n, "u32")   == 0) return true;
+  if (STR::strcmp(n, "u64")   == 0) return true;
+  if (STR::strcmp(n, "f32")   == 0) return true;
+  if (STR::strcmp(n, "f64")   == 0) return true;
+  if (STR::strcmp(n, "byte")  == 0) return true;
+  return false;
+}
+
+pub const is_integer_kind_name -> fn (n: *byte) bool {
+  if (STR::strcmp(n, "i8")    == 0) return true;
+  if (STR::strcmp(n, "i16")   == 0) return true;
+  if (STR::strcmp(n, "i32")   == 0) return true;
+  if (STR::strcmp(n, "i64")   == 0) return true;
+  if (STR::strcmp(n, "u8")    == 0) return true;
+  if (STR::strcmp(n, "u16")   == 0) return true;
+  if (STR::strcmp(n, "u32")   == 0) return true;
+  if (STR::strcmp(n, "u64")   == 0) return true;
   return false;
 }
 
 pub const is_integer_type -> fn (t: *AST::AstNode) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   let n: *byte = basic_name(t);
-  if (STR::strcmp(n, "int")  == 0) return true;
-  if (STR::strcmp(n, "uint") == 0) return true;
-  if (STR::strcmp(n, "byte") == 0) return true;
+  if (STR::strcmp(n, "i8")    == 0) return true;
+  if (STR::strcmp(n, "i16")   == 0) return true;
+  if (STR::strcmp(n, "i32")   == 0) return true;
+  if (STR::strcmp(n, "i64")   == 0) return true;
+  if (STR::strcmp(n, "u8")    == 0) return true;
+  if (STR::strcmp(n, "u16")   == 0) return true;
+  if (STR::strcmp(n, "u32")   == 0) return true;
+  if (STR::strcmp(n, "u64")   == 0) return true;
+  if (STR::strcmp(n, "byte")  == 0) return true;
+  return false;
+}
+
+pub const is_float_type -> fn (t: *AST::AstNode) bool {
+  if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
+  let n: *byte = basic_name(t);
+  if (STR::strcmp(n, "f32")  == 0) return true;
+  if (STR::strcmp(n, "f64")  == 0) return true;
   return false;
 }
 
@@ -99,7 +137,57 @@ pub const is_pointer_to_function_type -> fn (t: *AST::AstNode) bool {
 
 #returns_ownership
 pub const make_int_type -> fn () *AST::AstNode {
-  return TAST::make_basic_type("int", 0, 0);
+  return TAST::make_basic_type("i32", 0, 0);
+}
+
+#returns_ownership
+pub const make_i8_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("i8", 0, 0);
+}
+
+#returns_ownership
+pub const make_i16_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("i16", 0, 0);
+}
+
+#returns_ownership
+pub const make_i32_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("i32", 0, 0);
+}
+
+#returns_ownership
+pub const make_i64_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("i64", 0, 0);
+}
+
+#returns_ownership
+pub const make_u8_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("u8", 0, 0);
+}
+
+#returns_ownership
+pub const make_u16_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("u16", 0, 0);
+}
+
+#returns_ownership
+pub const make_u32_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("u32", 0, 0);
+}
+
+#returns_ownership
+pub const make_u64_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("u64", 0, 0);
+}
+
+#returns_ownership
+pub const make_f32_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("f32", 0, 0);
+}
+
+#returns_ownership
+pub const make_f64_type -> fn () *AST::AstNode {
+  return TAST::make_basic_type("f64", 0, 0);
 }
 
 #returns_ownership
@@ -137,43 +225,49 @@ pub const make_pointer_to -> fn (pointee: *AST::AstNode) *AST::AstNode {
   return TAST::make_pointer_type(pointee, 0, 0);
 }
 
-pub const numeric_rank -> fn (t: *AST::AstNode) int {
+pub const numeric_rank -> fn (t: *AST::AstNode) i64 {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return -1;
   let n: *byte = basic_name(t);
-  if (STR::strcmp(n, "double") == 0) return 3;
-  if (STR::strcmp(n, "float")  == 0) return 2;
-  if (STR::strcmp(n, "int")    == 0) return 1;
-  if (STR::strcmp(n, "uint")   == 0) return 1;
-  if (STR::strcmp(n, "byte")   == 0) return 0;
+  if (STR::strcmp(n, "f64")   == 0) return 8;
+  if (STR::strcmp(n, "f32")   == 0) return 7;
+  if (STR::strcmp(n, "i64")   == 0) return 6;
+  if (STR::strcmp(n, "u64")   == 0) return 6;
+  if (STR::strcmp(n, "i32")   == 0) return 4;
+  if (STR::strcmp(n, "u32")   == 0) return 4;
+  if (STR::strcmp(n, "i16")   == 0) return 2;
+  if (STR::strcmp(n, "u16")   == 0) return 2;
+  if (STR::strcmp(n, "i8")    == 0) return 1;
+  if (STR::strcmp(n, "u8")    == 0) return 1;
+  if (STR::strcmp(n, "byte")  == 0) return 1;
   return -1;
 }
 
-pub const types_match -> fn (a: *AST::AstNode, b: *AST::AstNode) int;
+pub const types_match -> fn (a: *AST::AstNode, b: *AST::AstNode) i64;
 
-const match_basic -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
+const match_basic -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let an: *byte = basic_name(a);
   let bn: *byte = basic_name(b);
 
   if (STR::strcmp(an, bn) == 0) return CORE::TypeMatchResult::TYPE_MATCH_EXACT;
 
-  // float <-> double
-  let a_fp: bool = (STR::strcmp(an, "float") == 0 || STR::strcmp(an, "double") == 0);
-  let b_fp: bool = (STR::strcmp(bn, "float") == 0 || STR::strcmp(bn, "double") == 0);
+  // f32 <-> f64
+  let a_fp: bool = (STR::strcmp(an, "f32") == 0 || STR::strcmp(an, "f64") == 0);
+  let b_fp: bool = (STR::strcmp(bn, "f32") == 0 || STR::strcmp(bn, "f64") == 0);
   if (a_fp && b_fp) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 
-  // int <-> uint
-  let a_int: bool = (STR::strcmp(an, "int") == 0 || STR::strcmp(an, "uint") == 0);
-  let b_int: bool = (STR::strcmp(bn, "int") == 0 || STR::strcmp(bn, "uint") == 0);
+  // Signed/unsigned integers of any width (i8..i64, u8..u64) are one family.
+  let a_int: bool = is_integer_kind_name(an);
+  let b_int: bool = is_integer_kind_name(bn);
   if (a_int && b_int) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 
-  // enum (non-builtin nominal) <-> int
+  // enum (non-builtin nominal) <-> i64
   if (is_builtin_name(an) == false && b_int) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
   if (is_builtin_name(bn) == false && a_int) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 
   return CORE::TypeMatchResult::TYPE_MATCH_NONE;
 }
 
-const match_pointer -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
+const match_pointer -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let pa: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(a);
   let pb: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(b);
 
@@ -183,11 +277,11 @@ const match_pointer -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
   return types_match(pa.pointee_type, pb.pointee_type);
 }
 
-const match_array -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
+const match_array -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let aa: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(a);
   let ab: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(b);
 
-  let elem: int = types_match(aa.element_type, ab.element_type);
+  let elem: i64 = types_match(aa.element_type, ab.element_type);
   if (elem == CORE::TypeMatchResult::TYPE_MATCH_NONE)
     return CORE::TypeMatchResult::TYPE_MATCH_NONE;
 
@@ -210,17 +304,17 @@ const match_array -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
   return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 }
 
-const match_array_pointer -> fn (arr: *AST::AstNode, ptr: *AST::AstNode) int {
+const match_array_pointer -> fn (arr: *AST::AstNode, ptr: *AST::AstNode) i64 {
   let a: *AST::ArrayTypeNode   = cast<*AST::ArrayTypeNode>(arr);
   let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(ptr);
   if (is_void_type(p.pointee_type)) return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
-  let m: int = types_match(a.element_type, p.pointee_type);
+  let m: i64 = types_match(a.element_type, p.pointee_type);
   if (m == CORE::TypeMatchResult::TYPE_MATCH_NONE)
     return CORE::TypeMatchResult::TYPE_MATCH_NONE;
   return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 }
 
-const match_function -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
+const match_function -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let fa: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(a);
   let fb: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(b);
 
@@ -229,14 +323,14 @@ const match_function -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
   if (types_match(fa.return_type, fb.return_type) == CORE::TypeMatchResult::TYPE_MATCH_NONE)
     return CORE::TypeMatchResult::TYPE_MATCH_NONE;
 
-  loop [i: int = 0](i < fa.param_count) : (++i) {
+  loop [i: i64 = 0](i < fa.param_count) : (++i) {
     if (types_match(fa.param_types[i], fb.param_types[i]) == CORE::TypeMatchResult::TYPE_MATCH_NONE)
       return CORE::TypeMatchResult::TYPE_MATCH_NONE;
   }
   return CORE::TypeMatchResult::TYPE_MATCH_EXACT;
 }
 
-pub const types_match -> fn (a: *AST::AstNode, b: *AST::AstNode) int {
+pub const types_match -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   if (a == cast<*AST::AstNode>(0) || b == cast<*AST::AstNode>(0))
     return CORE::TypeMatchResult::TYPE_MATCH_NONE;
 
@@ -301,16 +395,16 @@ pub const is_cast_valid -> fn (from: *AST::AstNode, to: *AST::AstNode) bool {
   return false;
 }
 
-const append_str -> fn (buf: *byte, pos: int, s: *byte) int {
-  let len: int = STR::strlen(s);
-  MEM::memcpy(cast<*void>(cast<int>(buf) + pos), cast<*void>(s), len);
+const append_str -> fn (buf: *byte, pos: i64, s: *byte) i64 {
+  let len: i64 = STR::strlen(s);
+  MEM::memcpy(cast<*void>(cast<i64>(buf) + pos), cast<*void>(s), len);
   return pos + len;
 }
 
 #returns_ownership
 pub const type_to_string -> fn (t: *AST::AstNode) *byte;
 
-const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: int) int {
+const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: i64) i64 {
   if (t == cast<*AST::AstNode>(0)) return append_str(buf, pos, "<null>");
 
   switch using AST::NodeType (t.kind) {
@@ -319,19 +413,19 @@ const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: int) int {
     }
     TYPE_POINTER -> {
       let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
-      let np: int = append_str(buf, pos, "*");
+      let np: i64 = append_str(buf, pos, "*");
       return type_to_string_into(p.pointee_type, buf, np);
     }
     TYPE_ARRAY -> {
       let a: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(t);
-      let np: int = append_str(buf, pos, "[");
+      let np: i64 = append_str(buf, pos, "[");
       np = type_to_string_into(a.element_type, buf, np);
       return append_str(buf, np, "]");
     }
     TYPE_FUNCTION -> {
       let f: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
-      let np: int = append_str(buf, pos, "fn(");
-      loop [i: int = 0](i < f.param_count) : (++i) {
+      let np: i64 = append_str(buf, pos, "fn(");
+      loop [i: i64 = 0](i < f.param_count) : (++i) {
         if (i > 0) np = append_str(buf, np, ", ");
         np = type_to_string_into(f.param_types[i], buf, np);
       }
@@ -340,8 +434,8 @@ const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: int) int {
     }
     TYPE_RESOLUTION -> {
       let r: *AST::ResolutionNode = cast<*AST::ResolutionNode>(t);
-      let np: int = pos;
-      loop [i: int = 0](i < r.part_count) : (++i) {
+      let np: i64 = pos;
+      loop [i: i64 = 0](i < r.part_count) : (++i) {
         if (i > 0) np = append_str(buf, np, "::");
         np = append_str(buf, np, r.parts[i]);
       }
@@ -354,7 +448,7 @@ const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: int) int {
 #returns_ownership
 pub const type_to_string -> fn (t: *AST::AstNode) *byte {
   let buf: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
-  let pos: int = type_to_string_into(t, buf, 0);
+  let pos: i64 = type_to_string_into(t, buf, 0);
   buf[pos] = '\0';
   return buf;
 }
@@ -418,7 +512,7 @@ pub const check_nominal_bare -> fn (name: *byte, scope: *CORE::Scope, err_node: 
 #returns_ownership
 const resolve_type_leaf -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (t.kind == AST::NodeType::TYPE_BASIC) {
-    // A generic type reference (`Box<int>`) — instantiate it to the plain
+    // A generic type reference (`Box<i64>`) — instantiate it to the plain
     // concrete named type (`Box__int`) before the generic-leaf handling
     // below runs; the node is rewritten in place, so a bare-name validation
     // against the concrete name would run too early (the concrete struct is
@@ -451,12 +545,12 @@ const resolve_type_leaf -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstN
         return make_named_type(name);
       }
 
-      // Qualified generic type reference — `Alias::Box<int>`. Monomorphize
+      // Qualified generic type reference — `Alias::Box<i64>`. Monomorphize
       // against the *defining* module's template registry (scope-based
       // lookup would only find a same-module template), rewrite this node
       // into the plain concrete named type (mangled `Box__int`), and hand
       // it back. The concrete struct/enum is only registered later by the
-      // tc.lx drain, so — mirroring the bare `Box<int>` case above — no
+      // tc.lx drain, so — mirroring the bare `Box<i64>` case above — no
       // bare-name check runs on the mangled result.
       if (r.type_arg_count > 0) {
         let fake: *AST::AstNode = TAST::make_basic_type(dup_str(name), t.line, t.col);
@@ -507,7 +601,7 @@ pub const resolve_type_ref -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::A
     }
     TYPE_FUNCTION -> {
       let f: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
-      loop [i: int = 0](i < f.param_count) : (++i) {
+      loop [i: i64 = 0](i < f.param_count) : (++i) {
         f.param_types[i] = resolve_type_ref(f.param_types[i], scope);
       }
       f.return_type = resolve_type_ref(f.return_type, scope);

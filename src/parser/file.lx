@@ -43,15 +43,15 @@ const report_read_error -> fn (path: *byte, message: *byte) void {
 // — it has no file path yet and no finished token table to render the
 // source line from. Once the full token scan is done, re-issue each one as
 // a proper error.lx diagnostic.
-const post_lex_errors -> fn (lexer: *TOK::Lexer, tks: *TOK::Token, tok_count: int, file_path: *byte) void {
-  loop [i: int = 0](i < lexer.error_count) : (++i) {
+const post_lex_errors -> fn (lexer: *TOK::Lexer, tks: *TOK::Token, tok_count: i64, file_path: *byte) void {
+  loop [i: i64 = 0](i < lexer.error_count) : (++i) {
     let e: TOK::LexError = lexer.errors[i];
     let error_type: *byte = "Syntax Error";
     let message: *byte = cast<*byte>(0);
     let label: *byte = cast<*byte>(0);
     let help: *byte = cast<*byte>(0);
     let dynamic_message: *byte = cast<*byte>(0);
-    let known: int = 1;
+    let known: i64 = 1;
 
     if (e.kind == TOK::LEX_ERR_UNKNOWN_DIRECTIVE) {
       message = "unknown directive";
@@ -77,7 +77,7 @@ const post_lex_errors -> fn (lexer: *TOK::Lexer, tks: *TOK::Token, tok_count: in
       let printable: bool = (e.bad >= 32 && e.bad < 127 && e.bad != '\'' && e.bad != '\\');
       if (printable == true) {
         let prefix: *byte = "invalid character '";
-        let plen: int = STRING::strlen(prefix);
+        let plen: i64 = STRING::strlen(prefix);
         let buf: *byte = cast<*byte>(alloc(plen + 3));
         MEM::memcpy(cast<*void>(buf), cast<*void>(prefix), plen);
         buf[plen] = e.bad;
@@ -144,11 +144,11 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
   if (resolved != path) { free(resolved); }
   if (src == cast<*byte>(0)) {
     let prefix: *byte = "could not read file: ";
-    let plen: int = STRING::strlen(prefix);
-    let plen2: int = STRING::strlen(path);
+    let plen: i64 = STRING::strlen(prefix);
+    let plen2: i64 = STRING::strlen(path);
     let message: *byte = cast<*byte>(alloc(plen + plen2 + 1));
     MEM::memcpy(cast<*void>(message), cast<*void>(prefix), plen);
-    MEM::memcpy(cast<*void>(cast<int>(message) + plen), cast<*void>(path), plen2);
+    MEM::memcpy(cast<*void>(cast<i64>(message) + plen), cast<*void>(path), plen2);
     message[plen + plen2] = '\0';
     report_read_error(path, message);
     return cast<*AST::AstNode>(0);
@@ -174,8 +174,8 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
   // module node (surfaced by the LSP when hovering the module name).
   let doc_comment: *byte = PSTMT::consume_doc_comments(p);
 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   if (p.current().kind != TOK::LumaTokenType::TOK_MODULE) {
     p.error("Parser Error", "Expected @module at the start of a file.");
@@ -198,7 +198,7 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
 
   let stmts: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
-  loop [i: int = 0](p.has_tokens()) : (i++) {
+  loop [i: i64 = 0](p.has_tokens()) : (i++) {
     let stmt: *AST::AstNode = PSTMT::parse_stmt(p);
     if (stmt != cast<*AST::AstNode>(0)) {
       stmts.push_back(cast<*void>(&stmt));

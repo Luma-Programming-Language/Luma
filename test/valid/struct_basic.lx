@@ -2,16 +2,16 @@
 
 const Point -> struct {
 pub:
-  x: int,
-  y: int,
+  x: i64,
+  y: i64,
 
-  move -> fn (dx: int, dy: int) void {
+  move -> fn (dx: i64, dy: i64) void {
     self.x = self.x + dx;
     self.y = self.y + dy;
   },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let p: Point = Point { x: 1, y: 2 };
     p.move(3, 4);
     output(p.x, ", ", p.y, "\n");

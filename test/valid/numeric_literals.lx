@@ -6,14 +6,14 @@
 // behavior intact: plain decimal integers and floats (`.` only consumed when
 // followed by a digit).
 
-const main -> fn () int {
-  let hex:    int = 0xFF;
-  let bin:    int = 0b1010;
-  let oct:    int = 0o17;
-  let under:  int = 1_000_000;
-  let mix:    int = 0xFF_FF;
-  let u32v:   int = 42u32;
-  let small:  int = 0b1_010_1;
+const main -> fn () i64 {
+  let hex:    i64 = 0xFF;
+  let bin:    i64 = 0b1010;
+  let oct:    i64 = 0o17;
+  let under:  i64 = 1_000_000;
+  let mix:    i64 = 0xFF_FF;
+  let u32v:   i64 = 42u32;
+  let small:  i64 = 0b1_010_1;
 
   if (hex != 255)        return 1;
   if (bin != 10)         return 2;
@@ -23,7 +23,7 @@ const main -> fn () int {
   if (small != 21)       return 6;
 
   // Literal `0xF` followed by identifier `foo_val` — must not mislex.
-  let foo_val: int = 0xF;
+  let foo_val: i64 = 0xF;
 
   return 0;
 }

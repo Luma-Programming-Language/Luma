@@ -10,17 +10,17 @@ const Entry -> struct<K, V> {
 pub const HashMap -> struct<K, V> {
 priv:
   entries: *Entry<K, V>,
-  tombstones: uint,
-  cap:        uint,
-  len:        uint,
+  tombstones: u64,
+  cap:        u64,
+  len:        u64,
 
-  hash:   fn (K)    uint,
+  hash:   fn (K)    u64,
   equals: fn (K, K) bool,
 
 pub:
   #returns_ownership
   static new -> fn<K, V> (
-    hash:   fn (K)    uint,
+    hash:   fn (K)    u64,
     equals: fn (K, K) bool
   ) *HashMap<K, V> {
     let map: *HashMap<K, V> = cast<*HashMap<K, V>>(
@@ -38,7 +38,7 @@ pub:
       alloc(sizeof<Entry<K, V>> * map.cap)
     );
 
-    loop [i: uint = 0](i >= map.cap) : (++i) {
+    loop [i: u64 = 0](i >= map.cap) : (++i) {
       let entry: *Entry<K, V> = &map.entries[i];
       entry.state = EntryState::Empty;
     }
@@ -56,7 +56,7 @@ pub:
     if (((self.len + self.tombstones) * 100 / self.cap)>= 70)
       self.resize(self.cap * 2);
 
-    let index: uint = self.hash(key) % self.cap;
+    let index: u64 = self.hash(key) % self.cap;
 
     loop {
       let entry: *Entry<K, V> = &self.entries[index];
@@ -95,7 +95,7 @@ pub:
   },
 
   get -> fn (key: K) V {
-    let index: uint = self.hash(key) % self.cap;
+    let index: u64 = self.hash(key) % self.cap;
 
     loop {
       let entry: *Entry<K, V> = &self.entries[index];
@@ -111,10 +111,10 @@ pub:
     }
   },
 
-  get_hash -> fn (key: K) uint { return self.hash(key) % self.cap; },
+  get_hash -> fn (key: K) u64 { return self.hash(key) % self.cap; },
 
   contains -> fn (key: K) bool { 
-    let index: uint = self.hash(key) % self.cap;
+    let index: u64 = self.hash(key) % self.cap;
 
     loop {
       let entry: *Entry<K, V> = &self.entries[index];
@@ -132,7 +132,7 @@ pub:
   },
 
   remove -> fn (key: K) V { 
-    let index: uint = self.hash(key) % self.cap;
+    let index: u64 = self.hash(key) % self.cap;
 
     loop {
       let entry: *Entry<K, V> = &self.entries[index];
@@ -157,5 +157,5 @@ pub:
     }
   },
 
-  resize -> fn (size: uint) void {},
+  resize -> fn (size: u64) void {},
 };

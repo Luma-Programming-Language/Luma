@@ -39,12 +39,12 @@ A few of the things Luma actually looks like, pulled straight from the test suit
 ```lx
 const Point -> struct {
 pub:
-    x: float,
-    y: float,
+    x: f32,
+    y: f32,
 
-    distance_to -> fn (other: Point) float {
-        let dx: float = other.x - self.x;
-        let dy: float = other.y - self.y;
+    distance_to -> fn (other: Point) f32 {
+        let dx: f32 = other.x - self.x;
+        let dy: f32 = other.y - self.y;
         return sqrt(dx * dx + dy * dy);
     },
 };
@@ -55,9 +55,9 @@ pub:
 ```lx
 const Entity -> struct {
 pub:
-    x: float,
-    y: float,
-    move -> fn (dx: float, dy: float) void {
+    x: f32,
+    y: f32,
+    move -> fn (dx: f32, dy: f32) void {
         self.x = self.x + dx;
         self.y = self.y + dy;
     },
@@ -66,7 +66,7 @@ pub:
 const Player -> struct {
 pub:
     ...Entity,
-    health: int,
+    health: i64,
 };
 
 let p: Player = Player { x: 0.0, y: 0.0, health: 100 };
@@ -86,14 +86,14 @@ switch using Color (c) {
 
 ```lx
 #returns_ownership
-const make_counter -> fn () *int {
-    let p: *int = cast<*int>(alloc(sizeof<int>));
+const make_counter -> fn () *i64 {
+    let p: *i64 = cast<*i64>(alloc(sizeof<i64>));
     *p = 0;
     return p;
 }
 
 #takes_ownership
-const print_and_free -> fn (counter: *int) void {
+const print_and_free -> fn (counter: *i64) void {
     output(*counter, "\n");
     free(counter);
 }
@@ -104,7 +104,7 @@ const print_and_free -> fn (counter: *int) void {
 ```lx
 @link("libc.so.6")
 
-pub const malloc -> fn (size: int) *void;
+pub const malloc -> fn (size: i64) *void;
 ```
 
 That's a small slice. The full language reference is in [`docs/docs.md`](https://luma-website-mu.vercel.app/html/docs.html).
@@ -157,7 +157,7 @@ Prefer a prebuilt binary? Grab one from the [latest release](releases/v0.3.5.md)
 ```lx
 @module "main"
 
-pub const main -> fn () int {
+pub const main -> fn () i64 {
     output("Hello, World!\n");
     return 0;
 }

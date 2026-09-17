@@ -34,7 +34,7 @@ const handle_defer       -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 pub const typecheck_statement -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   if (stmt == cast<*AST::AstNode>(0)) return true;
 
-  let k: int = stmt.kind;
+  let k: i64 = stmt.kind;
 
   if (k == AST::NodeType::STMT_VAR_DECL)   return handle_var_decl(stmt, scope);
   if (k == AST::NodeType::STMT_CONST_DECL) return handle_var_decl(stmt, scope);
@@ -68,7 +68,7 @@ pub const typecheck_statement -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) b
 
     let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
     let ok: bool = true;
-    loop [i: int = 0](i < blk.stmt_count) : (++i) {
+    loop [i: i64 = 0](i < blk.stmt_count) : (++i) {
       if (typecheck_statement(blk.statements[i], scope) == false) ok = false;
     }
     return ok;
@@ -85,7 +85,7 @@ pub const resolve_os_body -> fn (node: *AST::AstNode, scope: *CORE::Scope) *AST:
   let target: *byte = scope.os;
 
   if (target != cast<*byte>(0)) {
-    let i: int = 0;
+    let i: i64 = 0;
     loop (n.platforms[i] != cast<*byte>(0)) {
       if (STR::strcmp(n.platforms[i], target) == 0) { return n.bodies[i]; }
       i = i + 1;
@@ -98,7 +98,7 @@ pub const resolve_os_body -> fn (node: *AST::AstNode, scope: *CORE::Scope) *AST:
 
 pub const register_declaration -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   if (stmt == cast<*AST::AstNode>(0)) return true;
-  let k: int = stmt.kind;
+  let k: i64 = stmt.kind;
 
   if (k == AST::NodeType::STMT_FUNCTION) {
     let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(stmt);
@@ -113,7 +113,7 @@ pub const register_declaration -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) 
       return true;
     }
 
-    loop [i: int = 0](i < fd.param_count) : (++i) {
+    loop [i: i64 = 0](i < fd.param_count) : (++i) {
       fd.param_types[i] = TYPE::resolve_type_ref(fd.param_types[i], scope);
     }
     fd.return_type = TYPE::resolve_type_ref(fd.return_type, scope);
@@ -151,8 +151,8 @@ pub const register_declaration -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) 
     if (body != cast<*AST::AstNode>(0)) {
       if (body.kind == AST::NodeType::STMT_BLOCK) {
         let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
-        let sc: int = blk.stmt_count;
-        loop [i: int = 0](i < sc) : (++i) {
+        let sc: i64 = blk.stmt_count;
+        loop [i: i64 = 0](i < sc) : (++i) {
           register_declaration(blk.statements[i], scope);
         }
       }
@@ -188,32 +188,32 @@ const handle_var_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
       let inferred_str: *byte = TYPE::type_to_string(inferred);
       let declared_str: *byte = TYPE::type_to_string(declared);
 
-      let nlen: int = STR::strlen(n.name);
-      let ilen: int = STR::strlen(inferred_str);
-      let dlen: int = STR::strlen(declared_str);
+      let nlen: i64 = STR::strlen(n.name);
+      let ilen: i64 = STR::strlen(inferred_str);
+      let dlen: i64 = STR::strlen(declared_str);
 
       let msg: *byte = cast<*byte>(alloc(256));
-      let pos: int = 0;
+      let pos: i64 = 0;
 
       let s: *byte = "Cannot assign '";
-      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(s), STR::strlen(s));
+      MEM::memcpy(cast<*void>(cast<i64>(msg) + pos), cast<*void>(s), STR::strlen(s));
       pos = pos + STR::strlen(s);
 
-      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(inferred_str), ilen);
+      MEM::memcpy(cast<*void>(cast<i64>(msg) + pos), cast<*void>(inferred_str), ilen);
       pos = pos + ilen;
 
       s = "' to variable '";
-      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(s), STR::strlen(s));
+      MEM::memcpy(cast<*void>(cast<i64>(msg) + pos), cast<*void>(s), STR::strlen(s));
       pos = pos + STR::strlen(s);
 
-      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(n.name), nlen);
+      MEM::memcpy(cast<*void>(cast<i64>(msg) + pos), cast<*void>(n.name), nlen);
       pos = pos + nlen;
 
       s = "' of type '";
-      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(s), STR::strlen(s));
+      MEM::memcpy(cast<*void>(cast<i64>(msg) + pos), cast<*void>(s), STR::strlen(s));
       pos = pos + STR::strlen(s);
 
-      MEM::memcpy(cast<*void>(cast<int>(msg) + pos), cast<*void>(declared_str), dlen);
+      MEM::memcpy(cast<*void>(cast<i64>(msg) + pos), cast<*void>(declared_str), dlen);
       pos = pos + dlen;
 
       // Their contents are already copied into msg — nothing else references
@@ -254,7 +254,7 @@ const handle_func_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   // pending queue, drained by tc.lx), never directly like this.
   if (fd.type_param_count > 0) return true;
 
-  loop [i: int = 0](i < fd.param_count) : (++i) {
+  loop [i: i64 = 0](i < fd.param_count) : (++i) {
     fd.param_types[i] = TYPE::resolve_type_ref(fd.param_types[i], scope);
   }
   fd.return_type = TYPE::resolve_type_ref(fd.return_type, scope);
@@ -277,8 +277,8 @@ const handle_func_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   fscope.returns_ownership = (fd.returns_ownership == 1);
   fscope.takes_ownership   = (fd.takes_ownership == 1);
 
-  let pc: int = fd.param_count;
-  loop [i: int = 0](i < pc) : (++i) {
+  let pc: i64 = fd.param_count;
+  loop [i: i64 = 0](i < pc) : (++i) {
     SCOPE::scope_add_symbol(fscope, fd.param_names[i], fd.param_types[i], false, true);
   }
 
@@ -288,8 +288,8 @@ const handle_func_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   if (analyzer != cast<*CORE::StaticMemoryAnalyzer>(0)) {
     let fname: *byte = fd.name;
     let dv: *VEC::Vector = fscope.deferred_frees;
-    let dc: int = dv.size;
-    loop [i: int = 0](i < dc) : (++i) {
+    let dc: i64 = dv.size;
+    loop [i: i64 = 0](i < dc) : (++i) {
       let namep: *byte = cast<**byte>(dv.data)[i];
       SCOPE::analyzer_track_free(analyzer, namep, fname, false);
     }
@@ -322,7 +322,7 @@ const register_field -> fn (struct_name: *byte, member: *AST::AstNode, scope: *C
       return;
     }
 
-    loop [i: int = 0](i < fn_node.param_count) : (++i) {
+    loop [i: i64 = 0](i < fn_node.param_count) : (++i) {
       fn_node.param_types[i] = TYPE::resolve_type_ref(fn_node.param_types[i], scope);
     }
     fn_node.return_type = TYPE::resolve_type_ref(fn_node.return_type, scope);
@@ -353,12 +353,12 @@ const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool
   let stype: *AST::AstNode = TYPE::make_named_type(sd.name);
   SCOPE::scope_add_symbol(scope, sd.name, stype, sd.is_public == 1, false);
 
-  let pubc: int = sd.public_count;
-  loop [i: int = 0](i < pubc) : (++i) {
+  let pubc: i64 = sd.public_count;
+  loop [i: i64 = 0](i < pubc) : (++i) {
     register_field(sd.name, sd.public_members[i], scope);
   }
-  let privc: int = sd.private_count;
-  loop [i: int = 0](i < privc) : (++i) {
+  let privc: i64 = sd.private_count;
+  loop [i: i64 = 0](i < privc) : (++i) {
     register_field(sd.name, sd.private_members[i], scope);
   }
 
@@ -381,8 +381,8 @@ const handle_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   register_struct_decl(stmt, scope);
 
   let stype: *AST::AstNode = TYPE::make_named_type(sd.name);
-  let pubc: int = sd.public_count;
-  loop [i: int = 0](i < pubc) : (++i) {
+  let pubc: i64 = sd.public_count;
+  loop [i: i64 = 0](i < pubc) : (++i) {
     let m: *AST::AstNode = sd.public_members[i];
     let is_field_decl: bool = false;
     if (m != cast<*AST::AstNode>(0)) {
@@ -406,7 +406,7 @@ const register_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(stmt);
 
   // A generic enum (`enum<T>`) is a template: no symbols whatsoever are
-  // registered until an instantiation (`State<int>`) is type-referenced,
+  // registered until an instantiation (`State<i64>`) is type-referenced,
   // which GENERICS::resolve_nominal_type_ref clones this decl with
   // T substituted, strips the type params, and queues it for re-registration.
   // State<T> itself is not a usable type and has no members.
@@ -418,8 +418,8 @@ const register_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let etype: *AST::AstNode = TYPE::make_named_type(ed.name);
   SCOPE::scope_add_symbol(scope, ed.name, etype, ed.is_public == 1, false);
 
-  let mc: int = ed.member_count;
-  loop [i: int = 0](i < mc) : (++i) {
+  let mc: i64 = ed.member_count;
+  loop [i: i64 = 0](i < mc) : (++i) {
     let qname: *byte = EXPR::qualify(ed.name, ed.members[i]);
     let mtype: *AST::AstNode = TYPE::make_named_type(ed.name);
     SCOPE::scope_add_symbol(scope, qname, mtype, ed.is_public == 1, false);
@@ -453,8 +453,8 @@ const handle_if -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let then_scope: *CORE::Scope = SCOPE::scope_create_child(scope, "then_branch");
   typecheck_statement(n.then_stmt, then_scope);
 
-  let ec: int = n.elif_count;
-  loop [i: int = 0](i < ec) : (++i) {
+  let ec: i64 = n.elif_count;
+  loop [i: i64 = 0](i < ec) : (++i) {
     let elif_scope: *CORE::Scope = SCOPE::scope_create_child(scope, "elif_branch");
     typecheck_statement(n.elif_stmts[i], elif_scope);
   }
@@ -471,8 +471,8 @@ const handle_loop -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let loop_scope: *CORE::Scope = SCOPE::scope_create_child(scope, "loop");
 
   // For-loop initializers live in the loop scope.
-  let ic: int = n.init_count;
-  loop [i: int = 0](i < ic) : (++i) {
+  let ic: i64 = n.init_count;
+  loop [i: i64 = 0](i < ic) : (++i) {
     typecheck_statement(n.initializer[i], loop_scope);
   }
 
@@ -498,13 +498,13 @@ const handle_switch -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
     members = SCOPE::find_enum_members(scope, enum_name);
   }
 
-  let cc: int = n.case_count;
-  loop [i: int = 0](i < cc) : (++i) {
+  let cc: i64 = n.case_count;
+  loop [i: i64 = 0](i < cc) : (++i) {
     let case_node: *AST::AstNode = n.cases[i];
     if (case_node != cast<*AST::AstNode>(0)) {
       let cn: *AST::CaseNode = cast<*AST::CaseNode>(case_node);
-      let vc: int = cn.value_count;
-      loop [j: int = 0](j < vc) : (++j) {
+      let vc: i64 = cn.value_count;
+      loop [j: i64 = 0](j < vc) : (++j) {
         let cv: *AST::AstNode = cn.values[j];
         EXPR::typecheck_expression(cv, scope, cond_type);
 
@@ -523,8 +523,8 @@ const handle_switch -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
               let qname: *byte = EXPR::qualify(obj.name, mn.member);
 
               let already: bool = false;
-              let cvc: int = covered.size;
-              loop [k: int = 0](k < cvc) : (++k) {
+              let cvc: i64 = covered.size;
+              loop [k: i64 = 0](k < cvc) : (++k) {
                 let seen: *byte = cast<**byte>(covered.data)[k];
                 if (STR::strcmp(seen, qname) == 0) { already = true; }
               }
@@ -600,8 +600,8 @@ const handle_block -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let block_scope: *CORE::Scope = SCOPE::scope_create_child(scope, "block");
 
   let ok: bool = true;
-  let sc: int = n.stmt_count;
-  loop [i: int = 0](i < sc) : (++i) {
+  let sc: i64 = n.stmt_count;
+  loop [i: i64 = 0](i < sc) : (++i) {
     let r: bool = typecheck_statement(n.statements[i], block_scope);
     if (r == false) ok = false;
   }

@@ -19,14 +19,14 @@
 
 // @use "ast_print" as PRINT
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
   let args: ARGS::Args = ARGS::init_args(argc, argv);
   args = args.tail();
 
   let modules: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
   let build_config: CONST::LumaBuildConfig = CONST::init_build_config(args.get(0));
   
-  let args: int = COMD::parse_args(&args, &build_config);
+  let args: i64 = COMD::parse_args(&args, &build_config);
   if (args != 0) {
     VEC::free_vector(&modules);
     return args;
@@ -65,7 +65,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
     let ptr: *void = it.next();
     if (ptr == cast<*void>(0)) break;
 
-    let addr: *int = cast<*int>(ptr);
+    let addr: *i64 = cast<*i64>(ptr);
     let linked_module: *AST::AstNode = PFILE::parse_file(cast<*byte>(*addr));
     // parse_file already reported the failure (and printed it); a missing
     // `-l` dependency can't be silently dropped from the program.
@@ -116,7 +116,7 @@ pub const main -> fn (argc: int, argv: **byte) int {
     } else {
       if (build_config.anim) {
         bar.update("Compiling", "|");
-        let cg_tid: int = PBAR::start(&bar);
+        let cg_tid: i64 = PBAR::start(&bar);
         ok = CODEGEN::codegen_compile(c_path, build_config);
         PBAR::stop(cg_tid, &bar);
       } else {

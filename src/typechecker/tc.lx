@@ -15,8 +15,8 @@
 @use "tc_error"     as ERR
 
 const find_module_scope -> fn (registry: *VEC::Vector, name: *byte) *CORE::Scope {
-  let c: int = registry.size;
-  loop [i: int = 0](i < c) : (++i) {
+  let c: i64 = registry.size;
+  loop [i: i64 = 0](i < c) : (++i) {
     let imp: *CORE::ModuleImport = cast<*CORE::ModuleImport>(registry.get(i));
     if (STR::strcmp(imp.module_name, name) == 0) return imp.module_scope;
   }
@@ -26,9 +26,9 @@ const find_module_scope -> fn (registry: *VEC::Vector, name: *byte) *CORE::Scope
 const resolve_uses -> fn (mnode: *AST::AstNode, ms: *CORE::Scope, registry: *VEC::Vector) void {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let body: **AST::AstNode = mod.body;
-  let bc: int = mod.body_count;
+  let bc: i64 = mod.body_count;
 
-  loop [i: int = 0](i < bc) : (++i) {
+  loop [i: i64 = 0](i < bc) : (++i) {
     let bn: *AST::AstNode = body[i];
     if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
       let u: *AST::UseNode = cast<*AST::UseNode>(bn);
@@ -40,15 +40,15 @@ const resolve_uses -> fn (mnode: *AST::AstNode, ms: *CORE::Scope, registry: *VEC
 
 const check_module_uses -> fn (mnode: *AST::AstNode, registry: *VEC::Vector) void {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
-  let bc: int = mod.body_count;
-  loop [i: int = 0](i < bc) : (++i) {
+  let bc: i64 = mod.body_count;
+  loop [i: i64 = 0](i < bc) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
       let u: *AST::UseNode = cast<*AST::UseNode>(bn);
       let target: *CORE::Scope = find_module_scope(registry, u.module_name);
       if (target == cast<*CORE::Scope>(0)) {
         // +2 for the quotes around the module name in the source text.
-        let token_len: int = STR::strlen(u.module_name) + 2;
+        let token_len: i64 = STR::strlen(u.module_name) + 2;
         ERR::tc_error_len(bn, "Module Error",
           "module not found — was its file passed with -l?", token_len, "not found");
       }
@@ -59,18 +59,18 @@ const check_module_uses -> fn (mnode: *AST::AstNode, registry: *VEC::Vector) voi
 const register_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) void {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let body: **AST::AstNode = mod.body;
-  let bc: int = mod.body_count;
-  loop [i: int = 0](i < bc) : (++i) {
+  let bc: i64 = mod.body_count;
+  loop [i: i64 = 0](i < bc) : (++i) {
     STMT::register_declaration(body[i], ms);
   }
 }
 
 const check_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) bool {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
-  let bc: int = mod.body_count;
+  let bc: i64 = mod.body_count;
 
   let ok: bool = true;
-  loop [i: int = 0](i < bc) : (++i) {
+  loop [i: i64 = 0](i < bc) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
 
     if (bn.kind == AST::NodeType::PREPROCESSOR_OS) {
@@ -78,8 +78,8 @@ const check_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) bool {
       if (body != cast<*AST::AstNode>(0)) {
         if (body.kind == AST::NodeType::STMT_BLOCK) {
           let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
-          let sc: int = blk.stmt_count;
-          loop [j: int = 0](j < sc) : (++j) {
+          let sc: i64 = blk.stmt_count;
+          loop [j: i64 = 0](j < sc) : (++j) {
             if (STMT::typecheck_statement(blk.statements[j], ms) == false) ok = false;
           }
         }
@@ -95,8 +95,8 @@ const report_module_allocations -> fn (analyzer: *CORE::StaticMemoryAnalyzer, fi
   if (analyzer == cast<*CORE::StaticMemoryAnalyzer>(0)) return;
 
   let v: *VEC::Vector = analyzer.allocations;
-  let count: int = v.size;
-  loop [i: int = 0](i < count) : (++i) {
+  let count: i64 = v.size;
+  loop [i: i64 = 0](i < count) : (++i) {
     let a: *CORE::StaticAllocation = cast<*CORE::StaticAllocation>(v.get(i));
     if (a.reported) continue;
     if (STR::strcmp(a.file_path, file_path) != 0) continue;
@@ -153,13 +153,13 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
   }
 
   let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(node);
-  let mc: int = prog.module_count;
+  let mc: i64 = prog.module_count;
   let modules: **AST::AstNode = prog.modules;
 
   let registry: VEC::Vector = VEC::create_vector(sizeof<CORE::ModuleImport>);
 
   // ── Pass 1: register a scope for every module ───────────────────────────────
-  loop [i: int = 0](i < mc) : (++i) {
+  loop [i: i64 = 0](i < mc) : (++i) {
     let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
       let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
@@ -177,7 +177,7 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
   }
 
   // ── Pass 2: resolve @use imports ────────────────────────────────────────────
-  loop [i: int = 0](i < mc) : (++i) {
+  loop [i: i64 = 0](i < mc) : (++i) {
     let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
       let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
@@ -187,7 +187,7 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
   }
 
   // ── Pass 3a: forward-register declarations ──────────────────────────────────
-  loop [i: int = 0](i < mc) : (++i) {
+  loop [i: i64 = 0](i < mc) : (++i) {
     let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
       let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
@@ -202,7 +202,7 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
 
   // ── Pass 3b: typecheck bodies ───────────────────────────────────────────────
   let ok: bool = true;
-  loop [i: int = 0](i < mc) : (++i) {
+  loop [i: i64 = 0](i < mc) : (++i) {
     let mnode: *AST::AstNode = modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
       let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
@@ -219,7 +219,7 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
   }
 
   // ── Drain generic instantiations ─────────────────────────────────────────
-  // A call site's first use of `add<int>(...)` (tc_expr's tc_call, via
+  // A call site's first use of `add<i64>(...)` (tc_expr's tc_call, via
   // tc_generics) only clones + gives the concrete function a signature —
   // enough to typecheck that one call — and queues the body itself here,
   // since tc_generics can't reach register_declaration/typecheck_statement
@@ -237,8 +237,8 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
   // declaration (module-level and generated) is registered, names that still
   // don't resolve to a same-module nominal are genuine typos. Reported after
   // the normal passes so a forward reference never false-positives.
-  let uc: int = CORE::unresolved_type_name_count();
-  let ui: int = 0;
+  let uc: i64 = CORE::unresolved_type_name_count();
+  let ui: i64 = 0;
   loop (ui < uc) {
     let u: *CORE::UnresolvedTypeName = CORE::unresolved_type_name_at(ui);
     if (TYPE::nominal_known_in_module(u.module_scope, u.name) == false) {

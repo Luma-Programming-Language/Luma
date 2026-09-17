@@ -57,14 +57,14 @@ pub const print_license -> fn () void {
   output("Licensed under the MIT License\n");
 }
 
-pub const match_command -> fn (cmd: *byte, usr_cmd: [*byte; 10], count: int) int {
-  loop [i: int = 0](i < count) : (++i) {
+pub const match_command -> fn (cmd: *byte, usr_cmd: [*byte; 10], count: i64) i64 {
+  loop [i: i64 = 0](i < count) : (++i) {
     if (STRING::strcmp(usr_cmd[i], cmd) == 0) return 1;
   }
   return 0;
 }
 
-pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildConfig) int {
+pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildConfig) i64 {
   if (args.is_empty() == 1) { 
     print_commands(); 
     return CONST::LumaErrorCode::NO_FILES_ERROR; 
@@ -93,10 +93,10 @@ pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildCo
     return 0;
   }
 
-  loop [i: int = 1](i < args.len()) : (++i) {
+  loop [i: i64 = 1](i < args.len()) : (++i) {
     let arg: *byte = args.get(i);
     if (match_command(arg, ["-l", "--link"], 2) == 1) {
-      let j: int = i + 1;
+      let j: i64 = i + 1;
 
       loop (j < args.len()) : (++j) {
         let next: *byte = args.get(j);
@@ -117,7 +117,7 @@ pub const parse_args -> fn (args: *ARGS::Args, build_config: *CONST::LumaBuildCo
       build_config.name = args.get(i + 1);
       i = i + 1;
     } elif (match_command(arg, ["-O0", "-O1", "-O2", "-O3"], 4) == 1) { 
-      build_config.opt_level = cast<int>(cast<int>(arg[2]) - cast<int>('0'));
+      build_config.opt_level = cast<i64>(cast<i64>(arg[2]) - cast<i64>('0'));
     } elif (match_command(arg, ["--no-sanitize"], 1) == 1) {
       build_config.check_mem = false; // disable the static analyzer
     } elif (match_command(arg, ["--no-anim"], 1) == 1) {
@@ -165,8 +165,8 @@ const build_user_prefix -> fn () *byte {
   let home: *byte = LIBC::getenv(HOME_ENV_VAR);
   if (home == cast<*byte>(0)) return cast<*byte>(0);
 
-  let home_len:   int = STRING::strlen(home);
-  let suffix_len: int = STRING::strlen(USER_STD_SUFFIX);
+  let home_len:   i64 = STRING::strlen(home);
+  let suffix_len: i64 = STRING::strlen(USER_STD_SUFFIX);
   let out: *byte = cast<*byte>(alloc(home_len + suffix_len + 1));
   return STRING::cat(out, home, USER_STD_SUFFIX);
 }
@@ -182,24 +182,24 @@ const build_user_prefix -> fn () *byte {
 // actually used.
 #returns_ownership
 pub const resolve_path -> fn (path: *byte) *byte {
-  let direct_fd: int = IO::local_open_read(path);
+  let direct_fd: i64 = IO::local_open_read(path);
   if (IO::local_is_error(direct_fd) == false) {
     IO::local_close(direct_fd);
     return path;
   }
 
-  let path_len: int = STRING::strlen(path);
+  let path_len: i64 = STRING::strlen(path);
 
   let user_prefix: *byte = build_user_prefix();
   if (user_prefix != cast<*byte>(0)) {
-    let uprefix_len: int = STRING::strlen(user_prefix);
+    let uprefix_len: i64 = STRING::strlen(user_prefix);
     let user_path: *byte = cast<*byte>(alloc(uprefix_len + path_len + 1));
     MEM::memcpy(cast<*void>(user_path), cast<*void>(user_prefix), uprefix_len);
-    MEM::memcpy(cast<*void>(cast<int>(user_path) + uprefix_len), cast<*void>(path), path_len);
+    MEM::memcpy(cast<*void>(cast<i64>(user_path) + uprefix_len), cast<*void>(path), path_len);
     user_path[uprefix_len + path_len] = '\0';
     free(user_prefix);
 
-    let ufd: int = IO::local_open_read(user_path);
+    let ufd: i64 = IO::local_open_read(user_path);
     if (IO::local_is_error(ufd) == false) {
       IO::local_close(ufd);
       return user_path;
@@ -207,14 +207,14 @@ pub const resolve_path -> fn (path: *byte) *byte {
     free(user_path);
   }
 
-  let prefix_len: int = STRING::strlen(SYS_STD_PREFIX);
+  let prefix_len: i64 = STRING::strlen(SYS_STD_PREFIX);
 
   let std_path: *byte = cast<*byte>(alloc(prefix_len + path_len + 1));
   MEM::memcpy(cast<*void>(std_path), cast<*void>(SYS_STD_PREFIX), prefix_len);
-  MEM::memcpy(cast<*void>(cast<int>(std_path) + prefix_len), cast<*void>(path), path_len);
+  MEM::memcpy(cast<*void>(cast<i64>(std_path) + prefix_len), cast<*void>(path), path_len);
   std_path[prefix_len + path_len] = '\0';
 
-  let fd: int = IO::local_open_read(std_path);
+  let fd: i64 = IO::local_open_read(std_path);
   if (IO::local_is_error(fd)) {
     free(std_path);
     return path;

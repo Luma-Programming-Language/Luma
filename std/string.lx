@@ -26,9 +26,9 @@
 
 /// Returns the number of bytes before the null terminator.
 /// Returns 0 if `s` is null.
-const local_strlen -> fn (s: *byte) int {
+const local_strlen -> fn (s: *byte) i64 {
   if (s == cast<*byte>(0)) return 0;
-  let length: int = 0;
+  let length: i64 = 0;
   loop (s[length] != '\0') : (++length) {}
   return length;
 }
@@ -37,7 +37,7 @@ const local_strlen -> fn (s: *byte) int {
 /// Both pointers must be non-null. `dest` must have enough capacity.
 const local_copy -> fn (dest: *byte, src: *byte) void {
   if (dest == cast<*byte>(0) || src == cast<*byte>(0)) return;
-  let i: int = 0;
+  let i: i64 = 0;
   loop (src[i] != '\0') : (++i) {
     dest[i] = src[i];
   }
@@ -46,22 +46,22 @@ const local_copy -> fn (dest: *byte, src: *byte) void {
 
 /// Copies exactly `n` bytes from `src` to `dest`. No null terminator is added.
 /// Caller must ensure `dest` has at least `n` bytes of capacity.
-const local_memcpy -> fn (dest: *byte, src: *byte, n: int) void {
-  loop [i: int = 0](i < n) : (++i) {
+const local_memcpy -> fn (dest: *byte, src: *byte, n: i64) void {
+  loop [i: i64 = 0](i < n) : (++i) {
     dest[i] = src[i];
   }
 }
 
 /// Lexicographically compares two null-terminated strings.
 /// Returns 0 if equal, positive if s1 > s2, negative if s1 < s2.
-const local_strcmp -> fn (s1: *byte, s2: *byte) int {
-  let i: int = 0;
+const local_strcmp -> fn (s1: *byte, s2: *byte) i64 {
+  let i: i64 = 0;
   loop (s1[i] != '\0' && s2[i] != '\0') : (++i) {
     if (s1[i] != s2[i]) {
-      return cast<int>(s1[i]) - cast<int>(s2[i]);
+      return cast<i64>(s1[i]) - cast<i64>(s2[i]);
     }
   }
-  return cast<int>(s1[i]) - cast<int>(s2[i]);
+  return cast<i64>(s1[i]) - cast<i64>(s2[i]);
 }
 
 // ============= String Struct =============
@@ -77,8 +77,8 @@ const local_strcmp -> fn (s1: *byte, s2: *byte) int {
 /// Never set `data` manually — the struct assumes it owns the buffer.
 pub const String -> struct {
   data: *byte,   // null-terminated buffer
-  len: int,      // length excluding '\0'
-  cap: int,      // capacity including '\0'
+  len: i64,      // length excluding '\0'
+  cap: i64,      // capacity including '\0'
 
   // ---- Query ----
 
@@ -89,15 +89,15 @@ pub const String -> struct {
   c_str -> fn () *byte { return self.data; },
 
   /// Returns the number of characters (excluding null terminator).
-  length -> fn () int { return self.len; },
+  length -> fn () i64 { return self.len; },
 
   /// Returns the total allocated capacity (including null terminator slot).
-  capacity -> fn () int { return self.cap; },
+  capacity -> fn () i64 { return self.cap; },
 
   // ---- Access ----
 
   /// Returns the byte at `index`, or '\0' if the index is out of bounds.
-  at -> fn (index: int) byte {
+  at -> fn (index: i64) byte {
     if (index < 0 || index >= self.len) return '\0';
     return self.data[index];
   },
@@ -133,7 +133,7 @@ pub const String -> struct {
   /// Reallocates and copies existing content if needed.
   /// No-op if `new_cap` is already satisfied.
   #returns_ownership
-  reserve -> fn (new_cap: int) void {
+  reserve -> fn (new_cap: i64) void {
     if (new_cap <= self.cap) return;
     
     let new_data: *byte = cast<*byte>(alloc(new_cap));
@@ -156,17 +156,17 @@ pub const String -> struct {
   append -> fn (s: *byte) void {
     if (s == cast<*byte>(0)) return;
     
-    let add_len: int = local_strlen(s);
+    let add_len: i64 = local_strlen(s);
     if (add_len == 0) return;
     
-    let required: int = self.len + add_len + 1;
+    let required: i64 = self.len + add_len + 1;
     if (required > self.cap) {
-      let new_cap: int = self.cap * 2;
+      let new_cap: i64 = self.cap * 2;
       if (new_cap < required) new_cap = required;
       self.reserve(new_cap);
     }
     
-    loop [i: int = 0](i < add_len) : (++i) {
+    loop [i: i64 = 0](i < add_len) : (++i) {
       self.data[self.len + i] = s[i];
     }
     self.len = self.len + add_len;
@@ -185,7 +185,7 @@ pub const String -> struct {
   /// Grows the buffer if needed.
   #returns_ownership
   append_char -> fn (c: byte) void {
-    let required: int = self.len + 2;
+    let required: i64 = self.len + 2;
     if (required > self.cap) {
       self.reserve(self.cap * 2);
     }
@@ -202,19 +202,19 @@ pub const String -> struct {
   prepend -> fn (s: *byte) void {
     if (s == cast<*byte>(0)) return;
     
-    let add_len: int = local_strlen(s);
+    let add_len: i64 = local_strlen(s);
     if (add_len == 0) return;
     
-    let required: int = self.len + add_len + 1;
+    let required: i64 = self.len + add_len + 1;
     if (required > self.cap) {
-      let new_cap: int = self.cap * 2;
+      let new_cap: i64 = self.cap * 2;
       if (new_cap < required) new_cap = required;
       
       // Allocate fresh buffer: copy prefix then existing content
       let new_data: *byte = cast<*byte>(alloc(new_cap));
       local_memcpy(new_data, s, add_len);
       if (self.data != cast<*byte>(0)) {
-        local_memcpy(cast<*byte>(cast<int>(new_data) + add_len), 
+        local_memcpy(cast<*byte>(cast<i64>(new_data) + add_len), 
                      self.data, self.len);
         free(self.data);
       }
@@ -225,10 +225,10 @@ pub const String -> struct {
       self.len = self.len + add_len;
     } else {
       // Buffer has room: shift existing content right, then copy prefix in
-      loop [i: int = self.len](i >= 0) : (--i) {
+      loop [i: i64 = self.len](i >= 0) : (--i) {
         self.data[i + add_len] = self.data[i];
       }
-      loop [i: int = 0](i < add_len) : (++i) {
+      loop [i: i64 = 0](i < add_len) : (++i) {
         self.data[i] = s[i];
       }
       self.len = self.len + add_len;
@@ -242,15 +242,15 @@ pub const String -> struct {
   /// Returns an empty null String `{ data: null, len: 0, cap: 0 }` if the
   /// range is empty or inverted. Caller must free the result.
   #returns_ownership
-  substring -> fn (start: int, end: int) String {
+  substring -> fn (start: i64, end: i64) String {
     if (start < 0) start = 0;
     if (end > self.len) end = self.len;
     if (start >= end) return String { data: cast<*byte>(0), len: 0, cap: 0 };
     
-    let substr_len: int = end - start;
+    let substr_len: i64 = end - start;
     let buf: *byte = cast<*byte>(alloc(substr_len + 1));
     
-    loop [i: int = 0](i < substr_len) : (++i) {
+    loop [i: i64 = 0](i < substr_len) : (++i) {
       buf[i] = self.data[start + i];
     }
     buf[substr_len] = '\0';
@@ -261,8 +261,8 @@ pub const String -> struct {
   // ---- Search ----
 
   /// Returns the index of the first occurrence of byte `c`, or -1 if not found.
-  find_char -> fn (c: byte) int {
-    loop [i: int = 0](i < self.len) : (++i) {
+  find_char -> fn (c: byte) i64 {
+    loop [i: i64 = 0](i < self.len) : (++i) {
       if (self.data[i] == c) return i;
     }
     return -1;
@@ -277,10 +277,10 @@ pub const String -> struct {
   /// Returns false if `prefix` is null or longer than the string.
   starts_with -> fn (prefix: *byte) bool {
     if (prefix == cast<*byte>(0)) return cast<bool>(0);
-    let prefix_len: int = local_strlen(prefix);
+    let prefix_len: i64 = local_strlen(prefix);
     if (prefix_len > self.len) return cast<bool>(0);
     
-    loop [i: int = 0](i < prefix_len) : (++i) {
+    loop [i: i64 = 0](i < prefix_len) : (++i) {
       if (self.data[i] != prefix[i]) return cast<bool>(0);
     }
     return cast<bool>(1);
@@ -290,11 +290,11 @@ pub const String -> struct {
   /// Returns false if `suffix` is null or longer than the string.
   ends_with -> fn (suffix: *byte) bool {
     if (suffix == cast<*byte>(0)) return cast<bool>(0);
-    let suffix_len: int = local_strlen(suffix);
+    let suffix_len: i64 = local_strlen(suffix);
     if (suffix_len > self.len) return cast<bool>(0);
     
-    let start: int = self.len - suffix_len;
-    loop [i: int = 0](i < suffix_len) : (++i) {
+    let start: i64 = self.len - suffix_len;
+    loop [i: i64 = 0](i < suffix_len) : (++i) {
       if (self.data[start + i] != suffix[i]) return cast<bool>(0);
     }
     return cast<bool>(1);
@@ -302,16 +302,16 @@ pub const String -> struct {
 
   /// Returns the index of the first occurrence of the null-terminated substring,
   /// or -1 if not found. Returns 0 if `substr` is empty. Returns -1 if null.
-  find -> fn (substr: *byte) int {
+  find -> fn (substr: *byte) i64 {
     if (substr == cast<*byte>(0)) return -1;
-    let substr_len: int = local_strlen(substr);
+    let substr_len: i64 = local_strlen(substr);
     if (substr_len == 0) return 0;
     if (substr_len > self.len) return -1;
     
-    let end: int = self.len - substr_len;
-    loop [i: int = 0](i <= end) : (++i) {
+    let end: i64 = self.len - substr_len;
+    loop [i: i64 = 0](i <= end) : (++i) {
       let match: bool = cast<bool>(1);
-      loop [j: int = 0](j < substr_len) : (++j) {
+      loop [j: i64 = 0](j < substr_len) : (++j) {
         if (self.data[i + j] != substr[j]) {
           match = cast<bool>(0);
           break;
@@ -335,7 +335,7 @@ pub const String -> struct {
   trim_start -> fn () void {
     if (self.len == 0) return;
     
-    let start: int = 0;
+    let start: i64 = 0;
     loop (start < self.len && (self.data[start] == ' '  || 
                                self.data[start] == '\t' || 
                                self.data[start] == '\n' || 
@@ -343,8 +343,8 @@ pub const String -> struct {
     
     if (start == 0) return;
     
-    let new_len: int = self.len - start;
-    loop [i: int = 0](i < new_len) : (++i) {
+    let new_len: i64 = self.len - start;
+    loop [i: i64 = 0](i < new_len) : (++i) {
       self.data[i] = self.data[start + i];
     }
     self.data[new_len] = '\0';
@@ -376,9 +376,9 @@ pub const String -> struct {
   /// Converts all ASCII lowercase letters (a-z) to uppercase in place.
   #returns_ownership
   to_upper -> fn () void {
-    loop [i: int = 0](i < self.len) : (++i) {
+    loop [i: i64 = 0](i < self.len) : (++i) {
       if (self.data[i] >= 'a' && self.data[i] <= 'z') {
-        self.data[i] = cast<byte>(cast<int>(self.data[i]) - 32);
+        self.data[i] = cast<byte>(cast<i64>(self.data[i]) - 32);
       }
     }
   },
@@ -386,9 +386,9 @@ pub const String -> struct {
   /// Converts all ASCII uppercase letters (A-Z) to lowercase in place.
   #returns_ownership
   to_lower -> fn () void {
-    loop [i: int = 0](i < self.len) : (++i) {
+    loop [i: i64 = 0](i < self.len) : (++i) {
       if (self.data[i] >= 'A' && self.data[i] <= 'Z') {
-        self.data[i] = cast<byte>(cast<int>(self.data[i]) + 32);
+        self.data[i] = cast<byte>(cast<i64>(self.data[i]) + 32);
       }
     }
   },
@@ -412,10 +412,10 @@ pub const string_new -> fn () String {
 pub const string_from -> fn (s: *byte) String {
   if (s == cast<*byte>(0)) return string_new();
   
-  let len: int = local_strlen(s);
+  let len: i64 = local_strlen(s);
   let buf: *byte = cast<*byte>(alloc(len + 1));
   
-  loop [i: int = 0](i < len) : (++i) {
+  loop [i: i64 = 0](i < len) : (++i) {
     buf[i] = s[i];
   }
   buf[len] = '\0';
@@ -427,7 +427,7 @@ pub const string_from -> fn (s: *byte) String {
 /// Useful when the final size is known in advance to avoid reallocations.
 /// Minimum capacity is 16 if `cap` < 1. Caller must free with `string_free`.
 #returns_ownership
-pub const string_with_capacity -> fn (cap: int) String {
+pub const string_with_capacity -> fn (cap: i64) String {
   if (cap < 1) cap = 16;
   let buf: *byte = cast<*byte>(alloc(cap));
   buf[0] = '\0';
@@ -456,10 +456,10 @@ pub const string_clone -> fn (s: *String) String {
 /// defer { string_free(&s); }
 /// ```
 #returns_ownership
-pub const int_to_str -> fn (n: int) String {
-    // Stack buffer: max 10 digits for a 32-bit int + 2 guard bytes
+pub const int_to_str -> fn (n: i64) String {
+    // Stack buffer: 12 bytes — safe only for i64 values under 10^10 (10 digits + NUL + guard)
     let tmp: [byte; 12];
-    let i: int = 10;
+    let i: i64 = 10;
     tmp[11] = cast<byte>(0);
     tmp[i]  = cast<byte>(0);
 

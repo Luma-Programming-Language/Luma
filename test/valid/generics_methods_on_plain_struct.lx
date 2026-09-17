@@ -9,21 +9,21 @@
 // the raw template spilling `T` into the generated C.
 
 const Thing -> struct {
-  x: int,
+  x: i64,
 
-  static make -> fn<T> (kind: int, line: int) T {
+  static make -> fn<T> (kind: i64, line: i64) T {
     return cast<T>(0);
   },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
   // Each distinct concrete instantiation must be codegen'd under its own
-  // mangled name (Thing::make<*Thing>, Thing::make<int>, ...) with the
+  // mangled name (Thing::make<*Thing>, Thing::make<i64>, ...) with the
   // return type substituted — exactly like AstNode::make in ast.lx.
   let a: *Thing = Thing::make<*Thing>(1, 2);
   if (a != cast<*Thing>(0)) return 1;
 
-  let c: int = Thing::make<int>(1, 2);
+  let c: i64 = Thing::make<i64>(1, 2);
   if (c != 0) return 2;
 
   let d: **byte = Thing::make<**byte>(1, 2);

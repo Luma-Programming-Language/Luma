@@ -25,19 +25,19 @@ const unescape_char -> fn (c: byte) byte {
   return c; // unknown escape — pass the character through as-is
 }
 
-const hex_digit_val -> fn (c: byte) int {
-  if (c >= '0' && c <= '9') return cast<int>(c) - cast<int>('0');
-  if (c >= 'a' && c <= 'f') return cast<int>(c) - cast<int>('a') + 10;
-  if (c >= 'A' && c <= 'F') return cast<int>(c) - cast<int>('A') + 10;
+const hex_digit_val -> fn (c: byte) i64 {
+  if (c >= '0' && c <= '9') return cast<i64>(c) - cast<i64>('0');
+  if (c >= 'a' && c <= 'f') return cast<i64>(c) - cast<i64>('a') + 10;
+  if (c >= 'A' && c <= 'F') return cast<i64>(c) - cast<i64>('A') + 10;
   return -1;
 }
 
 #returns_ownership
 const unescape_str -> fn (s: *byte) *byte {
-  let len: int = STRING::strlen(s);
+  let len: i64 = STRING::strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
-  let oi: int = 0;
-  let i: int = 0;
+  let oi: i64 = 0;
+  let i: i64 = 0;
   loop (i < len) {
     if (s[i] == '\\') {
       if (i + 1 < len) {
@@ -46,8 +46,8 @@ const unescape_str -> fn (s: *byte) *byte {
         let is_hex_escape: bool = false;
         if (s[i + 1] == 'x') {
           if (i + 3 < len) {
-            let h1: int = hex_digit_val(s[i + 2]);
-            let h2: int = hex_digit_val(s[i + 3]);
+            let h1: i64 = hex_digit_val(s[i + 2]);
+            let h2: i64 = hex_digit_val(s[i + 3]);
             if (h1 >= 0 && h2 >= 0) {
               out[oi] = cast<byte>(h1 * 16 + h2);
               oi = oi + 1;
@@ -76,14 +76,14 @@ const unescape_str -> fn (s: *byte) *byte {
   return out;
 }
 
-#returns_ownership const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
-#returns_ownership const binary   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+#returns_ownership const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode;
+#returns_ownership const binary   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode;
 const is_shift_right -> fn (p: *PARS::Parser) bool;
-const current_bp     -> fn (p: *PARS::Parser) int;
-#returns_ownership const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
-#returns_ownership const call     -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
-#returns_ownership const assign   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
-#returns_ownership const prefix   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode;
+const current_bp     -> fn (p: *PARS::Parser) i64;
+#returns_ownership const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode;
+#returns_ownership const call     -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode;
+#returns_ownership const assign   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode;
+#returns_ownership const prefix   -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode;
 #returns_ownership const primary  -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const unary    -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const group    -> fn (p: *PARS::Parser) *AST::AstNode;
@@ -138,7 +138,7 @@ const nud -> fn (p: *PARS::Parser) *AST::AstNode {
 }
 
 #returns_ownership
-const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
+const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode {
   switch using TOK::LumaTokenType (p.current().kind) {
     TOK_LT -> {
       let generic: *AST::AstNode = try_generic_instantiation(p, left, bp);
@@ -162,10 +162,10 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
 }
 
 // Speculatively tries `left '<' Type (',' Type)* '>' (` — a generic call,
-// e.g. `add<int>(1, 2)` — `left '<' Type (',' Type)* '>' {` — the
-// optional explicit generic struct literal, e.g. `Box<int> { value: 42 }` —
+// e.g. `add<i64>(1, 2)` — `left '<' Type (',' Type)* '>' {` — the
+// optional explicit generic struct literal, e.g. `Box<i64> { value: 42 }` —
 // or `left '<' Type (',' Type)* '>' '::' member` — a member of a generic
-// enum instantiation, e.g. `State<int>::Idle`.
+// enum instantiation, e.g. `State<i64>::Idle`.
 // `p.current().kind` is already TOK_LT (checked by led's caller). Only a
 // bare identifier or a module-qualified name (`ALIAS::func<T>(...)`, which
 // parses as a compiletime MemberNode) can plausibly be a generic template
@@ -180,7 +180,7 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
 // parsing `<` as plain less-than with no trace of the attempt left behind
 // (no partial AST, no recorded errors, no moved token position).
 #returns_ownership
-const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode {
+const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode {
   let ident_ok: bool = left.kind == AST::NodeType::EXPR_IDENTIFIER;
   let member_ok: bool = left.kind == AST::NodeType::EXPR_MEMBER;
   if (member_ok) {
@@ -200,7 +200,7 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
   if (ident_ok == false && member_ok == false) return cast<*AST::AstNode>(0);
 
   let sp: PARS::Savepoint = p.save();
-  let err_before: int = ERR::error_get_count();
+  let err_before: i64 = ERR::error_get_count();
   let targs: VEC::Vector = PTYPE::parse_type_arg_list(p);
 
   // parse_type_arg_list's own p.consume() calls always advance even when
@@ -241,8 +241,8 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
     TOK_RESOLVE -> {
       if (!ok) break;
 
-      let member_line: int = p.current().line;
-      let member_col:  int = p.current().col;
+      let member_line: i64 = p.current().line;
+      let member_col:  i64 = p.current().col;
       p.advance();
       if (p.current().kind != TOK::LumaTokenType::TOK_IDENTIFIER) {
         p.error("Syntax Error", "Expected identifier after '::' for member access.");
@@ -264,7 +264,7 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
     _ -> {}
   }
 
-  loop [i: int = 0](i < targs.size) : (i++) {
+  loop [i: i64 = 0](i < targs.size) : (i++) {
     AST::free_node(cast<**AST::AstNode>(targs.data)[i]);
   }
   VEC::free_vector(&targs);
@@ -273,14 +273,14 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
 }
 
 #returns_ownership
-pub const parse_expr -> fn (p: *PARS::Parser, bp: int) *AST::AstNode {
+pub const parse_expr -> fn (p: *PARS::Parser, bp: i64) *AST::AstNode {
   let left: *AST::AstNode = nud(p);
 
   if (left == cast<*AST::AstNode>(0)) 
       return cast<*AST::AstNode>(0);
 
   loop (p.has_tokens() && (current_bp(p) > bp)) {
-    let c_bp: int = current_bp(p);
+    let c_bp: i64 = current_bp(p);
     left = led(p, left, c_bp);
 
     if (left == cast<*AST::AstNode>(0)) 
@@ -291,9 +291,9 @@ pub const parse_expr -> fn (p: *PARS::Parser, bp: int) *AST::AstNode {
 }
 
 #returns_ownership 
-const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let struct_name: *byte = cast<*byte>(0);
   let struct_alias: *byte = cast<*byte>(0);
@@ -301,23 +301,23 @@ const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstN
   switch using AST::NodeType (left.kind) {
     EXPR_IDENTIFIER -> {
       let d: *AST::IdentifierNode = cast<*AST::IdentifierNode>(left);
-      let len: int = STRING::strlen(d.name);
+      let len: i64 = STRING::strlen(d.name);
       struct_name = cast<*byte>(alloc(len + 1));
       MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.name), len);
       struct_name[len] = '\0'; 
     }
     EXPR_MEMBER -> {
       let d: *AST::MemberNode = cast<*AST::MemberNode>(left);
-      let len: int = STRING::strlen(d.member);
+      let len: i64 = STRING::strlen(d.member);
       struct_name = cast<*byte>(alloc(len + 1));
       MEM::memcpy(cast<*void>(struct_name), cast<*void>(d.member), len);
       struct_name[len] = '\0';
 
       let d_object: *AST::AstNode = d.object;
-      let d_object_kind: int = d_object.kind;
+      let d_object_kind: i64 = d_object.kind;
       if (d_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
         let aobj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(d_object);
-        let alen: int = STRING::strlen(aobj.name);
+        let alen: i64 = STRING::strlen(aobj.name);
         struct_alias = cast<*byte>(alloc(alen + 1));
         MEM::memcpy(cast<*void>(struct_alias), cast<*void>(aobj.name), alen);
         struct_alias[alen] = '\0';
@@ -384,11 +384,11 @@ const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstN
 }
 
 #returns_ownership 
-const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   let is_shift: bool = is_shift_right(p);
-  let op: int = AST::BinaryOp::BINOP_GT;
+  let op: i64 = AST::BinaryOp::BINOP_GT;
   if (is_shift) {
     op = AST::BinaryOp::BINOP_SHR;
   } else {
@@ -396,7 +396,7 @@ const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNod
   }
   p.advance();
   // `>>` lexes as two `>` tokens (so nested generic closes like
-  // `cast<Box<int>>(...)` split cleanly); when both appear together in an
+  // `cast<Box<i64>>(...)` split cleanly); when both appear together in an
   // expression it's a right-shift, consuming both.
   if (is_shift) p.advance();
 
@@ -418,15 +418,15 @@ const is_shift_right -> fn (p: *PARS::Parser) bool {
       && p.peek(1).kind == TOK::LumaTokenType::TOK_GT;
 }
 
-const current_bp -> fn (p: *PARS::Parser) int {
+const current_bp -> fn (p: *PARS::Parser) i64 {
   if (is_shift_right(p)) return PARS::BindingPower::BP_SHIFT;
   return PARS::get_bp(p.current().kind);
 }
 
 #returns_ownership 
-const call -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const call -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let args: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
@@ -452,9 +452,9 @@ const call -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode 
 }
 
 #returns_ownership 
-const assign -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const assign -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_EQUAL, "Expected '=' for assignment.");
 
@@ -468,10 +468,10 @@ const assign -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNod
 }
 
 #returns_ownership 
-const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
-  let kind: int = p.current().kind;
+const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
+  let kind: i64 = p.current().kind;
 
   // Array index: left[expr]
   if (kind == TOK::LumaTokenType::TOK_LBRACKET) {
@@ -487,7 +487,7 @@ const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNod
 
   // Member access: left.member or left::member
   if (kind == TOK::LumaTokenType::TOK_DOT || kind == TOK::LumaTokenType::TOK_RESOLVE) {
-    let is_compiletime: int = 0;
+    let is_compiletime: i64 = 0;
     if (kind == TOK::LumaTokenType::TOK_RESOLVE) is_compiletime = 1;
     p.advance();
 
@@ -503,7 +503,7 @@ const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNod
 
   // Postfix ++ / --
   if (kind == TOK::LumaTokenType::TOK_PLUSPLUS || kind == TOK::LumaTokenType::TOK_MINUSMINUS) {
-    let op: int = AST::UnaryType::UNOP_POST_INC;
+    let op: i64 = AST::UnaryType::UNOP_POST_INC;
     if (kind == TOK::LumaTokenType::TOK_MINUSMINUS) op = AST::UnaryType::UNOP_POST_DEC;
     p.advance();
     return EAST::make_unary(op, left, line, col);
@@ -515,14 +515,14 @@ const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: int) *AST::AstNod
 
 #returns_ownership 
 const primary -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
-  let kind: int = p.current().kind;
-  let lit_type: int = PARS::search_literal_map(kind);
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
+  let kind: i64 = p.current().kind;
+  let lit_type: i64 = PARS::search_literal_map(kind);
   
   if (lit_type == AST::LiteralType::LITERAL_INT) {
     let val: *byte = p.get_name();
-    let int_val: int = STRING::atio(val);
+    let int_val: i64 = STRING::atio(val);
     free(val);
     p.advance();
     return EAST::make_literal_int(int_val, line, col);
@@ -530,7 +530,7 @@ const primary -> fn (p: *PARS::Parser) *AST::AstNode {
   
   if (lit_type == AST::LiteralType::LITERAL_FLOAT) {
     let val: *byte = p.get_name();
-    let float_val: int = STRING::atio(val);
+    let float_val: i64 = STRING::atio(val);
     free(val);
     p.advance();
     return EAST::make_literal_float(float_val, line, col);
@@ -557,7 +557,7 @@ const primary -> fn (p: *PARS::Parser) *AST::AstNode {
   
   if (lit_type == AST::LiteralType::LITERAL_BOOL) {
     let val: *byte = p.get_name();
-    let bool_val: int = 0;
+    let bool_val: i64 = 0;
     if (STRING::strcmp(val, "true") == 0) bool_val = 1;
     free(val);
     p.advance();
@@ -575,9 +575,9 @@ const primary -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const unary -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
-  let op:   int = PARS::search_unop_map(p.current().kind);
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
+  let op:   i64 = PARS::search_unop_map(p.current().kind);
   p.advance();
 
   let operand: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_UNARY);
@@ -591,8 +591,8 @@ const unary -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const group -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' for grouping.");
   let expr: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
@@ -602,8 +602,8 @@ const group -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const array -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let elements: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
@@ -631,8 +631,8 @@ const array -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership 
 const deref -> fn (p: *PARS::Parser) *AST::AstNode {
   p.advance();
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   let object: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_UNARY);
   return EAST::make_deref(object, line, col);
 }
@@ -640,8 +640,8 @@ const deref -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership 
 const addr -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance();
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   let object: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);
   return EAST::make_addr(object, line, col);
 }
@@ -649,8 +649,8 @@ const addr -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership 
 const _alloc -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume alloc
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before size for alloc.");
   let size: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -662,8 +662,8 @@ const _alloc -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership 
 const _free -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume free
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before pointer for free.");
   let ptr: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -674,8 +674,8 @@ const _free -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const _cast -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   p.advance(); // consume cast
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for cast.");
@@ -690,8 +690,8 @@ const _cast -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const _input -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   p.advance(); // consume input
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for input.");
@@ -707,8 +707,8 @@ const _input -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership 
 const _system -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume system
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before system command.");
   let command: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_NONE);
@@ -720,8 +720,8 @@ const _system -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership 
 const syscall -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume __syscall__
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' before syscall arguments.");
 
@@ -748,8 +748,8 @@ const syscall -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const _sizeof -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   p.advance();
 
   p.consume(TOK::LumaTokenType::TOK_LT, "Expected '<' before type for sizeof.");
@@ -761,8 +761,8 @@ const _sizeof -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const estruct -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' for struct expression.");
 
@@ -820,8 +820,8 @@ const estruct -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const index -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACKET, "Expected '[' for index expression.");
   let idx: *AST::AstNode = parse_expr(p, PARS::BindingPower::BP_LOWEST);

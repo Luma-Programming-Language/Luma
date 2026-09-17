@@ -6,7 +6,7 @@ const make_buf -> fn () *byte {
     return p;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let p: *byte = make_buf();
     free(p);
     return 0;

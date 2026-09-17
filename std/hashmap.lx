@@ -1,20 +1,20 @@
 @module "std_hashmap"
 
-const INT16_MAX: int = 32767;
+const INT16_MAX: i64 = 32767;
 
-const _strlen -> fn (s: *byte) int {
-  let length: int = 0;
+const _strlen -> fn (s: *byte) i64 {
+  let length: i64 = 0;
   loop (s[length] != cast<byte>(0)) : (++length) {}
   return length;
 }
 
-pub const _strcmp -> fn (s1: *byte, s2: *byte) int {
-  let ls1: int = _strlen(s1);
-  let ls2: int = _strlen(s2);
+pub const _strcmp -> fn (s1: *byte, s2: *byte) i64 {
+  let ls1: i64 = _strlen(s1);
+  let ls2: i64 = _strlen(s2);
 
   if (ls1 != ls2) { return -1; }
 
-  loop[i: int = 0](i < ls1) : (++i) {
+  loop[i: i64 = 0](i < ls1) : (++i) {
     if (s1[i] != s2[i]) { return 1; }
   }
 
@@ -36,20 +36,20 @@ const Node -> struct {
 };
 
 pub const HashMap -> struct {
-  capacity:    int,
-  num_of_elem: int,
+  capacity:    i64,
+  num_of_elem: i64,
 
   arr: **Node,
   
-  hash -> fn (key: *byte) int {
-    let bucket_idx: int  = 0;
-    let sum: int         = 0;
-    let factor: int      = 31;
+  hash -> fn (key: *byte) i64 {
+    let bucket_idx: i64  = 0;
+    let sum: i64         = 0;
+    let factor: i64      = 31;
 
-    let key_len: int = _strlen(key);
-    loop [i: int = 0](i < key_len) : (++i) {
+    let key_len: i64 = _strlen(key);
+    loop [i: i64 = 0](i < key_len) : (++i) {
       sum = ((sum % self.capacity) + 
-              (cast<int>(key[i]) * factor) % self.capacity);
+              (cast<i64>(key[i]) * factor) % self.capacity);
       factor = ((factor % INT16_MAX) * (31 % INT16_MAX)) % INT16_MAX;
     }
 
@@ -59,7 +59,7 @@ pub const HashMap -> struct {
 
   #returns_ownership
   insert -> fn (key: *byte, value: *byte) void {
-    let index: int = self.hash(key);
+    let index: i64 = self.hash(key);
     let new_node: *Node = cast<*Node>(alloc(sizeof<Node>));
     
     new_node.set_node(key, value);
@@ -74,7 +74,7 @@ pub const HashMap -> struct {
   
   #takes_ownership
   delete -> fn (key: *byte) void {
-    let index: int = self.hash(key);
+    let index: i64 = self.hash(key);
 
     let prev: *Node = cast<*Node>(0);
     let curr: *Node = self.arr[index];
@@ -97,7 +97,7 @@ pub const HashMap -> struct {
   },
 
   search -> fn (key: *byte) *byte {
-    let index: int = self.hash(key);
+    let index: i64 = self.hash(key);
 
     let head: *Node = self.arr[index];
 
@@ -125,7 +125,7 @@ pub const init_hashmap -> fn () *HashMap {
 
 #takes_ownership
 pub const free_hashmap -> fn (ptr: *HashMap) void {
-  loop [i: int = 0](i < ptr.capacity) : (++i) {
+  loop [i: i64 = 0](i < ptr.capacity) : (++i) {
     free(ptr.arr[i]);
   } 
 

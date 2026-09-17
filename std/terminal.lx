@@ -30,7 +30,7 @@
 @use "std_termfx" as fx
 
 /// Global flag to track raw mode state
-let raw_mode_enabled: int = 0;
+let raw_mode_enabled: i64 = 0;
 
 /// Enables raw terminal mode for blocking character input
 ///
@@ -165,10 +165,10 @@ pub const getche -> fn () byte {
 ///
 /// # Warning
 /// This consumes the character! Don't use in raw mode.
-pub const kbhit -> fn () int {
+pub const kbhit -> fn () i64 {
     // Non-blocking test only
-    let result: int = system("read -t 0 -n 1 key < /dev/tty");
-    if (result == cast<int>(0)) {
+    let result: i64 = system("read -t 0 -n 1 key < /dev/tty");
+    if (result == cast<i64>(0)) {
         // put the byte back for getch()
         system("read -t 0 -n 1 key < /dev/tty && printf '%s' $key > /tmp/luma_kbhit_buf");
         return 1;
@@ -233,7 +233,7 @@ pub const getpass -> fn (prompt: *byte) *byte {
     
     // Allocate buffer for password
     let password: *byte = cast<*byte>(alloc(256));
-    let i: int = 0;
+    let i: i64 = 0;
     
     system("stty -icanon -echo");
     
@@ -279,7 +279,7 @@ pub const getpass -> fn (prompt: *byte) *byte {
 /// terminal::sleep_ms(1000); // Wait 1 second
 /// output("Done!\n");
 /// ```
-pub const sleep_ms -> fn (ms: int) void {
+pub const sleep_ms -> fn (ms: i64) void {
     let cmd: *byte = cast<*byte>(alloc(64 * sizeof<byte>));
     defer { free(cmd); }
 
@@ -313,9 +313,9 @@ pub const get_terminal_size -> fn () void {
 /// let buffer: [byte; 100];
 /// terminal::get_line("Enter name: ", &buffer[0], 100);
 /// ```
-pub const get_line -> fn (prompt: *byte, buffer: *byte, size: int) void {
+pub const get_line -> fn (prompt: *byte, buffer: *byte, size: i64) void {
   output(prompt);
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < size - 1) : (++i) {
     let c: byte = getch();
     if (c == '\n' || c == '\r') {

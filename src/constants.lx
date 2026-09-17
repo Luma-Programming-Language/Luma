@@ -17,7 +17,7 @@ pub const LumaErrorCode -> enum {
 
 pub const LumaErrorMessage -> struct {
   message: *byte,
-  code: int,
+  code: i64,
 };
 
 pub const LumaBuildConfig -> struct {
@@ -32,8 +32,8 @@ pub const LumaBuildConfig -> struct {
   lsp_mode: bool,
   debug: bool,
   anim: bool,
-  file_count: int,
-  opt_level: int,
+  file_count: i64,
+  opt_level: i64,
   link_files: VEC::Vector,
 };
 

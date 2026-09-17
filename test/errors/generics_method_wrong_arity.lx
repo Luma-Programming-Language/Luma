@@ -3,14 +3,14 @@
 @module "main"
 
 const Thing -> struct {
-  x: int,
+  x: i64,
 
-  static make -> fn<T> (kind: int, line: int) T {
+  static make -> fn<T> (kind: i64, line: i64) T {
     return cast<T>(0);
   },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  let a: *Thing = Thing::make<*Thing, int>(1, 2);
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  let a: *Thing = Thing::make<*Thing, i64>(1, 2);
   return 0;
 }

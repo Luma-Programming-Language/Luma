@@ -6,8 +6,8 @@
 // and let cc fail with "request for member ... in something not a structure
 // or union".
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let b: int = 5;
-    let c: int = b.nonexistent_field;
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let b: i64 = 5;
+    let c: i64 = b.nonexistent_field;
     return c;
 }

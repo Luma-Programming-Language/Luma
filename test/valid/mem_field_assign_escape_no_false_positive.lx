@@ -13,7 +13,7 @@ const fill -> fn (b: *Box) void {
     b.data = nd;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let b: Box = Box { data: cast<*byte>(0) };
     fill(&b);
     free(b.data);

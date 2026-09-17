@@ -2,7 +2,7 @@
 
 const Base -> struct {
 pub:
-  id: int,
+  id: i64,
 };
 
 const Derived -> struct {
@@ -11,7 +11,7 @@ pub:
   name: *byte,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     let d: Derived = Derived { id: 1, name: "hi" };
     output(d.name, "\n");
     return 0;

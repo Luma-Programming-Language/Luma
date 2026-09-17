@@ -22,78 +22,78 @@
 /// runtime environments handle the prefix automatically.
 @os {
     "linux" -> {
-        pub const SYS_READ: int          = 0;
-        pub const SYS_WRITE: int         = 1;
-        pub const SYS_OPEN: int          = 2;
-        pub const SYS_CLOSE: int         = 3;
-        pub const SYS_STAT: int          = 4;
-        pub const SYS_FSTAT: int         = 5;
-        pub const SYS_LSTAT: int         = 6;
-        pub const SYS_LSEEK: int         = 8;
-        pub const SYS_MMAP: int          = 9;
-        pub const SYS_MUNMAP: int        = 11;
-        pub const SYS_BRK: int           = 12;
-        pub const SYS_IOCTL: int         = 16;
-        pub const SYS_PREAD: int         = 17;
-        pub const SYS_PWRITE: int        = 18;
-        pub const SYS_PIPE: int          = 22;
-        pub const SYS_SELECT: int        = 23;
-        pub const SYS_DUP: int           = 32;
-        pub const SYS_DUP2: int          = 33;
-        pub const SYS_GETPID: int        = 39;
-        pub const SYS_FORK: int          = 57;
-        pub const SYS_EXECVE: int        = 59;
-        pub const SYS_EXIT: int          = 60;
-        pub const SYS_WAIT4: int         = 61;
-        pub const SYS_KILL: int          = 62;
-        pub const SYS_FCNTL: int         = 72;
-        pub const SYS_GETCWD: int        = 79;
-        pub const SYS_CHDIR: int         = 80;
-        pub const SYS_MKDIR: int         = 83;
-        pub const SYS_RMDIR: int         = 84;
-        pub const SYS_UNLINK: int        = 87;
-        pub const SYS_GETUID: int        = 102;
-        pub const SYS_GETGID: int        = 104;
-        pub const SYS_GETTIMEOFDAY: int  = 96;
-        pub const SYS_CLOCK_GETTIME: int = 228;
+        pub const SYS_READ: i64          = 0;
+        pub const SYS_WRITE: i64         = 1;
+        pub const SYS_OPEN: i64          = 2;
+        pub const SYS_CLOSE: i64         = 3;
+        pub const SYS_STAT: i64          = 4;
+        pub const SYS_FSTAT: i64         = 5;
+        pub const SYS_LSTAT: i64         = 6;
+        pub const SYS_LSEEK: i64         = 8;
+        pub const SYS_MMAP: i64          = 9;
+        pub const SYS_MUNMAP: i64        = 11;
+        pub const SYS_BRK: i64           = 12;
+        pub const SYS_IOCTL: i64         = 16;
+        pub const SYS_PREAD: i64         = 17;
+        pub const SYS_PWRITE: i64        = 18;
+        pub const SYS_PIPE: i64          = 22;
+        pub const SYS_SELECT: i64        = 23;
+        pub const SYS_DUP: i64           = 32;
+        pub const SYS_DUP2: i64          = 33;
+        pub const SYS_GETPID: i64        = 39;
+        pub const SYS_FORK: i64          = 57;
+        pub const SYS_EXECVE: i64        = 59;
+        pub const SYS_EXIT: i64          = 60;
+        pub const SYS_WAIT4: i64         = 61;
+        pub const SYS_KILL: i64          = 62;
+        pub const SYS_FCNTL: i64         = 72;
+        pub const SYS_GETCWD: i64        = 79;
+        pub const SYS_CHDIR: i64         = 80;
+        pub const SYS_MKDIR: i64         = 83;
+        pub const SYS_RMDIR: i64         = 84;
+        pub const SYS_UNLINK: i64        = 87;
+        pub const SYS_GETUID: i64        = 102;
+        pub const SYS_GETGID: i64        = 104;
+        pub const SYS_GETTIMEOFDAY: i64  = 96;
+        pub const SYS_CLOCK_GETTIME: i64 = 228;
     }
     "macos" -> {
         /// macOS BSD syscall table (x86_64)
         /// Source: xnu/bsd/kern/syscalls.master
-        pub const SYS_READ: int          = 3;
-        pub const SYS_WRITE: int         = 4;
-        pub const SYS_OPEN: int          = 5;
-        pub const SYS_CLOSE: int         = 6;
-        pub const SYS_STAT: int          = 188;   // stat64
-        pub const SYS_FSTAT: int         = 189;   // fstat64
-        pub const SYS_LSTAT: int         = 190;   // lstat64
-        pub const SYS_LSEEK: int         = 199;   // lseek (64-bit)
-        pub const SYS_MMAP: int          = 197;
-        pub const SYS_MUNMAP: int        = 73;
-        pub const SYS_BRK: int           = 17;
-        pub const SYS_IOCTL: int         = 54;
-        pub const SYS_PREAD: int         = 153;
-        pub const SYS_PWRITE: int        = 154;
-        pub const SYS_PIPE: int          = 42;
-        pub const SYS_SELECT: int        = 93;
-        pub const SYS_DUP: int           = 41;
-        pub const SYS_DUP2: int          = 90;
-        pub const SYS_GETPID: int        = 20;
-        pub const SYS_FORK: int          = 2;
-        pub const SYS_EXECVE: int        = 59;
-        pub const SYS_EXIT: int          = 1;
-        pub const SYS_WAIT4: int         = 7;
-        pub const SYS_KILL: int          = 37;
-        pub const SYS_FCNTL: int         = 92;
-        pub const SYS_GETCWD: int        = 326;
-        pub const SYS_CHDIR: int         = 12;
-        pub const SYS_MKDIR: int         = 136;
-        pub const SYS_RMDIR: int         = 137;
-        pub const SYS_UNLINK: int        = 10;
-        pub const SYS_GETUID: int        = 24;
-        pub const SYS_GETGID: int        = 47;
-        pub const SYS_GETTIMEOFDAY: int  = 116;
-        pub const SYS_CLOCK_GETTIME: int = 427;
+        pub const SYS_READ: i64          = 3;
+        pub const SYS_WRITE: i64         = 4;
+        pub const SYS_OPEN: i64          = 5;
+        pub const SYS_CLOSE: i64         = 6;
+        pub const SYS_STAT: i64          = 188;   // stat64
+        pub const SYS_FSTAT: i64         = 189;   // fstat64
+        pub const SYS_LSTAT: i64         = 190;   // lstat64
+        pub const SYS_LSEEK: i64         = 199;   // lseek (64-bit)
+        pub const SYS_MMAP: i64          = 197;
+        pub const SYS_MUNMAP: i64        = 73;
+        pub const SYS_BRK: i64           = 17;
+        pub const SYS_IOCTL: i64         = 54;
+        pub const SYS_PREAD: i64         = 153;
+        pub const SYS_PWRITE: i64        = 154;
+        pub const SYS_PIPE: i64          = 42;
+        pub const SYS_SELECT: i64        = 93;
+        pub const SYS_DUP: i64           = 41;
+        pub const SYS_DUP2: i64          = 90;
+        pub const SYS_GETPID: i64        = 20;
+        pub const SYS_FORK: i64          = 2;
+        pub const SYS_EXECVE: i64        = 59;
+        pub const SYS_EXIT: i64          = 1;
+        pub const SYS_WAIT4: i64         = 7;
+        pub const SYS_KILL: i64          = 37;
+        pub const SYS_FCNTL: i64         = 92;
+        pub const SYS_GETCWD: i64        = 326;
+        pub const SYS_CHDIR: i64         = 12;
+        pub const SYS_MKDIR: i64         = 136;
+        pub const SYS_RMDIR: i64         = 137;
+        pub const SYS_UNLINK: i64        = 10;
+        pub const SYS_GETUID: i64        = 24;
+        pub const SYS_GETGID: i64        = 47;
+        pub const SYS_GETTIMEOFDAY: i64  = 116;
+        pub const SYS_CLOCK_GETTIME: i64 = 427;
     }
     "windows64" -> {
         // Placeholder values only — Windows has no raw-syscall mechanism
@@ -104,40 +104,40 @@
         // linux/macos definitions (see lsp_transport.lx) — real calls into
         // any of the wrapper functions below would be meaningless on
         // Windows regardless of what these numbers are.
-        pub const SYS_READ: int          = -1;
-        pub const SYS_WRITE: int         = -1;
-        pub const SYS_OPEN: int          = -1;
-        pub const SYS_CLOSE: int         = -1;
-        pub const SYS_STAT: int          = -1;
-        pub const SYS_FSTAT: int         = -1;
-        pub const SYS_LSTAT: int         = -1;
-        pub const SYS_LSEEK: int         = -1;
-        pub const SYS_MMAP: int          = -1;
-        pub const SYS_MUNMAP: int        = -1;
-        pub const SYS_BRK: int           = -1;
-        pub const SYS_IOCTL: int         = -1;
-        pub const SYS_PREAD: int         = -1;
-        pub const SYS_PWRITE: int        = -1;
-        pub const SYS_PIPE: int          = -1;
-        pub const SYS_SELECT: int        = -1;
-        pub const SYS_DUP: int           = -1;
-        pub const SYS_DUP2: int          = -1;
-        pub const SYS_GETPID: int        = -1;
-        pub const SYS_FORK: int          = -1;
-        pub const SYS_EXECVE: int        = -1;
-        pub const SYS_EXIT: int          = -1;
-        pub const SYS_WAIT4: int         = -1;
-        pub const SYS_KILL: int          = -1;
-        pub const SYS_FCNTL: int         = -1;
-        pub const SYS_GETCWD: int        = -1;
-        pub const SYS_CHDIR: int         = -1;
-        pub const SYS_MKDIR: int         = -1;
-        pub const SYS_RMDIR: int         = -1;
-        pub const SYS_UNLINK: int        = -1;
-        pub const SYS_GETUID: int        = -1;
-        pub const SYS_GETGID: int        = -1;
-        pub const SYS_GETTIMEOFDAY: int  = -1;
-        pub const SYS_CLOCK_GETTIME: int = -1;
+        pub const SYS_READ: i64          = -1;
+        pub const SYS_WRITE: i64         = -1;
+        pub const SYS_OPEN: i64          = -1;
+        pub const SYS_CLOSE: i64         = -1;
+        pub const SYS_STAT: i64          = -1;
+        pub const SYS_FSTAT: i64         = -1;
+        pub const SYS_LSTAT: i64         = -1;
+        pub const SYS_LSEEK: i64         = -1;
+        pub const SYS_MMAP: i64          = -1;
+        pub const SYS_MUNMAP: i64        = -1;
+        pub const SYS_BRK: i64           = -1;
+        pub const SYS_IOCTL: i64         = -1;
+        pub const SYS_PREAD: i64         = -1;
+        pub const SYS_PWRITE: i64        = -1;
+        pub const SYS_PIPE: i64          = -1;
+        pub const SYS_SELECT: i64        = -1;
+        pub const SYS_DUP: i64           = -1;
+        pub const SYS_DUP2: i64          = -1;
+        pub const SYS_GETPID: i64        = -1;
+        pub const SYS_FORK: i64          = -1;
+        pub const SYS_EXECVE: i64        = -1;
+        pub const SYS_EXIT: i64          = -1;
+        pub const SYS_WAIT4: i64         = -1;
+        pub const SYS_KILL: i64          = -1;
+        pub const SYS_FCNTL: i64         = -1;
+        pub const SYS_GETCWD: i64        = -1;
+        pub const SYS_CHDIR: i64         = -1;
+        pub const SYS_MKDIR: i64         = -1;
+        pub const SYS_RMDIR: i64         = -1;
+        pub const SYS_UNLINK: i64        = -1;
+        pub const SYS_GETUID: i64        = -1;
+        pub const SYS_GETGID: i64        = -1;
+        pub const SYS_GETTIMEOFDAY: i64  = -1;
+        pub const SYS_CLOCK_GETTIME: i64 = -1;
     }
 }
 
@@ -145,290 +145,290 @@
 /// O_ flags are mostly identical between Linux and macOS with a few exceptions.
 
 /// These three are the same everywhere
-pub const O_RDONLY: int   = 0;
-pub const O_WRONLY: int   = 1;
-pub const O_RDWR: int     = 2;
+pub const O_RDONLY: i64   = 0;
+pub const O_WRONLY: i64   = 1;
+pub const O_RDWR: i64     = 2;
 
 @os {
     "linux" -> {
-        pub const O_CREAT: int     = 64;
-        pub const O_EXCL: int      = 128;
-        pub const O_NOCTTY: int    = 256;
-        pub const O_TRUNC: int     = 512;
-        pub const O_APPEND: int    = 1024;
-        pub const O_NONBLOCK: int  = 2048;
-        pub const O_DIRECTORY: int = 65536;
-        pub const O_CLOEXEC: int   = 524288;
+        pub const O_CREAT: i64     = 64;
+        pub const O_EXCL: i64      = 128;
+        pub const O_NOCTTY: i64    = 256;
+        pub const O_TRUNC: i64     = 512;
+        pub const O_APPEND: i64    = 1024;
+        pub const O_NONBLOCK: i64  = 2048;
+        pub const O_DIRECTORY: i64 = 65536;
+        pub const O_CLOEXEC: i64   = 524288;
     }
     "macos" -> {
-        pub const O_CREAT: int     = 512;
-        pub const O_EXCL: int      = 2048;
-        pub const O_NOCTTY: int    = 131072;
-        pub const O_TRUNC: int     = 1024;
-        pub const O_APPEND: int    = 8;
-        pub const O_NONBLOCK: int  = 4;
-        pub const O_DIRECTORY: int = 1048576;
-        pub const O_CLOEXEC: int   = 16777216;
+        pub const O_CREAT: i64     = 512;
+        pub const O_EXCL: i64      = 2048;
+        pub const O_NOCTTY: i64    = 131072;
+        pub const O_TRUNC: i64     = 1024;
+        pub const O_APPEND: i64    = 8;
+        pub const O_NONBLOCK: i64  = 4;
+        pub const O_DIRECTORY: i64 = 1048576;
+        pub const O_CLOEXEC: i64   = 16777216;
     }
     "windows64" -> {
         // Placeholders — see the SYS_* windows64 arm above.
-        pub const O_CREAT: int     = -1;
-        pub const O_EXCL: int      = -1;
-        pub const O_NOCTTY: int    = -1;
-        pub const O_TRUNC: int     = -1;
-        pub const O_APPEND: int    = -1;
-        pub const O_NONBLOCK: int  = -1;
-        pub const O_DIRECTORY: int = -1;
-        pub const O_CLOEXEC: int   = -1;
+        pub const O_CREAT: i64     = -1;
+        pub const O_EXCL: i64      = -1;
+        pub const O_NOCTTY: i64    = -1;
+        pub const O_TRUNC: i64     = -1;
+        pub const O_APPEND: i64    = -1;
+        pub const O_NONBLOCK: i64  = -1;
+        pub const O_DIRECTORY: i64 = -1;
+        pub const O_CLOEXEC: i64   = -1;
     }
 }
 
 /// FILE PERMISSIONS  (POSIX — identical on both platforms)
 
-pub const S_IRWXU: int = 448;
-pub const S_IRUSR: int = 256;
-pub const S_IWUSR: int = 128;
-pub const S_IXUSR: int = 64;
+pub const S_IRWXU: i64 = 448;
+pub const S_IRUSR: i64 = 256;
+pub const S_IWUSR: i64 = 128;
+pub const S_IXUSR: i64 = 64;
 
-pub const S_IRWXG: int = 56;
-pub const S_IRGRP: int = 32;
-pub const S_IWGRP: int = 16;
-pub const S_IXGRP: int = 8;
+pub const S_IRWXG: i64 = 56;
+pub const S_IRGRP: i64 = 32;
+pub const S_IWGRP: i64 = 16;
+pub const S_IXGRP: i64 = 8;
 
-pub const S_IRWXO: int = 7;
-pub const S_IROTH: int = 4;
-pub const S_IWOTH: int = 2;
-pub const S_IXOTH: int = 1;
+pub const S_IRWXO: i64 = 7;
+pub const S_IROTH: i64 = 4;
+pub const S_IWOTH: i64 = 2;
+pub const S_IXOTH: i64 = 1;
 
-pub const MODE_0644: int = 420;
-pub const MODE_0755: int = 493;
-pub const MODE_0777: int = 511;
+pub const MODE_0644: i64 = 420;
+pub const MODE_0755: i64 = 493;
+pub const MODE_0777: i64 = 511;
 
 /// LSEEK WHENCE  (POSIX — identical on both platforms)
 
-pub const SEEK_SET: int = 0;
-pub const SEEK_CUR: int = 1;
-pub const SEEK_END: int = 2;
+pub const SEEK_SET: i64 = 0;
+pub const SEEK_CUR: i64 = 1;
+pub const SEEK_END: i64 = 2;
 
 /// STANDARD FILE DESCRIPTORS  (identical everywhere)
 
-pub const STDIN: int  = 0;
-pub const STDOUT: int = 1;
-pub const STDERR: int = 2;
+pub const STDIN: i64  = 0;
+pub const STDOUT: i64 = 1;
+pub const STDERR: i64 = 2;
 
 /// MMAP PROTECTION FLAGS  (POSIX — identical on both platforms)
 
-pub const PROT_NONE: int  = 0;
-pub const PROT_READ: int  = 1;
-pub const PROT_WRITE: int = 2;
-pub const PROT_EXEC: int  = 4;
+pub const PROT_NONE: i64  = 0;
+pub const PROT_READ: i64  = 1;
+pub const PROT_WRITE: i64 = 2;
+pub const PROT_EXEC: i64  = 4;
 
 /// MMAP FLAGS
 /// MAP_ANONYMOUS differs: Linux uses 32, macOS uses 4096.
 
-pub const MAP_SHARED: int  = 1;
-pub const MAP_PRIVATE: int = 2;
-pub const MAP_FIXED: int   = 16;
+pub const MAP_SHARED: i64  = 1;
+pub const MAP_PRIVATE: i64 = 2;
+pub const MAP_FIXED: i64   = 16;
 
 @os {
     "linux" -> {
-        pub const MAP_ANONYMOUS: int = 32;
-        pub const MAP_ANON: int      = 32;
+        pub const MAP_ANONYMOUS: i64 = 32;
+        pub const MAP_ANON: i64      = 32;
     }
     "macos" -> {
-        pub const MAP_ANONYMOUS: int = 4096;
-        pub const MAP_ANON: int      = 4096;
+        pub const MAP_ANONYMOUS: i64 = 4096;
+        pub const MAP_ANON: i64      = 4096;
     }
     "windows64" -> {
         // Placeholders — see the SYS_* windows64 arm above.
-        pub const MAP_ANONYMOUS: int = -1;
-        pub const MAP_ANON: int      = -1;
+        pub const MAP_ANONYMOUS: i64 = -1;
+        pub const MAP_ANON: i64      = -1;
     }
 }
 
 /// SIGNALS  (mostly POSIX, but SIGBUS/SIGCHLD positions differ slightly)
 
-pub const SIGHUP: int  = 1;
-pub const SIGINT: int  = 2;
-pub const SIGQUIT: int = 3;
-pub const SIGILL: int  = 4;
-pub const SIGTRAP: int = 5;
-pub const SIGABRT: int = 6;
-pub const SIGFPE: int  = 8;
-pub const SIGKILL: int = 9;
-pub const SIGSEGV: int = 11;
-pub const SIGPIPE: int = 13;
-pub const SIGALRM: int = 14;
-pub const SIGTERM: int = 15;
+pub const SIGHUP: i64  = 1;
+pub const SIGINT: i64  = 2;
+pub const SIGQUIT: i64 = 3;
+pub const SIGILL: i64  = 4;
+pub const SIGTRAP: i64 = 5;
+pub const SIGABRT: i64 = 6;
+pub const SIGFPE: i64  = 8;
+pub const SIGKILL: i64 = 9;
+pub const SIGSEGV: i64 = 11;
+pub const SIGPIPE: i64 = 13;
+pub const SIGALRM: i64 = 14;
+pub const SIGTERM: i64 = 15;
 
 @os {
     "linux" -> {
-        pub const SIGBUS: int  = 7;
-        pub const SIGCHLD: int = 17;
+        pub const SIGBUS: i64  = 7;
+        pub const SIGCHLD: i64 = 17;
     }
     "macos" -> {
-        pub const SIGBUS: int  = 10;
-        pub const SIGCHLD: int = 20;
+        pub const SIGBUS: i64  = 10;
+        pub const SIGCHLD: i64 = 20;
     }
     "windows64" -> {
         // Placeholders — see the SYS_* windows64 arm above.
-        pub const SIGBUS: int  = -1;
-        pub const SIGCHLD: int = -1;
+        pub const SIGBUS: i64  = -1;
+        pub const SIGCHLD: i64 = -1;
     }
 }
 
 /// WAIT FLAGS  (identical on both platforms)
 
-pub const WNOHANG: int   = 1;
-pub const WUNTRACED: int = 2;
+pub const WNOHANG: i64   = 1;
+pub const WUNTRACED: i64 = 2;
 
 /// ERRNO VALUES  (POSIX — same numbers on both platforms for these common ones)
 
-pub const EPERM: int   = 1;
-pub const ENOENT: int  = 2;
-pub const ESRCH: int   = 3;
-pub const EINTR: int   = 4;
-pub const EIO: int     = 5;
-pub const ENXIO: int   = 6;
-pub const E2BIG: int   = 7;
-pub const EBADF: int   = 9;
-pub const ECHILD: int  = 10;
-pub const EAGAIN: int  = 11;
-pub const ENOMEM: int  = 12;
-pub const EACCES: int  = 13;
-pub const EFAULT: int  = 14;
-pub const EBUSY: int   = 16;
-pub const EEXIST: int  = 17;
-pub const ENODEV: int  = 19;
-pub const ENOTDIR: int = 20;
-pub const EISDIR: int  = 21;
-pub const EINVAL: int  = 22;
-pub const ENFILE: int  = 23;
-pub const EMFILE: int  = 24;
-pub const ENOSPC: int  = 28;
-pub const EPIPE: int   = 32;
+pub const EPERM: i64   = 1;
+pub const ENOENT: i64  = 2;
+pub const ESRCH: i64   = 3;
+pub const EINTR: i64   = 4;
+pub const EIO: i64     = 5;
+pub const ENXIO: i64   = 6;
+pub const E2BIG: i64   = 7;
+pub const EBADF: i64   = 9;
+pub const ECHILD: i64  = 10;
+pub const EAGAIN: i64  = 11;
+pub const ENOMEM: i64  = 12;
+pub const EACCES: i64  = 13;
+pub const EFAULT: i64  = 14;
+pub const EBUSY: i64   = 16;
+pub const EEXIST: i64  = 17;
+pub const ENODEV: i64  = 19;
+pub const ENOTDIR: i64 = 20;
+pub const EISDIR: i64  = 21;
+pub const EINVAL: i64  = 22;
+pub const ENFILE: i64  = 23;
+pub const EMFILE: i64  = 24;
+pub const ENOSPC: i64  = 28;
+pub const EPIPE: i64   = 32;
 
 @os {
     "linux" -> {
     /// PROCESS MANAGEMENT
     
     /// Terminate the current process with the given exit code.
-    pub const exit -> fn (code: int) void {
+    pub const exit -> fn (code: i64) void {
         __syscall__(SYS_EXIT, code);
     }
     
     /// Fork the current process. Returns the child PID in the parent, 0 in the child.
-    pub const fork -> fn () int {
+    pub const fork -> fn () i64 {
         return __syscall__(SYS_FORK);
     }
     
     /// Return the PID of the calling process.
-    pub const getpid -> fn () int {
+    pub const getpid -> fn () i64 {
         return __syscall__(SYS_GETPID);
     }
     
     /// Return the real user ID of the calling process.
-    pub const getuid -> fn () int {
+    pub const getuid -> fn () i64 {
         return __syscall__(SYS_GETUID);
     }
     
     /// Return the real group ID of the calling process.
-    pub const getgid -> fn () int {
+    pub const getgid -> fn () i64 {
         return __syscall__(SYS_GETGID);
     }
     
     /// Send signal `sig` to process `pid`.
-    pub const kill -> fn (pid: int, sig: int) int {
+    pub const kill -> fn (pid: i64, sig: i64) i64 {
         return __syscall__(SYS_KILL, pid, sig);
     }
     
     /// Wait for a child process. Stores exit status in `status` if non-null.
-    pub const wait4 -> fn (pid: int, status: *int, options: int, rusage: *void) int {
-        return __syscall__(SYS_WAIT4, pid, cast<int>(status), options, cast<int>(rusage));
+    pub const wait4 -> fn (pid: i64, status: *i64, options: i64, rusage: *void) i64 {
+        return __syscall__(SYS_WAIT4, pid, cast<i64>(status), options, cast<i64>(rusage));
     }
     
     /// Replace the current process image with a new one.
-    pub const execve -> fn (path: *byte, argv: **byte, envp: **byte) int {
-        return __syscall__(SYS_EXECVE, cast<int>(path), cast<int>(argv), cast<int>(envp));
+    pub const execve -> fn (path: *byte, argv: **byte, envp: **byte) i64 {
+        return __syscall__(SYS_EXECVE, cast<i64>(path), cast<i64>(argv), cast<i64>(envp));
     }
     
     /// FILE OPERATIONS
     
     /// Read up to `count` bytes from `fd` into `buf`. Returns bytes read or a negative errno.
-    pub const read -> fn (fd: int, buf: *void, count: int) int {
-        return __syscall__(SYS_READ, fd, cast<int>(buf), count);
+    pub const read -> fn (fd: i64, buf: *void, count: i64) i64 {
+        return __syscall__(SYS_READ, fd, cast<i64>(buf), count);
     }
     
     /// Write up to `count` bytes from `buf` to `fd`. Returns bytes written or a negative errno.
-    pub const write -> fn (fd: int, buf: *void, count: int) int {
-        return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
+    pub const write -> fn (fd: i64, buf: *void, count: i64) i64 {
+        return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count);
     }
     
     /// Open a file at `path` with the given `flags` and `mode`. Returns an fd or a negative errno.
-    pub const open -> fn (path: *byte, flags: int, mode: int) int {
-        return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
+    pub const open -> fn (path: *byte, flags: i64, mode: i64) i64 {
+        return __syscall__(SYS_OPEN, cast<i64>(path), flags, mode);
     }
     
     /// Close the file descriptor `fd`.
-    pub const close -> fn (fd: int) int {
+    pub const close -> fn (fd: i64) i64 {
         return __syscall__(SYS_CLOSE, fd);
     }
     
     /// Reposition the file offset of `fd`. Returns the new offset or a negative errno.
-    pub const lseek -> fn (fd: int, offset: int, whence: int) int {
+    pub const lseek -> fn (fd: i64, offset: i64, whence: i64) i64 {
         return __syscall__(SYS_LSEEK, fd, offset, whence);
     }
     
     /// Read up to `count` bytes from `fd` at `offset` without changing the file position.
-    pub const pread -> fn (fd: int, buf: *void, count: int, offset: int) int {
-        return __syscall__(SYS_PREAD, fd, cast<int>(buf), count, offset);
+    pub const pread -> fn (fd: i64, buf: *void, count: i64, offset: i64) i64 {
+        return __syscall__(SYS_PREAD, fd, cast<i64>(buf), count, offset);
     }
     
     /// Write up to `count` bytes to `fd` at `offset` without changing the file position.
-    pub const pwrite -> fn (fd: int, buf: *void, count: int, offset: int) int {
-        return __syscall__(SYS_PWRITE, fd, cast<int>(buf), count, offset);
+    pub const pwrite -> fn (fd: i64, buf: *void, count: i64, offset: i64) i64 {
+        return __syscall__(SYS_PWRITE, fd, cast<i64>(buf), count, offset);
     }
     
     /// Duplicate file descriptor `oldfd`. Returns the new fd or a negative errno.
-    pub const dup -> fn (oldfd: int) int {
+    pub const dup -> fn (oldfd: i64) i64 {
         return __syscall__(SYS_DUP, oldfd);
     }
     
     /// Duplicate `oldfd` to `newfd`, closing `newfd` first if it is open.
-    pub const dup2 -> fn (oldfd: int, newfd: int) int {
+    pub const dup2 -> fn (oldfd: i64, newfd: i64) i64 {
         return __syscall__(SYS_DUP2, oldfd, newfd);
     }
     
     /// Create a pipe. Writes the read and write fds into `pipefd[0]` and `pipefd[1]`.
-    pub const pipe -> fn (pipefd: *int) int {
-        return __syscall__(SYS_PIPE, cast<int>(pipefd));
+    pub const pipe -> fn (pipefd: *i64) i64 {
+        return __syscall__(SYS_PIPE, cast<i64>(pipefd));
     }
     
     /// Delete the file at `path`.
-    pub const unlink -> fn (path: *byte) int {
-        return __syscall__(SYS_UNLINK, cast<int>(path));
+    pub const unlink -> fn (path: *byte) i64 {
+        return __syscall__(SYS_UNLINK, cast<i64>(path));
     }
     
     /// DIRECTORY OPERATIONS
     
     /// Create a directory at `path` with the given `mode`.
-    pub const mkdir -> fn (path: *byte, mode: int) int {
-        return __syscall__(SYS_MKDIR, cast<int>(path), mode);
+    pub const mkdir -> fn (path: *byte, mode: i64) i64 {
+        return __syscall__(SYS_MKDIR, cast<i64>(path), mode);
     }
     
     /// Remove the empty directory at `path`.
-    pub const rmdir -> fn (path: *byte) int {
-        return __syscall__(SYS_RMDIR, cast<int>(path));
+    pub const rmdir -> fn (path: *byte) i64 {
+        return __syscall__(SYS_RMDIR, cast<i64>(path));
     }
     
     /// Change the working directory to `path`.
-    pub const chdir -> fn (path: *byte) int {
-        return __syscall__(SYS_CHDIR, cast<int>(path));
+    pub const chdir -> fn (path: *byte) i64 {
+        return __syscall__(SYS_CHDIR, cast<i64>(path));
     }
     
     /// Get the current working directory into `buf`. Returns `buf` on success, null on failure.
-    pub const getcwd -> fn (buf: *byte, size: int) *byte {
-        let result: int = __syscall__(SYS_GETCWD, cast<int>(buf), size);
+    pub const getcwd -> fn (buf: *byte, size: i64) *byte {
+        let result: i64 = __syscall__(SYS_GETCWD, cast<i64>(buf), size);
         if (result < 0) {
             return cast<*byte>(0);
         }
@@ -438,30 +438,30 @@ pub const EPIPE: int   = 32;
     /// MEMORY MANAGEMENT
     
     /// Adjust the program break to `addr`. Returns the new break or a negative errno.
-    pub const brk -> fn (addr: *void) int {
-        return __syscall__(SYS_BRK, cast<int>(addr));
+    pub const brk -> fn (addr: *void) i64 {
+        return __syscall__(SYS_BRK, cast<i64>(addr));
     }
     
     /// Map memory. Returns a pointer to the mapped region, or a negative errno cast to *void.
-    pub const mmap -> fn (addr: *void, length: int, prot: int, flags: int, fd: int, offset: int) *void {
-        let result: int = __syscall__(SYS_MMAP, cast<int>(addr), length, prot, flags, fd, offset);
+    pub const mmap -> fn (addr: *void, length: i64, prot: i64, flags: i64, fd: i64, offset: i64) *void {
+        let result: i64 = __syscall__(SYS_MMAP, cast<i64>(addr), length, prot, flags, fd, offset);
         return cast<*void>(result);
     }
     
     /// Unmap a previously mapped region.
-    pub const munmap -> fn (addr: *void, length: int) int {
-        return __syscall__(SYS_MUNMAP, cast<int>(addr), length);
+    pub const munmap -> fn (addr: *void, length: i64) i64 {
+        return __syscall__(SYS_MUNMAP, cast<i64>(addr), length);
     }
     
     /// HELPER FUNCTIONS
     
     /// Returns true if `result` represents a syscall error (i.e. in the range [-4095, -1]).
-    pub const is_error -> fn (result: int) bool {
+    pub const is_error -> fn (result: i64) bool {
         return result < 0 && result >= -4095;
     }
     
     /// Extract the errno value from a failed syscall result. Returns 0 if not an error.
-    pub const get_errno -> fn (result: int) int {
+    pub const get_errno -> fn (result: i64) i64 {
         if (is_error(result)) {
             return -result;
         }
@@ -469,14 +469,14 @@ pub const EPIPE: int   = 32;
     }
     
     /// Write a null-terminated string to `fd`. Returns bytes written or a negative errno.
-    pub const write_str -> fn (fd: int, s: *byte) int {
-        let len: int = 0;
+    pub const write_str -> fn (fd: i64, s: *byte) i64 {
+        let len: i64 = 0;
         loop (s[len] != cast<byte>(0)) : (++len) {}
         return write(fd, cast<*void>(s), len);
     }
     
     /// Write a null-terminated string to stderr.
-    pub const eprint -> fn (s: *byte) int {
+    pub const eprint -> fn (s: *byte) i64 {
         return write_str(STDERR, s);
     }
     
@@ -485,122 +485,122 @@ pub const EPIPE: int   = 32;
     /// PROCESS MANAGEMENT
     
     /// Terminate the current process with the given exit code.
-    pub const exit -> fn (code: int) void {
+    pub const exit -> fn (code: i64) void {
         __syscall__(SYS_EXIT, code);
     }
     
     /// Fork the current process. Returns the child PID in the parent, 0 in the child.
-    pub const fork -> fn () int {
+    pub const fork -> fn () i64 {
         return __syscall__(SYS_FORK);
     }
     
     /// Return the PID of the calling process.
-    pub const getpid -> fn () int {
+    pub const getpid -> fn () i64 {
         return __syscall__(SYS_GETPID);
     }
     
     /// Return the real user ID of the calling process.
-    pub const getuid -> fn () int {
+    pub const getuid -> fn () i64 {
         return __syscall__(SYS_GETUID);
     }
     
     /// Return the real group ID of the calling process.
-    pub const getgid -> fn () int {
+    pub const getgid -> fn () i64 {
         return __syscall__(SYS_GETGID);
     }
     
     /// Send signal `sig` to process `pid`.
-    pub const kill -> fn (pid: int, sig: int) int {
+    pub const kill -> fn (pid: i64, sig: i64) i64 {
         return __syscall__(SYS_KILL, pid, sig);
     }
     
     /// Wait for a child process. Stores exit status in `status` if non-null.
-    pub const wait4 -> fn (pid: int, status: *int, options: int, rusage: *void) int {
-        return __syscall__(SYS_WAIT4, pid, cast<int>(status), options, cast<int>(rusage));
+    pub const wait4 -> fn (pid: i64, status: *i64, options: i64, rusage: *void) i64 {
+        return __syscall__(SYS_WAIT4, pid, cast<i64>(status), options, cast<i64>(rusage));
     }
     
     /// Replace the current process image with a new one.
-    pub const execve -> fn (path: *byte, argv: **byte, envp: **byte) int {
-        return __syscall__(SYS_EXECVE, cast<int>(path), cast<int>(argv), cast<int>(envp));
+    pub const execve -> fn (path: *byte, argv: **byte, envp: **byte) i64 {
+        return __syscall__(SYS_EXECVE, cast<i64>(path), cast<i64>(argv), cast<i64>(envp));
     }
     
     /// FILE OPERATIONS
     
     /// Read up to `count` bytes from `fd` into `buf`. Returns bytes read or a negative errno.
-    pub const read -> fn (fd: int, buf: *void, count: int) int {
-        return __syscall__(SYS_READ, fd, cast<int>(buf), count);
+    pub const read -> fn (fd: i64, buf: *void, count: i64) i64 {
+        return __syscall__(SYS_READ, fd, cast<i64>(buf), count);
     }
     
     /// Write up to `count` bytes from `buf` to `fd`. Returns bytes written or a negative errno.
-    pub const write -> fn (fd: int, buf: *void, count: int) int {
-        return __syscall__(SYS_WRITE, fd, cast<int>(buf), count);
+    pub const write -> fn (fd: i64, buf: *void, count: i64) i64 {
+        return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count);
     }
     
     /// Open a file at `path` with the given `flags` and `mode`. Returns an fd or a negative errno.
-    pub const open -> fn (path: *byte, flags: int, mode: int) int {
-        return __syscall__(SYS_OPEN, cast<int>(path), flags, mode);
+    pub const open -> fn (path: *byte, flags: i64, mode: i64) i64 {
+        return __syscall__(SYS_OPEN, cast<i64>(path), flags, mode);
     }
     
     /// Close the file descriptor `fd`.
-    pub const close -> fn (fd: int) int {
+    pub const close -> fn (fd: i64) i64 {
         return __syscall__(SYS_CLOSE, fd);
     }
     
     /// Reposition the file offset of `fd`. Returns the new offset or a negative errno.
-    pub const lseek -> fn (fd: int, offset: int, whence: int) int {
+    pub const lseek -> fn (fd: i64, offset: i64, whence: i64) i64 {
         return __syscall__(SYS_LSEEK, fd, offset, whence);
     }
     
     /// Read up to `count` bytes from `fd` at `offset` without changing the file position.
-    pub const pread -> fn (fd: int, buf: *void, count: int, offset: int) int {
-        return __syscall__(SYS_PREAD, fd, cast<int>(buf), count, offset);
+    pub const pread -> fn (fd: i64, buf: *void, count: i64, offset: i64) i64 {
+        return __syscall__(SYS_PREAD, fd, cast<i64>(buf), count, offset);
     }
     
     /// Write up to `count` bytes to `fd` at `offset` without changing the file position.
-    pub const pwrite -> fn (fd: int, buf: *void, count: int, offset: int) int {
-        return __syscall__(SYS_PWRITE, fd, cast<int>(buf), count, offset);
+    pub const pwrite -> fn (fd: i64, buf: *void, count: i64, offset: i64) i64 {
+        return __syscall__(SYS_PWRITE, fd, cast<i64>(buf), count, offset);
     }
     
     /// Duplicate file descriptor `oldfd`. Returns the new fd or a negative errno.
-    pub const dup -> fn (oldfd: int) int {
+    pub const dup -> fn (oldfd: i64) i64 {
         return __syscall__(SYS_DUP, oldfd);
     }
     
     /// Duplicate `oldfd` to `newfd`, closing `newfd` first if it is open.
-    pub const dup2 -> fn (oldfd: int, newfd: int) int {
+    pub const dup2 -> fn (oldfd: i64, newfd: i64) i64 {
         return __syscall__(SYS_DUP2, oldfd, newfd);
     }
     
     /// Create a pipe. Writes the read and write fds into `pipefd[0]` and `pipefd[1]`.
-    pub const pipe -> fn (pipefd: *int) int {
-        return __syscall__(SYS_PIPE, cast<int>(pipefd));
+    pub const pipe -> fn (pipefd: *i64) i64 {
+        return __syscall__(SYS_PIPE, cast<i64>(pipefd));
     }
     
     /// Delete the file at `path`.
-    pub const unlink -> fn (path: *byte) int {
-        return __syscall__(SYS_UNLINK, cast<int>(path));
+    pub const unlink -> fn (path: *byte) i64 {
+        return __syscall__(SYS_UNLINK, cast<i64>(path));
     }
     
     /// DIRECTORY OPERATIONS
     
     /// Create a directory at `path` with the given `mode`.
-    pub const mkdir -> fn (path: *byte, mode: int) int {
-        return __syscall__(SYS_MKDIR, cast<int>(path), mode);
+    pub const mkdir -> fn (path: *byte, mode: i64) i64 {
+        return __syscall__(SYS_MKDIR, cast<i64>(path), mode);
     }
     
     /// Remove the empty directory at `path`.
-    pub const rmdir -> fn (path: *byte) int {
-        return __syscall__(SYS_RMDIR, cast<int>(path));
+    pub const rmdir -> fn (path: *byte) i64 {
+        return __syscall__(SYS_RMDIR, cast<i64>(path));
     }
     
     /// Change the working directory to `path`.
-    pub const chdir -> fn (path: *byte) int {
-        return __syscall__(SYS_CHDIR, cast<int>(path));
+    pub const chdir -> fn (path: *byte) i64 {
+        return __syscall__(SYS_CHDIR, cast<i64>(path));
     }
     
     /// Get the current working directory into `buf`. Returns `buf` on success, null on failure.
-    pub const getcwd -> fn (buf: *byte, size: int) *byte {
-        let result: int = __syscall__(SYS_GETCWD, cast<int>(buf), size);
+    pub const getcwd -> fn (buf: *byte, size: i64) *byte {
+        let result: i64 = __syscall__(SYS_GETCWD, cast<i64>(buf), size);
         if (result < 0) {
             return cast<*byte>(0);
         }
@@ -610,30 +610,30 @@ pub const EPIPE: int   = 32;
     /// MEMORY MANAGEMENT
     
     /// Adjust the program break to `addr`. Returns the new break or a negative errno.
-    pub const brk -> fn (addr: *void) int {
-        return __syscall__(SYS_BRK, cast<int>(addr));
+    pub const brk -> fn (addr: *void) i64 {
+        return __syscall__(SYS_BRK, cast<i64>(addr));
     }
     
     /// Map memory. Returns a pointer to the mapped region, or a negative errno cast to *void.
-    pub const mmap -> fn (addr: *void, length: int, prot: int, flags: int, fd: int, offset: int) *void {
-        let result: int = __syscall__(SYS_MMAP, cast<int>(addr), length, prot, flags, fd, offset);
+    pub const mmap -> fn (addr: *void, length: i64, prot: i64, flags: i64, fd: i64, offset: i64) *void {
+        let result: i64 = __syscall__(SYS_MMAP, cast<i64>(addr), length, prot, flags, fd, offset);
         return cast<*void>(result);
     }
     
     /// Unmap a previously mapped region.
-    pub const munmap -> fn (addr: *void, length: int) int {
-        return __syscall__(SYS_MUNMAP, cast<int>(addr), length);
+    pub const munmap -> fn (addr: *void, length: i64) i64 {
+        return __syscall__(SYS_MUNMAP, cast<i64>(addr), length);
     }
     
     /// HELPER FUNCTIONS
     
     /// Returns true if `result` represents a syscall error (i.e. in the range [-4095, -1]).
-    pub const is_error -> fn (result: int) bool {
+    pub const is_error -> fn (result: i64) bool {
         return result < 0 && result >= -4095;
     }
     
     /// Extract the errno value from a failed syscall result. Returns 0 if not an error.
-    pub const get_errno -> fn (result: int) int {
+    pub const get_errno -> fn (result: i64) i64 {
         if (is_error(result)) {
             return -result;
         }
@@ -641,14 +641,14 @@ pub const EPIPE: int   = 32;
     }
     
     /// Write a null-terminated string to `fd`. Returns bytes written or a negative errno.
-    pub const write_str -> fn (fd: int, s: *byte) int {
-        let len: int = 0;
+    pub const write_str -> fn (fd: i64, s: *byte) i64 {
+        let len: i64 = 0;
         loop (s[len] != cast<byte>(0)) : (++len) {}
         return write(fd, cast<*void>(s), len);
     }
     
     /// Write a null-terminated string to stderr.
-    pub const eprint -> fn (s: *byte) int {
+    pub const eprint -> fn (s: *byte) i64 {
         return write_str(STDERR, s);
     }
     

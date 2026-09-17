@@ -26,42 +26,42 @@
 // ============================================================================
 
 /// Formatted print to stdout
-pub const printf  -> fn (fmt: *byte, val: *byte) int;
+pub const printf  -> fn (fmt: *byte, val: *byte) i64;
 /// Print string with trailing newline to stdout
-pub const puts    -> fn (s: *byte) int;
+pub const puts    -> fn (s: *byte) i64;
 /// Write a single character to stdout
-pub const putchar -> fn (c: int) int;
+pub const putchar -> fn (c: i64) i64;
 /// Read a single character from stdin
-pub const getchar -> fn () int;
+pub const getchar -> fn () i64;
 /// Flush a file stream's output buffer
-pub const fflush  -> fn (stream: *void) int;
+pub const fflush  -> fn (stream: *void) i64;
 
 /// Open a file for reading/writing
 pub const fopen   -> fn (path: *byte, mode: *byte) *void;
 /// Close an open file
-pub const fclose  -> fn (stream: *void) int;
+pub const fclose  -> fn (stream: *void) i64;
 /// Read raw bytes from a file
-pub const fread   -> fn (ptr: *void, size: int, count: int, stream: *void) int;
+pub const fread   -> fn (ptr: *void, size: i64, count: i64, stream: *void) i64;
 /// Write raw bytes to a file
-pub const fwrite  -> fn (ptr: *void, size: int, count: int, stream: *void) int;
+pub const fwrite  -> fn (ptr: *void, size: i64, count: i64, stream: *void) i64;
 /// Read a line from a file
-pub const fgets   -> fn (buf: *byte, n: int, stream: *void) *byte;
+pub const fgets   -> fn (buf: *byte, n: i64, stream: *void) *byte;
 /// Write a string to a file
-pub const fputs   -> fn (s: *byte, stream: *void) int;
+pub const fputs   -> fn (s: *byte, stream: *void) i64;
 /// Test for end-of-file on a stream
-pub const feof    -> fn (stream: *void) int;
+pub const feof    -> fn (stream: *void) i64;
 /// Test for error on a stream
-pub const ferror  -> fn (stream: *void) int;
+pub const ferror  -> fn (stream: *void) i64;
 /// Set file position to the beginning
 pub const rewind  -> fn (stream: *void) void;
 /// Set file position indicator
-pub const fseek   -> fn (stream: *void, offset: int, whence: int) int;
+pub const fseek   -> fn (stream: *void, offset: i64, whence: i64) i64;
 /// Get current file position
-pub const ftell   -> fn (stream: *void) int;
+pub const ftell   -> fn (stream: *void) i64;
 /// Delete a file
-pub const remove  -> fn (path: *byte) int;
+pub const remove  -> fn (path: *byte) i64;
 /// Rename a file
-pub const rename  -> fn (old: *byte, new: *byte) int;
+pub const rename  -> fn (old: *byte, new: *byte) i64;
 /// Create a temporary binary file
 pub const tmpfile -> fn () *void;
 
@@ -70,101 +70,101 @@ pub const tmpfile -> fn () *void;
 // ============================================================================
 
 /// Allocate memory
-pub const malloc   -> fn (size: int) *void;
+pub const malloc   -> fn (size: i64) *void;
 /// Allocate and zero-initialize memory
-pub const calloc   -> fn (count: int, size: int) *void;
+pub const calloc   -> fn (count: i64, size: i64) *void;
 /// Resize an allocated memory block
-pub const realloc  -> fn (ptr: *void, size: int) *void;
+pub const realloc  -> fn (ptr: *void, size: i64) *void;
 /// Free allocated memory
 pub const _free     -> fn (ptr: *void) void;
 /// Terminate the program with a status code
-pub const exit     -> fn (code: int) void;
+pub const exit     -> fn (code: i64) void;
 /// Terminate the program abnormally
 pub const abort    -> fn () void;
 /// Return the absolute value of an integer
-pub const abs      -> fn (n: int) int;
-/// Convert ASCII string to int
-pub const atoi     -> fn (s: *byte) int;
-/// Convert ASCII string to double
-pub const atof     -> fn (s: *byte) double;
+pub const abs      -> fn (n: i64) i64;
+/// Convert ASCII string to i64
+pub const atoi     -> fn (s: *byte) i64;
+/// Convert ASCII string to f64
+pub const atof     -> fn (s: *byte) f64;
 /// Convert ASCII string to long
-pub const atol     -> fn (s: *byte) int;
+pub const atol     -> fn (s: *byte) i64;
 /// Generate a pseudo-random integer
-pub const rand     -> fn () int;
+pub const rand     -> fn () i64;
 /// Seed the pseudo-random number generator
-pub const srand    -> fn (seed: int) void;
+pub const srand    -> fn (seed: i64) void;
 /// Get an environment variable
 pub const getenv   -> fn (name: *byte) *byte;
 /// Execute a shell command
-pub const _system   -> fn (cmd: *byte) int;
+pub const _system   -> fn (cmd: *byte) i64;
 /// Sort an array using quicksort
-pub const qsort    -> fn (base: *void, count: int, size: int, cmp: *void) void;
+pub const qsort    -> fn (base: *void, count: i64, size: i64, cmp: *void) void;
 /// Binary search in a sorted array
-pub const bsearch  -> fn (key: *void, base: *void, count: int, size: int, cmp: *void) *void;
+pub const bsearch  -> fn (key: *void, base: *void, count: i64, size: i64, cmp: *void) *void;
 
 // ============================================================================
 // time.h - Time and date
 // ============================================================================
 
 /// Get current calendar time
-pub const time    -> fn (t: *int) int;
+pub const time    -> fn (t: *i64) i64;
 /// Get processor clock time
-pub const clock   -> fn () int;
+pub const clock   -> fn () i64;
 /// Compute difference between two times
-pub const difftime -> fn (t1: int, t0: int) double;
+pub const difftime -> fn (t1: i64, t0: i64) f64;
 
 // ============================================================================
 // string.h - String and memory operations
 // ============================================================================
 
 /// Get string length
-pub const strlen   -> fn (s: *byte) int;
+pub const strlen   -> fn (s: *byte) i64;
 /// Copy a string (unsafe — may overflow)
 pub const strcpy   -> fn (dst: *byte, src: *byte) *byte;
 /// Copy a string with length limit
-pub const strncpy  -> fn (dst: *byte, src: *byte, n: int) *byte;
+pub const strncpy  -> fn (dst: *byte, src: *byte, n: i64) *byte;
 /// Concatenate strings (unsafe — may overflow)
 pub const strcat   -> fn (dst: *byte, src: *byte) *byte;
 /// Concatenate strings with length limit
-pub const strncat  -> fn (dst: *byte, src: *byte, n: int) *byte;
+pub const strncat  -> fn (dst: *byte, src: *byte, n: i64) *byte;
 /// Compare two strings
-pub const strcmp   -> fn (a: *byte, b: *byte) int;
+pub const strcmp   -> fn (a: *byte, b: *byte) i64;
 /// Compare two strings with length limit
-pub const strncmp  -> fn (a: *byte, b: *byte, n: int) int;
+pub const strncmp  -> fn (a: *byte, b: *byte, n: i64) i64;
 /// Find first occurrence of a character in a string
-pub const strchr   -> fn (s: *byte, c: int) *byte;
+pub const strchr   -> fn (s: *byte, c: i64) *byte;
 /// Find last occurrence of a character in a string
-pub const strrchr  -> fn (s: *byte, c: int) *byte;
+pub const strrchr  -> fn (s: *byte, c: i64) *byte;
 /// Find a substring in a string
 pub const strstr   -> fn (haystack: *byte, needle: *byte) *byte;
 /// Split string into tokens
 pub const strtok   -> fn (s: *byte, delim: *byte) *byte;
 /// Fill memory with a constant byte
-pub const memset   -> fn (ptr: *void, val: int, n: int) *void;
+pub const memset   -> fn (ptr: *void, val: i64, n: i64) *void;
 /// Copy memory (may overlap)
-pub const memcpy   -> fn (dst: *void, src: *void, n: int) *void;
+pub const memcpy   -> fn (dst: *void, src: *void, n: i64) *void;
 /// Copy memory (handles overlap)
-pub const memmove  -> fn (dst: *void, src: *void, n: int) *void;
+pub const memmove  -> fn (dst: *void, src: *void, n: i64) *void;
 /// Compare memory regions
-pub const memcmp   -> fn (a: *void, b: *void, n: int) int;
+pub const memcmp   -> fn (a: *void, b: *void, n: i64) i64;
 /// Return a human-readable message for an errno value
-pub const strerror -> fn (errnum: int) *byte;
+pub const strerror -> fn (errnum: i64) *byte;
 
 // ============================================================================
 // unistd.h - POSIX API
 // ============================================================================
 
 /// Check a path's existence/accessibility (see F_OK/R_OK/W_OK/X_OK below)
-pub const access -> fn (path: *byte, mode: int) int;
+pub const access -> fn (path: *byte, mode: i64) i64;
 
 /// `access()` mode: file exists
-pub const F_OK: int = 0;
+pub const F_OK: i64 = 0;
 /// `access()` mode: read permission
-pub const R_OK: int = 4;
+pub const R_OK: i64 = 4;
 /// `access()` mode: write permission
-pub const W_OK: int = 2;
+pub const W_OK: i64 = 2;
 /// `access()` mode: execute (or search, for a directory) permission
-pub const X_OK: int = 1;
+pub const X_OK: i64 = 1;
 
 // ============================================================================
 // math.h - Mathematical functions (libm)
@@ -173,43 +173,43 @@ pub const X_OK: int = 1;
 
 /// Square root
 #lib_import("libm.so")
-pub const sqrt  -> fn (x: double) double;
+pub const sqrt  -> fn (x: f64) f64;
 /// Power (base^exp)
 #lib_import("libm.so")
-pub const pow   -> fn (base: double, exp: double) double;
+pub const pow   -> fn (base: f64, exp: f64) f64;
 /// Round down to nearest integer
 #lib_import("libm.so")
-pub const floor -> fn (x: double) double;
+pub const floor -> fn (x: f64) f64;
 /// Round up to nearest integer
 #lib_import("libm.so")
-pub const ceil  -> fn (x: double) double;
-/// Absolute value of a double
+pub const ceil  -> fn (x: f64) f64;
+/// Absolute value of an f64
 #lib_import("libm.so")
-pub const fabs  -> fn (x: double) double;
+pub const fabs  -> fn (x: f64) f64;
 /// Floating-point remainder of x/y
 #lib_import("libm.so")
-pub const fmod  -> fn (x: double, y: double) double;
+pub const fmod  -> fn (x: f64, y: f64) f64;
 /// Natural logarithm
 #lib_import("libm.so")
-pub const log   -> fn (x: double) double;
+pub const log   -> fn (x: f64) f64;
 /// Base-2 logarithm
 #lib_import("libm.so")
-pub const log2  -> fn (x: double) double;
+pub const log2  -> fn (x: f64) f64;
 /// Base-10 logarithm
 #lib_import("libm.so")
-pub const log10 -> fn (x: double) double;
+pub const log10 -> fn (x: f64) f64;
 /// Exponential (e^x)
 #lib_import("libm.so")
-pub const exp   -> fn (x: double) double;
+pub const exp   -> fn (x: f64) f64;
 /// Sine of an angle (radians)
 #lib_import("libm.so")
-pub const sin   -> fn (x: double) double;
+pub const sin   -> fn (x: f64) f64;
 /// Cosine of an angle (radians)
 #lib_import("libm.so")
-pub const cos   -> fn (x: double) double;
+pub const cos   -> fn (x: f64) f64;
 /// Tangent of an angle (radians)
 #lib_import("libm.so")
-pub const tan   -> fn (x: double) double;
+pub const tan   -> fn (x: f64) f64;
 /// Arc tangent (y/x) in radians
 #lib_import("libm.so") 
-pub const atan2 -> fn (y: double, x: double) double;
+pub const atan2 -> fn (y: f64, x: f64) f64;

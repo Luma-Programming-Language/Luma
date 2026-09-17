@@ -8,8 +8,8 @@ const Box -> struct<T> {
   value: T,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  let b: Box<int, bool> = Box<int, bool> { value: 42 };
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  let b: Box<i64, bool> = Box<i64, bool> { value: 42 };
   outputln(b.value);
   return 0;
 }

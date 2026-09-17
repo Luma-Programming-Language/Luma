@@ -1,14 +1,14 @@
 @module "main"
 
 // Regression test for input<T>()'s codegen: exercises every T it knows how
-// to read (int, uint, float, double, bool, byte, *byte) so a future change
+// to read (i64, u64, f32, f64, bool, byte, *byte) so a future change
 // that breaks the type -> __luma_input_* dispatch (cg_expr's
 // input_helper_name) fails to compile instead of silently reading 0 again.
-pub const main -> fn (argc: int, argv: **byte) int {
-    let i: int    = input<int>("");
-    let u: uint   = input<uint>("");
-    let f: float  = input<float>("");
-    let d: double = input<double>("");
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let i: i64    = input<i64>("");
+    let u: u64   = input<u64>("");
+    let f: f32  = input<f32>("");
+    let d: f64 = input<f64>("");
     let b: bool   = input<bool>("");
     let c: byte   = input<byte>("");
     let s: *byte  = input<*byte>("");

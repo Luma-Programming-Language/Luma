@@ -14,16 +14,16 @@ const Entry -> struct<K, V> {
 };
 
 const Map -> struct<K, V> {
-  size: int,
+  size: i64,
   first: *Entry<K, V>,
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  let e: Entry<int, int> = Entry<int, int> { key: 7, val: 9 };
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  let e: Entry<i64, i64> = Entry<i64, i64> { key: 7, val: 9 };
 
   // Concrete struct whose field type is itself a concrete struct
   // instantiation (the `*Entry<K,V>` field, after substitution).
-  let m: Map<int, int> = Map<int, int> { size: 1, first: &e };
+  let m: Map<i64, i64> = Map<i64, i64> { size: 1, first: &e };
 
   if (e.key != 7 || e.val != 9) return 1;
   if (m.size != 1) return 1;

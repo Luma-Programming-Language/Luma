@@ -39,7 +39,7 @@
 
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
-  let len: int = STR::strlen(s);
+  let len: i64 = STR::strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
   MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
   return out;
@@ -47,12 +47,12 @@ const dup_str -> fn (s: *byte) *byte {
 
 #returns_ownership
 const join2 -> fn (a: *byte, b: *byte) *byte {
-  let la: int = STR::strlen(a);
-  let lb: int = STR::strlen(b);
+  let la: i64 = STR::strlen(a);
+  let lb: i64 = STR::strlen(b);
   let s: *byte = cast<*byte>(alloc(la + lb + 3));
   MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
   s[la] = '_'; s[la + 1] = '_';
-  MEM::memcpy(cast<*void>(cast<int>(s) + la + 2), cast<*void>(b), lb);
+  MEM::memcpy(cast<*void>(cast<i64>(s) + la + 2), cast<*void>(b), lb);
   s[la + lb + 2] = '\0';
   return s;
 }
@@ -62,12 +62,12 @@ const join2 -> fn (a: *byte, b: *byte) *byte {
 // tc_expr's module scope.
 #returns_ownership
 const qualify_member -> fn (a: *byte, b: *byte) *byte {
-  let la: int = STR::strlen(a);
-  let lb: int = STR::strlen(b);
+  let la: i64 = STR::strlen(a);
+  let lb: i64 = STR::strlen(b);
   let s: *byte = cast<*byte>(alloc(la + lb + 2));
   MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
   s[la] = '.';
-  MEM::memcpy(cast<*void>(cast<int>(s) + la + 1), cast<*void>(b), lb);
+  MEM::memcpy(cast<*void>(cast<i64>(s) + la + 1), cast<*void>(b), lb);
   s[la + lb + 1] = '\0';
   return s;
 }
@@ -76,9 +76,9 @@ const qualify_member -> fn (a: *byte, b: *byte) *byte {
 // identifier fragment — replace anything but [A-Za-z0-9_] with '_'.
 #returns_ownership
 const sanitize -> fn (s: *byte) *byte {
-  let len: int = STR::strlen(s);
+  let len: i64 = STR::strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < len) {
     let c: byte = s[i];
     let ok: bool = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
@@ -90,9 +90,9 @@ const sanitize -> fn (s: *byte) *byte {
 }
 
 #returns_ownership
-const build_mangled_name -> fn (base_name: *byte, concretes: **AST::AstNode, count: int) *byte {
+const build_mangled_name -> fn (base_name: *byte, concretes: **AST::AstNode, count: i64) *byte {
   let mangled: *byte = dup_str(base_name);
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < count) {
     let ts: *byte = TYPE::type_to_string(concretes[i]);
     let clean: *byte = sanitize(ts);
@@ -117,7 +117,7 @@ pub const GenericTemplate -> struct {
   // owning struct's name and whether the method is `static`. NULL / 0 for
   // module-level fn / struct / enum templates.
   owner:       *byte,
-  method_is_static: int,
+  method_is_static: i64,
 };
 
 let g_templates: VEC::Vector;
@@ -142,7 +142,7 @@ pub const register_template -> fn (module_name: *byte, name: *byte, decl: *AST::
 // tc.lx's drain can hand codegen enough to register the concrete method as
 // a method of `Thing` (not a standalone function).
 #returns_ownership
-pub const register_method_template -> fn (module_name: *byte, owner: *byte, decl: *AST::AstNode, is_static: int, def_scope: *CORE::Scope) void {
+pub const register_method_template -> fn (module_name: *byte, owner: *byte, decl: *AST::AstNode, is_static: i64, def_scope: *CORE::Scope) void {
   templates_init();
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(decl);
   let qname: *byte = qualify_member(owner, fd.name);
@@ -152,8 +152,8 @@ pub const register_method_template -> fn (module_name: *byte, owner: *byte, decl
 
 pub const find_template -> fn (module_name: *byte, name: *byte) *GenericTemplate {
   templates_init();
-  let n: int = g_templates.size;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = g_templates.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let t: *GenericTemplate = cast<*GenericTemplate>(g_templates.get(i));
     if (STR::strcmp(t.module_name, module_name) == 0 && STR::strcmp(t.name, name) == 0) return t;
   }
@@ -179,8 +179,8 @@ const insts_init -> fn () void {
 
 const find_instantiation -> fn (key: *byte) *Instantiation {
   insts_init();
-  let n: int = g_insts.size;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = g_insts.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let inst: *Instantiation = cast<*Instantiation>(g_insts.get(i));
     if (STR::strcmp(inst.key, key) == 0) return inst;
   }
@@ -204,7 +204,7 @@ pub const Pending -> struct {
   // right ownership instead of as a standalone function. NULL / 0 for
   // fn/struct/enum instantiations.
   owner:       *byte,
-  is_static:   int,
+  is_static:   i64,
 };
 
 let g_pending: VEC::Vector;
@@ -216,13 +216,13 @@ const pending_init -> fn () void {
   g_pending = VEC::create_vector(sizeof<Pending>);
 }
 
-const pending_push -> fn (decl: *AST::AstNode, def_scope: *CORE::Scope, module_name: *byte, owner: *byte, is_static: int) void {
+const pending_push -> fn (decl: *AST::AstNode, def_scope: *CORE::Scope, module_name: *byte, owner: *byte, is_static: i64) void {
   pending_init();
   let p: Pending = Pending { decl: decl, def_scope: def_scope, module_name: module_name, owner: owner, is_static: is_static };
   g_pending.push_back(cast<*void>(&p));
 }
 
-pub const pending_count -> fn () int {
+pub const pending_count -> fn () i64 {
   pending_init();
   return g_pending.size;
 }
@@ -231,7 +231,7 @@ pub const pending_count -> fn () int {
 // Only call when pending_count() > 0.
 pub const pending_pop -> fn () Pending {
   pending_init();
-  let idx: int = g_pending.size - 1;
+  let idx: i64 = g_pending.size - 1;
   let last: *Pending = cast<*Pending>(g_pending.get(idx));
   let copy: Pending = Pending { decl: last.decl, def_scope: last.def_scope, module_name: last.module_name, owner: last.owner, is_static: last.is_static };
   g_pending.size = idx;
@@ -273,9 +273,9 @@ pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *Gen
     return cast<*AST::AstNode>(0);
   }
 
-  let count: int = fd.type_param_count;
+  let count: i64 = fd.type_param_count;
   let concretes: **AST::AstNode = cast<**AST::AstNode>(alloc(sizeof<*AST::AstNode> * count));
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < count) {
     concretes[i] = TYPE::resolve_type_ref(call_node.type_args[i], caller_scope);
     i = i + 1;
@@ -304,7 +304,7 @@ pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *Gen
   free(cfd.name);
   cfd.name = mangled; // ownership transferred to the node
 
-  let tpi: int = 0;
+  let tpi: i64 = 0;
   loop (tpi < cfd.type_param_count) { free(cfd.type_params[tpi]); tpi = tpi + 1; }
   free(cfd.type_params);
   cfd.type_params = cast<**byte>(0);
@@ -327,7 +327,7 @@ pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *Gen
 }
 
 // ─── generic methods on non-generic structs ─────────────────────────────────
-// `Thing::make<int>(...)` where `Thing` is an ordinary (non-generic) struct
+// `Thing::make<i64>(...)` where `Thing` is an ordinary (non-generic) struct
 // and `make` is a *method-level* generic (`static make -> fn<T> (...) T`).
 // Methods aren't part of any module-level symbol table and there's no
 // struct-level clone to ride on — the method template itself is cloned and
@@ -346,9 +346,9 @@ pub const instantiate_method_call -> fn (call_node: *AST::CallNode, owner: *byte
     return cast<*AST::AstNode>(0);
   }
 
-  let count: int = fd.type_param_count;
+  let count: i64 = fd.type_param_count;
   let concretes: **AST::AstNode = cast<**AST::AstNode>(alloc(sizeof<*AST::AstNode> * count));
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < count) {
     concretes[i] = TYPE::resolve_type_ref(call_node.type_args[i], caller_scope);
     i = i + 1;
@@ -378,7 +378,7 @@ pub const instantiate_method_call -> fn (call_node: *AST::CallNode, owner: *byte
   free(cfd.name);
   cfd.name = mangled; // ownership transferred to the node
 
-  let tpi: int = 0;
+  let tpi: i64 = 0;
   loop (tpi < cfd.type_param_count) { free(cfd.type_params[tpi]); tpi = tpi + 1; }
   free(cfd.type_params);
   cfd.type_params = cast<**byte>(0);
@@ -398,10 +398,10 @@ pub const instantiate_method_call -> fn (call_node: *AST::CallNode, owner: *byte
 }
 
 // ─── struct/enum generics ──────────────────────────────────────────────────
-// `Box<int>` in type position, `Box<int> { ... }` struct-literal position, or
-// `State<int>::Idle` enum-member position. The enum case mirrors the struct
+// `Box<i64>` in type position, `Box<i64> { ... }` struct-literal position, or
+// `State<i64>::Idle` enum-member position. The enum case mirrors the struct
 // case exactly: the trigger is a TYPE_BASIC leaf carrying a
-// `<int, ...>` type-argument list (tc_type.resolve_type_leaf,
+// `<i64, ...>` type-argument list (tc_type.resolve_type_leaf,
 // tc_expr.tc_struct_expr, and tc_member's generic handling all route such
 // leaves through the shared core below). The leaf is rewritten in place to a
 // plain named type (e.g. `Box__int` / `State__int`), so every downstream
@@ -410,9 +410,9 @@ pub const instantiate_method_call -> fn (call_node: *AST::CallNode, owner: *byte
 // drained by tc.lx like a function instantiation.
 
 // Both StructDeclNode and EnumDeclNode carry the identical
-// `type_params: **byte` / `type_param_count: int` pair that literal
+// `type_params: **byte` / `type_param_count: i64` pair that literal
 // initialization can't see statically, so branch to pull the right field.
-const decl_tp_count -> fn (decl: *AST::AstNode) int {
+const decl_tp_count -> fn (decl: *AST::AstNode) i64 {
   if (decl.kind == AST::NodeType::STMT_STRUCT) return cast<*AST::StructDeclNode>(decl).type_param_count;
   if (decl.kind == AST::NodeType::STMT_ENUM)   return cast<*AST::EnumDeclNode>(decl).type_param_count;
   return 0;
@@ -437,7 +437,7 @@ const decl_base_name -> fn (decl: *AST::AstNode) *byte {
 const degenericize_decl -> fn (cloned: *AST::AstNode) void {
   if (cloned.kind == AST::NodeType::STMT_STRUCT) {
     let csd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(cloned);
-    let tpi: int = 0;
+    let tpi: i64 = 0;
     loop (tpi < csd.type_param_count) { free(csd.type_params[tpi]); tpi = tpi + 1; }
     free(csd.type_params);
     csd.type_params = cast<**byte>(0);
@@ -446,7 +446,7 @@ const degenericize_decl -> fn (cloned: *AST::AstNode) void {
   }
   if (cloned.kind == AST::NodeType::STMT_ENUM) {
     let ced: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(cloned);
-    let tpi: int = 0;
+    let tpi: i64 = 0;
     loop (tpi < ced.type_param_count) { free(ced.type_params[tpi]); tpi = tpi + 1; }
     free(ced.type_params);
     ced.type_params = cast<**byte>(0);
@@ -458,15 +458,15 @@ const degenericize_decl -> fn (cloned: *AST::AstNode) void {
 // K/V substituted but leaves `FuncDeclNode.type_param_count` intact —
 // handle_func_decl then skips the body as still-generic. This strips those
 // cloned-away params from each method so the pending drain can check them.
-const strip_method_type_params -> fn (members: **AST::AstNode, count: int) void {
-  let mi: int = 0;
+const strip_method_type_params -> fn (members: **AST::AstNode, count: i64) void {
+  let mi: i64 = 0;
   loop (mi < count) {
     if (members[mi] != cast<*AST::AstNode>(0) && members[mi].kind == AST::NodeType::STMT_FIELD_DECL) {
       let fdn: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(members[mi]);
       if (fdn.function != cast<*AST::AstNode>(0) && fdn.function.kind == AST::NodeType::STMT_FUNCTION) {
         let fnd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(fdn.function);
         if (fnd.type_param_count > 0) {
-          let j: int = 0;
+          let j: i64 = 0;
           loop (j < fnd.type_param_count) { free(fnd.type_params[j]); j = j + 1; }
           free(fnd.type_params);
           fnd.type_params = cast<**byte>(0);
@@ -494,8 +494,8 @@ pub const resolve_nominal_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Sco
   return resolve_nominal_type_ref_in(leaf, scope, mod_name);
 }
 
-// Same-module `Box<int>` handling (above) generalized to an explicitly
-// named defining module, so a qualified reference such as `G::Box<int>` in
+// Same-module `Box<i64>` handling (above) generalized to an explicitly
+// named defining module, so a qualified reference such as `G::Box<i64>` in
 // an `@use "gen" as G` module resolves the template in *gen*'s registry
 // instead of the caller's own — the one thing that made generic structs /
 // enums same-module-only (see docs/docs.md's Generics section). A mismatch
@@ -526,16 +526,16 @@ pub const resolve_nominal_type_ref_in -> fn (leaf: *AST::AstNode, scope: *CORE::
     return leaf;
   }
 
-  let tp_count: int = decl_tp_count(tmpl.decl);
+  let tp_count: i64 = decl_tp_count(tmpl.decl);
   if (bn.type_arg_count != tp_count) {
     ERR::tc_error(leaf, "Generics Error",
       "wrong number of explicit type arguments for this generic struct or enum", "type argument count mismatch");
     return leaf;
   }
 
-  let count: int = tp_count;
+  let count: i64 = tp_count;
   let concretes: **AST::AstNode = cast<**AST::AstNode>(alloc(sizeof<*AST::AstNode> * count));
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < count) {
     concretes[i] = TYPE::resolve_type_ref(bn.type_args[i], scope);
     i = i + 1;
@@ -589,13 +589,13 @@ pub const resolve_nominal_type_ref_in -> fn (leaf: *AST::AstNode, scope: *CORE::
 // report `Foo::missing()` before letting the call fall through to codegen's
 // placeholder.
 pub const struct_template_has_method -> fn (sd: *AST::StructDeclNode, method_name: *byte) bool {
-  let groups: int = 0;
+  let groups: i64 = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0) && m.kind == AST::NodeType::STMT_FIELD_DECL) {

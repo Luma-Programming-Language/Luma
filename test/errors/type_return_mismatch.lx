@@ -1,11 +1,11 @@
 // error-type: Type Error
 @module "main"
 
-const give_int -> fn () int {
-    return "not an int";
+const give_int -> fn () i64 {
+    return "not an i64";
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let x: int = give_int();
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let x: i64 = give_int();
     return 0;
 }

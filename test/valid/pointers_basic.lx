@@ -1,12 +1,12 @@
 @module "main"
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let x: int = 10;
-    let px: *int = &x;
-    let y: int = *px;
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let x: i64 = 10;
+    let px: *i64 = &x;
+    let y: i64 = *px;
 
-    let arr: *int = cast<*int>(alloc(sizeof<int> * 4));
-    let p2: *int = arr + 1;
+    let arr: *i64 = cast<*i64>(alloc(sizeof<i64> * 4));
+    let p2: *i64 = arr + 1;
     free(arr);
 
     output(y, "\n");

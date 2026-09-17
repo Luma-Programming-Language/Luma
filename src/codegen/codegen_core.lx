@@ -9,8 +9,8 @@
 
 pub const Buf -> struct {
   data: *byte,
-  len:  int,
-  cap:  int,
+  len:  i64,
+  cap:  i64,
 };
 
 #returns_ownership
@@ -22,9 +22,9 @@ pub const buf_init -> fn () *Buf {
   return b;
 }
 
-const buf_ensure -> fn (b: *Buf, extra: int) void {
+const buf_ensure -> fn (b: *Buf, extra: i64) void {
   if (b.len + extra + 1 <= b.cap) return;
-  let ncap: int = b.cap * 2;
+  let ncap: i64 = b.cap * 2;
   loop (ncap < b.len + extra + 1) { ncap = ncap * 2; }
   let nd: *byte = cast<*byte>(alloc(ncap));
   MEM::memcpy(cast<*void>(nd), cast<*void>(b.data), b.len);
@@ -36,15 +36,15 @@ const buf_ensure -> fn (b: *Buf, extra: int) void {
 
 pub const buf_str -> fn (b: *Buf, s: *byte) void {
   if (s == cast<*byte>(0)) return;
-  let n: int = STR::strlen(s);
+  let n: i64 = STR::strlen(s);
   buf_ensure(b, n);
-  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  MEM::memcpy(cast<*void>(cast<i64>(b.data) + b.len), cast<*void>(s), n);
   b.len = b.len + n;
 }
 
-pub const buf_nstr -> fn (b: *Buf, s: *byte, n: int) void {
+pub const buf_nstr -> fn (b: *Buf, s: *byte, n: i64) void {
   buf_ensure(b, n);
-  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  MEM::memcpy(cast<*void>(cast<i64>(b.data) + b.len), cast<*void>(s), n);
   b.len = b.len + n;
 }
 
@@ -54,7 +54,7 @@ pub const buf_char -> fn (b: *Buf, c: byte) void {
   b.len = b.len + 1;
 }
 
-pub const buf_int -> fn (b: *Buf, v: int) void {
+pub const buf_int -> fn (b: *Buf, v: i64) void {
   let s: *byte = STR::from_int(v);
   buf_str(b, s);
   free(s);
@@ -76,7 +76,7 @@ pub const buf_finish -> fn (b: *Buf) *byte {
 
 #returns_ownership
 pub const dup_str -> fn (s: *byte) *byte {
-  let n: int = STR::strlen(s);
+  let n: i64 = STR::strlen(s);
   let d: *byte = cast<*byte>(alloc(n + 1));
   MEM::memcpy(cast<*void>(d), cast<*void>(s), n);
   d[n] = '\0';
@@ -85,11 +85,11 @@ pub const dup_str -> fn (s: *byte) *byte {
 
 #returns_ownership
 pub const strcat2 -> fn (a: *byte, b: *byte) *byte {
-  let la: int = STR::strlen(a);
-  let lb: int = STR::strlen(b);
+  let la: i64 = STR::strlen(a);
+  let lb: i64 = STR::strlen(b);
   let s: *byte = cast<*byte>(alloc(la + lb + 1));
   MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
-  MEM::memcpy(cast<*void>(cast<int>(s) + la), cast<*void>(b), lb);
+  MEM::memcpy(cast<*void>(cast<i64>(s) + la), cast<*void>(b), lb);
   s[la + lb] = '\0';
   return s;
 }
@@ -97,12 +97,12 @@ pub const strcat2 -> fn (a: *byte, b: *byte) *byte {
 // `module__name` mangling. Caller owns the returned string.
 #returns_ownership
 pub const mangle2 -> fn (a: *byte, b: *byte) *byte {
-  let la: int = STR::strlen(a);
-  let lb: int = STR::strlen(b);
+  let la: i64 = STR::strlen(a);
+  let lb: i64 = STR::strlen(b);
   let s: *byte = cast<*byte>(alloc(la + lb + 3));
   MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
   s[la] = '_'; s[la + 1] = '_';
-  MEM::memcpy(cast<*void>(cast<int>(s) + la + 2), cast<*void>(b), lb);
+  MEM::memcpy(cast<*void>(cast<i64>(s) + la + 2), cast<*void>(b), lb);
   s[la + lb + 2] = '\0';
   return s;
 }
@@ -111,12 +111,12 @@ pub const mangle2 -> fn (a: *byte, b: *byte) *byte {
 #returns_ownership
 pub const mangle3 -> fn (a: *byte, b: *byte, c: *byte) *byte {
   let ab: *byte = mangle2(a, b);
-  let la: int = STR::strlen(ab);
-  let lc: int = STR::strlen(c);
+  let la: i64 = STR::strlen(ab);
+  let lc: i64 = STR::strlen(c);
   let s: *byte = cast<*byte>(alloc(la + lc + 2));
   MEM::memcpy(cast<*void>(s), cast<*void>(ab), la);
   s[la] = '_';
-  MEM::memcpy(cast<*void>(cast<int>(s) + la + 1), cast<*void>(c), lc);
+  MEM::memcpy(cast<*void>(cast<i64>(s) + la + 1), cast<*void>(c), lc);
   s[la + lc + 1] = '\0';
   free(ab);
   return s;
@@ -189,7 +189,7 @@ pub const CodegenContext -> struct {
   // Lets `Embedded.method(...)` (explicit base-method dispatch, bypassing
   // an override) find `self`'s embedded sub-object of that type.
   current_struct_owner: *byte,
-  label_counter:  int,
+  label_counter:  i64,
   os:             *byte, // target platform (config.os) — resolves `@os {}` arms
 
   // Pending `defer` statements for the function being emitted, most-recent
@@ -219,8 +219,8 @@ pub const ctx_init -> fn (out: *void) *CodegenContext {
 
 pub const find_struct -> fn (ctx: *CodegenContext, name: *byte) *StructInfo {
   let v: *VEC::Vector = &ctx.structs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let s: *StructInfo = cast<*StructInfo>(v.get(i));
     if (STR::strcmp(s.name, name) == 0) return s;
@@ -231,8 +231,8 @@ pub const find_struct -> fn (ctx: *CodegenContext, name: *byte) *StructInfo {
 
 pub const find_enum -> fn (ctx: *CodegenContext, name: *byte) *EnumInfo {
   let v: *VEC::Vector = &ctx.enums;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let e: *EnumInfo = cast<*EnumInfo>(v.get(i));
     if (STR::strcmp(e.name, name) == 0) return e;
@@ -243,8 +243,8 @@ pub const find_enum -> fn (ctx: *CodegenContext, name: *byte) *EnumInfo {
 
 pub const find_func -> fn (ctx: *CodegenContext, name: *byte) *FuncInfo {
   let v: *VEC::Vector = &ctx.funcs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
     if (f.owner == cast<*byte>(0)) {
@@ -257,8 +257,8 @@ pub const find_func -> fn (ctx: *CodegenContext, name: *byte) *FuncInfo {
 
 pub const find_method -> fn (ctx: *CodegenContext, struct_name: *byte, method_name: *byte) *FuncInfo {
   let v: *VEC::Vector = &ctx.funcs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
     if (f.owner != cast<*byte>(0)) {
@@ -276,14 +276,14 @@ pub const find_method -> fn (ctx: *CodegenContext, struct_name: *byte, method_na
 // separator) and whose method name matches.
 pub const find_method_owner_containing -> fn (ctx: *CodegenContext, struct_name: *byte, method_name: *byte) *FuncInfo {
   let v: *VEC::Vector = &ctx.funcs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
     if (f.owner != cast<*byte>(0) && STR::strcmp(f.name, method_name) == 0) {
-      let len: int = STR::strlen(struct_name);
-      let olen: int = STR::strlen(f.owner);
-      let k: int = 0;
+      let len: i64 = STR::strlen(struct_name);
+      let olen: i64 = STR::strlen(f.owner);
+      let k: i64 = 0;
       loop (k + len < olen) {
         if (STR::strncmp(&f.owner[k], struct_name, len) == 0) {
           if (f.owner[k + len] == '_' && f.owner[k + len + 1] == '_') return f;
@@ -298,8 +298,8 @@ pub const find_method_owner_containing -> fn (ctx: *CodegenContext, struct_name:
 
 pub const find_func_in_module -> fn (ctx: *CodegenContext, module_name: *byte, name: *byte) *FuncInfo {
   let v: *VEC::Vector = &ctx.funcs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let f: *FuncInfo = cast<*FuncInfo>(v.get(i));
     if (f.owner == cast<*byte>(0)) {
@@ -312,8 +312,8 @@ pub const find_func_in_module -> fn (ctx: *CodegenContext, module_name: *byte, n
 
 pub const find_global_in_module -> fn (ctx: *CodegenContext, module_name: *byte, name: *byte) *GlobalInfo {
   let v: *VEC::Vector = &ctx.globals;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let g: *GlobalInfo = cast<*GlobalInfo>(v.get(i));
     if (STR::strcmp(g.module_name, module_name) == 0 && STR::strcmp(g.name, name) == 0) return g;
@@ -326,8 +326,8 @@ pub const find_global_in_module -> fn (ctx: *CodegenContext, module_name: *byte,
 // points at, or null if it isn't a known module alias there.
 pub const resolve_alias -> fn (ctx: *CodegenContext, owner_module: *byte, alias: *byte) *byte {
   let v: *VEC::Vector = &ctx.use_aliases;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let u: *UseAlias = cast<*UseAlias>(v.get(i));
     if (STR::strcmp(u.owner_module, owner_module) == 0 && STR::strcmp(u.alias, alias) == 0) return u.target_module;
@@ -367,7 +367,7 @@ pub const resolve_os_for -> fn (node: *AST::AstNode, os: *byte) *AST::AstNode {
   if (node == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
   let n: *AST::OsNode = cast<*AST::OsNode>(node);
   if (os != cast<*byte>(0)) {
-    let i: int = 0;
+    let i: i64 = 0;
     loop (n.platforms[i] != cast<*byte>(0)) {
       if (STR::strcmp(n.platforms[i], os) == 0) return n.bodies[i];
       i = i + 1;
@@ -377,14 +377,14 @@ pub const resolve_os_for -> fn (node: *AST::AstNode, os: *byte) *AST::AstNode {
   return cast<*AST::AstNode>(0);
 }
 
-pub const next_label -> fn (ctx: *CodegenContext) int {
+pub const next_label -> fn (ctx: *CodegenContext) i64 {
   ctx.label_counter = ctx.label_counter + 1;
   return ctx.label_counter;
 }
 
 pub const local_lookup -> fn (ctx: *CodegenContext, name: *byte) *byte {
   let v: *VEC::Vector = &ctx.locals;
-  let i: int = v.size - 1;
+  let i: i64 = v.size - 1;
   loop (i >= 0) {
     let b: *LocalBinding = cast<*LocalBinding>(v.get(i));
     if (STR::strcmp(b.name, name) == 0) return b.c_name;
@@ -405,7 +405,7 @@ pub const local_declare -> fn (ctx: *CodegenContext, name: *byte) *byte {
   if (local_lookup(ctx, name) == cast<*byte>(0)) {
     c_name = dup_str(name);
   } else {
-    let n: int = next_label(ctx);
+    let n: i64 = next_label(ctx);
     let suffix: *byte = STR::from_int(n);
     c_name = mangle2(name, suffix);
     free(suffix);

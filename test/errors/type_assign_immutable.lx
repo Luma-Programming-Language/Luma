@@ -1,8 +1,8 @@
 // error-type: Type Error
 @module "main"
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    const x: int = 5;
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    const x: i64 = 5;
     x = 10;
     return 0;
 }

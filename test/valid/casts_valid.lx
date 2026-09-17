@@ -1,12 +1,12 @@
 @module "main"
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let i: int = 42;
-    let f: float = cast<float>(i);
-    let back: int = cast<int>(f);
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let i: i64 = 42;
+    let f: f32 = cast<f32>(i);
+    let back: i64 = cast<i64>(f);
 
-    let p: *int = cast<*int>(alloc(sizeof<int>));
-    let addr: int = cast<int>(p);
+    let p: *i64 = cast<*i64>(alloc(sizeof<i64>));
+    let addr: i64 = cast<i64>(p);
     output(addr, "\n");
     free(p);
 

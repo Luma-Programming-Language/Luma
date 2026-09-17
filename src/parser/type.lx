@@ -16,18 +16,24 @@
 
 #returns_ownership
 const tnud -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
-  let kind: int = p.current().kind;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
+  let kind: i64 = p.current().kind;
 
   switch using TOK::LumaTokenType (kind) {
-    TOK_INT    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_UINT   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_DOUBLE -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_FLOAT  -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_BOOL   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_VOID   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_CHAR   -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_I8      -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_I16     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_I32     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_I64     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_U8      -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_U16     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_U32     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_U64     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_F32     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_F64     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_BOOL    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_VOID    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_CHAR    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
     TOK_STAR       -> { p.advance(); return pointer_type(p);    }
     TOK_LBRACKET   -> { p.advance(); return array_type(p);      }
     TOK_FN         -> { p.advance(); return function_type(p);   }
@@ -38,10 +44,12 @@ const tnud -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 pub const parse_type -> fn (p: *PARS::Parser) *AST::AstNode {
-  let kind: int = p.current().kind;
+  let kind: i64 = p.current().kind;
 
   switch using TOK::LumaTokenType (kind) {
-    TOK_INT, TOK_UINT, TOK_DOUBLE, TOK_FLOAT,
+    TOK_I8, TOK_I16, TOK_I32, TOK_I64,
+    TOK_U8, TOK_U16, TOK_U32, TOK_U64,
+    TOK_F32, TOK_F64,
     TOK_BOOL, TOK_VOID, TOK_CHAR, TOK_IDENTIFIER, 
     TOK_STAR, TOK_LBRACKET, TOK_FN -> {
       return tnud(p);
@@ -54,8 +62,8 @@ pub const parse_type -> fn (p: *PARS::Parser) *AST::AstNode {
 #returns_ownership
 const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let element_type: *AST::AstNode = parse_type(p);
   if (element_type == cast<*AST::AstNode>(0)) {
@@ -73,7 +81,7 @@ const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
   switch using AST::LiteralType (PARS::search_literal_map(p.current().kind)) {
     LITERAL_INT -> {
       let val: *byte = p.get_name();
-      let int_val: int = STRING::atio(val);
+      let int_val: i64 = STRING::atio(val);
       free(val);
       p.advance();
       size = EAST::make_literal_int(int_val, line, col);
@@ -93,8 +101,8 @@ const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let pointee: *AST::AstNode = parse_type(p);
   if (pointee == cast<*AST::AstNode>(0)) {
@@ -106,8 +114,8 @@ const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
 }
 
 // Parses `<Type (',' Type)*>` — the explicit type-argument list of a generic
-// type reference (`Box<int>`), function call (`add<int>(...)`), or struct
-// literal (`Box<int> { ... }`). Caller has already confirmed the current
+// type reference (`Box<i64>`), function call (`add<i64>(...)`), or struct
+// literal (`Box<i64> { ... }`). Caller has already confirmed the current
 // token is '<'. Type position (this function's own callers in this file)
 // needs no ambiguity handling: `parse_type` is a separate grammar from
 // expressions, so there's no competing '<' operator to confuse it with —
@@ -136,8 +144,8 @@ pub const parse_type_arg_list -> fn (p: *PARS::Parser) VEC::Vector {
 
 #returns_ownership
 const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let first_name: *byte = p.get_name();
   p.advance();
@@ -145,7 +153,7 @@ const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   // Simple identifier type — no resolution operator
   if (p.current().kind != TOK::LumaTokenType::TOK_RESOLVE) {
     let node: *AST::AstNode = TAST::make_basic_type(first_name, line, col);
-    // Generic type reference, e.g. `Box<int>` / `Pair<int, *byte>` — a fixed
+    // Generic type reference, e.g. `Box<i64>` / `Pair<i64, *byte>` — a fixed
     // grammar slot, unlike the same '<' at an expression call site (see
     // parser_expr.lx), so no ambiguity/backtracking needed here.
     if (p.current().kind == TOK::LumaTokenType::TOK_LT) {
@@ -180,9 +188,9 @@ const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   );
   VEC::free_vector(&parts);
 
-  // Qualified generic type reference — `Alias::Box<int>` / `A::B::Box<int>`.
+  // Qualified generic type reference — `Alias::Box<i64>` / `A::B::Box<i64>`.
   // The type args apply to the resolved *last* component; like the bare
-  // `Box<int>` case above, type position is its own grammar (no competing
+  // `Box<i64>` case above, type position is its own grammar (no competing
   // '<' operator), so no ambiguity/backtracking needed.
   if (p.current().kind == TOK::LumaTokenType::TOK_LT) {
     let targs: VEC::Vector = parse_type_arg_list(p);
@@ -196,8 +204,8 @@ const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const function_type   -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' to start function parameter list.");
 

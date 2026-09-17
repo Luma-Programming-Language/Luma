@@ -15,7 +15,7 @@ const Entry -> struct<K, V> {
 
 const Box -> struct<K, V> {
   content: *Entry<K, V>,
-  cap:     uint,
+  cap:     u64,
 
   #returns_ownership
   static make -> fn (key: K, value: V) *Box<K, V> {
@@ -34,11 +34,11 @@ const Box -> struct<K, V> {
   get_key -> fn () K { return self.content.key; },
 };
 
-pub const main -> fn (argc: int, argv: **byte) int {
-  let b: *Box<int, *byte> = Box::make<int, *byte>(7, "seven");
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  let b: *Box<i64, *byte> = Box::make<i64, *byte>(7, "seven");
 
   if (b.get_key() != 7) return 1;
-  if (b.cap != sizeof<Entry<int, *byte>>) return 1;
+  if (b.cap != sizeof<Entry<i64, *byte>>) return 1;
 
   outputln(b.content.value);
 

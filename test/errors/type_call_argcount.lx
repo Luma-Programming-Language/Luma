@@ -1,11 +1,11 @@
 // error-type: Call Error
 @module "main"
 
-const add -> fn (a: int, b: int) int {
+const add -> fn (a: i64, b: i64) i64 {
     return a + b;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
-    let x: int = add(1, 2, 3);
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    let x: i64 = add(1, 2, 3);
     return 0;
 }

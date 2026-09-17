@@ -5,8 +5,8 @@
 
 #returns_ownership
 pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
-                            body: **AST::AstNode, body_count: int, line: int, col: int,
-                            source: *byte, tokens: *TOK::Token, token_count: int) *AST::AstNode {
+                            body: **AST::AstNode, body_count: i64, line: i64, col: i64,
+                            source: *byte, tokens: *TOK::Token, token_count: i64) *AST::AstNode {
   let node: *AST::ModuleNode = AST::AstNode::make<AST::ModuleNode>(
     AST::NodeType::PREPROCESSOR_MODULE,
     AST::NodeCategory::Node_Category_PREPROCESSOR,
@@ -28,7 +28,7 @@ pub const make_module -> fn (name: *byte, doc_comment: *byte, file_path: *byte,
 }
 
 #returns_ownership
-pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int) *AST::AstNode {
+pub const make_use -> fn (module_name: *byte, alias: *byte, line: i64, col: i64) *AST::AstNode {
   let node: *AST::UseNode = AST::AstNode::make<AST::UseNode>(
     AST::NodeType::PREPROCESSOR_USE,
     AST::NodeCategory::Node_Category_PREPROCESSOR,
@@ -43,8 +43,8 @@ pub const make_use -> fn (module_name: *byte, alias: *byte, line: int, col: int)
 }
 
 #returns_ownership
-pub const make_os -> fn (platforms: **byte, bodies: **AST::AstNode, has_default: int, 
-                         default_body: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_os -> fn (platforms: **byte, bodies: **AST::AstNode, has_default: i64, 
+                         default_body: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let node: *AST::OsNode = AST::AstNode::make<AST::OsNode>(
     AST::NodeType::PREPROCESSOR_OS,
     AST::NodeCategory::Node_Category_PREPROCESSOR,
@@ -61,7 +61,7 @@ pub const make_os -> fn (platforms: **byte, bodies: **AST::AstNode, has_default:
 }
 
 #returns_ownership
-pub const make_link -> fn (lib_name: *byte, line: int, col: int) *AST::AstNode {
+pub const make_link -> fn (lib_name: *byte, line: i64, col: i64) *AST::AstNode {
   let node: *AST::LinkNode = AST::AstNode::make<AST::LinkNode>(
     AST::NodeType::PREPROCESSOR_LINK,
     AST::NodeCategory::Node_Category_PREPROCESSOR,

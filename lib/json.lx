@@ -26,9 +26,9 @@ pub const JsonType -> enum {
 };
 
 pub const JsonValue -> struct {
-  kind: int,          // JsonType
+  kind: i64,          // JsonType
   b:    bool,          // JSON_BOOL payload
-  num:  double,         // JSON_NUMBER payload
+  num:  f64,         // JSON_NUMBER payload
   str:  *byte,          // JSON_STRING payload (owned)
   arr:  VEC::Vector,    // JSON_ARRAY payload: elements are *JsonValue
   keys: VEC::Vector,    // JSON_OBJECT payload: *byte, owned, parallel to `vals`
@@ -60,7 +60,7 @@ pub const json_bool -> fn (val: bool) *JsonValue {
 }
 
 #returns_ownership
-pub const json_number -> fn (val: double) *JsonValue {
+pub const json_number -> fn (val: f64) *JsonValue {
   let v: *JsonValue = cast<*JsonValue>(alloc(sizeof<JsonValue>));
   v.kind = JsonType::JSON_NUMBER;
   v.num = val;
@@ -68,8 +68,8 @@ pub const json_number -> fn (val: double) *JsonValue {
 }
 
 #returns_ownership
-pub const json_int -> fn (val: int) *JsonValue {
-  return json_number(cast<double>(val));
+pub const json_int -> fn (val: i64) *JsonValue {
+  return json_number(cast<f64>(val));
 }
 
 #returns_ownership
@@ -79,7 +79,7 @@ pub const json_string -> fn (s: *byte) *JsonValue {
   if (s == cast<*byte>(0)) {
     v.str = cast<*byte>(0);
   } else {
-    let len: int = STR::strlen(s);
+    let len: i64 = STR::strlen(s);
     v.str = cast<*byte>(alloc(len + 1));
     MEM::memcpy(cast<*void>(v.str), cast<*void>(s), len + 1);
   }
@@ -115,8 +115,8 @@ pub const json_array_push -> fn (arr: *JsonValue, item: *JsonValue) void {
 // otherwise appends a new key/value pair. Copies `key`; does not take
 // ownership of the caller's pointer.
 pub const json_object_set -> fn (obj: *JsonValue, key: *byte, val: *JsonValue) void {
-  let n: int = obj.keys.size;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = obj.keys.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let existing: *byte = cast<**byte>(obj.keys.data)[i];
     if (STR::strcmp(existing, key) == 0) {
       let old: *JsonValue = cast<**JsonValue>(obj.vals.data)[i];
@@ -126,7 +126,7 @@ pub const json_object_set -> fn (obj: *JsonValue, key: *byte, val: *JsonValue) v
     }
   }
 
-  let klen: int = STR::strlen(key);
+  let klen: i64 = STR::strlen(key);
   let kcopy: *byte = cast<*byte>(alloc(klen + 1));
   MEM::memcpy(cast<*void>(kcopy), cast<*void>(key), klen + 1);
   obj.keys.push_back(cast<*void>(&kcopy));
@@ -137,12 +137,12 @@ pub const json_object_set -> fn (obj: *JsonValue, key: *byte, val: *JsonValue) v
 // Accessors
 // ============================================================================
 
-pub const json_array_len -> fn (v: *JsonValue) int {
+pub const json_array_len -> fn (v: *JsonValue) i64 {
   if (v == cast<*JsonValue>(0)) return 0;
   return v.arr.size;
 }
 
-pub const json_array_get -> fn (v: *JsonValue, idx: int) *JsonValue {
+pub const json_array_get -> fn (v: *JsonValue, idx: i64) *JsonValue {
   if (v == cast<*JsonValue>(0)) return cast<*JsonValue>(0);
   if (idx < 0 || idx >= v.arr.size) return cast<*JsonValue>(0);
   return cast<**JsonValue>(v.arr.data)[idx];
@@ -150,8 +150,8 @@ pub const json_array_get -> fn (v: *JsonValue, idx: int) *JsonValue {
 
 pub const json_object_get -> fn (obj: *JsonValue, key: *byte) *JsonValue {
   if (obj == cast<*JsonValue>(0)) return cast<*JsonValue>(0);
-  let n: int = obj.keys.size;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = obj.keys.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let k: *byte = cast<**byte>(obj.keys.data)[i];
     if (STR::strcmp(k, key) == 0) return cast<**JsonValue>(obj.vals.data)[i];
   }
@@ -167,12 +167,12 @@ pub const json_get_string -> fn (v: *JsonValue) *byte {
   return v.str;
 }
 
-pub const json_get_int -> fn (v: *JsonValue) int {
+pub const json_get_int -> fn (v: *JsonValue) i64 {
   if (v == cast<*JsonValue>(0) || v.kind != JsonType::JSON_NUMBER) return 0;
-  return cast<int>(v.num);
+  return cast<i64>(v.num);
 }
 
-pub const json_get_double -> fn (v: *JsonValue) double {
+pub const json_get_double -> fn (v: *JsonValue) f64 {
   if (v == cast<*JsonValue>(0) || v.kind != JsonType::JSON_NUMBER) return 0.0;
   return v.num;
 }
@@ -187,7 +187,7 @@ pub const json_object_get_string -> fn (obj: *JsonValue, key: *byte) *byte {
   return json_get_string(json_object_get(obj, key));
 }
 
-pub const json_object_get_int -> fn (obj: *JsonValue, key: *byte) int {
+pub const json_object_get_int -> fn (obj: *JsonValue, key: *byte) i64 {
   return json_get_int(json_object_get(obj, key));
 }
 
@@ -203,15 +203,15 @@ pub const json_free -> fn (v: *JsonValue) void {
       if (v.str != cast<*byte>(0)) free(v.str);
     }
     JsonType::JSON_ARRAY -> {
-      let n: int = v.arr.size;
-      loop [i: int = 0](i < n) : (++i) {
+      let n: i64 = v.arr.size;
+      loop [i: i64 = 0](i < n) : (++i) {
         json_free(cast<**JsonValue>(v.arr.data)[i]);
       }
       VEC::free_vector(&v.arr);
     }
     JsonType::JSON_OBJECT -> {
-      let n: int = v.keys.size;
-      loop [i: int = 0](i < n) : (++i) {
+      let n: i64 = v.keys.size;
+      loop [i: i64 = 0](i < n) : (++i) {
         free(cast<**byte>(v.keys.data)[i]);
         json_free(cast<**JsonValue>(v.vals.data)[i]);
       }
@@ -229,8 +229,8 @@ pub const json_free -> fn (v: *JsonValue) void {
 
 const JsonParser -> struct {
   src: *byte,
-  pos: int,
-  len: int,
+  pos: i64,
+  len: i64,
   ok:  bool, // set to false the moment any parse error is hit
 };
 
@@ -251,26 +251,26 @@ const jp_skip_ws -> fn (p: *JsonParser) void {
 }
 
 const jp_match_lit -> fn (p: *JsonParser, lit: *byte) bool {
-  let n: int = STR::strlen(lit);
+  let n: i64 = STR::strlen(lit);
   if (p.pos + n > p.len) return false;
-  loop [i: int = 0](i < n) : (++i) {
+  loop [i: i64 = 0](i < n) : (++i) {
     if (p.src[p.pos + i] != lit[i]) return false;
   }
   p.pos = p.pos + n;
   return true;
 }
 
-const jp_hex_digit_value -> fn (c: byte) int {
-  if (c >= '0' && c <= '9') return cast<int>(c) - cast<int>('0');
-  if (c >= 'a' && c <= 'f') return cast<int>(c) - cast<int>('a') + 10;
-  if (c >= 'A' && c <= 'F') return cast<int>(c) - cast<int>('A') + 10;
+const jp_hex_digit_value -> fn (c: byte) i64 {
+  if (c >= '0' && c <= '9') return cast<i64>(c) - cast<i64>('0');
+  if (c >= 'a' && c <= 'f') return cast<i64>(c) - cast<i64>('a') + 10;
+  if (c >= 'A' && c <= 'F') return cast<i64>(c) - cast<i64>('A') + 10;
   return -1;
 }
 
-const jp_str_push -> fn (buf: **byte, len: *int, cap: *int, c: byte) void {
+const jp_str_push -> fn (buf: **byte, len: *i64, cap: *i64, c: byte) void {
   if (*len + 1 >= *cap) {
-    let old_cap: int = *cap;
-    let new_cap: int = old_cap * 2;
+    let old_cap: i64 = *cap;
+    let new_cap: i64 = old_cap * 2;
     let grown: *byte = cast<*byte>(MEM::realloc(cast<*void>(*buf), old_cap, new_cap));
     *buf = grown;
     *cap = new_cap;
@@ -281,7 +281,7 @@ const jp_str_push -> fn (buf: **byte, len: *int, cap: *int, c: byte) void {
 }
 
 // Appends the (naive, BMP-only) UTF-8 encoding of a \uXXXX codepoint.
-const jp_push_utf8 -> fn (out: **byte, len: *int, cap: *int, cp: int) void {
+const jp_push_utf8 -> fn (out: **byte, len: *i64, cap: *i64, cp: i64) void {
   if (cp < 128) {
     jp_str_push(out, len, cap, cast<byte>(cp));
   } elif (cp < 2048) {
@@ -301,9 +301,9 @@ const jp_push_utf8 -> fn (out: **byte, len: *int, cap: *int, cp: int) void {
 const jp_parse_string_raw -> fn (p: *JsonParser) *byte {
   p.pos = p.pos + 1; // consume opening '"'
 
-  let cap: int = 16;
+  let cap: i64 = 16;
   let out: *byte = cast<*byte>(alloc(cap));
-  let len: int = 0;
+  let len: i64 = 0;
 
   loop (1) {
     if (p.pos >= p.len) { p.ok = false; free(out); return cast<*byte>(0); }
@@ -326,10 +326,10 @@ const jp_parse_string_raw -> fn (p: *JsonParser) *byte {
       elif (e == 't')     { jp_str_push(&out, &len, &cap, '\t'); p.pos = p.pos + 1; }
       elif (e == 'u') {
         p.pos = p.pos + 1;
-        let cp: int = 0;
-        loop [k: int = 0](k < 4) : (++k) {
+        let cp: i64 = 0;
+        loop [k: i64 = 0](k < 4) : (++k) {
           if (p.pos >= p.len) { p.ok = false; free(out); return cast<*byte>(0); }
-          let digit: int = jp_hex_digit_value(p.src[p.pos]);
+          let digit: i64 = jp_hex_digit_value(p.src[p.pos]);
           if (digit < 0) { p.ok = false; free(out); return cast<*byte>(0); }
           cp = cp * 16 + digit;
           p.pos = p.pos + 1;
@@ -352,35 +352,35 @@ const jp_parse_number -> fn (p: *JsonParser) *JsonValue {
   // Everything below is built from plain integer arithmetic with a single
   // final division, never a fractional Luma *literal* like 0.1 — those are
   // currently mis-parsed by the self-hosted compiler's own lexer (it drops
-  // the fractional digits when lowering a float literal), which would
+  // the fractional digits when lowering a floating-point literal), which would
   // silently corrupt every parsed JSON number with a fractional part.
   let neg: bool = false;
   if (p.pos < p.len && p.src[p.pos] == '-') { neg = true; p.pos = p.pos + 1; }
 
-  let int_part: int = 0;
+  let int_part: i64 = 0;
   let any_digits: bool = false;
   loop (p.pos < p.len && STR::is_digit(p.src[p.pos])) {
-    int_part = int_part * 10 + (cast<int>(p.src[p.pos]) - cast<int>('0'));
+    int_part = int_part * 10 + (cast<i64>(p.src[p.pos]) - cast<i64>('0'));
     any_digits = true;
     p.pos = p.pos + 1;
   }
   if (any_digits == false) return jp_fail(p);
 
-  let frac_digits: int = 0;
-  let frac_count: int = 0;
+  let frac_digits: i64 = 0;
+  let frac_count: i64 = 0;
   if (p.pos < p.len && p.src[p.pos] == '.') {
     p.pos = p.pos + 1;
     loop (p.pos < p.len && STR::is_digit(p.src[p.pos])) {
-      frac_digits = frac_digits * 10 + (cast<int>(p.src[p.pos]) - cast<int>('0'));
+      frac_digits = frac_digits * 10 + (cast<i64>(p.src[p.pos]) - cast<i64>('0'));
       frac_count = frac_count + 1;
       p.pos = p.pos + 1;
     }
   }
 
-  let denom: int = 1;
-  loop [i: int = 0](i < frac_count) : (++i) { denom = denom * 10; }
+  let denom: i64 = 1;
+  loop [i: i64 = 0](i < frac_count) : (++i) { denom = denom * 10; }
 
-  let value: double = cast<double>(int_part) + (cast<double>(frac_digits) / cast<double>(denom));
+  let value: f64 = cast<f64>(int_part) + (cast<f64>(frac_digits) / cast<f64>(denom));
 
   if (p.pos < p.len && (p.src[p.pos] == 'e' || p.src[p.pos] == 'E')) {
     p.pos = p.pos + 1;
@@ -389,17 +389,17 @@ const jp_parse_number -> fn (p: *JsonParser) *JsonValue {
       exp_neg = (p.src[p.pos] == '-');
       p.pos = p.pos + 1;
     }
-    let exp_val: int = 0;
+    let exp_val: i64 = 0;
     loop (p.pos < p.len && STR::is_digit(p.src[p.pos])) {
-      exp_val = exp_val * 10 + (cast<int>(p.src[p.pos]) - cast<int>('0'));
+      exp_val = exp_val * 10 + (cast<i64>(p.src[p.pos]) - cast<i64>('0'));
       p.pos = p.pos + 1;
     }
-    let mult: int = 1;
-    loop [i: int = 0](i < exp_val) : (++i) { mult = mult * 10; }
-    if (exp_neg) { value = value / cast<double>(mult); } else { value = value * cast<double>(mult); }
+    let mult: i64 = 1;
+    loop [i: i64 = 0](i < exp_val) : (++i) { mult = mult * 10; }
+    if (exp_neg) { value = value / cast<f64>(mult); } else { value = value * cast<f64>(mult); }
   }
 
-  if (neg) { value = cast<double>(0) - value; }
+  if (neg) { value = cast<f64>(0) - value; }
   return json_number(value);
 }
 
@@ -510,19 +510,19 @@ pub const json_parse -> fn (src: *byte) *JsonValue {
 
 const JsonBuf -> struct {
   data: *byte,
-  len:  int,
-  cap:  int,
+  len:  i64,
+  cap:  i64,
 };
 
 const jb_init -> fn () JsonBuf {
-  let cap: int = 256;
+  let cap: i64 = 256;
   return JsonBuf { data: cast<*byte>(alloc(cap)), len: 0, cap: cap };
 }
 
-const jb_ensure -> fn (b: *JsonBuf, extra: int) void {
+const jb_ensure -> fn (b: *JsonBuf, extra: i64) void {
   if (b.len + extra + 1 <= b.cap) return;
-  let old_cap: int = b.cap;
-  let new_cap: int = old_cap * 2;
+  let old_cap: i64 = b.cap;
+  let new_cap: i64 = old_cap * 2;
   loop (new_cap < b.len + extra + 1) { new_cap = new_cap * 2; }
   b.data = cast<*byte>(MEM::realloc(cast<*void>(b.data), old_cap, new_cap));
   b.cap = new_cap;
@@ -535,9 +535,9 @@ const jb_char -> fn (b: *JsonBuf, c: byte) void {
 }
 
 const jb_str -> fn (b: *JsonBuf, s: *byte) void {
-  let n: int = STR::strlen(s);
+  let n: i64 = STR::strlen(s);
   jb_ensure(b, n);
-  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  MEM::memcpy(cast<*void>(cast<i64>(b.data) + b.len), cast<*void>(s), n);
   b.len = b.len + n;
 }
 
@@ -548,15 +548,15 @@ const jb_finish -> fn (b: *JsonBuf) *byte {
   return b.data;
 }
 
-const jb_hex_digit -> fn (v: int) byte {
-  if (v < 10) return cast<byte>(cast<int>('0') + v);
-  return cast<byte>(cast<int>('a') + (v - 10));
+const jb_hex_digit -> fn (v: i64) byte {
+  if (v < 10) return cast<byte>(cast<i64>('0') + v);
+  return cast<byte>(cast<i64>('a') + (v - 10));
 }
 
 const jb_escaped_string -> fn (b: *JsonBuf, s: *byte) void {
   jb_char(b, '"');
   if (s != cast<*byte>(0)) {
-    let i: int = 0;
+    let i: i64 = 0;
     loop (s[i] != 0) {
       let c: byte = s[i];
       // `byte` is a plain (signed) C `char` — any byte >= 0x80 (i.e. every
@@ -565,7 +565,7 @@ const jb_escaped_string -> fn (b: *JsonBuf, s: *byte) void {
       // and the \u00XX hex math below. Mask to its unsigned 0-255 value
       // first; JSON strings can hold raw UTF-8 bytes as-is, so anything
       // >= 32 (after masking) just gets passed through unescaped.
-      let code: int = cast<int>(c) & 255;
+      let code: i64 = cast<i64>(c) & 255;
       if (c == '"')       { jb_str(b, "\\\""); }
       elif (c == '\\')    { jb_str(b, "\\\\"); }
       elif (c == '\n')    { jb_str(b, "\\n"); }
@@ -584,9 +584,9 @@ const jb_escaped_string -> fn (b: *JsonBuf, s: *byte) void {
   jb_char(b, '"');
 }
 
-const jb_number -> fn (b: *JsonBuf, v: double) void {
-  let truncated: int = cast<int>(v);
-  if (cast<double>(truncated) == v) {
+const jb_number -> fn (b: *JsonBuf, v: f64) void {
+  let truncated: i64 = cast<i64>(v);
+  if (cast<f64>(truncated) == v) {
     let s: *byte = STR::from_int(truncated);
     jb_str(b, s);
     free(s);
@@ -607,8 +607,8 @@ const jb_value -> fn (b: *JsonBuf, v: *JsonValue) void {
     JsonType::JSON_STRING -> { jb_escaped_string(b, v.str); }
     JsonType::JSON_ARRAY -> {
       jb_char(b, '[');
-      let n: int = v.arr.size;
-      loop [i: int = 0](i < n) : (++i) {
+      let n: i64 = v.arr.size;
+      loop [i: i64 = 0](i < n) : (++i) {
         if (i > 0) jb_char(b, ',');
         jb_value(b, cast<**JsonValue>(v.arr.data)[i]);
       }
@@ -616,8 +616,8 @@ const jb_value -> fn (b: *JsonBuf, v: *JsonValue) void {
     }
     JsonType::JSON_OBJECT -> {
       jb_char(b, '{');
-      let n: int = v.keys.size;
-      loop [i: int = 0](i < n) : (++i) {
+      let n: i64 = v.keys.size;
+      loop [i: i64 = 0](i < n) : (++i) {
         if (i > 0) jb_char(b, ',');
         jb_escaped_string(b, cast<**byte>(v.keys.data)[i]);
         jb_char(b, ':');

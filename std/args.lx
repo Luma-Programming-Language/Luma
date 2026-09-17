@@ -7,7 +7,7 @@
 //!
 //! # Example
 //! ```luma
-//! const main -> fn (argc: int, argv: **byte) int {
+//! const main -> fn (argc: i64, argv: **byte) i64 {
 //!     let args: Args = args::init_args(argc, argv);
 //!     
 //!     if (args.contains("--help")) {
@@ -22,19 +22,19 @@
 
 @module "std_args"
 
-const local_strlen -> fn (s: *byte) int {
-  let length: int = 0;
+const local_strlen -> fn (s: *byte) i64 {
+  let length: i64 = 0;
   loop (s[length] != cast<byte>(0)) : (++length) {}
   return length;
 }
 
-const local_strcmp -> fn (s1: *byte, s2: *byte) int {
-  let ls1: int = local_strlen(s1);
-  let ls2: int = local_strlen(s2);
+const local_strcmp -> fn (s1: *byte, s2: *byte) i64 {
+  let ls1: i64 = local_strlen(s1);
+  let ls2: i64 = local_strlen(s2);
 
   if (ls1 != ls2) { return -1; }
 
-  loop[i: int = 0](i < ls1) : (++i) {
+  loop[i: i64 = 0](i < ls1) : (++i) {
     if (s1[i] != s2[i]) { return 1; }
   }
 
@@ -51,7 +51,7 @@ const local_strcmp -> fn (s1: *byte, s2: *byte) int {
 /// - `remaining`: Number of arguments left to iterate
 pub const ArgsIter -> struct {
   data: **byte,      /// Current position in argument array
-  remaining: int,    /// Arguments remaining to iterate
+  remaining: i64,    /// Arguments remaining to iterate
 
   /// Returns the next argument without consuming it.
   ///
@@ -94,7 +94,7 @@ pub const ArgsIter -> struct {
       return cast<*byte>(0);
 
     let value: *byte = self.data[0];
-    self.data = cast<**byte>(cast<int>(self.data) + sizeof<*byte>);
+    self.data = cast<**byte>(cast<i64>(self.data) + sizeof<*byte>);
     self.remaining = self.remaining - 1;
     return value;
   },
@@ -111,8 +111,8 @@ pub const ArgsIter -> struct {
   /// iter.skip(1);  // Skip program name
   /// // Now iter points to first user argument
   /// ```
-  skip -> fn (n: int) void {
-    let i: int = 0;
+  skip -> fn (n: i64) void {
+    let i: i64 = 0;
     loop (i < n && self.remaining > 0) : (++i) {
       self.next();
     }
@@ -130,7 +130,7 @@ pub const ArgsIter -> struct {
 /// - `count`: Total number of arguments (including program name)
 pub const Args -> struct {
   data: **byte,  /// Array of argument strings
-  count: int,    /// Total number of arguments
+  count: i64,    /// Total number of arguments
   
   /// Returns the total number of arguments.
   ///
@@ -143,7 +143,7 @@ pub const Args -> struct {
   ///     return 1;
   /// }
   /// ```
-  len      -> fn () int { return self.count;      },
+  len      -> fn () i64 { return self.count;      },
 
   /// Checks if there are no arguments.
   ///
@@ -155,7 +155,7 @@ pub const Args -> struct {
   ///     output("No arguments\n");
   /// }
   /// ```
-  is_empty -> fn () int { return -cast<int>(self.count == 0); },
+  is_empty -> fn () i64 { return -cast<i64>(self.count == 0); },
 
   /// Retrieves the argument at a specific index.
   ///
@@ -172,7 +172,7 @@ pub const Args -> struct {
   ///     process_file(filename);
   /// }
   /// ```
-  get      -> fn (index: int) *byte {
+  get      -> fn (index: i64) *byte {
     if (index < 0 || index >= self.count) 
       return "";
     let data: **byte = self.data; 
@@ -196,9 +196,9 @@ pub const Args -> struct {
   ///     show_help();
   /// }
   /// ```
-  contains -> fn (val: *byte) int {
+  contains -> fn (val: *byte) i64 {
     let data: **byte = self.data;
-    loop [i: int = 0](i < self.count) : (++i) {
+    loop [i: i64 = 0](i < self.count) : (++i) {
       if (local_strcmp(data[i], val) == 0) return 1;
     }
     return 0;
@@ -215,7 +215,7 @@ pub const Args -> struct {
   /// # Example
   /// ```luma
   /// let user_args: Args = args.tail();
-  /// loop [i: int = 0](i < user_args.len()) : (++i) {
+  /// loop [i: i64 = 0](i < user_args.len()) : (++i) {
   ///     process_arg(user_args.get(i));
   /// }
   /// ```
@@ -223,7 +223,7 @@ pub const Args -> struct {
     if (self.count <= 1) return Args { data: self.data, count: 0 };
    
     return Args {
-      data: cast<**byte>(cast<int>(self.data) + sizeof<*byte>),
+      data: cast<**byte>(cast<i64>(self.data) + sizeof<*byte>),
       count: self.count - 1
     };
   },
@@ -263,7 +263,7 @@ pub const Args -> struct {
 ///
 /// # Example
 /// ```luma
-/// const main -> fn (argc: int, argv: **byte) int {
+/// const main -> fn (argc: i64, argv: **byte) i64 {
 ///     let args: Args = args::init_args(argc, argv);
 ///     
 ///     if (args.contains("--version")) {
@@ -274,6 +274,6 @@ pub const Args -> struct {
 ///     return 0;
 /// }
 /// ```
-pub const init_args -> fn (argc: int, argv: **byte) Args {
+pub const init_args -> fn (argc: i64, argv: **byte) Args {
   return Args { data: argv, count: argc };
 }

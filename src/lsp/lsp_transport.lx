@@ -14,30 +14,30 @@
 @use "std_cstring" as STR
 @use "json"        as J
 
-const read_byte -> fn () int {
+const read_byte -> fn () i64 {
   let c: byte;
-  let n: int = IO::local_read(0, cast<*void>(&c), 1);
+  let n: i64 = IO::local_read(0, cast<*void>(&c), 1);
   if (n <= 0) return -1;
-  return cast<int>(c);
+  return cast<i64>(c);
 }
 
 // Reads one full JSON-RPC message from stdin. Returns a heap-owned,
 // NUL-terminated JSON body, or null on EOF / a malformed header.
 #returns_ownership
 pub const read_message -> fn () *byte {
-  let content_length: int = -1;
+  let content_length: i64 = -1;
 
   loop (1) {
-    let cap: int = 256;
+    let cap: i64 = 256;
     let line: *byte = cast<*byte>(alloc(cap));
-    let len: int = 0;
+    let len: i64 = 0;
 
     loop (1) {
-      let c: int = read_byte();
+      let c: i64 = read_byte();
       if (c < 0) { free(line); return cast<*byte>(0); }
-      if (c == cast<int>('\n')) break;
+      if (c == cast<i64>('\n')) break;
       if (len + 1 >= cap) {
-        let old_cap: int = cap;
+        let old_cap: i64 = cap;
         cap = cap * 2;
         line = cast<*byte>(MEM::realloc(cast<*void>(line), old_cap, cap));
       }
@@ -51,18 +51,18 @@ pub const read_message -> fn () *byte {
     if (len == 0) { free(line); break; } // blank line — end of headers
 
     let prefix: *byte = "Content-Length:";
-    let plen: int = STR::strlen(prefix);
+    let plen: i64 = STR::strlen(prefix);
     if (len >= plen) {
       let matches: bool = true;
-      loop [i: int = 0](i < plen) : (++i) {
+      loop [i: i64 = 0](i < plen) : (++i) {
         if (line[i] != prefix[i]) { matches = false; break; }
       }
       if (matches) {
-        let j: int = plen;
+        let j: i64 = plen;
         loop (j < len && line[j] == ' ') { j = j + 1; }
-        let val: int = 0;
+        let val: i64 = 0;
         loop (j < len && line[j] >= '0' && line[j] <= '9') {
-          val = val * 10 + (cast<int>(line[j]) - cast<int>('0'));
+          val = val * 10 + (cast<i64>(line[j]) - cast<i64>('0'));
           j = j + 1;
         }
         content_length = val;
@@ -75,9 +75,9 @@ pub const read_message -> fn () *byte {
   if (content_length <= 0) return cast<*byte>(0);
 
   let body: *byte = cast<*byte>(alloc(content_length + 1));
-  let got: int = 0;
+  let got: i64 = 0;
   loop (got < content_length) {
-    let n: int = IO::local_read(0, cast<*void>(cast<int>(body) + got), content_length - got);
+    let n: i64 = IO::local_read(0, cast<*void>(cast<i64>(body) + got), content_length - got);
     if (n <= 0) { free(body); return cast<*byte>(0); }
     got = got + n;
   }
@@ -89,12 +89,12 @@ pub const read_message -> fn () *byte {
 pub const send_raw -> fn (body: *byte) void {
   if (body == cast<*byte>(0)) return;
 
-  let len: int = STR::strlen(body);
+  let len: i64 = STR::strlen(body);
   let len_str: *byte = STR::from_int(len);
 
   let prefix: *byte = "Content-Length: ";
   let suffix: *byte = "\r\n\r\n";
-  let total: int = STR::strlen(prefix) + STR::strlen(len_str) + STR::strlen(suffix);
+  let total: i64 = STR::strlen(prefix) + STR::strlen(len_str) + STR::strlen(suffix);
 
   let header: *byte = cast<*byte>(alloc(total + 1));
   STR::cat(header, prefix, len_str);
@@ -107,7 +107,7 @@ pub const send_raw -> fn (body: *byte) void {
   free(len_str);
 }
 
-pub const send_response -> fn (id: int, result: *J::JsonValue) void {
+pub const send_response -> fn (id: i64, result: *J::JsonValue) void {
   let msg: *J::JsonValue = J::json_object();
   J::json_object_set(msg, "jsonrpc", J::json_string("2.0"));
   J::json_object_set(msg, "id", J::json_int(id));
@@ -131,7 +131,7 @@ pub const send_notification -> fn (method: *byte, params: *J::JsonValue) void {
   J::json_free(msg);
 }
 
-pub const send_error -> fn (id: int, code: int, message: *byte) void {
+pub const send_error -> fn (id: i64, code: i64, message: *byte) void {
   let err: *J::JsonValue = J::json_object();
   J::json_object_set(err, "code", J::json_int(code));
   J::json_object_set(err, "message", J::json_string(message));
@@ -154,18 +154,18 @@ pub const send_error -> fn (id: int, code: int, message: *byte) void {
 // JSON-RPC channel. Analysis must run with stdout muted so a stray print
 // never corrupts a Content-Length-framed message; restore with
 // suppress_stdout_end before sending anything ourselves.
-pub const suppress_stdout_begin -> fn () int {
+pub const suppress_stdout_begin -> fn () i64 {
   @os {
     "linux" -> {
-      let saved: int = SYS::dup(1);
-      let devnull: int = SYS::open("/dev/null", SYS::O_WRONLY, 0);
+      let saved: i64 = SYS::dup(1);
+      let devnull: i64 = SYS::open("/dev/null", SYS::O_WRONLY, 0);
       SYS::dup2(devnull, 1);
       SYS::close(devnull);
       return saved;
     }
     "macos" -> {
-      let saved: int = SYS::dup(1);
-      let devnull: int = SYS::open("/dev/null", SYS::O_WRONLY, 0);
+      let saved: i64 = SYS::dup(1);
+      let devnull: i64 = SYS::open("/dev/null", SYS::O_WRONLY, 0);
       SYS::dup2(devnull, 1);
       SYS::close(devnull);
       return saved;
@@ -179,8 +179,8 @@ pub const suppress_stdout_begin -> fn () int {
       // for its own print/local_write use) — reused here rather than
       // pulling in std_win32, which is a much larger, purely-Windows
       // module not otherwise needed by this file.
-      let saved: int = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
-      let devnull: int = IO::CreateFileA(
+      let saved: i64 = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
+      let devnull: i64 = IO::CreateFileA(
         "NUL", IO::GENERIC_WRITE, IO::FILE_SHARE_READ,
         cast<*void>(0), IO::OPEN_EXISTING, 128, 0 // 128 = FILE_ATTRIBUTE_NORMAL
       );
@@ -190,7 +190,7 @@ pub const suppress_stdout_begin -> fn () int {
   }
 }
 
-pub const suppress_stdout_end -> fn (saved: int) void {
+pub const suppress_stdout_end -> fn (saved: i64) void {
   @os {
     "linux" -> {
       SYS::dup2(saved, 1);
@@ -201,7 +201,7 @@ pub const suppress_stdout_end -> fn (saved: int) void {
       SYS::close(saved);
     }
     "windows64" -> {
-      let current: int = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
+      let current: i64 = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
       IO::SetStdHandle(IO::STD_OUTPUT_HANDLE, saved);
       IO::CloseHandle(current); // the NUL handle opened above
     }

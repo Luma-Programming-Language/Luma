@@ -11,13 +11,19 @@ pub const LumaTokenType -> enum {
   TOK_CHAR_LITERAL, /**< Character literal */
 
   // Primitive Types
-  TOK_INT,     /**< int */
-  TOK_DOUBLE,  /**< double */
-  TOK_UINT,    /**< unsigned int */
-  TOK_FLOAT,   /**< float */
+  TOK_I8,      /**< i8  - 8-bit signed integer */
+  TOK_I16,     /**< i16 - 16-bit signed integer */
+  TOK_I32,     /**< i32 - 32-bit signed integer */
+  TOK_I64,     /**< i64 - 64-bit signed integer */
+  TOK_U8,      /**< u8  - 8-bit unsigned integer */
+  TOK_U16,     /**< u16 - 16-bit unsigned integer */
+  TOK_U32,     /**< u32 - 32-bit unsigned integer */
+  TOK_U64,     /**< u64 - 64-bit unsigned integer */
+  TOK_F32,     /**< f32 - 32-bit f32 */
+  TOK_F64,     /**< f64 - 64-bit f32 */
   TOK_BOOL,    /**< bool */
   TOK_VOID,    /**< void */
-  TOK_CHAR,    /**< char */
+  TOK_CHAR,    /**< byte (8-bit unsigned char) */
 
   // Keywords
   TOK_IF,       /**< if keyword */
@@ -114,42 +120,31 @@ pub const LumaTokenType -> enum {
   TOK_DOCUMENT     
 };
 
-// A lexical error the lexer noticed while scanning. The lexer only records
-// these (plus their source location): it can't render a line_text for the
-// error system (that needs the finished token table) and it doesn't know
-// the file path either — parse_file re-issues each one through error.lx
-// after the token scan, once both are available.
 pub const LexError -> struct {
-  kind: int,
-  line: int,
-  col:  int,
-  len:  int,
-  // The offending character, for LEX_ERR_INVALID_CHARACTER (0 otherwise)
-  // — lets the report name it.
+  kind: i64,
+  line: i64,
+  col:  i64,
+  len:  i64,
   bad:  byte,
 };
 
-pub const MAX_LEX_ERRORS: int = 32;
+pub const MAX_LEX_ERRORS: i64 = 32;
 
-pub const LEX_ERR_UNKNOWN_DIRECTIVE:   int = 0; /**< an @word or #word that isn't a keyword */
-pub const LEX_ERR_UNTERMINATED_STRING: int = 1; /**< string literal hitting \n or EOF without a closing " */
-pub const LEX_ERR_EMPTY_CHAR:          int = 2; /**< '' or an opening ' run into EOF */
-pub const LEX_ERR_BAD_CHAR:            int = 3; /**< 'a' missing its closing ', or 'ab' multi-char */
-pub const LEX_ERR_INVALID_CHARACTER:   int = 4; /**< a character Luma has no token for (silently skipped before) */
+pub const LEX_ERR_UNKNOWN_DIRECTIVE:   i64 = 0; /**< an @word or #word that isn't a keyword */
+pub const LEX_ERR_UNTERMINATED_STRING: i64 = 1; /**< string literal hitting \n or EOF without a closing " */
+pub const LEX_ERR_EMPTY_CHAR:          i64 = 2; /**< '' or an opening ' run into EOF */
+pub const LEX_ERR_BAD_CHAR:            i64 = 3; /**< 'a' missing its closing ', or 'ab' multi-char */
+pub const LEX_ERR_INVALID_CHARACTER:   i64 = 4; /**< a character Luma has no token for (silently skipped before) */
 
 pub const Lexer -> struct {
   current: *byte,
   src: *byte,
-  line: int, 
-  col: int,
+  line: i64, 
+  col: i64,
 
   errors:      [LexError; 32],
-  error_count: int,
-
-  // Set the moment any of the above is recorded, so parse_file can fail the
-  // parse even when the offending characters never became tokens (an
-  // unrecognized character is skipped, not tokenized).
-  had_error: int,
+  error_count: i64,
+  had_error: i64,
 
   static make -> fn (src: *byte) Lexer {
     let lx: Lexer = Lexer {
@@ -161,7 +156,7 @@ pub const Lexer -> struct {
       error_count: 0,
     };
 
-    loop [i: int = 0](i < MAX_LEX_ERRORS) : (++i) {
+    loop [i: i64 = 0](i < MAX_LEX_ERRORS) : (++i) {
       lx.errors[i].kind = 0;
       lx.errors[i].line = 0;
       lx.errors[i].col  = 0;
@@ -172,11 +167,11 @@ pub const Lexer -> struct {
     return lx;
   },
   
-  is_end  -> fn () int { if(self.current[0] == '\0') return 1; return 0; },
-  peek    -> fn (offset: int) byte { return self.current[offset]; },
+  is_end  -> fn () i64 { if(self.current[0] == '\0') return 1; return 0; },
+  peek    -> fn (offset: i64) byte { return self.current[offset]; },
   advance -> fn () byte {
     let c: byte = self.peek(0);
-    self.current = cast<*byte>(cast<int>(self.current) + 1);
+    self.current = cast<*byte>(cast<i64>(self.current) + 1);
 
     switch(c) {
       '\n' -> { 
@@ -194,16 +189,34 @@ pub const Lexer -> struct {
 
 pub const Token -> struct {
   val:            *byte,
-  kind:           int,
-  len:            int,
-  line:           int,
-  col:            int,
-  whitespace_len: int,
+  kind:           i64,
+  len:            i64,
+  line:           i64,
+  col:            i64,
+  whitespace_len: i64,
+
+  static make -> fn (
+    val: *byte, 
+    kind: i64, 
+    len: i64, 
+    line: i64, 
+    col: i64, 
+    whitespace_len: i64
+  ) Token {
+    return Token {
+      val: val,
+      kind: kind,
+      len: len,
+      line: line,
+      col: col,
+      whitespace_len: whitespace_len
+    };
+  },
 
   #returns_ownership
   token_value_string -> fn () *byte {
     let s: *byte = cast<*byte>(alloc((self.len + 1) * sizeof<byte>));
-    loop [i: int = 0](i < self.len) : (++i) {
+    loop [i: i64 = 0](i < self.len) : (++i) {
       s[i] = self.val[i];
     }  
     s[self.len] = '\0';
@@ -211,11 +224,7 @@ pub const Token -> struct {
   },
 };
 
-// Single-character symbols, resolved with a switch (a constant-time jump
-// table in the generated C) instead of the previous linear scan over a
-// lookup table. The `@`/`#` prefixed words never reach this — the lexer
-// handles those before falling through to symbol lookup.
-pub const lookup_single -> fn (c: byte) int {
+pub const lookup_single -> fn (c: byte) i64 {
   switch (c) {
     '(' -> return LumaTokenType::TOK_LPAREN;
     ')' -> return LumaTokenType::TOK_RPAREN;
@@ -246,13 +255,7 @@ pub const lookup_single -> fn (c: byte) int {
   return -1;
 }
 
-// Two-character operators, resolved by a first-char switch (again replacing
-// a linear scan). NOTE: there is deliberately no `>>` arm — `>>` lexes as
-// two `>` tokens so nested generic closes like `cast<Box<int>>` split
-// cleanly, and the parser reassembles adjacent `>` `>` into a right shift in
-// an expression (see is_shift_right in src/parser/expr.lx). `...` is caught
-// before this in the lexer, so `.` `.` here always means TOK_RANGE.
-pub const lookup_double -> fn (c: byte, c2: byte) int {
+pub const lookup_double -> fn (c: byte, c2: byte) i64 {
   switch (c) {
     '=' -> { if (c2 == '=') return LumaTokenType::TOK_EQEQ;    }
     '!' -> { if (c2 == '=') return LumaTokenType::TOK_NEQ;     }
@@ -275,12 +278,10 @@ pub const lookup_double -> fn (c: byte, c2: byte) int {
   return -1;
 }
 
-const KEYWORD_COUNT: int = 46;
-const Keyword -> struct { val: *byte, kind: int };
-// Sorted ascending for lookup_keyword's binary search (compare_word defines
-// the ordering: byte-lexicographic, shorter-prefix-first). Do NOT reorder
-// for readability — an unsorted map silently breaks the lookup.
-pub const keyword_map: [Keyword; 46] = [
+const KEYWORD_COUNT: i64 = 52;
+const Keyword -> struct { val: *byte, kind: i64 };
+
+pub const keyword_map: [Keyword; 52] = [
   // Function attributes
   Keyword { val: "#dll_import",        kind: LumaTokenType::TOK_DLL_IMPORT },
   Keyword { val: "#lib_import",        kind: LumaTokenType::TOK_LIB_IMPORT },
@@ -306,20 +307,23 @@ pub const keyword_map: [Keyword; 46] = [
   Keyword { val: "const",   kind: LumaTokenType::TOK_CONST },
   Keyword { val: "continue", kind: LumaTokenType::TOK_CONTINUE },
   Keyword { val: "defer",   kind: LumaTokenType::TOK_DEFER },
-  Keyword { val: "double",  kind: LumaTokenType::TOK_DOUBLE },
   Keyword { val: "elif",    kind: LumaTokenType::TOK_ELIF },
   Keyword { val: "else",    kind: LumaTokenType::TOK_ELSE },
   Keyword { val: "enum",    kind: LumaTokenType::TOK_ENUM },
+  Keyword { val: "f32",     kind: LumaTokenType::TOK_F32 },
+  Keyword { val: "f64",     kind: LumaTokenType::TOK_F64 },
   Keyword { val: "false",   kind: LumaTokenType::TOK_FALSE },
-  Keyword { val: "float",   kind: LumaTokenType::TOK_FLOAT },
   Keyword { val: "fn",      kind: LumaTokenType::TOK_FN },
   Keyword { val: "free",    kind: LumaTokenType::TOK_FREE },
+  Keyword { val: "i8",      kind: LumaTokenType::TOK_I8 },
+  Keyword { val: "i16",     kind: LumaTokenType::TOK_I16 },
+  Keyword { val: "i32",     kind: LumaTokenType::TOK_I32 },
+  Keyword { val: "i64",     kind: LumaTokenType::TOK_I64 },
   Keyword { val: "if",      kind: LumaTokenType::TOK_IF },
   Keyword { val: "impl",    kind: LumaTokenType::TOK_IMPL },
   Keyword { val: "import",  kind: LumaTokenType::TOK_IMPORT },
   Keyword { val: "in",      kind: LumaTokenType::TOK_IN },
   Keyword { val: "input",   kind: LumaTokenType::TOK_INPUT },
-  Keyword { val: "int",     kind: LumaTokenType::TOK_INT },
   Keyword { val: "let",     kind: LumaTokenType::TOK_VAR },
   Keyword { val: "loop",    kind: LumaTokenType::TOK_LOOP },
   Keyword { val: "priv",    kind: LumaTokenType::TOK_PRIVATE },
@@ -331,27 +335,16 @@ pub const keyword_map: [Keyword; 46] = [
   Keyword { val: "switch",  kind: LumaTokenType::TOK_SWITCH },
   Keyword { val: "system",  kind: LumaTokenType::TOK_SYSTEM },
   Keyword { val: "true",    kind: LumaTokenType::TOK_TRUE },
-  Keyword { val: "uint",    kind: LumaTokenType::TOK_UINT },
+  Keyword { val: "u8",      kind: LumaTokenType::TOK_U8 },
+  Keyword { val: "u16",     kind: LumaTokenType::TOK_U16 },
+  Keyword { val: "u32",     kind: LumaTokenType::TOK_U32 },
+  Keyword { val: "u64",     kind: LumaTokenType::TOK_U64 },
   Keyword { val: "using",   kind: LumaTokenType::TOK_USING },
   Keyword { val: "void",    kind: LumaTokenType::TOK_VOID },
-  // NOTE: no "mod" keyword entry — TOK_MOD is unused by the parser
-  // (the real modulo operator is the `%` symbol, tokenized separately as
-  // TOK_MODL), and `mod` is an extremely common local variable name
-  // throughout this codebase (e.g. `let mod: *ModuleNode = ...`). Reserving
-  // it as a keyword made the self-hosted lexer misparse most of its own
-  // source — see the "unknown type Token" / cascading parser-error
-  // investigation this fixed.
 ];
 
-// Byte-lexicographic compare between a length-delimited candidate (val, len)
-// and a NUL-terminated keyword literal, returning -1 / 0 / 1 for
-// val < kw / equal / val > kw. Reads at most len + 1 bytes of kw, so a
-// keyword sharing no prefix with the candidate (the common case — most
-// identifiers are not keywords) fails on its first byte. No allocation, no
-// strlen. Shorter-prefix-sorts-first: a candidate that runs out before kw is
-// "less" (e.g. "in" < "input").
-const compare_word -> fn (val: *byte, len: int, kw: *byte) int {
-  loop [i: int = 0](i < len) : (++i) {
+const compare_word -> fn (val: *byte, len: i64, kw: *byte) i64 {
+  loop [i: i64 = 0](i < len) : (++i) {
     let kc: byte = kw[i];
     if (kc == '\0')  return 1;   // kw shorter -> val is greater
     if (val[i] < kc) return -1;
@@ -361,17 +354,12 @@ const compare_word -> fn (val: *byte, len: int, kw: *byte) int {
   return 0;
 }
 
-// Keyword/directive lookup — the hot path for every identifier in the
-// source, so it's a binary search over the sorted map above with an
-// allocation-free in-place compare. (Previously this heap-allocated a word
-// copy via create_word and linearly strcmp'd all 46 entries, once per
-// identifier.)
-pub const lookup_keyword -> fn (val: *byte, len: int) int {
-  let lo: int = 0;
-  let hi: int = KEYWORD_COUNT - 1;
+pub const lookup_keyword -> fn (val: *byte, len: i64) i64 {
+  let lo: i64 = 0;
+  let hi: i64 = KEYWORD_COUNT - 1;
   loop (lo <= hi) {
-    let mid: int = (lo + hi) / 2;
-    let cmp: int = compare_word(val, len, keyword_map[mid].val);
+    let mid: i64 = (lo + hi) / 2;
+    let cmp: i64 = compare_word(val, len, keyword_map[mid].val);
     if (cmp == 0) return keyword_map[mid].kind;
     if (cmp < 0) { hi = mid - 1; }
     else         { lo = mid + 1; }

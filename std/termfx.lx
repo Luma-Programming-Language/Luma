@@ -133,7 +133,7 @@ pub const CLEAR_TO_EOL: *byte = "\x1b[K";
 pub const CLEAR_TO_EOS: *byte = "\x1b[J";
 
 #returns_ownership
-const from_int -> fn (n: int) *byte {
+const from_int -> fn (n: i64) *byte {
   if (n == 0) { 
     let s: *byte = cast<*byte>(alloc(2 * sizeof<byte>));
     s[0] = '0';
@@ -141,18 +141,18 @@ const from_int -> fn (n: int) *byte {
     return s;
   }
 
-  let negative: int = 0;
+  let negative: i64 = 0;
   if (n < 0) {
     negative = 1;
     n = -n;
   }
 
-  let buffer: [byte; 20]; // enough for 64-bit int
-  let i: int = 0;
+  let buffer: [byte; 20]; // enough for an i64
+  let i: i64 = 0;
 
   loop (n != 0) {
-    let digit: int = n % 10;
-    buffer[i] = cast<byte>(digit + cast<int>('0'));
+    let digit: i64 = n % 10;
+    buffer[i] = cast<byte>(digit + cast<i64>('0'));
     n = n / 10;
     i = i + 1;
   }
@@ -164,7 +164,7 @@ const from_int -> fn (n: int) *byte {
 
   // Reverse the string
   let s: *byte = cast<*byte>(alloc((i + 1) * sizeof<byte>));
-  loop [j: int = 0](j < i) : (j = j + 1) {
+  loop [j: i64 = 0](j < i) : (j = j + 1) {
     s[j] = buffer[i - j - 1];
   }
   s[i] = cast<byte>(0); // null terminator
@@ -172,17 +172,17 @@ const from_int -> fn (n: int) *byte {
   return s;
 }
 
-const strlen -> fn (s: *byte) int {
-  let length: int = 0;
+const strlen -> fn (s: *byte) i64 {
+  let length: i64 = 0;
   loop (s[length] != cast<byte>(0)) : (++length) {}
   return length;
 }
 
 const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
-  let ls1: int = strlen(s1);
-  let lt: int = ls1 + strlen(s2) + 1;
+  let ls1: i64 = strlen(s1);
+  let lt: i64 = ls1 + strlen(s2) + 1;
 
-  loop [i: int = 0](i < lt) : (++i) {
+  loop [i: i64 = 0](i < lt) : (++i) {
     if (i < ls1) {
       dest[i] = s1[i];
     } else {
@@ -218,7 +218,7 @@ const cat -> fn (dest: *byte, s1: *byte, s2: *byte) *byte {
 /// output(fx::RESET);
 /// ```
 #returns_ownership
-pub const fg_rgb -> fn (r: int, g: int, b: int) *byte {
+pub const fg_rgb -> fn (r: i64, g: i64, b: i64) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
     
     cat(msg, msg, "\x1b[38;2;");
@@ -254,7 +254,7 @@ pub const fg_rgb -> fn (r: int, g: int, b: int) *byte {
 /// output(fx::RESET);
 /// ```
 #returns_ownership
-pub const bg_rgb -> fn (r: int, g: int, b: int) *byte {
+pub const bg_rgb -> fn (r: i64, g: i64, b: i64) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
 
     cat(msg, msg, "\x1b[48;2;");
@@ -288,7 +288,7 @@ pub const bg_rgb -> fn (r: int, g: int, b: int) *byte {
 /// output("Text at row 10, column 20");
 /// ```
 #returns_ownership
-pub const move_cursor -> fn (row: int, col: int) *byte {
+pub const move_cursor -> fn (row: i64, col: i64) *byte {
     let msg: *byte = cast<*byte>(alloc(20 * sizeof<byte>));
 
     cat(msg, msg, "\x1b[");

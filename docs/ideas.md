@@ -36,17 +36,17 @@ LLVM ERROR: Broken module found, compilation aborted!
 ```luma
 ;; Syntax will change on something
 const Link = struct {
-    tag: int,
+    tag: i64,
     value = union {
         .nil = struct {},
         .node = struct {
-            value: int,
+            value: i64,
             next: *Link
         }
     }
 };
 
-const link_list_length_rec = fn (list: *Link) int {
+const link_list_length_rec = fn (list: *Link) i64 {
     if (list.tag == nil) {
         return 0;
     } else {
@@ -54,8 +54,8 @@ const link_list_length_rec = fn (list: *Link) int {
     }
 };
 
-const link_list_length_tail = fn (list: *Link, acc: int) int {
-    loop [acc: int = 0, lt: *Link = list, i:int = 0](true) {
+const link_list_length_tail = fn (list: *Link, acc: i64) i64 {
+    loop [acc: i64 = 0, lt: *Link = list, i:i64 = 0](true) {
         if (lt.tag == nil) return acc;
         else {
             continue[lt.value.node.next, acc + 1, _]; ;;Underscore does not change the value
@@ -63,7 +63,7 @@ const link_list_length_tail = fn (list: *Link, acc: int) int {
     }
 };
 
-const link_list_length = fn (list: *Link) int {
+const link_list_length = fn (list: *Link) i64 {
     return link_list_length_tail(list, 0);
 };
 ```
@@ -86,10 +86,10 @@ C headers are converted into Luma modules through automatic binding generation, 
 
 extern "C" {
     const FILE: type = opaque;
-    const printf = fn (format: *char, ...) int;
+    const printf = fn (format: *char, ...) i64;
     const fopen = fn (filename: *char, mode: *char) *FILE;
-    const fclose = fn (stream: *FILE) int;
-    const fprintf = fn (stream: *FILE, format: *char, ...) int;
+    const fclose = fn (stream: *FILE) i64;
+    const fprintf = fn (stream: *FILE, format: *char, ...) i64;
 }
 ```
 
@@ -100,7 +100,7 @@ extern "C" {
 @module "main"
 @use "stdio" as io
 
-pub const main = fn () int {
+pub const main = fn () i64 {
     io.printf("Hello from C!\n");
 
     let file: *io.FILE = io.fopen("test.txt", "w");
@@ -165,9 +165,9 @@ someType: ?; # is a None, or a real type.
 
 ## A set is a fixed sized array of types
 
-## a, b, c : (int, float, char)
+## a, b, c : (i64, f32, char)
 
-## const func1 = fn () (int, float, int) {}
+## const func1 = fn () (i64, f32, i64) {}
 
 ## The same thing
 
@@ -175,7 +175,7 @@ someType: ?; # is a None, or a real type.
 
 ## changes the position for the returning set
 
-## a, b, c : (float, int, int) = func1
+## a, b, c : (f32, i64, i64) = func1
 
 ## The () is here to be explicit that we are expecting a set from func1
 
@@ -266,7 +266,7 @@ For even more streamlined development, direct C header imports could be supporte
 @use "stdio" as io        // Regular Luma module
 @use_c "math.h" as math   // Direct C header import (auto-generates bindings)
 
-pub const main = fn () int {
+pub const main = fn () i64 {
     io.printf("Square root of 16 is: %f\n", math.sqrt(16.0));
     return 0;
 }
@@ -300,7 +300,7 @@ Binding modules can include metadata to automate the linking process:
 @link_lib "c"        // Automatically link libc
 
 extern "C" {
-    const printf = fn (format: *char, ...) int;
+    const printf = fn (format: *char, ...) i64;
     // ... other declarations
 }
 ```
@@ -345,4 +345,4 @@ This approach provides a foundation for C interoperability that feels natural to
 
 ## Look into adding in Multithreading
 
-## Add in multiple return types. ``const createStack = fn (stackCeiling: int) <*Stack, *void>``
+## Add in multiple return types. ``const createStack = fn (stackCeiling: i64) <*Stack, *void>``

@@ -16,7 +16,7 @@ const set_cache -> fn (s: *byte) void {
     g_cache = dup_str(s);
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     set_cache("hi");
     return 0;
 }

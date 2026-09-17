@@ -5,7 +5,7 @@ const do_nothing -> fn () void {
     return 5;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     do_nothing();
     return 0;
 }

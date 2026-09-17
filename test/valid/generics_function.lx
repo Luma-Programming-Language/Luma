@@ -18,17 +18,17 @@ const swap -> fn<T> (a: *T, b: *T) void {
     *b = temp;
 }
 
-pub const main -> fn (argc: int, argv: **byte) int {
+pub const main -> fn (argc: i64, argv: **byte) i64 {
     // Same template, two different concrete instantiations.
-    if (add<int>(1, 2) != 3) return 1;
-    if (add<float>(1.0, 2.0) != 3.0) return 1;
+    if (add<i64>(1, 2) != 3) return 1;
+    if (add<f32>(1.0, 2.0) != 3.0) return 1;
 
-    let x: int = 5;
-    let y: int = 10;
-    swap<int>(&x, &y);
+    let x: i64 = 5;
+    let y: i64 = 10;
+    swap<i64>(&x, &y);
     if (x != 10 || y != 5) return 1;
 
-    if (identity<int>(42) != 42) return 1;
+    if (identity<i64>(42) != 42) return 1;
 
     let s: *byte = identity<*byte>("hello");
     outputln(s);

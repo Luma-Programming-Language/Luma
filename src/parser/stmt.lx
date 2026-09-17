@@ -14,17 +14,17 @@
 @use "parser"       as PARS
 @use "ast"          as AST
 
-#returns_ownership const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode; 
-#returns_ownership const _fn    -> fn (p: *PARS::Parser, name: *byte, is_public: int, 
-                                           returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode;
-#returns_ownership const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: int) *AST::AstNode;
-#returns_ownership const _enum   -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode;
-#returns_ownership const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode;
+#returns_ownership const _const -> fn (p: *PARS::Parser, is_public: i64, returns_ownership: i64, takes_ownership: i64, doc_comment: *byte) *AST::AstNode; 
+#returns_ownership const _fn    -> fn (p: *PARS::Parser, name: *byte, is_public: i64, 
+                                           returns_ownership: i64, takes_ownership: i64, doc_comment: *byte) *AST::AstNode;
+#returns_ownership const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: i64) *AST::AstNode;
+#returns_ownership const _enum   -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment: *byte) *AST::AstNode;
+#returns_ownership const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment: *byte) *AST::AstNode;
 #returns_ownership const parse_type_param_list -> fn (p: *PARS::Parser) VEC::Vector;
-#returns_ownership const var     -> fn (p: *PARS::Parser, is_public: int, doc_comment: *byte) *AST::AstNode;
+#returns_ownership const var     -> fn (p: *PARS::Parser, is_public: i64, doc_comment: *byte) *AST::AstNode;
 #returns_ownership const infinite_loop_stmt  -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const for_loop_stmt       -> fn (p: *PARS::Parser) *AST::AstNode;
-#returns_ownership const print_stmt   -> fn (p: *PARS::Parser, ln: int) *AST::AstNode;
+#returns_ownership const print_stmt   -> fn (p: *PARS::Parser, ln: i64) *AST::AstNode;
 #returns_ownership const expr        -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const use         -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const os_stmt     -> fn (p: *PARS::Parser) *AST::AstNode;
@@ -38,7 +38,7 @@ const apply_lib_import      -> fn (node: *AST::AstNode, lib_name: *byte) void;
 #returns_ownership const _defer      -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const _switch     -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const parse_case_value  -> fn (p: *PARS::Parser, using_path: *VEC::Vector) *AST::AstNode;
-#returns_ownership const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: int, col: int) *AST::AstNode;
+#returns_ownership const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: i64, col: i64) *AST::AstNode;
 const free_using_path -> fn (using_path: *VEC::Vector) void;
 #returns_ownership const _impl       -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const _loop       -> fn (p: *PARS::Parser) *AST::AstNode;
@@ -46,11 +46,11 @@ const free_using_path -> fn (using_path: *VEC::Vector) void;
 #returns_ownership
 pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   let doc_comment: *byte = consume_doc_comments(p);
-  let returns_ownership: int = 0;
-  let takes_ownership: int = 0;
-  let is_dll_import: int = 0;
-  let is_lib_import: int = 0;
-  let is_public: int = 0;
+  let returns_ownership: i64 = 0;
+  let takes_ownership: i64 = 0;
+  let is_dll_import: i64 = 0;
+  let is_lib_import: i64 = 0;
+  let is_public: i64 = 0;
 
   let dll_conv: *byte;
   let lib_name: *byte;
@@ -149,7 +149,7 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
 
   switch using TOK::LumaTokenType (p.current().kind) {
     TOK_CONTINUE, TOK_BREAK 
-      -> node = break_continue_stmt(p, -cast<int>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
+      -> node = break_continue_stmt(p, -cast<i64>(p.current().kind == TOK::LumaTokenType::TOK_CONTINUE));
     TOK_CONST  -> node = _const(p, is_public, returns_ownership, takes_ownership, doc_comment);
     TOK_VAR    -> node = var(p, is_public, doc_comment);
     TOK_USE    -> node = use(p);
@@ -182,7 +182,7 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   }
 
   if (doc_comment != cast<*byte>(0)) {
-    let consumed: int = 0;
+    let consumed: i64 = 0;
     if (node != cast<*AST::AstNode>(0)) {
       if (node.kind == AST::NodeType::STMT_VAR_DECL      ||
           node.kind == AST::NodeType::STMT_CONST_DECL    ||
@@ -216,18 +216,18 @@ pub const consume_doc_comments -> fn (p: *PARS::Parser) *byte {
     return cast<*byte>(0);
   }
 
-  let total_len: int = 0;
-  loop [i: int = 0](i < lines.size) : (i++) {
+  let total_len: i64 = 0;
+  loop [i: i64 = 0](i < lines.size) : (i++) {
     let string: **byte = cast<**byte>(lines.data);
     total_len = total_len + STRING::strlen(string[i]) + 1;
   }
 
   let result: *byte = cast<*byte>(alloc(total_len + 1));
-  let ptr: int = cast<int>(result);
-  loop [i: int = 0](i < lines.size) : (i++) {
+  let ptr: i64 = cast<i64>(result);
+  loop [i: i64 = 0](i < lines.size) : (i++) {
     let string: **byte = cast<**byte>(lines.data);
     let line: *byte = string[i];
-    let len: int = STRING::strlen(line);
+    let len: i64 = STRING::strlen(line);
     MEM::memcpy(cast<*void>(ptr), cast<*void>(line), len);
     ptr = ptr + len;
     cast<*byte>(ptr)[0] = '\n';
@@ -254,20 +254,20 @@ const apply_lib_import -> fn (node: *AST::AstNode, lib_name: *byte) void {
 
 #returns_ownership 
 const os_stmt     -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_OS, "Expected '@os' keyword");
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after '@os'");
 
   let platforms: VEC::Vector = VEC::create_vector(sizeof<*byte>);
   let bodies: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
-  let has_default: int = 0;
+  let has_default: i64 = 0;
   let default_body: *AST::AstNode = cast<*AST::AstNode>(0);
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
-    let arm_line: int = p.current().line;
-    let arm_col:  int = p.current().col;
+    let arm_line: i64 = p.current().line;
+    let arm_col:  i64 = p.current().col;
 
     // Default arm: _ -> { ... }
     if (p.current().kind == TOK::LumaTokenType::TOK_IDENTIFIER) {
@@ -350,8 +350,8 @@ const os_stmt     -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership 
 const link_stmt   -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LINK, "Expected '@link' keyword");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after '@link'");
@@ -370,9 +370,9 @@ const link_stmt   -> fn (p: *PARS::Parser) *AST::AstNode {
 }
 
 #returns_ownership 
-const _const -> fn (p: *PARS::Parser, is_public: int, returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const _const -> fn (p: *PARS::Parser, is_public: i64, returns_ownership: i64, takes_ownership: i64, doc_comment: *byte) *AST::AstNode {
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_CONST, "Expected 'const' keyword.");
   let name: *byte = p.get_name();
@@ -442,9 +442,9 @@ const parse_type_param_list -> fn (p: *PARS::Parser) VEC::Vector {
 }
 
 #returns_ownership
-const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownership: int, takes_ownership: int, doc_comment: *byte) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: i64, returns_ownership: i64, takes_ownership: i64, doc_comment: *byte) *AST::AstNode {
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let param_names: VEC::Vector = VEC::create_vector(sizeof<*byte>);
   let param_types: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
@@ -545,9 +545,9 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: int, returns_ownershi
 }
 
 #returns_ownership
-const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment: *byte) *AST::AstNode {
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let members: VEC::Vector = VEC::create_vector(sizeof<*byte>);
 
@@ -556,7 +556,7 @@ const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *
   // Generic enum — `enum<T, U> { ... }`. A fixed grammar slot right after
   // the 'enum' keyword, mirroring `struct<T>` — no ambiguity to resolve.
   // Luma enums are plain name constants (no associated data), so the type
-  // parameters act as phantom/type-tag placeholders: `State<int>` and
+  // parameters act as phantom/type-tag placeholders: `State<i64>` and
   // `State<*byte>` become distinct nominal types with distinct (mangled)
   // member constants. See docs/docs.md's Generics section.
   let type_params: VEC::Vector = VEC::create_vector(sizeof<*byte>);
@@ -599,9 +599,9 @@ const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *
 }
 
 #returns_ownership
-const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment: *byte) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment: *byte) *AST::AstNode {
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let public_fields:  VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
   let private_fields: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
@@ -621,7 +621,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment:
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' after struct name.");
 
-  let public_member: int = 1;
+  let public_member: i64 = 1;
   let pending_doc: *byte = cast<*byte>(0);
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
@@ -655,13 +655,13 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment:
     if (p.current().kind == TOK::LumaTokenType::TOK_ELLIPSIS) {
       p.advance();
 
-      let embed_line: int = p.current().line;
-      let embed_col:  int = p.current().col;
+      let embed_line: i64 = p.current().line;
+      let embed_col:  i64 = p.current().col;
       let embed_name: *byte = p.get_name();
       p.advance();
 
       let embed_type: *AST::AstNode = TAST::make_basic_type(embed_name, embed_line, embed_col);
-      let elen: int = STRING::strlen(embed_name);
+      let elen: i64 = STRING::strlen(embed_name);
       let name_copy: *byte = cast<*byte>(alloc(elen + 1));
       MEM::memcpy(cast<*void>(name_copy), cast<*void>(embed_name), elen);
       name_copy[elen] = '\0';
@@ -689,8 +689,8 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment:
       continue;
     }
 
-    let field_line: int = p.current().line;
-    let field_col:  int = p.current().col;
+    let field_line: i64 = p.current().line;
+    let field_col:  i64 = p.current().col;
 
     // `static name -> fn (...) T { ... }` — a method with no implicit
     // `self`, called as `Type::name(...)`. Only meaningful on a method
@@ -699,9 +699,9 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment:
     // looping here (instead of checking `static` once, up front) avoids
     // misreading `static` as the field's own name when an attribute comes
     // first, e.g. `#returns_ownership\nstatic create -> fn (...) *T { }`.
-    let field_is_static: int = 0;
-    let field_returns_ownership: int = 0;
-    let field_takes_ownership:   int = 0;
+    let field_is_static: i64 = 0;
+    let field_returns_ownership: i64 = 0;
+    let field_takes_ownership:   i64 = 0;
     loop (true) {
       if (p.current().kind == TOK::LumaTokenType::TOK_STATIC) {
         field_is_static = 1;
@@ -722,7 +722,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment:
 
     let field_function: *AST::AstNode = cast<*AST::AstNode>(0);
     let field_type:     *AST::AstNode = cast<*AST::AstNode>(0);
-    let field_doc_taken: int = 0;
+    let field_doc_taken: i64 = 0;
 
     if (p.current().kind == TOK::LumaTokenType::TOK_RIGHT_ARROW) {
       p.advance();
@@ -731,7 +731,7 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment:
         field_doc_taken = 1;
       }
 
-      let len: int = STRING::strlen(field_name);
+      let len: i64 = STRING::strlen(field_name);
       let name_copy: *byte = cast<*byte>(alloc(len + 1));
       MEM::memcpy(cast<*void>(name_copy), cast<*void>(field_name), len);
       name_copy[len] = '\0';
@@ -801,12 +801,12 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: int, doc_comment:
   return node;
 }
 
-#returns_ownership const print -> fn (p: *PARS::Parser, ln: int) *AST::AstNode { return cast<*AST::AstNode>(0); }
+#returns_ownership const print -> fn (p: *PARS::Parser, ln: i64) *AST::AstNode { return cast<*AST::AstNode>(0); }
 
 #returns_ownership
-const var -> fn (p: *PARS::Parser, is_public: int, doc_comment: *byte) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const var -> fn (p: *PARS::Parser, is_public: i64, doc_comment: *byte) *AST::AstNode {
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_VAR, "Expected 'var' keyword.");
   let name: *byte = p.get_name();
@@ -816,7 +816,7 @@ const var -> fn (p: *PARS::Parser, is_public: int, doc_comment: *byte) *AST::Ast
   let type: *AST::AstNode = PTYPE::parse_type(p);
 
   if (p.current().kind != TOK::LumaTokenType::TOK_EQUAL) {
-    let prev_errors: int = p.had_error;
+    let prev_errors: i64 = p.had_error;
     p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected ';' after variable declaration.");
     if (p.had_error != prev_errors) return cast<*AST::AstNode>(0);
     return SAST::make_var_decl(name, doc_comment, type, cast<*AST::AstNode>(0), 1, is_public, line, col);
@@ -831,8 +831,8 @@ const var -> fn (p: *PARS::Parser, is_public: int, doc_comment: *byte) *AST::Ast
 
 #returns_ownership 
 const expr -> fn (p: *PARS::Parser) *AST::AstNode { 
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let e: *AST::AstNode = PEXPR::parse_expr(p, PARS::BindingPower::BP_LOWEST);
   p.consume(TOK::LumaTokenType::TOK_SEMI, "Expected a semicolon after expression statement.");
@@ -846,8 +846,8 @@ const use -> fn (p: *PARS::Parser) *AST::AstNode {
 
   // Anchored at the module-name token itself (not `@use`) so diagnostics
   // about the module (e.g. "module not found") point at the actual name.
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   let mod_name: *byte = p.get_name();
   p.advance();
@@ -861,8 +861,8 @@ const use -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const return_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_RETURN, "Expected 'return' keyword.");
 
@@ -878,8 +878,8 @@ const return_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const block -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LBRACE, "Expected '{' to start block.");
 
@@ -900,8 +900,8 @@ const block -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const _if -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_IF, "Expected 'if' keyword.");
   p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'if'.");
@@ -927,8 +927,8 @@ const _if -> fn (p: *PARS::Parser) *AST::AstNode {
   let elif_stmts: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   loop (p.has_tokens() && p.current().kind == TOK::LumaTokenType::TOK_ELIF) {
-    let elif_line: int = p.current().line;
-    let elif_col:  int = p.current().col;
+    let elif_line: i64 = p.current().line;
+    let elif_col:  i64 = p.current().col;
     p.consume(TOK::LumaTokenType::TOK_ELIF,   "Expected 'elif' keyword.");
     p.consume(TOK::LumaTokenType::TOK_LPAREN, "Expected '(' after 'elif'.");
 
@@ -985,9 +985,9 @@ const _if -> fn (p: *PARS::Parser) *AST::AstNode {
 }
 
 #returns_ownership
-const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: int) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: i64) *AST::AstNode {
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   if (is_continue == 1) {
     p.consume(TOK::LumaTokenType::TOK_CONTINUE, "Expected 'continue' keyword.");
@@ -1000,8 +1000,8 @@ const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: int) *AST::AstNo
 
 #returns_ownership
 const _defer -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   p.consume(TOK::LumaTokenType::TOK_DEFER, "Expected 'defer' keyword.");
 
   let stmt: *AST::AstNode = parse_stmt(p);
@@ -1014,8 +1014,8 @@ const _defer -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_SWITCH, "Expected 'switch' keyword.");
 
@@ -1065,8 +1065,8 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
   let default_case: *AST::AstNode = cast<*AST::AstNode>(0);
 
   loop (p.has_tokens() && p.current().kind != TOK::LumaTokenType::TOK_RBRACE) {
-    let case_line: int = p.current().line;
-    let case_col:  int = p.current().col;
+    let case_line: i64 = p.current().line;
+    let case_col:  i64 = p.current().col;
 
     // Default case: _ -> { ... }
     if (p.current().kind == TOK::LumaTokenType::TOK_IDENTIFIER) {
@@ -1165,8 +1165,8 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
 // qualified or non-enum case value.
 #returns_ownership
 const parse_case_value -> fn (p: *PARS::Parser, using_path: *VEC::Vector) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   if (using_path.size > 0 &&
       p.current().kind == TOK::LumaTokenType::TOK_IDENTIFIER &&
@@ -1186,13 +1186,13 @@ const parse_case_value -> fn (p: *PARS::Parser, using_path: *VEC::Vector) *AST::
 // `using_path`'s strings are reused across every case label in the switch
 // and each resulting AST node owns its own name.
 #returns_ownership
-const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: int, col: int) *AST::AstNode {
+const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: i64, col: i64) *AST::AstNode {
   let segments: **byte = cast<**byte>(using_path.data);
 
   let root: *byte = STRING::dup(segments[0]);
   let node: *AST::AstNode = EAST::make_identifier(root, line, col);
 
-  loop [i: int = 1](i < using_path.size) : (++i) {
+  loop [i: i64 = 1](i < using_path.size) : (++i) {
     let seg: *byte = STRING::dup(segments[i]);
     node = EAST::make_member(node, seg, 1, line, col);
   }
@@ -1202,7 +1202,7 @@ const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: int, c
 
 const free_using_path -> fn (using_path: *VEC::Vector) void {
   let segments: **byte = cast<**byte>(using_path.data);
-  loop [i: int = 0](i < using_path.size) : (++i) { free(segments[i]); }
+  loop [i: i64 = 0](i < using_path.size) : (++i) { free(segments[i]); }
   VEC::free_vector(using_path);
 }
 
@@ -1210,8 +1210,8 @@ const free_using_path -> fn (using_path: *VEC::Vector) void {
 
 #returns_ownership
 const loop_init -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   let name: *byte = p.get_name();
   p.advance();
 
@@ -1225,8 +1225,8 @@ const loop_init -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const for_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   let initializers: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
 
   p.consume(TOK::LumaTokenType::TOK_LBRACKET, "Expected '[' after 'loop'.");
@@ -1280,8 +1280,8 @@ const for_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const infinite_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
   let body: *AST::AstNode = block(p);
   if (body == cast<*AST::AstNode>(0)) {
     p.error("SyntaxError", "Expected block statement for infinite loop.");
@@ -1292,8 +1292,8 @@ const infinite_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const _loop -> fn (p: *PARS::Parser) *AST::AstNode {
-  let line: int = p.current().line;
-  let col:  int = p.current().col;
+  let line: i64 = p.current().line;
+  let col:  i64 = p.current().col;
 
   p.consume(TOK::LumaTokenType::TOK_LOOP, "Expected 'loop' keyword.");
 

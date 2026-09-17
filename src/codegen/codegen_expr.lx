@@ -27,12 +27,18 @@ const input_helper_name -> fn (t: *AST::AstNode) *byte {
   if (TCT::is_pointer_type(t) && TCT::is_basic_named(strip_ptr(t), "byte")) {
     return "__luma_input_string"; // *byte, i.e. string
   }
-  if (TCT::is_basic_named(t, "int"))    return "__luma_input_int";
-  if (TCT::is_basic_named(t, "uint"))   return "__luma_input_uint";
-  if (TCT::is_basic_named(t, "float"))  return "__luma_input_float";
-  if (TCT::is_basic_named(t, "double")) return "__luma_input_double";
-  if (TCT::is_basic_named(t, "bool"))   return "__luma_input_bool";
-  if (TCT::is_basic_named(t, "byte"))   return "__luma_input_byte";
+  if (TCT::is_basic_named(t, "i8"))    return "__luma_input_i8";
+  if (TCT::is_basic_named(t, "i16"))   return "__luma_input_i16";
+  if (TCT::is_basic_named(t, "i32"))   return "__luma_input_i32";
+  if (TCT::is_basic_named(t, "i64"))   return "__luma_input_i64";
+  if (TCT::is_basic_named(t, "u8"))    return "__luma_input_u8";
+  if (TCT::is_basic_named(t, "u16"))   return "__luma_input_u16";
+  if (TCT::is_basic_named(t, "u32"))   return "__luma_input_u32";
+  if (TCT::is_basic_named(t, "u64"))   return "__luma_input_u64";
+  if (TCT::is_basic_named(t, "f32"))   return "__luma_input_f32";
+  if (TCT::is_basic_named(t, "f64"))   return "__luma_input_f64";
+  if (TCT::is_basic_named(t, "bool"))  return "__luma_input_bool";
+  if (TCT::is_basic_named(t, "byte"))  return "__luma_input_byte";
 
   return cast<*byte>(0);
 }
@@ -60,13 +66,13 @@ const resolve_field -> fn (ctx: *CG::CodegenContext, struct_name: *byte, member:
 
   let sd: *AST::StructDeclNode = s.decl;
 
-  let groups: int = 0;
+  let groups: i64 = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0)) {
@@ -92,10 +98,10 @@ const resolve_field -> fn (ctx: *CG::CodegenContext, struct_name: *byte, member:
   groups = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0)) {
@@ -151,13 +157,13 @@ const find_embedded_path -> fn (ctx: *CG::CodegenContext, struct_name: *byte, ta
 
   let sd: *AST::StructDeclNode = s.decl;
 
-  let groups: int = 0;
+  let groups: i64 = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0)) {
@@ -240,7 +246,7 @@ const static_type_of -> fn (ctx: *CG::CodegenContext, expr: *AST::AstNode) *AST:
 const emit_c_string_literal -> fn (buf: *CG::Buf, s: *byte) void {
   CG::buf_char(buf, '"');
   if (s != cast<*byte>(0)) {
-    let i: int = 0;
+    let i: i64 = 0;
     loop (s[i] != cast<byte>(0)) {
       let c: byte = s[i];
       if (c == '"')                 { CG::buf_str(buf, "\\\""); }
@@ -286,7 +292,7 @@ const gen_output_arg -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, arg: *AST::
       CG::buf_str(buf, "))");
       return;
     }
-    if (TCT::is_basic_named(t, "float") || TCT::is_basic_named(t, "double")) {
+    if (TCT::is_basic_named(t, "f32") || TCT::is_basic_named(t, "f64")) {
       CG::buf_str(buf, "((double)(");
       gen_expr(ctx, buf, arg);
       CG::buf_str(buf, "))");
@@ -312,15 +318,15 @@ const output_fmt_for -> fn (ctx: *CG::CodegenContext, arg: *AST::AstNode) *byte 
   if (t != cast<*AST::AstNode>(0)) {
     if (TCT::is_bool_type(t)) return "%s";
     if (TCT::is_basic_named(t, "byte")) return "%d";
-    if (TCT::is_basic_named(t, "float") || TCT::is_basic_named(t, "double")) return "%f";
+    if (TCT::is_basic_named(t, "f32") || TCT::is_basic_named(t, "f64")) return "%f";
     if (TCT::is_pointer_type(t)) return "%s";
     return "%lld";
   }
   return "%lld";
 }
 
-pub const gen_output_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, args: **AST::AstNode, arg_count: int) void {
-  let i: int = 0;
+pub const gen_output_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, args: **AST::AstNode, arg_count: i64) void {
+  let i: i64 = 0;
   loop (i < arg_count) {
     CG::buf_str(buf, "printf(\"");
     CG::buf_str(buf, output_fmt_for(ctx, args[i]));
@@ -360,7 +366,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
       CG::buf_str(buf, id.name);
     }
     CG::buf_str(buf, "(");
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.arg_count) {
       if (i > 0) CG::buf_str(buf, ", ");
       gen_expr(ctx, buf, n.args[i]);
@@ -376,7 +382,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
     if (mn.is_compiletime == 1) {
       // ALIAS::function(...) — a plain top-level call into another module.
       let mn_object: *AST::AstNode = mn.object;
-      let mn_object_kind: int = mn_object.kind;
+      let mn_object_kind: i64 = mn_object.kind;
       if (mn_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
         let obj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(mn_object);
         let target_mod: *byte = CG::resolve_alias(ctx, ctx.current_module, obj.name);
@@ -387,7 +393,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
             CG::buf_str(buf, cname);
             free(cname);
             CG::buf_str(buf, "(");
-            let i: int = 0;
+            let i: i64 = 0;
             loop (i < n.arg_count) {
               if (i > 0) CG::buf_str(buf, ", ");
               gen_expr(ctx, buf, n.args[i]);
@@ -413,7 +419,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
             CG::buf_str(buf, scname);
             free(scname);
             CG::buf_str(buf, "(");
-            let j: int = 0;
+            let j: i64 = 0;
             loop (j < n.arg_count) {
               if (j > 0) CG::buf_str(buf, ", ");
               gen_expr(ctx, buf, n.args[j]);
@@ -443,7 +449,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
               CG::buf_str(buf, scname);
               free(scname);
               CG::buf_str(buf, "(");
-              let k: int = 0;
+              let k: i64 = 0;
               loop (k < n.arg_count) {
                 if (k > 0) CG::buf_str(buf, ", ");
                 gen_expr(ctx, buf, n.args[k]);
@@ -480,7 +486,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
             CG::buf_str(buf, base_path);
             free(base_path);
             CG::buf_str(buf, ")");
-            let bi: int = 0;
+            let bi: i64 = 0;
             loop (bi < n.arg_count) {
               CG::buf_str(buf, ", ");
               gen_expr(ctx, buf, n.args[bi]);
@@ -536,7 +542,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
             gen_expr(ctx, buf, mn.object);
             if (is_ptr == false) CG::buf_str(buf, ")");
           }
-          let i: int = 0;
+          let i: i64 = 0;
           loop (i < n.arg_count) {
             CG::buf_str(buf, ", ");
             gen_expr(ctx, buf, n.args[i]);
@@ -551,7 +557,7 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
 
   gen_expr(ctx, buf, callee);
   CG::buf_str(buf, "(");
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < n.arg_count) {
     if (i > 0) CG::buf_str(buf, ", ");
     gen_expr(ctx, buf, n.args[i]);
@@ -567,7 +573,7 @@ const gen_member -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::Ast
 
   if (n.is_compiletime == 1) {
     let n_object: *AST::AstNode = n.object;
-    let n_object_kind: int = n_object.kind;
+    let n_object_kind: i64 = n_object.kind;
     if (n_object_kind == AST::NodeType::EXPR_IDENTIFIER) {
       let obj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(n_object);
 
@@ -664,7 +670,7 @@ const gen_struct_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *
     }
   }
   CG::buf_str(buf, "){ ");
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < n.field_count) {
     if (i > 0) CG::buf_str(buf, ", ");
     CG::buf_str(buf, ".");
@@ -694,7 +700,7 @@ const gen_struct_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *
 
 // ─── Binary / unary operators ────────────────────────────────────────────────
 
-const binop_str -> fn (op: int) *byte {
+const binop_str -> fn (op: i64) *byte {
   if (op == AST::BinaryOp::BINOP_ADD)     return "+";
   if (op == AST::BinaryOp::BINOP_SUB)     return "-";
   if (op == AST::BinaryOp::BINOP_MUL)     return "*";
@@ -751,7 +757,7 @@ const gen_binary -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::Ast
 
 const gen_unary -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
-  let op: int = n.op;
+  let op: i64 = n.op;
 
   if (op == AST::UnaryType::UNOP_POST_INC) { CG::buf_str(buf, "("); gen_expr(ctx, buf, n.operand); CG::buf_str(buf, "++)"); return; }
   if (op == AST::UnaryType::UNOP_POST_DEC) { CG::buf_str(buf, "("); gen_expr(ctx, buf, n.operand); CG::buf_str(buf, "--)"); return; }
@@ -799,7 +805,7 @@ pub const gen_array_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr
     CG::buf_str(buf, "{ ");
   }
 
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < n.element_count) {
     if (i > 0) CG::buf_str(buf, ", ");
     gen_expr(ctx, buf, n.elements[i]);
@@ -813,11 +819,11 @@ pub const gen_array_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr
 pub const gen_expr -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   if (expr == cast<*AST::AstNode>(0)) return;
 
-  let k: int = expr.kind;
+  let k: i64 = expr.kind;
 
   if (k == AST::NodeType::EXPR_LITERAL) {
     let n: *AST::LiteralNode = cast<*AST::LiteralNode>(expr);
-    let lt: int = n.lit_type;
+    let lt: i64 = n.lit_type;
     if (lt == AST::LiteralType::LITERAL_INT)    { CG::buf_int(buf, n.int_val); return; }
     if (lt == AST::LiteralType::LITERAL_FLOAT)  { CG::buf_str(buf, "((float)"); CG::buf_int(buf, n.float_val); CG::buf_str(buf, ")"); return; }
     if (lt == AST::LiteralType::LITERAL_DOUBLE) { CG::buf_str(buf, "((double)"); CG::buf_int(buf, n.float_val); CG::buf_str(buf, ")"); return; }
@@ -937,12 +943,12 @@ pub const gen_expr -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::A
     let n: *AST::CastNode = cast<*AST::CastNode>(expr);
     let ts: *byte = CGT::c_type_string(ctx, n.type_node);
 
-    // `cast<int>(bool_expr)` etc.: the reference compiler represents bool
+    // `cast<i32>(bool_expr)` etc.: the reference compiler represents bool
     // as a 1-bit value and always sign-extends on a widening cast, so
     // `true` (bit 1, sign-extended) becomes -1, not 1 — a real idiom this
-    // codebase relies on (see std/args.lx's `is_empty`: `-cast<int>(count
+    // codebase relies on (see std/args.lx's `is_empty`: `-cast<i64>(count
     // == 0)`). A plain C cast can't reproduce that (a C comparison is
-    // already a full-width 0/1 int, nothing left to sign-extend), so this
+    // already a full-width 0/1 i64, nothing left to sign-extend), so this
     // needs its own case rather than the generic `((T)(expr))` below.
     let castee_type: *AST::AstNode = static_type_of(ctx, n.castee);
     let cast_is_bool_widen: bool = false;
@@ -1013,7 +1019,7 @@ pub const gen_expr -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::A
   if (k == AST::NodeType::EXPR_SYSCALL) {
     let n: *AST::SyscallNode = cast<*AST::SyscallNode>(expr);
     CG::buf_str(buf, "syscall(");
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < n.count) {
       if (i > 0) CG::buf_str(buf, ", ");
       gen_expr(ctx, buf, n.args[i]);

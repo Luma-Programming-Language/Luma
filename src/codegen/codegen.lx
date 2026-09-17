@@ -29,7 +29,7 @@
 // one to size another *file-scope* array ("variably modified ... at file
 // scope" — confirmed by trying it here). Named sizes only work for a
 // *local* array, where C allows a runtime-sized VLA.
-const KNOWN_LIBC_NAME_COUNT: int = 67;
+const KNOWN_LIBC_NAME_COUNT: i64 = 67;
 const known_libc_names: [*byte; 67] = [
   "printf", "puts", "putchar", "getchar", "fflush",
   "fopen", "fclose", "fread", "fwrite", "fgets", "fputs", "feof", "ferror",
@@ -45,7 +45,7 @@ const known_libc_names: [*byte; 67] = [
 ];
 
 const is_known_libc_name -> fn (name: *byte) bool {
-  loop [i: int = 0](i < KNOWN_LIBC_NAME_COUNT) : (++i) {
+  loop [i: i64 = 0](i < KNOWN_LIBC_NAME_COUNT) : (++i) {
     if (STR::strcmp(known_libc_names[i], name) == 0) return true;
   }
   return false;
@@ -70,7 +70,7 @@ const IOWRITE -> fn (out: *void, s: *byte) void {
 // available", not latch stdio's stream into permanent EOF the way a 0-byte
 // read does when seen through getchar(). Routing every input<T> through
 // the same primitive keeps a program that mixes input<byte> with
-// input<int>/input<*byte>/etc. reading bytes in the order they arrived,
+// input<i64>/input<*byte>/etc. reading bytes in the order they arrived,
 // rather than racing two different buffers over the same fd.
 // Windows has no raw-mode terminal story here (std/win32.lx's console API
 // is a separate path), so it just falls back to getchar() there.
@@ -108,29 +108,47 @@ const write_input_helpers -> fn (out: *void, is_windows: bool) void {
   IOWRITE(out, "static void __luma_input_prompt(const char* p) {\n");
   IOWRITE(out, "  if (p != NULL && p[0] != '\\0') { fputs(p, stdout); fflush(stdout); }\n");
   IOWRITE(out, "}\n");
-  IOWRITE(out, "static long long __luma_input_int(const char* p) {\n");
+  IOWRITE(out, "static int64_t __luma_input_i64(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
   IOWRITE(out, "  char* __l = __luma_input_line();\n");
-  IOWRITE(out, "  long long __v = (__l != NULL) ? atoll(__l) : 0;\n");
+  IOWRITE(out, "  int64_t __v = (__l != NULL) ? (int64_t)atoll(__l) : 0;\n");
   IOWRITE(out, "  free(__l);\n");
   IOWRITE(out, "  return __v;\n");
   IOWRITE(out, "}\n");
-  IOWRITE(out, "static unsigned long long __luma_input_uint(const char* p) {\n");
+  IOWRITE(out, "static uint64_t __luma_input_u64(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
   IOWRITE(out, "  char* __l = __luma_input_line();\n");
-  IOWRITE(out, "  unsigned long long __v = (__l != NULL) ? strtoull(__l, NULL, 10) : 0;\n");
+  IOWRITE(out, "  uint64_t __v = (__l != NULL) ? strtoull(__l, NULL, 10) : 0;\n");
   IOWRITE(out, "  free(__l);\n");
   IOWRITE(out, "  return __v;\n");
   IOWRITE(out, "}\n");
-  IOWRITE(out, "static double __luma_input_double(const char* p) {\n");
+  IOWRITE(out, "static double __luma_input_f64(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
   IOWRITE(out, "  char* __l = __luma_input_line();\n");
   IOWRITE(out, "  double __v = (__l != NULL) ? atof(__l) : 0.0;\n");
   IOWRITE(out, "  free(__l);\n");
   IOWRITE(out, "  return __v;\n");
   IOWRITE(out, "}\n");
-  IOWRITE(out, "static float __luma_input_float(const char* p) {\n");
-  IOWRITE(out, "  return (float)__luma_input_double(p);\n");
+  IOWRITE(out, "static float __luma_input_f32(const char* p) {\n");
+  IOWRITE(out, "  return (float)__luma_input_f64(p);\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static int32_t __luma_input_i32(const char* p) {\n");
+  IOWRITE(out, "  return (int32_t)__luma_input_i64(p);\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static int16_t __luma_input_i16(const char* p) {\n");
+  IOWRITE(out, "  return (int16_t)__luma_input_i64(p);\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static int8_t __luma_input_i8(const char* p) {\n");
+  IOWRITE(out, "  return (int8_t)__luma_input_i64(p);\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static uint32_t __luma_input_u32(const char* p) {\n");
+  IOWRITE(out, "  return (uint32_t)__luma_input_u64(p);\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static uint16_t __luma_input_u16(const char* p) {\n");
+  IOWRITE(out, "  return (uint16_t)__luma_input_u64(p);\n");
+  IOWRITE(out, "}\n");
+  IOWRITE(out, "static uint8_t __luma_input_u8(const char* p) {\n");
+  IOWRITE(out, "  return (uint8_t)__luma_input_u64(p);\n");
   IOWRITE(out, "}\n");
   IOWRITE(out, "static bool __luma_input_bool(const char* p) {\n");
   IOWRITE(out, "  __luma_input_prompt(p);\n");
@@ -166,6 +184,7 @@ const write_preamble -> fn (out: *void, os: *byte) void {
   IOWRITE(out, "#include <stdlib.h>\n");
   IOWRITE(out, "#include <string.h>\n");
   IOWRITE(out, "#include <stdbool.h>\n");
+  IOWRITE(out, "#include <stdint.h>\n");
   IOWRITE(out, "#include <math.h>\n");
   IOWRITE(out, "#include <time.h>\n");
 
@@ -224,7 +243,7 @@ const register_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, struc
 // name + static flag that tc_generics threaded through the pending queue —
 // emission (c_name_for_method, self handling) keys off owner/is_static just
 // like an ordinary method.
-const register_generated_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, owner: *byte, is_static: int, decl: *AST::AstNode) void {
+const register_generated_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, owner: *byte, is_static: i64, decl: *AST::AstNode) void {
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(decl);
   let fi: CG::FuncInfo = CG::FuncInfo {
     name: fd.name, module_name: module_name, decl: fd,
@@ -237,14 +256,14 @@ const register_generated_method -> fn (ctx: *CG::CodegenContext, module_name: *b
 
 const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *byte, decl: *AST::AstNode) void {
   if (decl == cast<*AST::AstNode>(0)) return;
-  let k: int = decl.kind;
+  let k: i64 = decl.kind;
 
   if (k == AST::NodeType::PREPROCESSOR_OS) {
     let body: *AST::AstNode = CG::resolve_os_for(decl, os);
     if (body != cast<*AST::AstNode>(0)) {
       if (body.kind == AST::NodeType::STMT_BLOCK) {
         let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
-        let i: int = 0;
+        let i: i64 = 0;
         loop (i < blk.stmt_count) {
           register_decl(ctx, os, module_name, blk.statements[i]);
           i = i + 1;
@@ -268,9 +287,9 @@ const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *by
     let sv: *VEC::Vector = &ctx.structs;
     sv.push_back(cast<*void>(&si));
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < sd.public_count) { register_method(ctx, module_name, sd.name, sd.public_members[i]); i = i + 1; }
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < sd.private_count) { register_method(ctx, module_name, sd.name, sd.private_members[j]); j = j + 1; }
     return;
   }
@@ -344,12 +363,12 @@ const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *by
 }
 
 const run_pass_a -> fn (ctx: *CG::CodegenContext, prog: *AST::ProgramNode, os: *byte) void {
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < prog.module_count) {
     let mnode: *AST::AstNode = prog.modules[i];
     if (mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
       let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
-      let j: int = 0;
+      let j: i64 = 0;
       loop (j < mod.body_count) {
         register_decl(ctx, os, mod.name, mod.body[j]);
         j = j + 1;
@@ -358,12 +377,12 @@ const run_pass_a -> fn (ctx: *CG::CodegenContext, prog: *AST::ProgramNode, os: *
     i = i + 1;
   }
 
-  // Generic instantiations (`add<int>`, ...) synthesized during typecheck
+  // Generic instantiations (`add<i64>`, ...) synthesized during typecheck
   // — see tc_generics — aren't part of any ModuleNode.body (that array is
   // fixed-size from parse time), so they don't show up in the walk above.
   // Register them the same way; everything downstream (prototype/body
   // emission) is driven off ctx.funcs, so nothing else needs to change.
-  let gi: int = 0;
+  let gi: i64 = 0;
   loop (gi < TCCORE::generated_decl_count()) {
     let gd: *TCCORE::GeneratedDecl = TCCORE::generated_decl_at(gi);
     // A concrete generic method (Thing::make<T>) must be registered as a
@@ -381,14 +400,14 @@ const run_pass_a -> fn (ctx: *CG::CodegenContext, prog: *AST::ProgramNode, os: *
 
 const emit_enums -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.enums;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let e: *CG::EnumInfo = cast<*CG::EnumInfo>(v.get(i));
     let cname: *byte = CG::c_name_for_enum(e);
     CG::buf_str(buf, "typedef enum { ");
     let ed: *AST::EnumDeclNode = e.decl;
-    let j: int = 0;
+    let j: i64 = 0;
     loop (j < ed.member_count) {
       if (j > 0) CG::buf_str(buf, ", ");
       let mname: *byte = CG::c_name_for_enum_member(e, ed.members[j]);
@@ -407,8 +426,8 @@ const emit_enums -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
 
 const emit_struct_typedefs -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.structs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let s: *CG::StructInfo = cast<*CG::StructInfo>(v.get(i));
     let cname: *byte = CG::c_name_for_struct(s);
@@ -429,12 +448,12 @@ const emit_struct_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, s: *CG::S
   s.in_progress = true;
 
   let sd: *AST::StructDeclNode = s.decl;
-  let groups: int = 0;
+  let groups: i64 = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0)) {
@@ -464,9 +483,9 @@ const emit_struct_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, s: *CG::S
   groups = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0)) {
@@ -491,8 +510,8 @@ const emit_struct_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, s: *CG::S
 
 const emit_all_struct_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.structs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     emit_struct_body(ctx, buf, cast<*CG::StructInfo>(v.get(i)));
     i = i + 1;
@@ -514,7 +533,7 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
   ctx.current_module = f.module_name;
 
   // `main`'s signature is fixed by the C runtime (`int main(int, char**)`),
-  // not by Luma's declared param types (`argc: int` maps to `long long`
+  // not by Luma's declared param types (`argc: i64` maps to `long long`
   // everywhere else, but crt0 calls main with real 32-bit `int`s).
   if (f.is_main) {
     CG::buf_str(buf, "int main(int argc, char **argv);\n");
@@ -535,7 +554,7 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
     CG::buf_str(sig, " *self");
     free(sname);
   }
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < fd.param_count) {
     if (has_self || i > 0) CG::buf_str(sig, ", ");
     let pb: *CG::Buf = CG::buf_init();
@@ -557,8 +576,8 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
 
 const emit_all_prototypes -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.funcs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     emit_func_prototype(ctx, buf, cast<*CG::FuncInfo>(v.get(i)));
     i = i + 1;
@@ -568,8 +587,8 @@ const emit_all_prototypes -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
 
 const emit_globals -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.globals;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) {
     let g: *CG::GlobalInfo = cast<*CG::GlobalInfo>(v.get(i));
     let vd: *AST::VarDeclNode = g.decl;
@@ -610,7 +629,7 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
   // declaration actually names. Declare under fixed internal C names and
   // bind only as many of them to Luma-visible names as were declared, so
   // the definition's signature always matches the prototype (a
-  // `pub const main -> fn () int` — 0 declared params — used to emit
+  // `pub const main -> fn () i64` — 0 declared params — used to emit
   // `int main(void)` here, conflicting with the prototype's 2-arg form).
   if (f.is_main) {
     CG::buf_str(buf, "int main(int __luma_argc, char **__luma_argv) ");
@@ -636,7 +655,7 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
     CG::buf_str(sig, " *self");
     free(sname);
   }
-  let i: int = 0;
+  let i: i64 = 0;
   loop (i < fd.param_count) {
     if (has_self || i > 0) CG::buf_str(sig, ", ");
     CG::local_bind_as(ctx, fd.param_names[i], fd.param_names[i]);
@@ -662,8 +681,8 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
 
 const emit_all_func_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.funcs;
-  let n: int = v.size;
-  let i: int = 0;
+  let n: i64 = v.size;
+  let i: i64 = 0;
   loop (i < n) { // main last (cosmetic — prototypes make ordering unnecessary)
     let f: *CG::FuncInfo = cast<*CG::FuncInfo>(v.get(i));
     if (f.is_main == false) emit_func_body(ctx, buf, f);
@@ -678,10 +697,10 @@ const emit_all_func_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void 
 }
 
 const basename_of -> fn (path: *byte) *byte {
-  let len: int = STR::strlen(path);
-  let i: int = len - 1;
+  let len: i64 = STR::strlen(path);
+  let i: i64 = len - 1;
   loop (i >= 0) {
-    if (path[i] == '/') return cast<*byte>(cast<int>(path) + i + 1);
+    if (path[i] == '/') return cast<*byte>(cast<i64>(path) + i + 1);
     i = i - 1;
   }
   return path;
@@ -724,8 +743,8 @@ const target_output_name -> fn (name: *byte, os: *byte) *byte {
     (STR::strcmp(os, "windows64") == 0 || STR::strcmp(os, "windows32") == 0);
   if (!is_windows) return STR::dup(name);
 
-  let nlen: int = STR::strlen(name);
-  if (nlen >= 4 && STR::strcmp(cast<*byte>(cast<int>(name) + nlen - 4), ".exe") == 0) {
+  let nlen: i64 = STR::strlen(name);
+  if (nlen >= 4 && STR::strcmp(cast<*byte>(cast<i64>(name) + nlen - 4), ".exe") == 0) {
     return STR::dup(name);
   }
 
@@ -748,7 +767,7 @@ pub const codegen_transpile -> fn (program: *AST::AstNode, config: CONST::LumaBu
   if (program.kind != AST::NodeType::PROGRAM) return cast<*byte>(0);
 
   // e.g. `-name test` -> `output/test.c`, for `-save` to keep.
-  let mkdir_rc: int = system("mkdir -p output");
+  let mkdir_rc: i64 = system("mkdir -p output");
   let pb: *CG::Buf = CG::buf_init();
   CG::buf_str(pb, "output/");
   CG::buf_str(pb, basename_of(config.name));
@@ -813,7 +832,7 @@ pub const codegen_compile -> fn (c_path: *byte, config: CONST::LumaBuildConfig) 
   let cmd_str: *byte = CG::buf_finish(cmd);
   free(out_name);
 
-  let rc: int = system(cmd_str);
+  let rc: i64 = system(cmd_str);
   free(cmd_str);
 
   if (config.save) {

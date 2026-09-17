@@ -38,19 +38,19 @@ pub const track_pointer_source  -> fn (name: *byte, value_expr: *AST::AstNode, s
 
 #returns_ownership
 pub const qualify -> fn (a: *byte, b: *byte) *byte {
-  let la: int = STR::strlen(a);
-  let lb: int = STR::strlen(b);
+  let la: i64 = STR::strlen(a);
+  let lb: i64 = STR::strlen(b);
   let s: *byte = cast<*byte>(alloc(la + lb + 2));
   MEM::memcpy(cast<*void>(s), cast<*void>(a), la);
   s[la] = '.';
-  MEM::memcpy(cast<*void>(cast<int>(s) + la + 1), cast<*void>(b), lb);
+  MEM::memcpy(cast<*void>(cast<i64>(s) + la + 1), cast<*void>(b), lb);
   s[la + lb + 1] = '\0';
   return s;
 }
 
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
-  let len: int = STR::strlen(s);
+  let len: i64 = STR::strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
   MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
   return out;
@@ -197,7 +197,7 @@ pub const typecheck_expression -> fn (expr: *AST::AstNode, scope: *CORE::Scope, 
 const typecheck_expression_inner -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
   if (expr == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
-  let k: int = expr.kind;
+  let k: i64 = expr.kind;
 
   if (k == AST::NodeType::EXPR_LITERAL)    return tc_literal(expr, scope);
   if (k == AST::NodeType::EXPR_IDENTIFIER) return tc_identifier(expr, scope);
@@ -268,7 +268,7 @@ const typecheck_expression_inner -> fn (expr: *AST::AstNode, scope: *CORE::Scope
   }
   if (k == AST::NodeType::EXPR_SYSCALL) {
     let n: *AST::SyscallNode = cast<*AST::SyscallNode>(expr);
-    loop [i: int = 0](i < n.count) : (++i) {
+    loop [i: i64 = 0](i < n.count) : (++i) {
       typecheck_expression(n.args[i], scope, cast<*AST::AstNode>(0));
     }
     return TYPE::make_int_type();
@@ -287,11 +287,11 @@ const typecheck_expression_inner -> fn (expr: *AST::AstNode, scope: *CORE::Scope
 #returns_ownership
 const tc_literal -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::LiteralNode = cast<*AST::LiteralNode>(expr);
-  let lt: int = n.lit_type;
+  let lt: i64 = n.lit_type;
 
   if (lt == AST::LiteralType::LITERAL_INT)    return TYPE::make_int_type();
-  if (lt == AST::LiteralType::LITERAL_FLOAT)  return TYPE::make_named_type("float");
-  if (lt == AST::LiteralType::LITERAL_DOUBLE) return TYPE::make_named_type("double");
+  if (lt == AST::LiteralType::LITERAL_FLOAT)  return TYPE::make_named_type("f32");
+  if (lt == AST::LiteralType::LITERAL_DOUBLE) return TYPE::make_named_type("f64");
   if (lt == AST::LiteralType::LITERAL_STRING) return TYPE::make_string_type();
   if (lt == AST::LiteralType::LITERAL_CHAR)   return TYPE::make_byte_type();
   if (lt == AST::LiteralType::LITERAL_BOOL)   return TYPE::make_bool_type();
@@ -324,7 +324,7 @@ const tc_binary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let rt: *AST::AstNode = typecheck_expression(n.right, scope, cast<*AST::AstNode>(0));
   if (lt == cast<*AST::AstNode>(0) || rt == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
-  let op: int = n.op;
+  let op: i64 = n.op;
 
   // Comparisons -> bool
   if (op == AST::BinaryOp::BINOP_EQ || op == AST::BinaryOp::BINOP_NE ||
@@ -338,7 +338,7 @@ const tc_binary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     return TYPE::make_bool_type();
   }
 
-  // Bitwise / shift -> int
+  // Bitwise / shift -> i64
   if (op == AST::BinaryOp::BINOP_BIT_AND || op == AST::BinaryOp::BINOP_BIT_OR ||
       op == AST::BinaryOp::BINOP_BIT_XOR || op == AST::BinaryOp::BINOP_SHL ||
       op == AST::BinaryOp::BINOP_SHR) {
@@ -350,12 +350,12 @@ const tc_binary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     return TYPE::make_pointer_to(TYPE::make_int_type());
   }
 
-  // Arithmetic. Allow pointer arithmetic (ptr +/- int).
+  // Arithmetic. Allow pointer arithmetic (ptr +/- i64).
   if (TYPE::is_pointer_type(lt) && TYPE::is_integer_type(rt)) return lt;
   if (TYPE::is_integer_type(lt) && TYPE::is_pointer_type(rt)) return rt;
 
-  let lr: int = TYPE::numeric_rank(lt);
-  let rr: int = TYPE::numeric_rank(rt);
+  let lr: i64 = TYPE::numeric_rank(lt);
+  let rr: i64 = TYPE::numeric_rank(rt);
   if (lr < 0 || rr < 0) {
     ERR::tc_error(expr, "Type Error", "arithmetic operands must be numeric", "not a numeric type");
     return cast<*AST::AstNode>(0);
@@ -380,7 +380,7 @@ const tc_unary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let ot: *AST::AstNode = typecheck_expression(n.operand, scope, cast<*AST::AstNode>(0));
   if (ot == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
-  let op: int = n.op;
+  let op: i64 = n.op;
   if (op == AST::UnaryType::UNOP_NOT) return TYPE::make_bool_type();
 
   return ot;
@@ -479,7 +479,7 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
       let sym: *CORE::Symbol = SCOPE::scope_lookup(scope, qname);
       if (sym != cast<*CORE::Symbol>(0)) return sym.type;
 
-      // Generic enum member — `State<int>::Idle`. This member's type args
+      // Generic enum member — `State<i64>::Idle`. This member's type args
       // came from the parser's try_generic_instantiation extension. Mirror
       // tc_struct_expr: build a fake TYPE_BASIC carrying them, resolve it
       // (monomorphizes the template, queueing the concrete `State__int`
@@ -523,7 +523,7 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
         return cast<*AST::AstNode>(0);
       }
 
-      // Unknown qualified name — treat as enum-like int to stay permissive.
+      // Unknown qualified name — treat as enum-like i64 to stay permissive.
       return TYPE::make_named_type(obj.name);
     }
 
@@ -538,13 +538,13 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
         if (inner_object.kind == AST::NodeType::EXPR_IDENTIFIER) {
           let iobj: *AST::IdentifierNode = cast<*AST::IdentifierNode>(inner_object);
 
-          // Generic enum member through a module alias — `G::State<int>::Idle`.
+          // Generic enum member through a module alias — `G::State<i64>::Idle`.
           // The type args ride on this (outer) MemberNode (the parser's
           // try_generic_instantiation attached them there), naming the *inner*
           // member (`State`) as the template. Instantiate against the defining
           // module's registry and rewrite the inner member to the mangled
           // concrete name, so codegen's nested-member path emits against
-          // `State__int::Idle`. Mirrors the bare `State<int>::Idle` handling
+          // `State__int::Idle`. Mirrors the bare `State<i64>::Idle` handling
           // above: return the concrete nominal type directly (the concrete
           // enum's own members are only registered during tc.lx's drain).
           if (n.type_arg_count > 0) {
@@ -573,7 +573,7 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
             let msym2: *CORE::Symbol = SCOPE::scope_lookup_in_module(imp2.module_scope, qname2);
             if (msym2 != cast<*CORE::Symbol>(0)) return msym2.type;
             // `inner.member` may name a *generic* struct template in the
-            // imported module (`G::Box::make<int, ...>(...)`): its concrete
+            // imported module (`G::Box::make<i64, ...>(...)`): its concrete
             // static methods register under the mangled owner only at tc.lx
             // drain time, and its template itself has no scope symbol — so
             // a missing "Box.make" here isn't necessarily an error. Mirror
@@ -643,16 +643,16 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
     let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
     if (STR::strcmp(id.name, "output") == 0 || STR::strcmp(id.name, "outputln") == 0) {
-      loop [i: int = 0](i < n.arg_count) : (++i) {
+      loop [i: i64 = 0](i < n.arg_count) : (++i) {
         typecheck_expression(n.args[i], scope, cast<*AST::AstNode>(0));
       }
       return TYPE::make_void_type();
     }
   }
 
-  // Explicit generic call — `add<int>(1, 2)`. A bare identifier naming a
+  // Explicit generic call — `add<i64>(1, 2)`. A bare identifier naming a
   // template registered in the caller's own module triggers this; a
-  // module-qualified name (`ALIAS::func<int>(...)`) resolves the template
+  // module-qualified name (`ALIAS::func<i64>(...)`) resolves the template
   // through the module import below. Anything else, including an ordinary
   // call (type_arg_count == 0), falls through to the normal
   // resolve_callee_type path below unchanged.
@@ -738,7 +738,7 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
 
   if (ftype != cast<*AST::AstNode>(0) && TYPE::is_function_type(ftype)) {
     let ft: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(ftype);
-    let pcount: int = ft.param_count;
+    let pcount: i64 = ft.param_count;
     if (n.arg_count != pcount) {
       ERR::tc_error(expr, "Call Error", "wrong number of arguments in function call", "wrong argument count");
     }
@@ -749,7 +749,7 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     // rather than reported as never freed in this function.
     let consumes: bool = call_is_takes_ownership(n.callee, scope);
 
-    loop [i: int = 0](i < n.arg_count) : (++i) {
+    loop [i: i64 = 0](i < n.arg_count) : (++i) {
       let pexp: *AST::AstNode = cast<*AST::AstNode>(0);
       if (i < pcount) pexp = ft.param_types[i];
       let at: *AST::AstNode = typecheck_expression(n.args[i], scope, pexp);
@@ -809,7 +809,7 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
     }
   }
 
-  loop [i: int = 0](i < n.arg_count) : (++i) {
+  loop [i: i64 = 0](i < n.arg_count) : (++i) {
     typecheck_expression(n.args[i], scope, cast<*AST::AstNode>(0));
   }
   return cast<*AST::AstNode>(0);
@@ -906,7 +906,7 @@ const tc_array -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::
 
   let first: *AST::AstNode = typecheck_expression(n.elements[0], scope, elem_expected);
 
-  loop [i: int = 1](i < n.element_count) : (++i) {
+  loop [i: i64 = 1](i < n.element_count) : (++i) {
     let et: *AST::AstNode = typecheck_expression(n.elements[i], scope, elem_expected);
     if (first != cast<*AST::AstNode>(0) && et != cast<*AST::AstNode>(0)) {
       if (TYPE::types_match(et, first) == CORE::TypeMatchResult::TYPE_MATCH_NONE) {
@@ -940,13 +940,13 @@ const struct_decl_has_field -> fn (scope: *CORE::Scope, sname: *byte, field: *by
 
   let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(decl);
 
-  let groups: int = 0;
+  let groups: i64 = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0)) {
@@ -966,10 +966,10 @@ const struct_decl_has_field -> fn (scope: *CORE::Scope, sname: *byte, field: *by
   groups = 0;
   loop (groups < 2) {
     let members: **AST::AstNode = sd.public_members;
-    let count: int = sd.public_count;
+    let count: i64 = sd.public_count;
     if (groups == 1) { members = sd.private_members; count = sd.private_count; }
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < count) {
       let m: *AST::AstNode = members[i];
       if (m != cast<*AST::AstNode>(0)) {
@@ -989,7 +989,7 @@ const struct_decl_has_field -> fn (scope: *CORE::Scope, sname: *byte, field: *by
 
 const validate_struct_literal_fields -> fn (expr: *AST::AstNode, scope: *CORE::Scope, sname: *byte) void {
   let sn: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
-  let fi: int = 0;
+  let fi: i64 = 0;
   loop (fi < sn.field_count) {
     if (struct_decl_has_field(scope, sname, sn.field_names[fi]) == false) {
       ERR::tc_error_id(sn.field_vals[fi], sn.field_names[fi], "Type Error",
@@ -1004,7 +1004,7 @@ const validate_struct_literal_fields -> fn (expr: *AST::AstNode, scope: *CORE::S
 const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
   let n: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
 
-  loop [i: int = 0](i < n.field_count) : (++i) {
+  loop [i: i64 = 0](i < n.field_count) : (++i) {
     typecheck_expression(n.field_vals[i], scope, cast<*AST::AstNode>(0));
   }
 
@@ -1016,14 +1016,14 @@ const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: 
     if (n.alias == cast<*byte>(0) && n.type_arg_count == 0) {
       validate_struct_literal_fields(expr, scope, n.name);
     }
-    // A generic struct literal `Box<int> { ... }` / `Alias::Box<int> { ... }`
+    // A generic struct literal `Box<i64> { ... }` / `Alias::Box<i64> { ... }`
     // — instantiate the type reference (through the defining module when
     // aliased) and rewrite this node's name to the concrete mangled name
     // (`Box__int`), so codegen emits against the concrete struct. The bare
     // `Name` nominal check is skipped: the concrete name is only registered
     // during tc.lx's drain, after this pass.
     if (n.type_arg_count > 0) {
-      let orig_tcount: int = n.type_arg_count;
+      let orig_tcount: i64 = n.type_arg_count;
       let fake: *AST::AstNode = TAST::make_basic_type(dup_str(n.name), expr.line, expr.col);
       let fb: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(fake);
       fb.type_args = n.type_args;

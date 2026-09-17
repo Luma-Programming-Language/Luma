@@ -13,8 +13,8 @@
 //! let a: Vec2 = Vec2 { x: 3.0, y: 4.0 };
 //! let b: Vec2 = Vec2 { x: 1.0, y: 2.0 };
 //! let sum: Vec2 = a.add(b);
-//! let len: double = a.length();   // 5.0
-//! let dot: double = a.dot(b);     // 11.0
+//! let len: f64 = a.length();   // 5.0
+//! let dot: f64 = a.dot(b);     // 11.0
 //! ```
 
 @module "std_vec2"
@@ -24,9 +24,9 @@
 /// A 2D vector with x and y components
 pub const Vec2 -> struct {
     /// X component
-    x: double,
+    x: f64,
     /// Y component
-    y: double,
+    y: f64,
 
     /// Zero vector (0, 0)
     zero -> fn () Vec2 {
@@ -61,12 +61,12 @@ pub const Vec2 -> struct {
     },
 
     /// Scale the vector by a scalar
-    scale -> fn (s: double) Vec2 {
+    scale -> fn (s: f64) Vec2 {
         return Vec2 { x: self.x * s, y: self.y * s };
     },
 
     /// Divide the vector by a scalar
-    div -> fn (s: double) Vec2 {
+    div -> fn (s: f64) Vec2 {
         return Vec2 { x: self.x / s, y: self.y / s };
     },
 
@@ -78,24 +78,24 @@ pub const Vec2 -> struct {
     // --- Products ---
 
     /// Dot product with another vector
-    dot -> fn (other: Vec2) double {
+    dot -> fn (other: Vec2) f64 {
         return self.x * other.x + self.y * other.y;
     },
 
     /// 2D cross product (scalar result)
-    cross -> fn (other: Vec2) double {
+    cross -> fn (other: Vec2) f64 {
         return self.x * other.y - self.y * other.x;
     },
 
     // --- Length ---
 
     /// Squared length (avoids sqrt)
-    length_sq -> fn () double {
+    length_sq -> fn () f64 {
         return self.x * self.x + self.y * self.y;
     },
 
     /// Euclidean length
-    length -> fn () double {
+    length -> fn () f64 {
         return libc::sqrt(self.x * self.x + self.y * self.y);
     },
 
@@ -103,7 +103,7 @@ pub const Vec2 -> struct {
 
     /// Return a unit-length vector (safe for zero vectors)
     normalize -> fn () Vec2 {
-        let len: double = libc::sqrt(self.x * self.x + self.y * self.y);
+        let len: f64 = libc::sqrt(self.x * self.x + self.y * self.y);
         if (len < 0.000001) {
             return Vec2 { x: 0.0, y: 0.0 };
         }
@@ -113,23 +113,23 @@ pub const Vec2 -> struct {
     // --- Distance ---
 
     /// Squared distance to another vector (avoids sqrt)
-    distance_sq -> fn (other: Vec2) double {
-        let dx: double = self.x - other.x;
-        let dy: double = self.y - other.y;
+    distance_sq -> fn (other: Vec2) f64 {
+        let dx: f64 = self.x - other.x;
+        let dy: f64 = self.y - other.y;
         return dx * dx + dy * dy;
     },
 
     /// Euclidean distance to another vector
-    distance -> fn (other: Vec2) double {
-        let dx: double = self.x - other.x;
-        let dy: double = self.y - other.y;
+    distance -> fn (other: Vec2) f64 {
+        let dx: f64 = self.x - other.x;
+        let dy: f64 = self.y - other.y;
         return libc::sqrt(dx * dx + dy * dy);
     },
 
     // --- Interpolation ---
 
     /// Linearly interpolate toward another vector
-    lerp -> fn (other: Vec2, t: double) Vec2 {
+    lerp -> fn (other: Vec2, t: f64) Vec2 {
         return Vec2 {
             x: self.x + (other.x - self.x) * t,
             y: self.y + (other.y - self.y) * t
@@ -139,7 +139,7 @@ pub const Vec2 -> struct {
     // --- Geometry ---
 
     /// Angle of the vector in radians (atan2)
-    angle -> fn () double {
+    angle -> fn () f64 {
         return libc::atan2(self.y, self.x);
     },
 
@@ -150,7 +150,7 @@ pub const Vec2 -> struct {
 
     /// Reflect the vector off a surface with the given normal
     reflect -> fn (normal: Vec2) Vec2 {
-        let d: double = self.x * normal.x + self.y * normal.y;
+        let d: f64 = self.x * normal.x + self.y * normal.y;
         return Vec2 {
             x: self.x - 2.0 * d * normal.x,
             y: self.y - 2.0 * d * normal.y
@@ -160,12 +160,12 @@ pub const Vec2 -> struct {
     // --- Utilities ---
 
     /// Clamp the vector length to a maximum value
-    clamp_length -> fn (max: double) Vec2 {
-        let len_sq: double = self.x * self.x + self.y * self.y;
+    clamp_length -> fn (max: f64) Vec2 {
+        let len_sq: f64 = self.x * self.x + self.y * self.y;
         if (len_sq <= max * max) {
             return Vec2 { x: self.x, y: self.y };
         }
-        let len: double = libc::sqrt(len_sq);
+        let len: f64 = libc::sqrt(len_sq);
         return Vec2 { x: self.x / len * max, y: self.y / len * max };
     },
 
@@ -176,8 +176,8 @@ pub const Vec2 -> struct {
 
     /// Component-wise minimum with another vector
     min -> fn (other: Vec2) Vec2 {
-        let rx: double = self.x;
-        let ry: double = self.y;
+        let rx: f64 = self.x;
+        let ry: f64 = self.y;
         if (other.x < rx) { rx = other.x; }
         if (other.y < ry) { ry = other.y; }
         return Vec2 { x: rx, y: ry };
@@ -185,8 +185,8 @@ pub const Vec2 -> struct {
 
     /// Component-wise maximum with another vector
     max -> fn (other: Vec2) Vec2 {
-        let rx: double = self.x;
-        let ry: double = self.y;
+        let rx: f64 = self.x;
+        let ry: f64 = self.y;
         if (other.x > rx) { rx = other.x; }
         if (other.y > ry) { ry = other.y; }
         return Vec2 { x: rx, y: ry };
@@ -211,7 +211,7 @@ pub const Vec2 -> struct {
 /// ```luma
 /// let v: Vec2 = vec2::new_vec(3.0, 4.0);
 /// ```
-pub const new_vec -> fn (x: double, y: double) Vec2 {
+pub const new_vec -> fn (x: f64, y: f64) Vec2 {
     return Vec2 { x: x, y: y };
 }
 
@@ -227,6 +227,6 @@ pub const new_vec -> fn (x: double, y: double) Vec2 {
 /// ```luma
 /// let v: Vec2 = vec2::from_angle(std_math::PI / 4.0); // (√2/2, √2/2)
 /// ```
-pub const from_angle -> fn (angle: double) Vec2 {
+pub const from_angle -> fn (angle: f64) Vec2 {
     return Vec2 { x: libc::cos(angle), y: libc::sin(angle) };
 }

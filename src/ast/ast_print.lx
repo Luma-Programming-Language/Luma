@@ -1,7 +1,7 @@
 @module "ast_print"
 @use "ast" as AST
 
-const USE_COLOR: int = 1;
+const USE_COLOR: i64 = 1;
 
 const _C: *byte = "\x1b[36m";
 const _G: *byte = "\x1b[32m";
@@ -18,33 +18,33 @@ const _B0: *byte = "";
 const _D0: *byte = "";
 const _R0: *byte = "";
 
-const MAX_DEPTH: int = 128;
+const MAX_DEPTH: i64 = 128;
 
-pub const print_node -> fn (node: *AST::AstNode, indent: int) void;
+pub const print_node -> fn (node: *AST::AstNode, indent: i64) void;
 
-const pf -> fn (flags: *int, depth: int) void {
-  loop [i: int = 1](i < depth) : (++i) {
+const pf -> fn (flags: *i64, depth: i64) void {
+  loop [i: i64 = 1](i < depth) : (++i) {
     if (flags[i] == 1) output("│   ");
     else               output("    ");
   }
 }
 
-const cn -> fn (is_last: int) void {
+const cn -> fn (is_last: i64) void {
   if (is_last == 1) output("└── ");
   else              output("├── ");
 }
 
-const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, color: *byte) void;
+const pn -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64, color: *byte) void;
 
-const r -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int) void {
+const r -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64) void {
   pn(node, flags, depth, is_last, _C);
 }
 
-const rt -> fn (node: *AST::AstNode, flags: *int, depth: int) void {
+const rt -> fn (node: *AST::AstNode, flags: *i64, depth: i64) void {
   pn(node, flags, depth, 1, _B);
 }
 
-const field -> fn (label: *byte, node: *AST::AstNode, flags: *int, parent_depth: int, more: int, color: *byte) void {
+const field -> fn (label: *byte, node: *AST::AstNode, flags: *i64, parent_depth: i64, more: i64, color: *byte) void {
   pf(flags, parent_depth + 1);
   if (more == 1) output("├── ");
   else           output("└── ");
@@ -62,12 +62,12 @@ const ann_lc -> fn (node: *AST::AstNode) void {
   output(col(_D, _D0), "(", node.line, ":", node.col, ")", col(_R, _R0));
 }
 
-const ann_n -> fn (cnt: int, word: *byte) void {
+const ann_n -> fn (cnt: i64, word: *byte) void {
   if (USE_COLOR == 0) return;
   output(col(_D, _D0), " (", cnt, " ", word, ")", col(_R, _R0));
 }
 
-const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, color: *byte) void {
+const pn -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64, color: *byte) void {
   if (node == cast<*AST::AstNode>(0)) {
     pf(flags, depth);
     cn(is_last);
@@ -75,7 +75,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
     return;
   }
 
-  let kind: int = node.kind;
+  let kind: i64 = node.kind;
   let nc: *byte = color;
 
   switch (kind) {
@@ -89,9 +89,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_n(n.body_count, cast<*byte>("stmts"));
       output("\n");
 
-      let bc: int = n.body_count;
-      loop [i: int = 0](i < bc) : (++i) {
-        let more: int = 0;
+      let bc: i64 = n.body_count;
+      loop [i: i64 = 0](i < bc) : (++i) {
+        let more: i64 = 0;
         if (i < bc - 1) more = 1;
         flags[depth + 1] = more;
         pn(n.body[i], flags, depth + 1, more, _C);
@@ -115,12 +115,12 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let nc2: int = 0;
-      loop [i: int = 0](n.platforms[i] != cast<*byte>(0)) : (++i) {
+      let nc2: i64 = 0;
+      loop [i: i64 = 0](n.platforms[i] != cast<*byte>(0)) : (++i) {
         nc2 = nc2 + 1;
       }
-      loop [i: int = 0](i < nc2) : (++i) {
-        let more: int = 0;
+      loop [i: i64 = 0](i < nc2) : (++i) {
+        let more: i64 = 0;
         if (n.has_default == 1 || i < nc2 - 1) more = 1;
         field(cast<*byte>(n.platforms[i]), n.bodies[i], flags, depth, more, _C);
       }
@@ -146,9 +146,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_n(n.module_count, cast<*byte>("modules"));
       output("\n");
 
-      let mc: int = n.module_count;
-      loop [i: int = 0](i < mc) : (++i) {
-        let more: int = 0;
+      let mc: i64 = n.module_count;
+      loop [i: i64 = 0](i < mc) : (++i) {
+        let more: i64 = 0;
         if (i < mc - 1) more = 1;
         flags[depth + 1] = more;
         pn(n.modules[i], flags, depth + 1, more, _C);
@@ -175,7 +175,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let has_init: int = 0;
+      let has_init: i64 = 0;
       if (n.initializer != cast<*AST::AstNode>(0)) has_init = 1;
       field(cast<*byte>("type"), n.var_type, flags, depth, has_init, _B);
       if (has_init == 1)
@@ -190,7 +190,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let has_init: int = 0;
+      let has_init: i64 = 0;
       if (n.initializer != cast<*AST::AstNode>(0)) has_init = 1;
       field(cast<*byte>("type"), n.var_type, flags, depth, has_init, _B);
       if (has_init == 1)
@@ -219,15 +219,15 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_n(n.param_count, cast<*byte>("params"));
       output("\n");
 
-      let pc: int = n.param_count;
-      let has_body: int = 0;
+      let pc: i64 = n.param_count;
+      let has_body: i64 = 0;
       if (n.body != cast<*AST::AstNode>(0)) has_body = 1;
-      let total: int = pc + 1 + has_body;
-      let idx: int = 0;
+      let total: i64 = pc + 1 + has_body;
+      let idx: i64 = 0;
 
-      loop [i: int = 0](i < pc) : (++i) {
+      loop [i: i64 = 0](i < pc) : (++i) {
         idx = idx + 1;
-        let more: int = 0;
+        let more: i64 = 0;
         if (idx < total) more = 1;
         pf(flags, depth + 1);
         if (more == 1) output("├── ");
@@ -238,7 +238,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       }
 
       idx = idx + 1;
-      let more_ret: int = 0;
+      let more_ret: i64 = 0;
       if (idx < total) more_ret = 1;
       field(cast<*byte>("return"), n.return_type, flags, depth, more_ret, _B);
       flags[depth + 1] = more_ret;
@@ -256,9 +256,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_n(n.stmt_count, cast<*byte>("stmts"));
       output("\n");
 
-      let sc: int = n.stmt_count;
-      loop [i: int = 0](i < sc) : (++i) {
-        let more: int = 0;
+      let sc: i64 = n.stmt_count;
+      loop [i: i64 = 0](i < sc) : (++i) {
+        let more: i64 = 0;
         if (i < sc - 1) more = 1;
         flags[depth + 1] = more;
         pn(n.statements[i], flags, depth + 1, more, _C);
@@ -284,20 +284,20 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let has_elif: int = 0;
-      let has_else: int = 0;
+      let has_elif: i64 = 0;
+      let has_else: i64 = 0;
       if (n.elif_count > 0) has_elif = 1;
       if (n.else_stmt != cast<*AST::AstNode>(0)) has_else = 1;
 
-      let more_then: int = 0;
+      let more_then: i64 = 0;
       if (has_elif == 1 || has_else == 1) more_then = 1;
 
       field(cast<*byte>("cond"), n.condition, flags, depth, 1, _C);
       field(cast<*byte>("then"), n.then_stmt, flags, depth, more_then, _C);
 
-      let ec: int = n.elif_count;
-      loop [i: int = 0](i < ec) : (++i) {
-        let more_elif: int = 0;
+      let ec: i64 = n.elif_count;
+      loop [i: i64 = 0](i < ec) : (++i) {
+        let more_elif: i64 = 0;
         if (has_else == 1 || i < ec - 1) more_elif = 1;
         field(cast<*byte>("elif"), n.elif_stmts[i], flags, depth, more_elif, _C);
       }
@@ -314,17 +314,17 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let ic: int = n.init_count;
-      let has_cond: int = 0;
-      let has_step: int = 0;
+      let ic: i64 = n.init_count;
+      let has_cond: i64 = 0;
+      let has_step: i64 = 0;
       if (n.condition != cast<*AST::AstNode>(0)) has_cond = 1;
       if (n.optional != cast<*AST::AstNode>(0)) has_step = 1;
-      let remaining: int = ic + has_cond + has_step + 1;
-      let idx2: int = 0;
+      let remaining: i64 = ic + has_cond + has_step + 1;
+      let idx2: i64 = 0;
 
-      loop [i: int = 0](i < ic) : (++i) {
+      loop [i: i64 = 0](i < ic) : (++i) {
         idx2 = idx2 + 1;
-        let more_init: int = 0;
+        let more_init: i64 = 0;
         if (idx2 < remaining) more_init = 1;
         field(cast<*byte>("init"), n.initializer[i], flags, depth, more_init, _C);
         flags[depth + 1] = more_init;
@@ -332,7 +332,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
 
       if (has_cond == 1) {
         idx2 = idx2 + 1;
-        let more_cond: int = 0;
+        let more_cond: i64 = 0;
         if (idx2 < remaining) more_cond = 1;
         field(cast<*byte>("cond"), n.condition, flags, depth, more_cond, _C);
         flags[depth + 1] = more_cond;
@@ -340,7 +340,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
 
       if (has_step == 1) {
         idx2 = idx2 + 1;
-        let more_step: int = 0;
+        let more_step: i64 = 0;
         if (idx2 < remaining) more_step = 1;
         field(cast<*byte>("step"), n.optional, flags, depth, more_step, _C);
         flags[depth + 1] = more_step;
@@ -377,16 +377,16 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let cc: int = n.case_count;
-      let has_def: int = 0;
+      let cc: i64 = n.case_count;
+      let has_def: i64 = 0;
       if (n.default_case != cast<*AST::AstNode>(0)) has_def = 1;
 
-      let cond_more: int = 0;
+      let cond_more: i64 = 0;
       if (cc > 0 || has_def == 1) cond_more = 1;
       field(cast<*byte>("cond"), n.condition, flags, depth, cond_more, _C);
 
-      loop [i: int = 0](i < cc) : (++i) {
-        let more_case: int = 0;
+      loop [i: i64 = 0](i < cc) : (++i) {
+        let more_case: i64 = 0;
         if (has_def == 1 || i < cc - 1) more_case = 1;
         flags[depth + 1] = more_case;
         pf(flags, depth + 1);
@@ -412,9 +412,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let vc: int = n.value_count;
-      loop [i: int = 0](i < vc) : (++i) {
-        let more_val: int = 0;
+      let vc: i64 = n.value_count;
+      loop [i: i64 = 0](i < vc) : (++i) {
+        let more_val: i64 = 0;
         if (i < vc - 1) more_val = 1;
         field(cast<*byte>("val"), n.values[i], flags, depth, more_val, _C);
       }
@@ -438,7 +438,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       output(nc, "EnumDecl", col(_R, _R0), ": ", n.name);
       if (n.type_param_count > 0) {
         output(col(_C, _C0), " <");
-        loop [i: int = 0](i < n.type_param_count) : (++i) {
+        loop [i: i64 = 0](i < n.type_param_count) : (++i) {
           if (i > 0) output(", ");
           output(n.type_params[i]);
         }
@@ -448,9 +448,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_n(n.member_count, cast<*byte>("members"));
       output("\n");
 
-      let mc2: int = n.member_count;
-      loop [i: int = 0](i < mc2) : (++i) {
-        let more: int = 0;
+      let mc2: i64 = n.member_count;
+      loop [i: i64 = 0](i < mc2) : (++i) {
+        let more: i64 = 0;
         if (i < mc2 - 1) more = 1;
         flags[depth + 1] = more;
         pf(flags, depth + 1);
@@ -468,15 +468,15 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let pbc: int = n.public_count;
-      loop [i: int = 0](i < pbc) : (++i) {
-        let more_pub: int = 0;
+      let pbc: i64 = n.public_count;
+      loop [i: i64 = 0](i < pbc) : (++i) {
+        let more_pub: i64 = 0;
         if (n.private_count > 0 || i < pbc - 1) more_pub = 1;
         field(cast<*byte>("pub"), n.public_members[i], flags, depth, more_pub, _C);
       }
-      let prc: int = n.private_count;
-      loop [i: int = 0](i < prc) : (++i) {
-        let more_priv: int = 0;
+      let prc: i64 = n.private_count;
+      loop [i: i64 = 0](i < prc) : (++i) {
+        let more_priv: i64 = 0;
         if (i < prc - 1) more_priv = 1;
         field(cast<*byte>("priv"), n.private_members[i], flags, depth, more_priv, _C);
       }
@@ -491,8 +491,8 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let has_type: int = 0;
-      let has_fn: int = 0;
+      let has_type: i64 = 0;
+      let has_fn: i64 = 0;
       if (n.type_node != cast<*AST::AstNode>(0)) has_type = 1;
       if (n.function != cast<*AST::AstNode>(0)) has_fn = 1;
 
@@ -510,14 +510,14 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let fnc: int = n.function_name_count;
-      let sc2: int = n.struct_name_count;
-      let total_i: int = fnc + sc2 + 1;
-      let idx_i: int = 0;
+      let fnc: i64 = n.function_name_count;
+      let sc2: i64 = n.struct_name_count;
+      let total_i: i64 = fnc + sc2 + 1;
+      let idx_i: i64 = 0;
 
-      loop [i: int = 0](i < fnc) : (++i) {
+      loop [i: i64 = 0](i < fnc) : (++i) {
         idx_i = idx_i + 1;
-        let more_i: int = 0;
+        let more_i: i64 = 0;
         if (idx_i < total_i) more_i = 1;
         pf(flags, depth + 1);
         if (more_i == 1) output("├── ");
@@ -527,9 +527,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
         flags[depth + 1] = more_i;
       }
 
-      loop [i: int = 0](i < sc2) : (++i) {
+      loop [i: i64 = 0](i < sc2) : (++i) {
         idx_i = idx_i + 1;
-        let more_i2: int = 0;
+        let more_i2: i64 = 0;
         if (idx_i < total_i) more_i2 = 1;
         pf(flags, depth + 1);
         if (more_i2 == 1) output("├── ");
@@ -547,13 +547,13 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       pf(flags, depth);
       cn(is_last);
 
-      let lt: int = n.lit_type;
+      let lt: i64 = n.lit_type;
       switch (lt) {
         AST::LiteralType::LITERAL_INT -> {
-          output(nc, "Literal(int)", col(_R, _R0), ": ", col(_Y, _Y0), n.int_val, col(_R, _R0), "\n");
+          output(nc, "Literal(i32)", col(_R, _R0), ": ", col(_Y, _Y0), n.int_val, col(_R, _R0), "\n");
         }
         AST::LiteralType::LITERAL_FLOAT -> {
-          output(nc, "Literal(float)", col(_R, _R0), ": ", col(_Y, _Y0), n.float_val, col(_R, _R0), "\n");
+          output(nc, "Literal(f32)", col(_R, _R0), ": ", col(_Y, _Y0), n.float_val, col(_R, _R0), "\n");
         }
         AST::LiteralType::LITERAL_STRING -> {
           output(nc, "Literal(str)", col(_R, _R0), ": \'", col(_G, _G0), n.string_val, col(_R, _R0), "\'\n");
@@ -592,7 +592,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       pf(flags, depth);
       cn(is_last);
       output(nc, "Binary", col(_R, _R0), ": ", col(_Y, _Y0));
-      let op: int = n.op;
+      let op: i64 = n.op;
       switch (op) {
         AST::BinaryOp::BINOP_ADD     -> output("+");
         AST::BinaryOp::BINOP_SUB     -> output("-");
@@ -630,7 +630,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       pf(flags, depth);
       cn(is_last);
       output(nc, "Unary", col(_R, _R0), ": ", col(_Y, _Y0));
-      let uop: int = n.op;
+      let uop: i64 = n.op;
       switch (uop) {
         AST::UnaryType::UNOP_NOT      -> output("!");
         AST::UnaryType::UNOP_NEG      -> output("-");
@@ -693,9 +693,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
 
       field(cast<*byte>("callee"), n.callee, flags, depth, 1, _C);
 
-      let ac: int = n.arg_count;
-      loop [i: int = 0](i < ac) : (++i) {
-        let more_a: int = 0;
+      let ac: i64 = n.arg_count;
+      loop [i: i64 = 0](i < ac) : (++i) {
+        let more_a: i64 = 0;
         if (i < ac - 1) more_a = 1;
         field(cast<*byte>("arg"), n.args[i], flags, depth, more_a, _C);
       }
@@ -761,9 +761,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_n(n.element_count, cast<*byte>("elements"));
       output("\n");
 
-      let ec2: int = n.element_count;
-      loop [i: int = 0](i < ec2) : (++i) {
-        let more: int = 0;
+      let ec2: i64 = n.element_count;
+      loop [i: i64 = 0](i < ec2) : (++i) {
+        let more: i64 = 0;
         if (i < ec2 - 1) more = 1;
         flags[depth + 1] = more;
         r(n.elements[i], flags, depth + 1, more);
@@ -790,7 +790,7 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let has_msg2: int = 0;
+      let has_msg2: i64 = 0;
       if (n.castee != cast<*AST::AstNode>(0)) has_msg2 = 1;
       field(cast<*byte>("type"), n.type_node, flags, depth, has_msg2, _B);
       if (has_msg2 == 1)
@@ -845,9 +845,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let sc3: int = n.count;
-      loop [i: int = 0](i < sc3) : (++i) {
-        let more: int = 0;
+      let sc3: i64 = n.count;
+      loop [i: i64 = 0](i < sc3) : (++i) {
+        let more: i64 = 0;
         if (i < sc3 - 1) more = 1;
         flags[depth + 1] = more;
         r(n.args[i], flags, depth + 1, more);
@@ -864,9 +864,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_n(n.field_count, cast<*byte>("fields"));
       output("\n");
 
-      let fc: int = n.field_count;
-      loop [i: int = 0](i < fc) : (++i) {
-        let more: int = 0;
+      let fc: i64 = n.field_count;
+      loop [i: i64 = 0](i < fc) : (++i) {
+        let more: i64 = 0;
         if (i < fc - 1) more = 1;
         flags[depth + 1] = more;
         pf(flags, depth + 1);
@@ -917,9 +917,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       ann_lc(node);
       output("\n");
 
-      let pc2: int = n.param_count;
-      loop [i: int = 0](i < pc2) : (++i) {
-        let more_p: int = 0;
+      let pc2: i64 = n.param_count;
+      loop [i: i64 = 0](i < pc2) : (++i) {
+        let more_p: i64 = 0;
         if (i < pc2 - 1) more_p = 1;
         field(cast<*byte>("param"), n.param_types[i], flags, depth, more_p, _B);
       }
@@ -931,8 +931,8 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
       pf(flags, depth);
       cn(is_last);
       output(nc, "Type", col(_R, _R0), ": ", col(_B, _B0));
-      let rc: int = n.part_count;
-      loop [i: int = 0](i < rc) : (++i) {
+      let rc: i64 = n.part_count;
+      loop [i: i64 = 0](i < rc) : (++i) {
         if (i > 0) output("::");
         output(n.parts[i]);
       }
@@ -949,9 +949,9 @@ const pn -> fn (node: *AST::AstNode, flags: *int, depth: int, is_last: int, colo
   }
 }
 
-pub const print_node -> fn (node: *AST::AstNode, indent: int) void {
-  let flags: *int = cast<*int>(alloc(MAX_DEPTH * sizeof<int>));
-  loop [i: int = 0](i < MAX_DEPTH) : (++i) { flags[i] = 0; }
+pub const print_node -> fn (node: *AST::AstNode, indent: i64) void {
+  let flags: *i64 = cast<*i64>(alloc(MAX_DEPTH * sizeof<i64>));
+  loop [i: i64 = 0](i < MAX_DEPTH) : (++i) { flags[i] = 0; }
   pn(node, flags, indent, 1, _C);
   free(flags);
 }

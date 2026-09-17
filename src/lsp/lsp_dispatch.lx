@@ -12,7 +12,7 @@
 const wrap_code_block -> fn (sig: *byte) *byte {
   let prefix: *byte = "```luma\n";
   let suffix: *byte = "\n```";
-  let total: int = STR::strlen(prefix) + STR::strlen(sig) + STR::strlen(suffix) + 1;
+  let total: i64 = STR::strlen(prefix) + STR::strlen(sig) + STR::strlen(suffix) + 1;
   let out: *byte = cast<*byte>(alloc(total));
   STR::cat(out, prefix, sig);
   STR::cat(out, out, suffix);
@@ -89,7 +89,7 @@ pub const handle_message -> fn (raw: *byte) void {
 
   let id_val: *J::JsonValue = J::json_object_get(msg, "id");
   let has_id: bool = J::json_is_null(id_val) == false;
-  let id: int = J::json_get_int(id_val);
+  let id: i64 = J::json_get_int(id_val);
   let params: *J::JsonValue = J::json_object_get(msg, "params");
 
   if (STR::strcmp(method, "initialize") == 0) {
@@ -116,7 +116,7 @@ pub const handle_message -> fn (raw: *byte) void {
     let td: *J::JsonValue = J::json_object_get(params, "textDocument");
     let uri: *byte = J::json_object_get_string(td, "uri");
     let text: *byte = J::json_object_get_string(td, "text");
-    let version: int = J::json_object_get_int(td, "version");
+    let version: i64 = J::json_object_get_int(td, "version");
     if (uri != cast<*byte>(0) && text != cast<*byte>(0)) {
       D::lsp_document_open(uri, text, version);
       D::lsp_analyze_and_publish(uri);
@@ -124,9 +124,9 @@ pub const handle_message -> fn (raw: *byte) void {
   } elif (STR::strcmp(method, "textDocument/didChange") == 0) {
     let td: *J::JsonValue = J::json_object_get(params, "textDocument");
     let uri: *byte = J::json_object_get_string(td, "uri");
-    let version: int = J::json_object_get_int(td, "version");
+    let version: i64 = J::json_object_get_int(td, "version");
     let changes: *J::JsonValue = J::json_object_get(params, "contentChanges");
-    let change_count: int = J::json_array_len(changes);
+    let change_count: i64 = J::json_array_len(changes);
     if (uri != cast<*byte>(0) && change_count > 0) {
       // Full sync: the last entry in contentChanges is the whole new text.
       let last: *J::JsonValue = J::json_array_get(changes, change_count - 1);
@@ -151,8 +151,8 @@ pub const handle_message -> fn (raw: *byte) void {
       let td: *J::JsonValue = J::json_object_get(params, "textDocument");
       let uri: *byte = J::json_object_get_string(td, "uri");
       let pos: *J::JsonValue = J::json_object_get(params, "position");
-      let line: int = J::json_object_get_int(pos, "line");
-      let character: int = J::json_object_get_int(pos, "character");
+      let line: i64 = J::json_object_get_int(pos, "line");
+      let character: i64 = J::json_object_get_int(pos, "character");
 
       let sig: *byte = cast<*byte>(0);
       if (uri != cast<*byte>(0)) { sig = D::lsp_hover(uri, line, character); }
@@ -178,8 +178,8 @@ pub const handle_message -> fn (raw: *byte) void {
       let td: *J::JsonValue = J::json_object_get(params, "textDocument");
       let uri: *byte = J::json_object_get_string(td, "uri");
       let pos: *J::JsonValue = J::json_object_get(params, "position");
-      let line: int = J::json_object_get_int(pos, "line");
-      let character: int = J::json_object_get_int(pos, "character");
+      let line: i64 = J::json_object_get_int(pos, "line");
+      let character: i64 = J::json_object_get_int(pos, "character");
 
       if (uri != cast<*byte>(0)) {
         T::send_response(id, D::lsp_definition(uri, line, character));
@@ -192,8 +192,8 @@ pub const handle_message -> fn (raw: *byte) void {
       let td: *J::JsonValue = J::json_object_get(params, "textDocument");
       let uri: *byte = J::json_object_get_string(td, "uri");
       let pos: *J::JsonValue = J::json_object_get(params, "position");
-      let line: int = J::json_object_get_int(pos, "line");
-      let character: int = J::json_object_get_int(pos, "character");
+      let line: i64 = J::json_object_get_int(pos, "line");
+      let character: i64 = J::json_object_get_int(pos, "character");
 
       if (uri != cast<*byte>(0)) {
         T::send_response(id, D::lsp_completions(uri, line, character));

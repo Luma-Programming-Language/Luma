@@ -3,7 +3,7 @@
 @use "ast" as AST
 
 #returns_ownership
-pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AST::AstNode {
+pub const make_basic_type -> fn (name: *byte, line: i64, col: i64) *AST::AstNode {
   let n: *AST::BasicTypeNode = AST::AstNode::make<AST::BasicTypeNode>(
     AST::NodeType::TYPE_BASIC,
     AST::NodeCategory::Node_Category_TYPE,
@@ -18,7 +18,7 @@ pub const make_basic_type -> fn (name: *byte, line: int, col: int) *AST::AstNode
 }
 
 #returns_ownership
-pub const make_pointer_type -> fn (pointee_type: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_pointer_type -> fn (pointee_type: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::PointerTypeNode = AST::AstNode::make<AST::PointerTypeNode>(
     AST::NodeType::TYPE_POINTER,
     AST::NodeCategory::Node_Category_TYPE,
@@ -30,7 +30,7 @@ pub const make_pointer_type -> fn (pointee_type: *AST::AstNode, line: int, col: 
 }
 
 #returns_ownership
-pub const make_array_type -> fn (element_type: *AST::AstNode, size: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_array_type -> fn (element_type: *AST::AstNode, size: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ArrayTypeNode = AST::AstNode::make<AST::ArrayTypeNode>(
     AST::NodeType::TYPE_ARRAY,
     AST::NodeCategory::Node_Category_TYPE,
@@ -43,7 +43,7 @@ pub const make_array_type -> fn (element_type: *AST::AstNode, size: *AST::AstNod
 }
 
 #returns_ownership
-pub const make_func_type -> fn (param_types: **AST::AstNode, param_count: int, return_type: *AST::AstNode, line: int, col: int) *AST::AstNode {
+pub const make_func_type -> fn (param_types: **AST::AstNode, param_count: i64, return_type: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::FuncTypeNode = AST::AstNode::make<AST::FuncTypeNode>(
     AST::NodeType::TYPE_FUNCTION,
     AST::NodeCategory::Node_Category_TYPE,
@@ -57,7 +57,7 @@ pub const make_func_type -> fn (param_types: **AST::AstNode, param_count: int, r
 }
 
 #returns_ownership
-pub const make_resolution_type -> fn (parts: **byte, part_count: int, line: int, col: int) *AST::AstNode {
+pub const make_resolution_type -> fn (parts: **byte, part_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ResolutionNode = AST::AstNode::make<AST::ResolutionNode>(
     AST::NodeType::TYPE_RESOLUTION,
     AST::NodeCategory::Node_Category_TYPE,

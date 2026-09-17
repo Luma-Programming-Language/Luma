@@ -30,13 +30,13 @@ pub const BindingPower -> enum {
   BP_PRIMARY      /**< Primary expressions (literals, variables) */
 };
 
-const PRIMARY_LITERAL_TYPE_MAP: int =  7; 
-const TOKEN_TO_BINOP_MAP:       int = 19;
-const TOKEN_TO_UNOP_MAP:        int =  6;    
+const PRIMARY_LITERAL_TYPE_MAP: i64 =  7; 
+const TOKEN_TO_BINOP_MAP:       i64 = 19;
+const TOKEN_TO_UNOP_MAP:        i64 =  6;    
 
-const PRIMARY_LITERAL -> struct { tok: int, literal: int };
-const TOKEN_TO_BINOP  -> struct { tok: int, binop: int   };
-const TOKEN_TO_UNOP   -> struct { tok: int, unop: int    };
+const PRIMARY_LITERAL -> struct { tok: i64, literal: i64 };
+const TOKEN_TO_BINOP  -> struct { tok: i64, binop: i64   };
+const TOKEN_TO_UNOP   -> struct { tok: i64, unop: i64    };
 
 const PRIMARY_LILERAL_MAP: [PRIMARY_LITERAL; 7] = [
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_NUMBER,       literal: AST::LiteralType::LITERAL_INT    },      
@@ -85,24 +85,24 @@ const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUSMINUS, unop: AST::UnaryType::UNOP_PRE_DEC },
 ];
 
-pub const search_literal_map -> fn (kind: int) int {
-  loop [i: int = 0](i < PRIMARY_LITERAL_TYPE_MAP) : (++i) {
+pub const search_literal_map -> fn (kind: i64) i64 {
+  loop [i: i64 = 0](i < PRIMARY_LITERAL_TYPE_MAP) : (++i) {
     if (kind == PRIMARY_LILERAL_MAP[i].tok) 
       return PRIMARY_LILERAL_MAP[i].literal;
   }
   return -1;
 }
 
-pub const search_binop_map -> fn (kind: int) int {
-  loop [i: int = 0](i < TOKEN_TO_BINOP_MAP) : (++i) {
+pub const search_binop_map -> fn (kind: i64) i64 {
+  loop [i: i64 = 0](i < TOKEN_TO_BINOP_MAP) : (++i) {
     if (kind == BINOP_MAP[i].tok) 
       return BINOP_MAP[i].binop;
   }
   return -1;
 }
 
-pub const search_unop_map -> fn (kind: int) int {
-  loop [i: int = 0](i < TOKEN_TO_UNOP_MAP) : (++i) {
+pub const search_unop_map -> fn (kind: i64) i64 {
+  loop [i: i64 = 0](i < TOKEN_TO_UNOP_MAP) : (++i) {
     if (kind == UNOP_MAP[i].tok) 
       return UNOP_MAP[i].unop;
   }
@@ -118,7 +118,7 @@ const EOF_TOK: TOK::Token = {
   whitespace_len: 0 
 }; 
 
-pub const get_bp -> fn (kind: int) int {
+pub const get_bp -> fn (kind: i64) i64 {
   switch using TOK::LumaTokenType (kind) {
     TOK_EQUAL    -> return BindingPower::BP_ASSIGN;
     TOK_QUESTION -> return BindingPower::BP_TERNARY;
@@ -157,24 +157,24 @@ pub const get_bp -> fn (kind: int) int {
 
 // See Parser.save/restore below.
 pub const Savepoint -> struct {
-  pos:       int,
-  had_error: int,
-  err_count: int,
+  pos:       i64,
+  had_error: i64,
+  err_count: i64,
 };
 
 pub const Parser -> struct {
   file_path:   *byte,
   tks:         *TOK::Token,
-  tok_count:   int,
-  pos:         int,
-  had_error:   int,
+  tok_count:   i64,
+  pos:         i64,
+  had_error:   i64,
 
   has_tokens -> fn () bool { 
     return (self.pos < self.tok_count && 
             self.tks[self.pos].kind != TOK::LumaTokenType::TOK_EOF); 
   },
-  peek       -> fn (offset: int) TOK::Token {
-    let idx: int = self.pos + offset;
+  peek       -> fn (offset: i64) TOK::Token {
+    let idx: i64 = self.pos + offset;
     if (idx < self.tok_count)  
       return self.tks[idx]; 
     return EOF_TOK; 
@@ -192,10 +192,10 @@ pub const Parser -> struct {
     }
     return EOF_TOK;
   },
-  consume    -> fn (kind: int, err_msg: *byte) TOK::Token {
-    let line: int = self.current().line;
-    let col:  int = self.current().col;
-    let len:  int = self.current().len;
+  consume    -> fn (kind: i64, err_msg: *byte) TOK::Token {
+    let line: i64 = self.current().line;
+    let col:  i64 = self.current().col;
+    let len:  i64 = self.current().len;
 
     if (self.current().kind == kind) 
       return self.advance();
@@ -221,9 +221,9 @@ pub const Parser -> struct {
   },
 
   error -> fn (err_type: *byte, err_msg: *byte) void {
-    let line: int = self.current().line;
-    let col:  int = self.current().col;
-    let len:  int = self.current().len;
+    let line: i64 = self.current().line;
+    let col:  i64 = self.current().col;
+    let len:  i64 = self.current().len;
 
     let info: ERR::ErrorInformation = ERR::ErrorInformation {
       error_type:   err_type,
@@ -269,7 +269,7 @@ pub const Parser -> struct {
 };
 
 #returns_ownership
-pub const create_parser -> fn (tks: *TOK::Token, tok_count: int, file_path: *byte) *Parser {
+pub const create_parser -> fn (tks: *TOK::Token, tok_count: i64, file_path: *byte) *Parser {
   let p: *Parser = cast<*Parser>(alloc(sizeof<Parser>));
 
   p.file_path = file_path;
@@ -300,7 +300,7 @@ pub const vec_to_node_array -> fn (v: *VEC::Vector) **AST::AstNode {
 pub const vec_to_byte_array -> fn (v: *VEC::Vector) **byte {
   if (v.size == 0) return cast<**byte>(0);
 
-  let allocation_size: int = v.size * sizeof<*byte>;
+  let allocation_size: i64 = v.size * sizeof<*byte>;
   let arr: **byte = cast<**byte>(alloc(allocation_size));
   MEM::memcpy(cast<*void>(arr), v.data, allocation_size);
 

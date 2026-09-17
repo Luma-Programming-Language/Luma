@@ -29,7 +29,7 @@
 pub const LSPDocument -> struct {
   uri:     *byte,        // owned
   text:    *byte,        // owned, latest full content from didOpen/didChange
-  version: int,
+  version: i64,
   ast:     *AST::AstNode, // cached ProgramNode from the last successful parse
                           // (null if the current text doesn't even parse) —
                           // used by position/structure queries (document
@@ -43,9 +43,9 @@ pub const lsp_document_init -> fn () void {
   g_documents = VEC::create_vector(sizeof<LSPDocument>);
 }
 
-const find_index -> fn (uri: *byte) int {
-  let n: int = g_documents.size;
-  loop [i: int = 0](i < n) : (++i) {
+const find_index -> fn (uri: *byte) i64 {
+  let n: i64 = g_documents.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(i));
     if (STR::strcmp(d.uri, uri) == 0) return i;
   }
@@ -55,20 +55,20 @@ const find_index -> fn (uri: *byte) int {
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
   if (s == cast<*byte>(0)) return cast<*byte>(0);
-  let len: int = STR::strlen(s);
+  let len: i64 = STR::strlen(s);
   let out: *byte = cast<*byte>(alloc(len + 1));
   MEM::memcpy(cast<*void>(out), cast<*void>(s), len + 1);
   return out;
 }
 
 pub const lsp_document_find -> fn (uri: *byte) *LSPDocument {
-  let idx: int = find_index(uri);
+  let idx: i64 = find_index(uri);
   if (idx < 0) return cast<*LSPDocument>(0);
   return cast<*LSPDocument>(g_documents.get(idx));
 }
 
-pub const lsp_document_open -> fn (uri: *byte, text: *byte, version: int) void {
-  let idx: int = find_index(uri);
+pub const lsp_document_open -> fn (uri: *byte, text: *byte, version: i64) void {
+  let idx: i64 = find_index(uri);
   if (idx >= 0) {
     let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(idx));
     free(d.text);
@@ -84,8 +84,8 @@ pub const lsp_document_open -> fn (uri: *byte, text: *byte, version: int) void {
   g_documents.push_back(cast<*void>(&doc));
 }
 
-pub const lsp_document_update -> fn (uri: *byte, text: *byte, version: int) void {
-  let idx: int = find_index(uri);
+pub const lsp_document_update -> fn (uri: *byte, text: *byte, version: i64) void {
+  let idx: i64 = find_index(uri);
   if (idx < 0) { lsp_document_open(uri, text, version); return; }
 
   let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(idx));
@@ -95,7 +95,7 @@ pub const lsp_document_update -> fn (uri: *byte, text: *byte, version: int) void
 }
 
 pub const lsp_document_close -> fn (uri: *byte) void {
-  let idx: int = find_index(uri);
+  let idx: i64 = find_index(uri);
   if (idx < 0) return;
 
   let d: *LSPDocument = cast<*LSPDocument>(g_documents.get(idx));
@@ -155,15 +155,15 @@ pub const lsp_set_workspace_root -> fn (uri: *byte) void {
   if (g_workspace_root != cast<*byte>(0)) { free(g_workspace_root); g_workspace_root = cast<*byte>(0); }
 
   let prefix: *byte = "file://";
-  let plen: int = STR::strlen(prefix);
-  let ulen: int = STR::strlen(uri);
+  let plen: i64 = STR::strlen(prefix);
+  let ulen: i64 = STR::strlen(uri);
   if (ulen >= plen) {
     let matches: bool = true;
-    loop [i: int = 0](i < plen) : (++i) {
+    loop [i: i64 = 0](i < plen) : (++i) {
       if (uri[i] != prefix[i]) { matches = false; break; }
     }
     if (matches) {
-      g_workspace_root = dup_str(cast<*byte>(cast<int>(uri) + plen));
+      g_workspace_root = dup_str(cast<*byte>(cast<i64>(uri) + plen));
       return;
     }
   }
@@ -172,14 +172,14 @@ pub const lsp_set_workspace_root -> fn (uri: *byte) void {
 
 // Returns the index of the first occurrence of `needle` in `haystack`, or
 // -1. std_cstring doesn't have a strstr equivalent yet.
-const find_substr -> fn (haystack: *byte, needle: *byte) int {
-  let hlen: int = STR::strlen(haystack);
-  let nlen: int = STR::strlen(needle);
+const find_substr -> fn (haystack: *byte, needle: *byte) i64 {
+  let hlen: i64 = STR::strlen(haystack);
+  let nlen: i64 = STR::strlen(needle);
   if (nlen == 0 || nlen > hlen) return -1;
 
-  loop [i: int = 0](i <= hlen - nlen) : (++i) {
+  loop [i: i64 = 0](i <= hlen - nlen) : (++i) {
     let matched: bool = true;
-    loop [j: int = 0](j < nlen) : (++j) {
+    loop [j: i64 = 0](j < nlen) : (++j) {
       if (haystack[i + j] != needle[j]) { matched = false; break; }
     }
     if (matched) return i;
@@ -193,11 +193,11 @@ const find_substr -> fn (haystack: *byte, needle: *byte) int {
 // keyword table's string literals, as lexer/tokens.lx's own does).
 #returns_ownership
 const extract_module_name -> fn (content: *byte) *byte {
-  let idx: int = find_substr(content, "@module");
+  let idx: i64 = find_substr(content, "@module");
   if (idx < 0) return cast<*byte>(0);
 
-  let len: int = STR::strlen(content);
-  let i: int = idx + STR::strlen("@module");
+  let len: i64 = STR::strlen(content);
+  let i: i64 = idx + STR::strlen("@module");
 
   loop (i < len && content[i] != '"') {
     if (content[i] == '\n') return cast<*byte>(0);
@@ -205,20 +205,20 @@ const extract_module_name -> fn (content: *byte) *byte {
   }
   if (i >= len) return cast<*byte>(0);
   i = i + 1; // skip opening quote
-  let start: int = i;
+  let start: i64 = i;
   loop (i < len && content[i] != '"') { i = i + 1; }
   if (i >= len) return cast<*byte>(0);
 
-  let name_len: int = i - start;
+  let name_len: i64 = i - start;
   let name: *byte = cast<*byte>(alloc(name_len + 1));
-  MEM::memcpy(cast<*void>(name), cast<*void>(cast<int>(content) + start), name_len);
+  MEM::memcpy(cast<*void>(name), cast<*void>(cast<i64>(content) + start), name_len);
   name[name_len] = cast<byte>(0);
   return name;
 }
 
 const registry_lookup -> fn (name: *byte) *byte {
-  let n: int = g_registry.size;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = g_registry.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let e: *ModuleRegistryEntry = cast<*ModuleRegistryEntry>(g_registry.get(i));
     if (STR::strcmp(e.name, name) == 0) return e.path;
   }
@@ -253,7 +253,7 @@ const register_file -> fn (path: *byte) void {
 const append_dir_listing -> fn (dir: *byte) void {
   let mid: *byte = "' -name '*.lx' >> '";
   let tail: *byte = "' 2>/dev/null";
-  let total: int = STR::strlen("find '") + STR::strlen(dir) + STR::strlen(mid)
+  let total: i64 = STR::strlen("find '") + STR::strlen(dir) + STR::strlen(mid)
                   + STR::strlen(REGISTRY_LISTING_PATH) + STR::strlen(tail) + 1;
   let cmd: *byte = cast<*byte>(alloc(total));
   STR::cat(cmd, "find '", dir);
@@ -281,14 +281,14 @@ const build_registry -> fn () void {
   let listing: *byte = IO::read_file(REGISTRY_LISTING_PATH);
   if (listing == cast<*byte>(0)) return;
 
-  let len: int = STR::strlen(listing);
-  let start: int = 0;
-  loop [i: int = 0](i <= len) : (++i) {
+  let len: i64 = STR::strlen(listing);
+  let start: i64 = 0;
+  loop [i: i64 = 0](i <= len) : (++i) {
     if (i == len || listing[i] == '\n') {
       if (i > start) {
-        let path_len: int = i - start;
+        let path_len: i64 = i - start;
         let path: *byte = cast<*byte>(alloc(path_len + 1));
-        MEM::memcpy(cast<*void>(path), cast<*void>(cast<int>(listing) + start), path_len);
+        MEM::memcpy(cast<*void>(path), cast<*void>(cast<i64>(listing) + start), path_len);
         path[path_len] = cast<byte>(0);
         register_file(path);
         free(path);
@@ -301,8 +301,8 @@ const build_registry -> fn () void {
 }
 
 const name_seen -> fn (seen: *VEC::Vector, name: *byte) bool {
-  let n: int = seen.size;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = seen.size;
+  loop [i: i64 = 0](i < n) : (++i) {
     let s: *byte = cast<**byte>(seen.data)[i];
     if (STR::strcmp(s, name) == 0) return true;
   }
@@ -324,12 +324,12 @@ const collect_modules -> fn (main_module: *AST::AstNode) VEC::Vector {
   let main_mod: *AST::ModuleNode = cast<*AST::ModuleNode>(main_module);
   seen.push_back(cast<*void>(&main_mod.name));
 
-  let work_idx: int = 0;
+  let work_idx: i64 = 0;
   loop (work_idx < modules.size) {
     let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(cast<**AST::AstNode>(modules.data)[work_idx]);
-    let bc: int = mod.body_count;
+    let bc: i64 = mod.body_count;
 
-    loop [i: int = 0](i < bc) : (++i) {
+    loop [i: i64 = 0](i < bc) : (++i) {
       let bn: *AST::AstNode = mod.body[i];
       if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
         let u: *AST::UseNode = cast<*AST::UseNode>(bn);
@@ -365,9 +365,9 @@ const SCRATCH_PATH: *byte = "/tmp/.luma-lsp-scratch.lx";
 // exists. The scratch file needs to be created on first use, so write it
 // out ourselves via the create-capable primitive instead.
 const write_scratch_file -> fn (path: *byte, content: *byte) void {
-  let fd: int = IO::local_open_create(path);
+  let fd: i64 = IO::local_open_create(path);
   if (IO::local_is_error(fd)) return;
-  let len: int = STR::strlen(content);
+  let len: i64 = STR::strlen(content);
   IO::local_write(fd, cast<*void>(content), len);
   IO::local_close(fd);
 }
@@ -389,7 +389,7 @@ pub const lsp_analyze -> fn (doc: *LSPDocument) void {
   // TC::typecheck on failure) writes straight to stdout — our JSON-RPC
   // channel — so analysis has to run with stdout muted. See
   // lsp_transport.lx's suppress_stdout_begin for why.
-  let saved_stdout: int = T::suppress_stdout_begin();
+  let saved_stdout: i64 = T::suppress_stdout_begin();
 
   let build_config: CONST::LumaBuildConfig = CONST::init_build_config(SCRATCH_PATH);
   // The static memory analyzer has known false-positive edge cases (see
@@ -430,7 +430,7 @@ pub const lsp_analyze -> fn (doc: *LSPDocument) void {
 #returns_ownership
 const build_message_with_help -> fn (message: *byte, help: *byte) *byte {
   let sep: *byte = "\n\nHelp: ";
-  let total: int = STR::strlen(message) + STR::strlen(sep) + STR::strlen(help) + 1;
+  let total: i64 = STR::strlen(message) + STR::strlen(sep) + STR::strlen(help) + 1;
   let out: *byte = cast<*byte>(alloc(total));
   STR::cat(out, message, sep);
   STR::cat(out, out, help);
@@ -440,9 +440,9 @@ const build_message_with_help -> fn (message: *byte, help: *byte) *byte {
 #returns_ownership
 const diagnostics_array -> fn () *J::JsonValue {
   let arr: *J::JsonValue = J::json_array();
-  let count: int = ERO::error_get_count();
+  let count: i64 = ERO::error_get_count();
 
-  loop [i: int = 0](i < count) : (++i) {
+  loop [i: i64 = 0](i < count) : (++i) {
     let e: *ERO::ErrorInformation = ERO::error_get_at_index(i);
     if (e == cast<*ERO::ErrorInformation>(0)) continue;
 
@@ -456,11 +456,11 @@ const diagnostics_array -> fn () *J::JsonValue {
     // against error.lx's own print_indicator, which pads with exactly
     // `col` spaces before the caret with no adjustment) — only line needs
     // the -1 here.
-    let start_line: int = 0;
+    let start_line: i64 = 0;
     if (e.line > 0) { start_line = e.line - 1; }
-    let start_col: int = e.col;
+    let start_col: i64 = e.col;
     if (start_col < 0) { start_col = 0; }
-    let tlen: int = 1;
+    let tlen: i64 = 1;
     if (e.token_length > 0) { tlen = e.token_length; }
 
     let start: *J::JsonValue = J::json_object();
@@ -517,14 +517,14 @@ pub const lsp_analyze_and_publish -> fn (uri: *byte) void {
 // Document Symbols
 // ============================================================================
 
-const SK_FUNCTION:   int = 12;
-const SK_STRUCT:     int = 23;
-const SK_ENUM:       int = 10;
-const SK_VARIABLE:   int = 13;
-const SK_CONSTANT:   int = 14;
-const SK_METHOD:     int = 6;
-const SK_FIELD:      int = 8;
-const SK_ENUM_MEMBER: int = 22;
+const SK_FUNCTION:   i64 = 12;
+const SK_STRUCT:     i64 = 23;
+const SK_ENUM:       i64 = 10;
+const SK_VARIABLE:   i64 = 13;
+const SK_CONSTANT:   i64 = 14;
+const SK_METHOD:     i64 = 6;
+const SK_FIELD:      i64 = 8;
+const SK_ENUM_MEMBER: i64 = 22;
 
 // `doc.ast` is the ProgramNode built for the single scratch file this
 // document was last analyzed as (see lsp_analyze) — unwrap to its one
@@ -538,7 +538,7 @@ const doc_module -> fn (doc: *LSPDocument) *AST::ModuleNode {
 }
 
 #returns_ownership
-const make_position -> fn (line: int, character: int) *J::JsonValue {
+const make_position -> fn (line: i64, character: i64) *J::JsonValue {
   let pos: *J::JsonValue = J::json_object();
   J::json_object_set(pos, "line", J::json_int(line));
   J::json_object_set(pos, "character", J::json_int(character));
@@ -551,13 +551,13 @@ const make_position -> fn (line: int, character: int) *J::JsonValue {
 // span the length of the name, anchored at the declaration's start. Good
 // enough to navigate to; not pixel-accurate around the identifier.
 #returns_ownership
-const make_symbol -> fn (name: *byte, kind: int, line: int, col: int, children: *J::JsonValue) *J::JsonValue {
+const make_symbol -> fn (name: *byte, kind: i64, line: i64, col: i64, children: *J::JsonValue) *J::JsonValue {
   // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
-  let start_line: int = 0;
+  let start_line: i64 = 0;
   if (line > 0) { start_line = line - 1; }
-  let start_col: int = col;
+  let start_col: i64 = col;
   if (start_col < 0) { start_col = 0; }
-  let end_col: int = start_col + STR::strlen(name);
+  let end_col: i64 = start_col + STR::strlen(name);
 
   let range: *J::JsonValue = J::json_object();
   J::json_object_set(range, "start", make_position(start_line, start_col));
@@ -584,20 +584,20 @@ const make_symbol -> fn (name: *byte, kind: int, line: int, col: int, children: 
 #returns_ownership
 const make_struct_symbol_children -> fn (sd: *AST::StructDeclNode) *J::JsonValue {
   let arr: *J::JsonValue = J::json_array();
-  loop [i: int = 0](i < sd.public_count) : (++i) {
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
     let f: *AST::AstNode = sd.public_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
       let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
-      let kind: int = SK_FIELD;
+      let kind: i64 = SK_FIELD;
       if (fld.function != cast<*AST::AstNode>(0)) { kind = SK_METHOD; }
       J::json_array_push(arr, make_symbol(fld.name, kind, fld.line, fld.col, cast<*J::JsonValue>(0)));
     }
   }
-  loop [i: int = 0](i < sd.private_count) : (++i) {
+  loop [i: i64 = 0](i < sd.private_count) : (++i) {
     let f: *AST::AstNode = sd.private_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
       let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
-      let kind: int = SK_FIELD;
+      let kind: i64 = SK_FIELD;
       if (fld.function != cast<*AST::AstNode>(0)) { kind = SK_METHOD; }
       J::json_array_push(arr, make_symbol(fld.name, kind, fld.line, fld.col, cast<*J::JsonValue>(0)));
     }
@@ -611,7 +611,7 @@ const make_enum_symbol_children -> fn (ed: *AST::EnumDeclNode) *J::JsonValue {
   // every child is anchored at the enum declaration's line (see the
   // `make_symbol` range approximation note above).
   let arr: *J::JsonValue = J::json_array();
-  loop [i: int = 0](i < ed.member_count) : (++i) {
+  loop [i: i64 = 0](i < ed.member_count) : (++i) {
     J::json_array_push(arr, make_symbol(ed.members[i], SK_ENUM_MEMBER, ed.line, ed.col, cast<*J::JsonValue>(0)));
   }
   return arr;
@@ -627,8 +627,8 @@ pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
   let mod: *AST::ModuleNode = doc_module(lsp_document_find(uri));
   if (mod == cast<*AST::ModuleNode>(0)) return arr;
 
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
 
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
@@ -648,7 +648,7 @@ pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
       // exists as a NodeType but the parser never produces it; kept here
       // in case that changes).
       let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
-      let kind: int = SK_CONSTANT;
+      let kind: i64 = SK_CONSTANT;
       if (vd.is_mutable == 1) { kind = SK_VARIABLE; }
       J::json_array_push(arr, make_symbol(vd.name, kind, bn.line, bn.col, cast<*J::JsonValue>(0)));
     }
@@ -672,28 +672,28 @@ pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
 
 const StrBuf -> struct {
   data: *byte,
-  len:  int,
-  cap:  int,
+  len:  i64,
+  cap:  i64,
 };
 
 const sb_init -> fn () StrBuf {
-  let cap: int = 128;
+  let cap: i64 = 128;
   return StrBuf { data: cast<*byte>(alloc(cap)), len: 0, cap: cap };
 }
 
-const sb_ensure -> fn (b: *StrBuf, extra: int) void {
+const sb_ensure -> fn (b: *StrBuf, extra: i64) void {
   if (b.len + extra + 1 <= b.cap) return;
-  let old_cap: int = b.cap;
-  let new_cap: int = old_cap * 2;
+  let old_cap: i64 = b.cap;
+  let new_cap: i64 = old_cap * 2;
   loop (new_cap < b.len + extra + 1) { new_cap = new_cap * 2; }
   b.data = cast<*byte>(MEM::realloc(cast<*void>(b.data), old_cap, new_cap));
   b.cap = new_cap;
 }
 
 const sb_str -> fn (b: *StrBuf, s: *byte) void {
-  let n: int = STR::strlen(s);
+  let n: i64 = STR::strlen(s);
   sb_ensure(b, n);
-  MEM::memcpy(cast<*void>(cast<int>(b.data) + b.len), cast<*void>(s), n);
+  MEM::memcpy(cast<*void>(cast<i64>(b.data) + b.len), cast<*void>(s), n);
   b.len = b.len + n;
 }
 
@@ -712,42 +712,42 @@ const is_ident_char -> fn (c: byte) bool {
 // positions are 0-indexed lines with a UTF-16-code-unit character offset,
 // same convention used elsewhere in this file.
 #returns_ownership
-const word_at_position -> fn (text: *byte, line: int, character: int) *byte {
-  let len: int = STR::strlen(text);
+const word_at_position -> fn (text: *byte, line: i64, character: i64) *byte {
+  let len: i64 = STR::strlen(text);
 
-  let cur_line: int = 0;
-  let line_start: int = 0;
-  let i: int = 0;
+  let cur_line: i64 = 0;
+  let line_start: i64 = 0;
+  let i: i64 = 0;
   loop (i < len && cur_line < line) {
     if (text[i] == '\n') { cur_line = cur_line + 1; line_start = i + 1; }
     i = i + 1;
   }
   if (cur_line != line) return cast<*byte>(0);
 
-  let line_end: int = line_start;
+  let line_end: i64 = line_start;
   loop (line_end < len && text[line_end] != '\n') { line_end = line_end + 1; }
 
-  let col: int = line_start + character;
+  let col: i64 = line_start + character;
   if (col > line_end) { col = line_end; }
   if (col < line_start) { col = line_start; }
 
   // If the cursor sits right after a word (not inside/before one), step
   // back one so we land on the word instead of whatever follows it.
-  let s: int = col;
+  let s: i64 = col;
   if (s > line_start) {
     let at_word_char: bool = s < line_end && is_ident_char(text[s]);
     if (at_word_char == false && is_ident_char(text[s - 1])) { s = s - 1; }
   }
   loop (s > line_start && is_ident_char(text[s - 1])) { s = s - 1; }
 
-  let e: int = s;
+  let e: i64 = s;
   loop (e < line_end && is_ident_char(text[e])) { e = e + 1; }
 
   if (e <= s) return cast<*byte>(0);
 
-  let wlen: int = e - s;
+  let wlen: i64 = e - s;
   let word: *byte = cast<*byte>(alloc(wlen + 1));
-  MEM::memcpy(cast<*void>(word), cast<*void>(cast<int>(text) + s), wlen);
+  MEM::memcpy(cast<*void>(word), cast<*void>(cast<i64>(text) + s), wlen);
   word[wlen] = cast<byte>(0);
   return word;
 }
@@ -759,14 +759,14 @@ const format_func_signature -> fn (fd: *AST::FuncDeclNode) *byte {
   sb_str(&b, fd.name);
   if (fd.type_param_count > 0) {
     sb_str(&b, "<");
-    loop [i: int = 0](i < fd.type_param_count) : (++i) {
+    loop [i: i64 = 0](i < fd.type_param_count) : (++i) {
       if (i > 0) { sb_str(&b, ", "); }
       sb_str(&b, fd.type_params[i]);
     }
     sb_str(&b, ">");
   }
   sb_str(&b, "(");
-  loop [i: int = 0](i < fd.param_count) : (++i) {
+  loop [i: i64 = 0](i < fd.param_count) : (++i) {
     if (i > 0) { sb_str(&b, ", "); }
     sb_str(&b, fd.param_names[i]);
     sb_str(&b, ": ");
@@ -811,7 +811,7 @@ const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
   sb_str(&b, sd.name);
   if (sd.type_param_count > 0) {
     sb_str(&b, "<");
-    loop [i: int = 0](i < sd.type_param_count) : (++i) {
+    loop [i: i64 = 0](i < sd.type_param_count) : (++i) {
       if (i > 0) { sb_str(&b, ", "); }
       sb_str(&b, sd.type_params[i]);
     }
@@ -819,8 +819,8 @@ const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
   }
   sb_str(&b, " { ");
 
-  let member_count: int = 0;
-  loop [i: int = 0](i < sd.public_count) : (++i) {
+  let member_count: i64 = 0;
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
     let f: *AST::AstNode = sd.public_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
       if (member_count > 0) { sb_str(&b, ", "); }
@@ -830,7 +830,7 @@ const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
       member_count = member_count + 1;
     }
   }
-  loop [i: int = 0](i < sd.private_count) : (++i) {
+  loop [i: i64 = 0](i < sd.private_count) : (++i) {
     let f: *AST::AstNode = sd.private_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
       if (member_count > 0) { sb_str(&b, ", "); }
@@ -851,14 +851,14 @@ const format_enum_signature -> fn (ed: *AST::EnumDeclNode) *byte {
   sb_str(&b, ed.name);
   if (ed.type_param_count > 0) {
     sb_str(&b, "<");
-    loop [i: int = 0](i < ed.type_param_count) : (++i) {
+    loop [i: i64 = 0](i < ed.type_param_count) : (++i) {
       if (i > 0) { sb_str(&b, ", "); }
       sb_str(&b, ed.type_params[i]);
     }
     sb_str(&b, ">");
   }
   sb_str(&b, " { ");
-  loop [i: int = 0](i < ed.member_count) : (++i) {
+  loop [i: i64 = 0](i < ed.member_count) : (++i) {
     if (i > 0) { sb_str(&b, ", "); }
     sb_str(&b, ed.members[i]);
   }
@@ -888,8 +888,8 @@ const format_var_signature -> fn (vd: *AST::VarDeclNode) *byte {
 const append_doc_comment -> fn (sig: *byte, doc_comment: *byte) *byte {
   if (doc_comment == cast<*byte>(0) || doc_comment[0] == '\0') return sig;
 
-  let slen: int = STR::strlen(sig);
-  let dlen: int = STR::strlen(doc_comment);
+  let slen: i64 = STR::strlen(sig);
+  let dlen: i64 = STR::strlen(doc_comment);
   loop (dlen > 0 && doc_comment[dlen - 1] == '\n') {
     dlen = dlen - 1;
   }
@@ -898,7 +898,7 @@ const append_doc_comment -> fn (sig: *byte, doc_comment: *byte) *byte {
   let out: *byte = cast<*byte>(alloc(slen + 1 + dlen + 1));
   MEM::memcpy(cast<*void>(out), cast<*void>(sig), slen);
   out[slen] = '\n';
-  MEM::memcpy(cast<*void>(cast<int>(out) + slen + 1), cast<*void>(doc_comment), dlen);
+  MEM::memcpy(cast<*void>(cast<i64>(out) + slen + 1), cast<*void>(doc_comment), dlen);
   out[slen + 1 + dlen] = '\0';
   free(sig);
   return out;
@@ -916,12 +916,12 @@ const append_doc_comment -> fn (sig: *byte, doc_comment: *byte) *byte {
 // go-to-definition — not real lexical scoping (no shadowing precision), but
 // right in the common case.
 
-const find_enclosing_function -> fn (mod: *AST::ModuleNode, one_indexed_line: int) *AST::FuncDeclNode {
+const find_enclosing_function -> fn (mod: *AST::ModuleNode, one_indexed_line: i64) *AST::FuncDeclNode {
   let best: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(0);
-  let best_line: int = -1;
+  let best_line: i64 = -1;
 
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
       if (bn.line <= one_indexed_line && bn.line > best_line) {
@@ -947,7 +947,7 @@ const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::
 
   if (stmt.kind == AST::NodeType::STMT_BLOCK) {
     let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
-    loop [i: int = 0](i < blk.stmt_count) : (++i) {
+    loop [i: i64 = 0](i < blk.stmt_count) : (++i) {
       let hit: *AST::AstNode = search_stmt_for_local_decl(blk.statements[i], name);
       if (hit != cast<*AST::AstNode>(0)) return hit;
     }
@@ -958,7 +958,7 @@ const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::
     let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
     let hit: *AST::AstNode = search_stmt_for_local_decl(n.then_stmt, name);
     if (hit != cast<*AST::AstNode>(0)) return hit;
-    loop [i: int = 0](i < n.elif_count) : (++i) {
+    loop [i: i64 = 0](i < n.elif_count) : (++i) {
       hit = search_stmt_for_local_decl(n.elif_stmts[i], name);
       if (hit != cast<*AST::AstNode>(0)) return hit;
     }
@@ -967,7 +967,7 @@ const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::
 
   if (stmt.kind == AST::NodeType::STMT_LOOP) {
     let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
-    loop [i: int = 0](i < n.init_count) : (++i) {
+    loop [i: i64 = 0](i < n.init_count) : (++i) {
       let hit: *AST::AstNode = search_stmt_for_local_decl(n.initializer[i], name);
       if (hit != cast<*AST::AstNode>(0)) return hit;
     }
@@ -976,7 +976,7 @@ const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::
 
   if (stmt.kind == AST::NodeType::STMT_SWITCH) {
     let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
-    loop [i: int = 0](i < n.case_count) : (++i) {
+    loop [i: i64 = 0](i < n.case_count) : (++i) {
       let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
       let hit: *AST::AstNode = search_stmt_for_local_decl(c.body, name);
       if (hit != cast<*AST::AstNode>(0)) return hit;
@@ -999,13 +999,13 @@ const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::
 const LocalThing -> struct {
   found:     bool,
   is_param:  bool,
-  line:      int,
-  col:       int,
-  name_len:  int,
+  line:      i64,
+  col:       i64,
+  name_len:  i64,
   type_node: *AST::AstNode, // null is a valid "no annotation" case, not "not found"
 };
 
-const find_local_thing -> fn (mod: *AST::ModuleNode, one_indexed_line: int, name: *byte) LocalThing {
+const find_local_thing -> fn (mod: *AST::ModuleNode, one_indexed_line: i64, name: *byte) LocalThing {
   let miss: LocalThing = LocalThing {
     found: false, is_param: false, line: 0, col: 0, name_len: 0,
     type_node: cast<*AST::AstNode>(0),
@@ -1014,7 +1014,7 @@ const find_local_thing -> fn (mod: *AST::ModuleNode, one_indexed_line: int, name
   let fd: *AST::FuncDeclNode = find_enclosing_function(mod, one_indexed_line);
   if (fd == cast<*AST::FuncDeclNode>(0)) return miss;
 
-  loop [i: int = 0](i < fd.param_count) : (++i) {
+  loop [i: i64 = 0](i < fd.param_count) : (++i) {
     if (STR::strcmp(fd.param_names[i], name) == 0) {
       // Parameters have no position of their own — anchored at the
       // function's own line/col, same caveat as everything else here.
@@ -1056,8 +1056,8 @@ const format_local_hover -> fn (name: *byte, thing: LocalThing) *byte {
 const find_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: bool) *byte {
   if (mod == cast<*AST::ModuleNode>(0)) return cast<*byte>(0);
 
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
 
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
@@ -1098,22 +1098,22 @@ const find_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: boo
 // struct's own params), and enums (header only — plain name constants, no
 // body to reference `T` from).
 
-const max_line_in_stmt -> fn (stmt: *AST::AstNode) int {
+const max_line_in_stmt -> fn (stmt: *AST::AstNode) i64 {
   if (stmt == cast<*AST::AstNode>(0)) return 0;
 
-  let best: int = stmt.line;
+  let best: i64 = stmt.line;
 
   if (stmt.kind == AST::NodeType::STMT_BLOCK) {
     let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
-    loop [i: int = 0](i < blk.stmt_count) : (++i) {
-      let m: int = max_line_in_stmt(blk.statements[i]);
+    loop [i: i64 = 0](i < blk.stmt_count) : (++i) {
+      let m: i64 = max_line_in_stmt(blk.statements[i]);
       if (m > best) { best = m; }
     }
   } elif (stmt.kind == AST::NodeType::STMT_IF) {
     let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
-    let m: int = max_line_in_stmt(n.then_stmt);
+    let m: i64 = max_line_in_stmt(n.then_stmt);
     if (m > best) { best = m; }
-    loop [i: int = 0](i < n.elif_count) : (++i) {
+    loop [i: i64 = 0](i < n.elif_count) : (++i) {
       m = max_line_in_stmt(n.elif_stmts[i]);
       if (m > best) { best = m; }
     }
@@ -1121,56 +1121,56 @@ const max_line_in_stmt -> fn (stmt: *AST::AstNode) int {
     if (m > best) { best = m; }
   } elif (stmt.kind == AST::NodeType::STMT_LOOP) {
     let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
-    loop [i: int = 0](i < n.init_count) : (++i) {
-      let m: int = max_line_in_stmt(n.initializer[i]);
+    loop [i: i64 = 0](i < n.init_count) : (++i) {
+      let m: i64 = max_line_in_stmt(n.initializer[i]);
       if (m > best) { best = m; }
     }
-    let mb: int = max_line_in_stmt(n.body);
+    let mb: i64 = max_line_in_stmt(n.body);
     if (mb > best) { best = mb; }
   } elif (stmt.kind == AST::NodeType::STMT_SWITCH) {
     let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
-    loop [i: int = 0](i < n.case_count) : (++i) {
+    loop [i: i64 = 0](i < n.case_count) : (++i) {
       let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
-      let mc: int = max_line_in_stmt(c.body);
+      let mc: i64 = max_line_in_stmt(c.body);
       if (mc > best) { best = mc; }
     }
     if (n.default_case != cast<*AST::AstNode>(0)) {
       let d: *AST::DefaultNode = cast<*AST::DefaultNode>(n.default_case);
-      let md: int = max_line_in_stmt(d.body);
+      let md: i64 = max_line_in_stmt(d.body);
       if (md > best) { best = md; }
     }
   } elif (stmt.kind == AST::NodeType::STMT_DEFER) {
     let n: *AST::DeferNode = cast<*AST::DeferNode>(stmt);
-    let m: int = max_line_in_stmt(n.statement);
+    let m: i64 = max_line_in_stmt(n.statement);
     if (m > best) { best = m; }
   }
 
   return best;
 }
 
-const func_end_line -> fn (fd: *AST::FuncDeclNode) int {
+const func_end_line -> fn (fd: *AST::FuncDeclNode) i64 {
   if (fd.body == cast<*AST::AstNode>(0)) return fd.line;
   return max_line_in_stmt(fd.body);
 }
 
-const field_end_line -> fn (f: *AST::AstNode) int {
+const field_end_line -> fn (f: *AST::AstNode) i64 {
   let fl: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
-  let end: int = fl.line;
+  let end: i64 = fl.line;
   if (fl.function != cast<*AST::AstNode>(0)) {
-    let fn_end: int = func_end_line(cast<*AST::FuncDeclNode>(fl.function));
+    let fn_end: i64 = func_end_line(cast<*AST::FuncDeclNode>(fl.function));
     if (fn_end > end) { end = fn_end; }
   }
   return end;
 }
 
-const struct_end_line -> fn (sd: *AST::StructDeclNode) int {
-  let end: int = sd.line;
-  loop [i: int = 0](i < sd.public_count) : (++i) {
-    let fe: int = field_end_line(sd.public_members[i]);
+const struct_end_line -> fn (sd: *AST::StructDeclNode) i64 {
+  let end: i64 = sd.line;
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
+    let fe: i64 = field_end_line(sd.public_members[i]);
     if (fe > end) { end = fe; }
   }
-  loop [i: int = 0](i < sd.private_count) : (++i) {
-    let fe: int = field_end_line(sd.private_members[i]);
+  loop [i: i64 = 0](i < sd.private_count) : (++i) {
+    let fe: i64 = field_end_line(sd.private_members[i]);
     if (fe > end) { end = fe; }
   }
   return end;
@@ -1179,14 +1179,14 @@ const struct_end_line -> fn (sd: *AST::StructDeclNode) int {
 const TypeParamHit -> struct {
   found: bool,
   node:  *AST::AstNode, // generic Func/Struct/Enum decl owning the type param
-  idx:   int,           // index into that node's type_params array
+  idx:   i64,           // index into that node's type_params array
 };
 
-const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: int, word: *byte) TypeParamHit {
+const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: i64, word: *byte) TypeParamHit {
   let miss: TypeParamHit = TypeParamHit { found: false, node: cast<*AST::AstNode>(0), idx: 0 };
   let best: TypeParamHit = miss;
 
-  loop [i: int = 0](i < sd.public_count) : (++i) {
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
     let f: *AST::AstNode = sd.public_members[i];
     if (f.kind != AST::NodeType::STMT_FIELD_DECL) continue;
     let fl: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
@@ -1194,13 +1194,13 @@ const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: int, 
     let mfn: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(fl.function);
     if (mfn.type_param_count == 0) continue;
     if (one_indexed_line < mfn.line || one_indexed_line > func_end_line(mfn)) continue;
-    loop [k: int = 0](k < mfn.type_param_count) : (++k) {
+    loop [k: i64 = 0](k < mfn.type_param_count) : (++k) {
       if (STR::strcmp(mfn.type_params[k], word) == 0) {
         best = TypeParamHit { found: true, node: fl.function, idx: k };
       }
     }
   }
-  loop [i: int = 0](i < sd.private_count) : (++i) {
+  loop [i: i64 = 0](i < sd.private_count) : (++i) {
     let f: *AST::AstNode = sd.private_members[i];
     if (f.kind != AST::NodeType::STMT_FIELD_DECL) continue;
     let fl: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
@@ -1208,7 +1208,7 @@ const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: int, 
     let mfn: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(fl.function);
     if (mfn.type_param_count == 0) continue;
     if (one_indexed_line < mfn.line || one_indexed_line > func_end_line(mfn)) continue;
-    loop [k: int = 0](k < mfn.type_param_count) : (++k) {
+    loop [k: i64 = 0](k < mfn.type_param_count) : (++k) {
       if (STR::strcmp(mfn.type_params[k], word) == 0) {
         best = TypeParamHit { found: true, node: fl.function, idx: k };
       }
@@ -1218,20 +1218,20 @@ const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: int, 
   return best;
 }
 
-const resolve_type_param -> fn (mod: *AST::ModuleNode, one_indexed_line: int, word: *byte) TypeParamHit {
+const resolve_type_param -> fn (mod: *AST::ModuleNode, one_indexed_line: i64, word: *byte) TypeParamHit {
   let miss: TypeParamHit = TypeParamHit { found: false, node: cast<*AST::AstNode>(0), idx: 0 };
   if (mod == cast<*AST::ModuleNode>(0)) return miss;
 
   let best: TypeParamHit = miss;
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
 
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
       let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
       if (fd.type_param_count == 0) continue;
       if (one_indexed_line < fd.line || one_indexed_line > func_end_line(fd)) continue;
-      loop [k: int = 0](k < fd.type_param_count) : (++k) {
+      loop [k: i64 = 0](k < fd.type_param_count) : (++k) {
         if (STR::strcmp(fd.type_params[k], word) == 0) {
           best = TypeParamHit { found: true, node: bn, idx: k };
         }
@@ -1242,7 +1242,7 @@ const resolve_type_param -> fn (mod: *AST::ModuleNode, one_indexed_line: int, wo
       let mh: TypeParamHit = struct_method_hit(sd, one_indexed_line, word);
       if (mh.found) { best = mh; continue; }
       if (sd.type_param_count > 0) {
-        loop [k: int = 0](k < sd.type_param_count) : (++k) {
+        loop [k: i64 = 0](k < sd.type_param_count) : (++k) {
           if (STR::strcmp(sd.type_params[k], word) == 0) {
             best = TypeParamHit { found: true, node: bn, idx: k };
           }
@@ -1251,7 +1251,7 @@ const resolve_type_param -> fn (mod: *AST::ModuleNode, one_indexed_line: int, wo
     } elif (bn.kind == AST::NodeType::STMT_ENUM) {
       let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
       if (ed.type_param_count == 0 || one_indexed_line != ed.line) continue;
-      loop [k: int = 0](k < ed.type_param_count) : (++k) {
+      loop [k: i64 = 0](k < ed.type_param_count) : (++k) {
         if (STR::strcmp(ed.type_params[k], word) == 0) {
           best = TypeParamHit { found: true, node: bn, idx: k };
         }
@@ -1274,15 +1274,15 @@ const format_type_param_hover -> fn (name: *byte, sig: *byte) *byte {
 }
 
 const ParamPos -> struct {
-  line: int, // 1-based source line
-  col:  int, // 0-based column
-  len:  int,
+  line: i64, // 1-based source line
+  col:  i64, // 0-based column
+  len:  i64,
 };
 
-const line_start_offset -> fn (text: *byte, line_index: int) int {
-  let len: int = STR::strlen(text);
-  let i: int = 0;
-  let li: int = 0;
+const line_start_offset -> fn (text: *byte, line_index: i64) i64 {
+  let len: i64 = STR::strlen(text);
+  let i: i64 = 0;
+  let li: i64 = 0;
   loop (i < len && li < line_index) {
     if (text[i] == '\n') { li = li + 1; }
     i = i + 1;
@@ -1297,7 +1297,7 @@ const line_start_offset -> fn (text: *byte, line_index: int) int {
 const locate_type_param -> fn (text: *byte, hit: TypeParamHit) ParamPos {
   let owner: *AST::AstNode = hit.node;
 
-  let keylen: int = 0;
+  let keylen: i64 = 0;
   let params: **byte = cast<**byte>(0);
   if (owner.kind == AST::NodeType::STMT_FUNCTION) {
     keylen = 2; // "fn"
@@ -1313,18 +1313,18 @@ const locate_type_param -> fn (text: *byte, hit: TypeParamHit) ParamPos {
   let miss: ParamPos = ParamPos { line: owner.line, col: owner.col + keylen, len: 1 };
   if (params == cast<**byte>(0)) return miss;
 
-  let plen: int = STR::strlen(params[hit.idx]);
-  let line_index: int = owner.line - 1;
-  let ls: int = line_start_offset(text, line_index);
-  let le: int = ls;
+  let plen: i64 = STR::strlen(params[hit.idx]);
+  let line_index: i64 = owner.line - 1;
+  let ls: i64 = line_start_offset(text, line_index);
+  let le: i64 = ls;
   loop (text[le] != cast<byte>(0) && text[le] != '\n') { le = le + 1; }
 
-  let p: int = ls + owner.col + keylen;
+  let p: i64 = ls + owner.col + keylen;
   loop (p < le && (text[p] == ' ' || text[p] == '\t')) { p = p + 1; }
   if (p >= le || text[p] != '<') return miss;
   p = p + 1;
 
-  loop [i: int = 0](i < hit.idx) : (++i) {
+  loop [i: i64 = 0](i < hit.idx) : (++i) {
     loop (p < le && (text[p] == ' ' || text[p] == '\t')) { p = p + 1; }
     loop (p < le && text[p] != ' ' && text[p] != '\t' && text[p] != ',' && text[p] != '>' && text[p] != '\n') { p = p + 1; }
     loop (p < le && (text[p] == ' ' || text[p] == '\t')) { p = p + 1; }
@@ -1334,13 +1334,13 @@ const locate_type_param -> fn (text: *byte, hit: TypeParamHit) ParamPos {
   if (p >= le || p + plen > le) return miss;
 
   // Guard against a text/AST mismatch before reporting a precise span.
-  if (STR::strncmp(cast<*byte>(cast<int>(text) + p), params[hit.idx], plen) != 0) return miss;
+  if (STR::strncmp(cast<*byte>(cast<i64>(text) + p), params[hit.idx], plen) != 0) return miss;
 
   return ParamPos { line: line_index + 1, col: p - ls, len: plen };
 }
 
 #returns_ownership
-const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_indexed_line: int) *byte {
+const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_indexed_line: i64) *byte {
   if (doc == cast<*LSPDocument>(0) || doc.ast == cast<*AST::AstNode>(0)) return cast<*byte>(0);
 
   let prog: *AST::ProgramNode = cast<*AST::ProgramNode>(doc.ast);
@@ -1374,7 +1374,7 @@ const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_index
   let own: *byte = find_in_module(own_mod, name, false);
   if (own != cast<*byte>(0)) return own;
 
-  loop [i: int = 1](i < prog.module_count) : (++i) {
+  loop [i: i64 = 1](i < prog.module_count) : (++i) {
     let dep: *byte = find_in_module(cast<*AST::ModuleNode>(prog.modules[i]), name, true);
     if (dep != cast<*byte>(0)) return dep;
   }
@@ -1386,7 +1386,7 @@ const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_index
 // (line, character) in `uri`'s current buffer, or null if there's no
 // document, no word at that position, or no matching declaration.
 #returns_ownership
-pub const lsp_hover -> fn (uri: *byte, line: int, character: int) *byte {
+pub const lsp_hover -> fn (uri: *byte, line: i64, character: i64) *byte {
   let doc: *LSPDocument = lsp_document_find(uri);
   if (doc == cast<*LSPDocument>(0)) return cast<*byte>(0);
 
@@ -1407,17 +1407,17 @@ pub const lsp_hover -> fn (uri: *byte, line: int, character: int) *byte {
 
 const DefHit -> struct {
   found:    bool,
-  line:     int,
-  col:      int,
-  name_len: int,
+  line:     i64,
+  col:      i64,
+  name_len: i64,
 };
 
 const find_definition_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: bool) DefHit {
   let miss: DefHit = DefHit { found: false, line: 0, col: 0, name_len: 0 };
   if (mod == cast<*AST::ModuleNode>(0)) return miss;
 
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     let decl_name: *byte = cast<*byte>(0);
     let is_pub: bool = false;
@@ -1447,20 +1447,20 @@ const find_definition_in_module -> fn (mod: *AST::ModuleNode, name: *byte, publi
 #returns_ownership
 const path_to_uri -> fn (path: *byte) *byte {
   let prefix: *byte = "file://";
-  let total: int = STR::strlen(prefix) + STR::strlen(path) + 1;
+  let total: i64 = STR::strlen(prefix) + STR::strlen(path) + 1;
   let out: *byte = cast<*byte>(alloc(total));
   STR::cat(out, prefix, path);
   return out;
 }
 
 #returns_ownership
-const make_location_json -> fn (uri: *byte, line: int, col: int, name_len: int) *J::JsonValue {
+const make_location_json -> fn (uri: *byte, line: i64, col: i64, name_len: i64) *J::JsonValue {
   // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
-  let start_line: int = 0;
+  let start_line: i64 = 0;
   if (line > 0) { start_line = line - 1; }
-  let start_col: int = col;
+  let start_col: i64 = col;
   if (start_col < 0) { start_col = 0; }
-  let end_col: int = start_col + name_len;
+  let end_col: i64 = start_col + name_len;
 
   let range: *J::JsonValue = J::json_object();
   J::json_object_set(range, "start", make_position(start_line, start_col));
@@ -1475,7 +1475,7 @@ const make_location_json -> fn (uri: *byte, line: int, col: int, name_len: int) 
 // Returns a Location for the declaration named at (line, character) in
 // `uri`'s current buffer, or null if there's no match.
 #returns_ownership
-pub const lsp_definition -> fn (uri: *byte, line: int, character: int) *J::JsonValue {
+pub const lsp_definition -> fn (uri: *byte, line: i64, character: i64) *J::JsonValue {
   let doc: *LSPDocument = lsp_document_find(uri);
   if (doc == cast<*LSPDocument>(0) || doc.ast == cast<*AST::AstNode>(0)) return cast<*J::JsonValue>(0);
 
@@ -1506,7 +1506,7 @@ pub const lsp_definition -> fn (uri: *byte, line: int, character: int) *J::JsonV
     return make_location_json(doc.uri, own_hit.line, own_hit.col, own_hit.name_len);
   }
 
-  loop [i: int = 1](i < prog.module_count) : (++i) {
+  loop [i: i64 = 1](i < prog.module_count) : (++i) {
     let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[i]);
     let hit: DefHit = find_definition_in_module(mod, word, true);
     if (hit.found) {
@@ -1532,25 +1532,26 @@ pub const lsp_definition -> fn (uri: *byte, line: int, character: int) *J::JsonV
 // locals/parameters in whichever function encloses the cursor. A client's
 // own fuzzy-filtering does the rest.
 
-const CK_FUNCTION: int = 3;
-const CK_VARIABLE: int = 6;
-const CK_ENUM:      int = 13;
-const CK_KEYWORD:   int = 14;
-const CK_CONSTANT:  int = 21;
-const CK_STRUCT:    int = 22;
-const CK_ENUM_MEMBER: int = 20;
+const CK_FUNCTION: i64 = 3;
+const CK_VARIABLE: i64 = 6;
+const CK_ENUM:      i64 = 13;
+const CK_KEYWORD:   i64 = 14;
+const CK_CONSTANT:  i64 = 21;
+const CK_STRUCT:    i64 = 22;
+const CK_ENUM_MEMBER: i64 = 20;
 
-const KEYWORD_COUNT: int = 37;
-const KEYWORDS: [*byte; 37] = [
+const KEYWORD_COUNT: i64 = 43;
+const KEYWORDS: [*byte; 43] = [
   "let", "const", "pub", "fn", "struct", "enum", "if", "elif", "else",
   "loop", "switch", "return", "break", "continue", "defer", "cast",
   "sizeof", "output", "outputln", "true", "false", "null",
-  "int", "uint", "float", "double", "bool", "byte", "void",
+  "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64",
+  "bool", "byte", "void",
   "priv", "using", "static", "input", "system", "alloc", "free", "as"
 ];
 
 #returns_ownership
-const make_completion_item -> fn (label: *byte, kind: int, detail: *byte) *J::JsonValue {
+const make_completion_item -> fn (label: *byte, kind: i64, detail: *byte) *J::JsonValue {
   let item: *J::JsonValue = J::json_object();
   J::json_object_set(item, "label", J::json_string(label));
   J::json_object_set(item, "kind", J::json_int(kind));
@@ -1572,7 +1573,7 @@ const make_completion_item -> fn (label: *byte, kind: int, detail: *byte) *J::Js
 // against actual working code in this repo (e.g. #dll_import's exact
 // shape from std/io.lx, @link's from parser/stmt.lx's link_stmt).
 
-const CK_SNIPPET: int = 15;
+const CK_SNIPPET: i64 = 15;
 
 const SnippetDef -> struct { label: *byte, snippet: *byte, detail: *byte, filter: *byte };
 
@@ -1581,7 +1582,7 @@ const SnippetDef -> struct { label: *byte, snippet: *byte, detail: *byte, filter
 // e.g. the AST-node-kind dispatch `if (x.kind == ...) { let n: *T =
 // cast<*T>(x); ... }` shows up ~190 times across src/, the null-guard
 // early-return ~95 times, `alloc(sizeof<T>)` node construction ~70 times.
-const SNIPPET_COUNT: int = 47;
+const SNIPPET_COUNT: i64 = 47;
 const SNIPPETS: [SnippetDef; 47] = [
   SnippetDef { label: "const fn", snippet: "const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Function declaration", filter: "const fn" },
   SnippetDef { label: "pub const fn", snippet: "pub const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Public function declaration", filter: "pub const fn" },
@@ -1598,11 +1599,11 @@ const SNIPPETS: [SnippetDef; 47] = [
   SnippetDef { label: "switch default", snippet: "switch (${1:value}) {\n\t${2:case} -> {\n\t\t$3\n\t}\n\t_ -> {\n\t\t$0\n\t}\n}", detail: "Switch with default case", filter: "switch default" },
   SnippetDef { label: "loop", snippet: "loop (1) {\n\t$0\n}", detail: "Infinite loop", filter: "loop" },
   SnippetDef { label: "loop while", snippet: "loop (${1:condition}) {\n\t$0\n}", detail: "While-style loop", filter: "loop while" },
-  SnippetDef { label: "loop for", snippet: "loop [${1:i}: int = 0](${1:i} < ${2:10}) : (++${1:i}) {\n\t$0\n}", detail: "For-style loop", filter: "loop for" },
+  SnippetDef { label: "loop for", snippet: "loop [${1:i}: i64 = 0](${1:i} < ${2:10}) : (++${1:i}) {\n\t$0\n}", detail: "For-style loop", filter: "loop for" },
   SnippetDef { label: "defer", snippet: "defer ${1:statement};$0", detail: "Defer statement", filter: "defer" },
   SnippetDef { label: "defer block", snippet: "defer {\n\t${1:cleanup()};$0\n}", detail: "Defer block", filter: "defer block" },
   SnippetDef { label: "return", snippet: "return ${1:value};$0", detail: "Return statement", filter: "return" },
-  SnippetDef { label: "main", snippet: "const main -> fn (argc: int, argv: **byte) int {\n\t$0\n\treturn 0;\n}", detail: "Main function", filter: "main" },
+  SnippetDef { label: "main", snippet: "const main -> fn (argc: i64, argv: **byte) i64 {\n\t$0\n\treturn 0;\n}", detail: "Main function", filter: "main" },
   SnippetDef { label: "outputln", snippet: "outputln(${1:message});$0", detail: "Output with newline", filter: "outputln" },
   SnippetDef { label: "output", snippet: "output(${1:message});$0", detail: "Output without newline", filter: "output" },
   SnippetDef { label: "system", snippet: "system(\"${1:command}\");$0", detail: "Execute a system command", filter: "system" },
@@ -1620,7 +1621,7 @@ const SNIPPETS: [SnippetDef; 47] = [
   SnippetDef { label: "kind dispatch", snippet: "if (${1:node}.kind == ${2:AST::NodeType::KIND}) {\n\tlet ${3:n}: *${4:Type} = cast<*${4:Type}>(${1:node});\n\t$0\n}", detail: "AST node-kind check + cast (~190x across src/)", filter: "if kind cast dispatch" },
   SnippetDef { label: "kind dispatch elif", snippet: "elif (${1:node}.kind == ${2:AST::NodeType::KIND}) {\n\tlet ${3:n}: *${4:Type} = cast<*${4:Type}>(${1:node});\n\t$0\n}", detail: "Additional arm for a node-kind dispatch chain", filter: "elif kind cast dispatch" },
   SnippetDef { label: "alloc struct", snippet: "let ${1:node}: *${2:Type} = cast<*${2:Type}>(alloc(sizeof<${2:Type}>));$0", detail: "Heap-allocate one struct (~70x across src/)", filter: "alloc sizeof struct" },
-  SnippetDef { label: "vector iterate", snippet: "loop [${1:i}: int = 0](${1:i} < ${2:vec}.size) : (++${1:i}) {\n\tlet ${3:item}: *${4:Type} = cast<*${4:Type}>(${2:vec}.get(${1:i}));\n\t$0\n}", detail: "Walk a std_vector's elements by index", filter: "loop vector get cast iterate" },
+  SnippetDef { label: "vector iterate", snippet: "loop [${1:i}: i64 = 0](${1:i} < ${2:vec}.size) : (++${1:i}) {\n\tlet ${3:item}: *${4:Type} = cast<*${4:Type}>(${2:vec}.get(${1:i}));\n\t$0\n}", detail: "Walk a std_vector's elements by index", filter: "loop vector get cast iterate" },
   SnippetDef { label: "push_back", snippet: "${1:vec}.push_back(cast<*void>(&${2:item}));$0", detail: "Append a value onto a std_vector (~60x across src/)", filter: "push_back vector" },
   SnippetDef { label: "vector create defer", snippet: "let ${1:vec}: VEC::Vector = VEC::create_vector(sizeof<${2:Type}>);\ndefer VEC::free_vector(&${1:vec});$0", detail: "New vector with matching cleanup", filter: "vector create_vector defer free" },
   SnippetDef { label: "doc comment", snippet: "/// $0", detail: "Item doc comment", filter: "/// doc comment" },
@@ -1656,7 +1657,7 @@ const make_snippet_item -> fn (def: SnippetDef) *J::JsonValue {
 // wanting to see what hangs off it.
 
 #returns_ownership
-const make_prefixed_completion_item -> fn (alias: *byte, name: *byte, kind: int) *J::JsonValue {
+const make_prefixed_completion_item -> fn (alias: *byte, name: *byte, kind: i64) *J::JsonValue {
   let b: StrBuf = sb_init();
   sb_str(&b, alias);
   sb_str(&b, "::");
@@ -1673,8 +1674,8 @@ const make_prefixed_completion_item -> fn (alias: *byte, name: *byte, kind: int)
 }
 
 const collect_prefixed_import_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNode, prog: *AST::ProgramNode) void {
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind != AST::NodeType::PREPROCESSOR_USE) continue;
 
@@ -1682,8 +1683,8 @@ const collect_prefixed_import_completions -> fn (arr: *J::JsonValue, mod: *AST::
     let target: *AST::ModuleNode = resolve_use_alias(mod, prog, u.alias);
     if (target == cast<*AST::ModuleNode>(0)) continue;
 
-    let tn: int = target.body_count;
-    loop [j: int = 0](j < tn) : (++j) {
+    let tn: i64 = target.body_count;
+    loop [j: i64 = 0](j < tn) : (++j) {
       let tbn: *AST::AstNode = target.body[j];
       if (tbn.kind == AST::NodeType::STMT_FUNCTION) {
         let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(tbn);
@@ -1697,7 +1698,7 @@ const collect_prefixed_import_completions -> fn (arr: *J::JsonValue, mod: *AST::
       } elif (tbn.kind == AST::NodeType::STMT_VAR_DECL || tbn.kind == AST::NodeType::STMT_CONST_DECL) {
         let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(tbn);
         if (vd.is_public == 1) {
-          let kind: int = CK_CONSTANT;
+          let kind: i64 = CK_CONSTANT;
           if (vd.is_mutable == 1) { kind = CK_VARIABLE; }
           J::json_array_push(arr, make_prefixed_completion_item(u.alias, vd.name, kind));
         }
@@ -1709,8 +1710,8 @@ const collect_prefixed_import_completions -> fn (arr: *J::JsonValue, mod: *AST::
 const collect_module_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNode, public_only: bool) void {
   if (mod == cast<*AST::ModuleNode>(0)) return;
 
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
 
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
@@ -1727,14 +1728,14 @@ const collect_module_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNod
       let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(bn);
       if (public_only == false || ed.is_public == 1) {
         J::json_array_push(arr, make_completion_item(ed.name, CK_ENUM, cast<*byte>(0)));
-        loop [j: int = 0](j < ed.member_count) : (++j) {
+        loop [j: i64 = 0](j < ed.member_count) : (++j) {
           J::json_array_push(arr, make_completion_item(ed.members[j], CK_ENUM_MEMBER, ed.name));
         }
       }
     } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
       let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
       if (public_only == false || vd.is_public == 1) {
-        let kind: int = CK_CONSTANT;
+        let kind: i64 = CK_CONSTANT;
         if (vd.is_mutable == 1) { kind = CK_VARIABLE; }
         J::json_array_push(arr, make_completion_item(vd.name, kind, cast<*byte>(0)));
       }
@@ -1749,32 +1750,32 @@ const collect_locals_completions -> fn (arr: *J::JsonValue, stmt: *AST::AstNode)
 
   if (stmt.kind == AST::NodeType::STMT_VAR_DECL || stmt.kind == AST::NodeType::STMT_CONST_DECL) {
     let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(stmt);
-    let kind: int = CK_CONSTANT;
+    let kind: i64 = CK_CONSTANT;
     if (vd.is_mutable == 1) { kind = CK_VARIABLE; }
     J::json_array_push(arr, make_completion_item(vd.name, kind, cast<*byte>(0)));
     return;
   }
   if (stmt.kind == AST::NodeType::STMT_BLOCK) {
     let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
-    loop [i: int = 0](i < blk.stmt_count) : (++i) { collect_locals_completions(arr, blk.statements[i]); }
+    loop [i: i64 = 0](i < blk.stmt_count) : (++i) { collect_locals_completions(arr, blk.statements[i]); }
     return;
   }
   if (stmt.kind == AST::NodeType::STMT_IF) {
     let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
     collect_locals_completions(arr, n.then_stmt);
-    loop [i: int = 0](i < n.elif_count) : (++i) { collect_locals_completions(arr, n.elif_stmts[i]); }
+    loop [i: i64 = 0](i < n.elif_count) : (++i) { collect_locals_completions(arr, n.elif_stmts[i]); }
     collect_locals_completions(arr, n.else_stmt);
     return;
   }
   if (stmt.kind == AST::NodeType::STMT_LOOP) {
     let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
-    loop [i: int = 0](i < n.init_count) : (++i) { collect_locals_completions(arr, n.initializer[i]); }
+    loop [i: i64 = 0](i < n.init_count) : (++i) { collect_locals_completions(arr, n.initializer[i]); }
     collect_locals_completions(arr, n.body);
     return;
   }
   if (stmt.kind == AST::NodeType::STMT_SWITCH) {
     let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
-    loop [i: int = 0](i < n.case_count) : (++i) {
+    loop [i: i64 = 0](i < n.case_count) : (++i) {
       let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
       collect_locals_completions(arr, c.body);
     }
@@ -1792,14 +1793,14 @@ const collect_locals_completions -> fn (arr: *J::JsonValue, stmt: *AST::AstNode)
 }
 
 #returns_ownership
-pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::JsonValue {
+pub const lsp_completions -> fn (uri: *byte, line: i64, character: i64) *J::JsonValue {
   let arr: *J::JsonValue = J::json_array();
 
-  loop [i: int = 0](i < KEYWORD_COUNT) : (++i) {
+  loop [i: i64 = 0](i < KEYWORD_COUNT) : (++i) {
     J::json_array_push(arr, make_completion_item(KEYWORDS[i], CK_KEYWORD, cast<*byte>(0)));
   }
 
-  loop [i: int = 0](i < SNIPPET_COUNT) : (++i) {
+  loop [i: i64 = 0](i < SNIPPET_COUNT) : (++i) {
     J::json_array_push(arr, make_snippet_item(SNIPPETS[i]));
   }
 
@@ -1812,7 +1813,7 @@ pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::Json
   let own_mod: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[0]);
   collect_module_completions(arr, own_mod, false);
 
-  loop [i: int = 1](i < prog.module_count) : (++i) {
+  loop [i: i64 = 1](i < prog.module_count) : (++i) {
     collect_module_completions(arr, cast<*AST::ModuleNode>(prog.modules[i]), true);
   }
 
@@ -1820,7 +1821,7 @@ pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::Json
 
   let fd: *AST::FuncDeclNode = find_enclosing_function(own_mod, line + 1);
   if (fd != cast<*AST::FuncDeclNode>(0)) {
-    loop [i: int = 0](i < fd.param_count) : (++i) {
+    loop [i: i64 = 0](i < fd.param_count) : (++i) {
       J::json_array_push(arr, make_completion_item(fd.param_names[i], CK_VARIABLE, cast<*byte>(0)));
     }
     collect_locals_completions(arr, fd.body);
@@ -1853,29 +1854,29 @@ pub const lsp_completions -> fn (uri: *byte, line: int, character: int) *J::Json
 // prefers the AST pass's answer wherever it has one for that exact
 // (line, col); the raw pass only fills gaps.
 
-const TT_NAMESPACE:      int = 0;
-const TT_TYPE:            int = 1;
-const TT_TYPE_PARAMETER:  int = 2;
-const TT_FUNCTION:        int = 3;
-const TT_METHOD:          int = 4;
-const TT_PROPERTY:        int = 5;
-const TT_VARIABLE:        int = 6;
-const TT_PARAMETER:       int = 7;
-const TT_KEYWORD:         int = 8;
-const TT_MODIFIER:        int = 9;
-const TT_COMMENT:         int = 10;
-const TT_STRING:          int = 11;
-const TT_NUMBER:          int = 12;
-const TT_OPERATOR:        int = 13;
-const TT_STRUCT:          int = 14;
-const TT_ENUM:            int = 15;
-const TT_ENUM_MEMBER:     int = 16;
+const TT_NAMESPACE:      i64 = 0;
+const TT_TYPE:            i64 = 1;
+const TT_TYPE_PARAMETER:  i64 = 2;
+const TT_FUNCTION:        i64 = 3;
+const TT_METHOD:          i64 = 4;
+const TT_PROPERTY:        i64 = 5;
+const TT_VARIABLE:        i64 = 6;
+const TT_PARAMETER:       i64 = 7;
+const TT_KEYWORD:         i64 = 8;
+const TT_MODIFIER:        i64 = 9;
+const TT_COMMENT:         i64 = 10;
+const TT_STRING:          i64 = 11;
+const TT_NUMBER:          i64 = 12;
+const TT_OPERATOR:        i64 = 13;
+const TT_STRUCT:          i64 = 14;
+const TT_ENUM:            i64 = 15;
+const TT_ENUM_MEMBER:     i64 = 16;
 
-const MOD_DECLARATION: int = 1;
-const MOD_DEFINITION:  int = 2;
-const MOD_READONLY:    int = 4;
-const MOD_STATIC:      int = 8;
-const MOD_DEFAULT_LIB: int = 16;
+const MOD_DECLARATION: i64 = 1;
+const MOD_DEFINITION:  i64 = 2;
+const MOD_READONLY:    i64 = 4;
+const MOD_STATIC:      i64 = 8;
+const MOD_DEFAULT_LIB: i64 = 16;
 
 // The live text buffer being walked for the current lsp_semantic_tokens
 // call — needed by find_member_position below to recover a `::`/`.`
@@ -1905,14 +1906,14 @@ let g_sem_in_method: bool = false;
 let g_sem_in_template: bool = false;
 
 const SemToken -> struct {
-  line:     int,
-  col:      int,
-  length:   int,
-  type_idx: int,
-  mods:     int,
+  line:     i64,
+  col:      i64,
+  length:   i64,
+  type_idx: i64,
+  mods:     i64,
 };
 
-const push_token -> fn (tokens: *VEC::Vector, line: int, col: int, length: int, type_idx: int, mods: int) void {
+const push_token -> fn (tokens: *VEC::Vector, line: i64, col: i64, length: i64, type_idx: i64, mods: i64) void {
   if (length <= 0) return;
   let t: SemToken = SemToken { line: line, col: col, length: length, type_idx: type_idx, mods: mods };
   tokens.push_back(cast<*void>(&t));
@@ -1922,10 +1923,10 @@ const push_token -> fn (tokens: *VEC::Vector, line: int, col: int, length: int, 
 // order for the delta-encoding below to produce non-negative deltas.
 const sort_tokens -> fn (tokens: *VEC::Vector) void {
   let arr: *SemToken = cast<*SemToken>(tokens.data);
-  let n: int = tokens.size;
-  loop [i: int = 1](i < n) : (++i) {
+  let n: i64 = tokens.size;
+  loop [i: i64 = 1](i < n) : (++i) {
     let key: SemToken = arr[i];
-    let j: int = i - 1;
+    let j: i64 = i - 1;
     loop (j >= 0 && (arr[j].line > key.line || (arr[j].line == key.line && arr[j].col > key.col))) {
       arr[j + 1] = arr[j];
       j = j - 1;
@@ -1934,9 +1935,9 @@ const sort_tokens -> fn (tokens: *VEC::Vector) void {
   }
 }
 
-const lookup_public_kind -> fn (mod: *AST::ModuleNode, name: *byte) int {
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+const lookup_public_kind -> fn (mod: *AST::ModuleNode, name: *byte) i64 {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
       let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
@@ -1957,23 +1958,23 @@ const lookup_public_kind -> fn (mod: *AST::ModuleNode, name: *byte) int {
 
 // Converts a declaration-style position (1-indexed line, 0-indexed col —
 // the convention every *AstNode here uses) into a byte offset into `text`.
-const line_col_to_offset -> fn (text: *byte, one_indexed_line: int, col: int) int {
-  let len: int = STR::strlen(text);
-  let cur_line: int = 1;
-  let i: int = 0;
+const line_col_to_offset -> fn (text: *byte, one_indexed_line: i64, col: i64) i64 {
+  let len: i64 = STR::strlen(text);
+  let cur_line: i64 = 1;
+  let i: i64 = 0;
   loop (i < len && cur_line < one_indexed_line) {
     if (text[i] == '\n') { cur_line = cur_line + 1; }
     i = i + 1;
   }
-  let offset: int = i + col;
+  let offset: i64 = i + col;
   if (offset > len) { offset = len; }
   return offset;
 }
 
 const MemberPos -> struct {
   found: bool,
-  line:  int,
-  col:   int,
+  line:  i64,
+  col:   i64,
 };
 
 // A MemberNode's own (line, col) is where the `.`/`::` operator token sits,
@@ -1982,25 +1983,25 @@ const MemberPos -> struct {
 // text buffer past the operator and any whitespace, then confirming what's
 // there actually reads as `member` — if the buffer has since drifted from
 // what was parsed (edit mid-keystroke), this bails out rather than guessing.
-const find_member_position -> fn (text: *byte, dot_line: int, dot_col: int, is_compiletime: int, member: *byte) MemberPos {
+const find_member_position -> fn (text: *byte, dot_line: i64, dot_col: i64, is_compiletime: i64, member: *byte) MemberPos {
   let miss: MemberPos = MemberPos { found: false, line: 0, col: 0 };
-  let len: int = STR::strlen(text);
+  let len: i64 = STR::strlen(text);
 
-  let op_len: int = 1;
+  let op_len: i64 = 1;
   if (is_compiletime == 1) { op_len = 2; }
 
-  let off: int = line_col_to_offset(text, dot_line, dot_col) + op_len;
-  let line: int = dot_line;
-  let col: int = dot_col + op_len;
+  let off: i64 = line_col_to_offset(text, dot_line, dot_col) + op_len;
+  let line: i64 = dot_line;
+  let col: i64 = dot_col + op_len;
 
   loop (off < len && (text[off] == ' ' || text[off] == '\t' || text[off] == '\r' || text[off] == '\n')) {
     if (text[off] == '\n') { line = line + 1; col = 0; } else { col = col + 1; }
     off = off + 1;
   }
 
-  let mlen: int = STR::strlen(member);
+  let mlen: i64 = STR::strlen(member);
   if (off + mlen > len) return miss;
-  loop [k: int = 0](k < mlen) : (++k) {
+  loop [k: i64 = 0](k < mlen) : (++k) {
     if (text[off + k] != member[k]) return miss;
   }
 
@@ -2012,13 +2013,13 @@ const find_member_position -> fn (text: *byte, dot_line: int, dot_col: int, is_c
 // isn't actually an import alias (e.g. it's an enum/struct name instead —
 // `NodeType::PROGRAM` within the module that declares NodeType itself).
 const resolve_use_alias -> fn (mod: *AST::ModuleNode, prog: *AST::ProgramNode, alias: *byte) *AST::ModuleNode {
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
       let u: *AST::UseNode = cast<*AST::UseNode>(bn);
       if (STR::strcmp(u.alias, alias) == 0) {
-        loop [d: int = 0](d < prog.module_count) : (++d) {
+        loop [d: i64 = 0](d < prog.module_count) : (++d) {
           let dm: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[d]);
           if (STR::strcmp(dm.name, u.module_name) == 0) return dm;
         }
@@ -2054,18 +2055,18 @@ const resolve_type_name -> fn (t: *AST::AstNode) *byte {
 // then among each resolved dependency module's *public* declarations.
 // Same precedence hover/go-to-definition use elsewhere in this file.
 const find_struct_decl -> fn (mod: *AST::ModuleNode, prog: *AST::ProgramNode, name: *byte) *AST::StructDeclNode {
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::STMT_STRUCT) {
       let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
       if (STR::strcmp(sd.name, name) == 0) return sd;
     }
   }
-  loop [d: int = 1](d < prog.module_count) : (++d) {
+  loop [d: i64 = 1](d < prog.module_count) : (++d) {
     let dm: *AST::ModuleNode = cast<*AST::ModuleNode>(prog.modules[d]);
-    let dn: int = dm.body_count;
-    loop [i: int = 0](i < dn) : (++i) {
+    let dn: i64 = dm.body_count;
+    loop [i: i64 = 0](i < dn) : (++i) {
       let bn: *AST::AstNode = dm.body[i];
       if (bn.kind == AST::NodeType::STMT_STRUCT) {
         let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
@@ -2081,14 +2082,14 @@ const find_struct_decl -> fn (mod: *AST::ModuleNode, prog: *AST::ProgramNode, na
 // public members before private; there's no encapsulation enforcement
 // here, just a search order.
 const find_field_in_struct -> fn (sd: *AST::StructDeclNode, name: *byte) *AST::FieldDeclNode {
-  loop [i: int = 0](i < sd.public_count) : (++i) {
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
     let f: *AST::AstNode = sd.public_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
       let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
       if (STR::strcmp(fld.name, name) == 0) return fld;
     }
   }
-  loop [i: int = 0](i < sd.private_count) : (++i) {
+  loop [i: i64 = 0](i < sd.private_count) : (++i) {
     let f: *AST::AstNode = sd.private_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
       let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
@@ -2125,7 +2126,7 @@ const find_field_in_struct -> fn (sd: *AST::StructDeclNode, name: *byte) *AST::F
 const emit_member_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, prog: *AST::ProgramNode, member_node: *AST::AstNode, n: *AST::MemberNode) void {
   if (n.object == cast<*AST::AstNode>(0) || g_sem_text == cast<*byte>(0)) return;
 
-  let kind: int = -1;
+  let kind: i64 = -1;
 
   if (n.is_compiletime == 1) {
     if (n.object.kind == AST::NodeType::EXPR_IDENTIFIER) {
@@ -2159,7 +2160,7 @@ const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *
   let name: *byte = id.name;
 
   if (fd != cast<*AST::FuncDeclNode>(0)) {
-    loop [i: int = 0](i < fd.param_count) : (++i) {
+    loop [i: i64 = 0](i < fd.param_count) : (++i) {
       if (STR::strcmp(fd.param_names[i], name) == 0) {
         push_token(tokens, node.line, node.col, STR::strlen(name), TT_PARAMETER, 0);
         return;
@@ -2175,15 +2176,15 @@ const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *
     let decl: *AST::AstNode = search_stmt_for_local_decl(fd.body, name);
     if (decl != cast<*AST::AstNode>(0)) {
       let vd: *AST::VarDeclNode = cast<*AST::VarDeclNode>(decl);
-      let mods: int = 0;
+      let mods: i64 = 0;
       if (vd.is_mutable == 0) { mods = MOD_READONLY; }
       push_token(tokens, node.line, node.col, STR::strlen(name), TT_VARIABLE, mods);
       return;
     }
   }
 
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::STMT_FUNCTION) {
       let f2: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
@@ -2197,7 +2198,7 @@ const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *
     } elif (bn.kind == AST::NodeType::STMT_VAR_DECL || bn.kind == AST::NodeType::STMT_CONST_DECL) {
       let vd2: *AST::VarDeclNode = cast<*AST::VarDeclNode>(bn);
       if (STR::strcmp(vd2.name, name) == 0) {
-        let mods: int = 0;
+        let mods: i64 = 0;
         if (vd2.is_mutable == 0) { mods = MOD_READONLY; }
         push_token(tokens, node.line, node.col, STR::strlen(name), TT_VARIABLE, mods);
         return;
@@ -2205,8 +2206,8 @@ const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *
     }
   }
 
-  loop [d: int = 1](d < prog.module_count) : (++d) {
-    let kind: int = lookup_public_kind(cast<*AST::ModuleNode>(prog.modules[d]), name);
+  loop [d: i64 = 1](d < prog.module_count) : (++d) {
+    let kind: i64 = lookup_public_kind(cast<*AST::ModuleNode>(prog.modules[d]), name);
     if (kind >= 0) {
       push_token(tokens, node.line, node.col, STR::strlen(name), kind, 0);
       return;
@@ -2236,15 +2237,15 @@ const walk_type_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, p
   }
   if (t.kind == AST::NodeType::TYPE_FUNCTION) {
     let n: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(t);
-    loop [i: int = 0](i < n.param_count) : (++i) { walk_type_for_tokens(tokens, mod, prog, n.param_types[i]); }
+    loop [i: i64 = 0](i < n.param_count) : (++i) { walk_type_for_tokens(tokens, mod, prog, n.param_types[i]); }
     walk_type_for_tokens(tokens, mod, prog, n.return_type);
     return;
   }
   if (t.kind == AST::NodeType::TYPE_BASIC) {
     let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(t);
 
-    let mn: int = mod.body_count;
-    loop [i: int = 0](i < mn) : (++i) {
+    let mn: i64 = mod.body_count;
+    loop [i: i64 = 0](i < mn) : (++i) {
       let bn: *AST::AstNode = mod.body[i];
       if (bn.kind == AST::NodeType::STMT_STRUCT) {
         let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
@@ -2255,8 +2256,8 @@ const walk_type_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, p
       }
     }
 
-    loop [d: int = 1](d < prog.module_count) : (++d) {
-      let kind: int = lookup_public_kind(cast<*AST::ModuleNode>(prog.modules[d]), n.name);
+    loop [d: i64 = 1](d < prog.module_count) : (++d) {
+      let kind: i64 = lookup_public_kind(cast<*AST::ModuleNode>(prog.modules[d]), n.name);
       if (kind == TT_STRUCT || kind == TT_ENUM) { push_token(tokens, t.line, t.col, STR::strlen(n.name), kind, 0); return; }
     }
     return;
@@ -2289,7 +2290,7 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   if (expr.kind == AST::NodeType::EXPR_CALL) {
     let n: *AST::CallNode = cast<*AST::CallNode>(expr);
     walk_expr_for_tokens(tokens, mod, fd, prog, n.callee);
-    loop [i: int = 0](i < n.arg_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.args[i]); }
+    loop [i: i64 = 0](i < n.arg_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.args[i]); }
     return;
   }
   if (expr.kind == AST::NodeType::EXPR_ASSIGNMENT) {
@@ -2319,7 +2320,7 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   }
   if (expr.kind == AST::NodeType::EXPR_ARRAY) {
     let n: *AST::ArrayNode = cast<*AST::ArrayNode>(expr);
-    loop [i: int = 0](i < n.element_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.elements[i]); }
+    loop [i: i64 = 0](i < n.element_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.elements[i]); }
     return;
   }
   if (expr.kind == AST::NodeType::EXPR_CAST || expr.kind == AST::NodeType::EXPR_INPUT) {
@@ -2356,7 +2357,7 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   }
   if (expr.kind == AST::NodeType::EXPR_STRUCT) {
     let n: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
-    loop [i: int = 0](i < n.field_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.field_vals[i]); }
+    loop [i: i64 = 0](i < n.field_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.field_vals[i]); }
     return;
   }
   // EXPR_LITERAL, EXPR_SYSCALL: leaves, nothing further to classify.
@@ -2375,7 +2376,7 @@ const walk_field_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, 
 
   if (f.function != cast<*AST::AstNode>(0)) {
     let mfd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(f.function);
-    loop [p: int = 0](p < mfd.param_count) : (++p) {
+    loop [p: i64 = 0](p < mfd.param_count) : (++p) {
       walk_type_for_tokens(tokens, mod, prog, mfd.param_types[p]);
     }
     walk_type_for_tokens(tokens, mod, prog, mfd.return_type);
@@ -2398,7 +2399,7 @@ const walk_field_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, 
 // type-based lookup segfaults the moment it dereferences one. Walking only
 // the selected arm keeps everything this file ever inspects trustworthy.
 const resolve_os_body_for_tokens -> fn (n: *AST::OsNode) *AST::AstNode {
-  loop [i: int = 0](n.platforms[i] != cast<*byte>(0)) : (++i) {
+  loop [i: i64 = 0](n.platforms[i] != cast<*byte>(0)) : (++i) {
     if (STR::strcmp(n.platforms[i], CURRENT_OS) == 0) return n.bodies[i];
   }
   if (n.has_default == 1) return n.default_body;
@@ -2430,20 +2431,20 @@ const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   }
   if (stmt.kind == AST::NodeType::STMT_BLOCK) {
     let blk: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
-    loop [i: int = 0](i < blk.stmt_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, blk.statements[i]); }
+    loop [i: i64 = 0](i < blk.stmt_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, blk.statements[i]); }
     return;
   }
   if (stmt.kind == AST::NodeType::STMT_IF) {
     let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
     walk_expr_for_tokens(tokens, mod, fd, prog, n.condition);
     walk_stmt_for_tokens(tokens, mod, fd, prog, n.then_stmt);
-    loop [i: int = 0](i < n.elif_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, n.elif_stmts[i]); }
+    loop [i: i64 = 0](i < n.elif_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, n.elif_stmts[i]); }
     walk_stmt_for_tokens(tokens, mod, fd, prog, n.else_stmt);
     return;
   }
   if (stmt.kind == AST::NodeType::STMT_LOOP) {
     let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
-    loop [i: int = 0](i < n.init_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, n.initializer[i]); }
+    loop [i: i64 = 0](i < n.init_count) : (++i) { walk_stmt_for_tokens(tokens, mod, fd, prog, n.initializer[i]); }
     walk_expr_for_tokens(tokens, mod, fd, prog, n.condition);
     walk_expr_for_tokens(tokens, mod, fd, prog, n.optional);
     walk_stmt_for_tokens(tokens, mod, fd, prog, n.body);
@@ -2452,9 +2453,9 @@ const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   if (stmt.kind == AST::NodeType::STMT_SWITCH) {
     let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
     walk_expr_for_tokens(tokens, mod, fd, prog, n.condition);
-    loop [i: int = 0](i < n.case_count) : (++i) {
+    loop [i: i64 = 0](i < n.case_count) : (++i) {
       let c: *AST::CaseNode = cast<*AST::CaseNode>(n.cases[i]);
-      loop [j: int = 0](j < c.value_count) : (++j) { walk_expr_for_tokens(tokens, mod, fd, prog, c.values[j]); }
+      loop [j: i64 = 0](j < c.value_count) : (++j) { walk_expr_for_tokens(tokens, mod, fd, prog, c.values[j]); }
       walk_stmt_for_tokens(tokens, mod, fd, prog, c.body);
     }
     if (n.default_case != cast<*AST::AstNode>(0)) {
@@ -2472,7 +2473,7 @@ const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
     // `output`/`outputln` — easy to miss since it's not a plain
     // STMT_EXPRESSION wrapping a call, it's its own statement kind.
     let n: *AST::PrintStmtNode = cast<*AST::PrintStmtNode>(stmt);
-    loop [i: int = 0](i < n.expr_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.expressions[i]); }
+    loop [i: i64 = 0](i < n.expr_count) : (++i) { walk_expr_for_tokens(tokens, mod, fd, prog, n.expressions[i]); }
     return;
   }
   if (stmt.kind == AST::NodeType::PREPROCESSOR_OS) {
@@ -2501,7 +2502,7 @@ const walk_module_decl_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::Module
 
   if (bn.kind == AST::NodeType::STMT_FUNCTION) {
     let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(bn);
-    loop [p: int = 0](p < fd.param_count) : (++p) {
+    loop [p: i64 = 0](p < fd.param_count) : (++p) {
       walk_type_for_tokens(tokens, mod, prog, fd.param_types[p]);
     }
     walk_type_for_tokens(tokens, mod, prog, fd.return_type);
@@ -2513,10 +2514,10 @@ const walk_module_decl_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::Module
     let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(bn);
     let saved: bool = g_sem_in_template;
     if (sd.type_param_count > 0) { g_sem_in_template = true; }
-    loop [f: int = 0](f < sd.public_count) : (++f) {
+    loop [f: i64 = 0](f < sd.public_count) : (++f) {
       walk_field_for_tokens(tokens, mod, prog, sd.public_members[f]);
     }
-    loop [f: int = 0](f < sd.private_count) : (++f) {
+    loop [f: i64 = 0](f < sd.private_count) : (++f) {
       walk_field_for_tokens(tokens, mod, prog, sd.private_members[f]);
     }
     g_sem_in_template = saved;
@@ -2533,7 +2534,7 @@ const walk_module_decl_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::Module
     let body: *AST::AstNode = resolve_os_body_for_tokens(n);
     if (body != cast<*AST::AstNode>(0) && body.kind == AST::NodeType::STMT_BLOCK) {
       let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
-      loop [j: int = 0](j < blk.stmt_count) : (++j) {
+      loop [j: i64 = 0](j < blk.stmt_count) : (++j) {
         walk_module_decl_for_tokens(tokens, mod, prog, blk.statements[j]);
       }
     }
@@ -2546,7 +2547,7 @@ const walk_module_decl_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::Module
 // its lexer kind (plus a little surrounding context for identifiers), no
 // AST needed — the fallback layer that gives every token *some* color.
 
-const TokenClass -> struct { type_idx: int, mods: int };
+const TokenClass -> struct { type_idx: i64, mods: i64 };
 
 // Token.val points into the source buffer and isn't null-terminated (its
 // length is the separate `len` field) — a *byte string constant is, so an
@@ -2557,8 +2558,8 @@ const token_text_equals -> fn (tok: TOK::Token, s: *byte) bool {
 }
 
 const is_use_alias -> fn (mod: *AST::ModuleNode, tok: TOK::Token) bool {
-  let n: int = mod.body_count;
-  loop [i: int = 0](i < n) : (++i) {
+  let n: i64 = mod.body_count;
+  loop [i: i64 = 0](i < n) : (++i) {
     let bn: *AST::AstNode = mod.body[i];
     if (bn.kind == AST::NodeType::PREPROCESSOR_USE) {
       let u: *AST::UseNode = cast<*AST::UseNode>(bn);
@@ -2580,7 +2581,7 @@ const is_use_alias -> fn (mod: *AST::ModuleNode, tok: TOK::Token) bool {
 // neither do top-level decl names) — then the same blunt heuristic the
 // old C LSP used as its final fallback: capitalized → type, followed by
 // `(` → function, followed by `::` → namespace, else → variable.
-const classify_raw_identifier -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count: int, idx: int) TokenClass {
+const classify_raw_identifier -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count: i64, idx: i64) TokenClass {
   let tok: TOK::Token = toks[idx];
 
   if (is_use_alias(mod, tok)) return TokenClass { type_idx: TT_NAMESPACE, mods: 0 };
@@ -2604,7 +2605,7 @@ const classify_raw_identifier -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, c
       return TokenClass { type_idx: TT_VARIABLE, mods: MOD_DECLARATION };
     }
     if (prev.kind == TOK::LumaTokenType::TOK_CONST) {
-      let m: int = MOD_DECLARATION;
+      let m: i64 = MOD_DECLARATION;
       return TokenClass { type_idx: TT_VARIABLE, mods: m + MOD_READONLY };
     }
   }
@@ -2629,10 +2630,10 @@ const classify_raw_identifier -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, c
 // (they're plain TOK_IDENTIFIER, recognized by name only where they're
 // actually called — see typechecker/expr.lx's tc_call) — the identifier
 // fallback's "followed by `(`" rule classifies them as functions anyway.
-const classify_raw_token -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count: int, idx: int) TokenClass {
+const classify_raw_token -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count: i64, idx: i64) TokenClass {
   let none: TokenClass = TokenClass { type_idx: -1, mods: 0 };
   let tok: TOK::Token = toks[idx];
-  let k: int = tok.kind;
+  let k: i64 = tok.kind;
 
   if (k == TOK::LumaTokenType::TOK_EOF || k == TOK::LumaTokenType::TOK_ERROR ||
       k == TOK::LumaTokenType::TOK_WHITESPACE || k == TOK::LumaTokenType::TOK_LPAREN ||
@@ -2658,8 +2659,11 @@ const classify_raw_token -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count:
     return TokenClass { type_idx: TT_NUMBER, mods: 0 };
   }
 
-  if (k == TOK::LumaTokenType::TOK_INT || k == TOK::LumaTokenType::TOK_DOUBLE ||
-      k == TOK::LumaTokenType::TOK_UINT || k == TOK::LumaTokenType::TOK_FLOAT ||
+  if (k == TOK::LumaTokenType::TOK_I8 || k == TOK::LumaTokenType::TOK_I16 ||
+      k == TOK::LumaTokenType::TOK_I32 || k == TOK::LumaTokenType::TOK_I64 ||
+      k == TOK::LumaTokenType::TOK_U8 || k == TOK::LumaTokenType::TOK_U16 ||
+      k == TOK::LumaTokenType::TOK_U32 || k == TOK::LumaTokenType::TOK_U64 ||
+      k == TOK::LumaTokenType::TOK_F32 || k == TOK::LumaTokenType::TOK_F64 ||
       k == TOK::LumaTokenType::TOK_BOOL || k == TOK::LumaTokenType::TOK_VOID ||
       k == TOK::LumaTokenType::TOK_CHAR) {
     return TokenClass { type_idx: TT_TYPE, mods: MOD_DEFAULT_LIB };
@@ -2699,7 +2703,7 @@ const classify_raw_token -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count:
   }
 
   if (k == TOK::LumaTokenType::TOK_TRUE || k == TOK::LumaTokenType::TOK_FALSE) {
-    let m: int = MOD_READONLY;
+    let m: i64 = MOD_READONLY;
     return TokenClass { type_idx: TT_ENUM_MEMBER, mods: m + MOD_DEFAULT_LIB };
   }
 
@@ -2745,8 +2749,8 @@ pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
       let tokens: VEC::Vector = VEC::create_vector(sizeof<SemToken>);
       g_sem_text = doc.text;
 
-      let n: int = mod.body_count;
-      loop [i: int = 0](i < n) : (++i) {
+      let n: i64 = mod.body_count;
+      loop [i: i64 = 0](i < n) : (++i) {
         walk_module_decl_for_tokens(&tokens, mod, prog, mod.body[i]);
       }
 
@@ -2762,13 +2766,13 @@ pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
       // it has one there, otherwise classify the raw token lexically.
       let final_tokens: VEC::Vector = VEC::create_vector(sizeof<SemToken>);
       let ast_arr: *SemToken = cast<*SemToken>(tokens.data);
-      let ast_count: int = tokens.size;
-      let ai: int = 0;
+      let ast_count: i64 = tokens.size;
+      let ai: i64 = 0;
 
       let raw_toks: *TOK::Token = mod.tokens;
-      let raw_count: int = mod.token_count;
+      let raw_count: i64 = mod.token_count;
 
-      loop [ti: int = 0](ti < raw_count) : (++ti) {
+      loop [ti: i64 = 0](ti < raw_count) : (++ti) {
         let tok: TOK::Token = raw_toks[ti];
 
         loop (ai < ast_count && (ast_arr[ai].line < tok.line ||
@@ -2785,7 +2789,7 @@ pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
             // TOK_STRING's `len`/`val` exclude the surrounding quotes (see
             // lexer.lx) — extend the span to cover them so the whole
             // literal highlights, not just its inner text.
-            let length: int = tok.len;
+            let length: i64 = tok.len;
             if (tok.kind == TOK::LumaTokenType::TOK_STRING) { length = tok.len + 2; }
             // Doc comments: `col`/`val` mark the `///` / `//!` opener, but
             // `len`/`val` cover only the text after it (see lexer.lx) —
@@ -2800,19 +2804,19 @@ pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
       VEC::free_vector(&tokens);
 
       let arr: *SemToken = cast<*SemToken>(final_tokens.data);
-      let count: int = final_tokens.size;
-      let prev_line: int = 0;
-      let prev_col: int = 0;
-      loop [i: int = 0](i < count) : (++i) {
+      let count: i64 = final_tokens.size;
+      let prev_line: i64 = 0;
+      let prev_col: i64 = 0;
+      loop [i: i64 = 0](i < count) : (++i) {
         let t: SemToken = arr[i];
         // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
-        let line0: int = 0;
+        let line0: i64 = 0;
         if (t.line > 0) { line0 = t.line - 1; }
-        let col0: int = t.col;
+        let col0: i64 = t.col;
         if (col0 < 0) { col0 = 0; }
 
-        let delta_line: int = line0 - prev_line;
-        let delta_col: int = col0;
+        let delta_line: i64 = line0 - prev_line;
+        let delta_col: i64 = col0;
         if (delta_line == 0) { delta_col = col0 - prev_col; }
 
         J::json_array_push(data, J::json_int(delta_line));

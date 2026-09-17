@@ -22,9 +22,7 @@ const skip_line_comment -> fn (lx: *sym::Lexer) void {
 const skip_block_comment -> fn (lx: *sym::Lexer) void {
   lx.advance(); // skip /
   lx.advance(); // skip *
-  // NOTE: block comments do not nest — `/* /* */` ends at the first `*/`.
-  // This matches C and is intentional so that toggling a commented-out block
-  // via `/* */` doesn't hide a nested `*/`.
+  
   loop (lx.is_end() == 0) {
     if (lx.peek(0) == '*' && lx.peek(1) == '/') {
       lx.advance(); // skip *
@@ -35,8 +33,8 @@ const skip_block_comment -> fn (lx: *sym::Lexer) void {
   }
 }
 
-const skip_whitespace -> fn (lx: *sym::Lexer) int {
-  let count: int = 0;
+const skip_whitespace -> fn (lx: *sym::Lexer) i64 {
+  let count: i64 = 0;
   loop (lx.is_end() == 0) {
     let c: byte = lx.peek(0);
 
@@ -64,18 +62,18 @@ const skip_whitespace -> fn (lx: *sym::Lexer) int {
 
 // Scan the text after a `//!` or `///` opener (none of the three bytes
 // consumed yet) up to end of line and emit it as a doc-comment token.
-const scan_doc_comment -> fn (lx: *sym::Lexer, kind: int, start: *byte,
-                              line: int, col: int, ws: int) sym::Token {
+const scan_doc_comment -> fn (lx: *sym::Lexer, kind: i64, start: *byte,
+                              line: i64, col: i64, ws: i64) sym::Token {
   lx.advance(); // '/'
   lx.advance(); // '/'
   lx.advance(); // '!' or '/'
   let inner_start: *byte = lx.current;
-  let len: int = 0;
+  let len: i64 = 0;
   loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
     lx.advance();
     len = len + 1;
   }
-  return make_token(inner_start, kind, len, line, col, ws);
+  return sym::Token::make(inner_start, kind, len, line, col, ws);
 }
 
 // An `@word` / `#word` directive — the `@`/`#` prefix has already been
@@ -83,16 +81,16 @@ const scan_doc_comment -> fn (lx: *sym::Lexer, kind: int, start: *byte,
 // token via the binary-search keyword lookup; anything else is recorded as
 // LEX_ERR_UNKNOWN_DIRECTIVE and returned as a TOK_ERROR token.
 const scan_prefixed_word -> fn (lx: *sym::Lexer, start: *byte,
-                                line: int, col: int, ws: int) sym::Token {
-  let len: int = 1; // the '@' or '#' prefix
+                                line: i64, col: i64, ws: i64) sym::Token {
+  let len: i64 = 1; // the '@' or '#' prefix
   loop (lx.is_end() == 0 && is_alnum(lx.peek(0))) {
     lx.advance();
     len = len + 1;
   }
-  let kind: int = sym::lookup_keyword(start, len);
-  if (kind != -1) { return make_token(start, kind, len, line, col, ws); }
+  let kind: i64 = sym::lookup_keyword(start, len);
+  if (kind != -1) { return sym::Token::make(start, kind, len, line, col, ws); }
   lexer_add_error(lx, sym::LEX_ERR_UNKNOWN_DIRECTIVE, line, col, len, 0);
-  return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
+  return sym::Token::make(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
 }
 
 // Consume a numeric literal and return its token kind. Handles decimal,
@@ -102,9 +100,9 @@ const scan_prefixed_word -> fn (lx: *sym::Lexer, start: *byte,
 // non-numeric character, so the value is unaffected). The prefixed forms are
 // only entered when a valid digit actually follows, so `0` before an
 // identifier still lexes as `0` + identifier (e.g. the `0..` range).
-const scan_number -> fn (lx: *sym::Lexer) int {
-  let kind: int = sym::LumaTokenType::TOK_NUMBER;
-  let prefixed: int = 0;
+const scan_number -> fn (lx: *sym::Lexer) i64 {
+  let kind: i64 = sym::LumaTokenType::TOK_NUMBER;
+  let prefixed: i64 = 0;
 
   if (lx.peek(0) == '0') {
     let p1: byte = lx.peek(1);
@@ -159,16 +157,10 @@ const scan_number -> fn (lx: *sym::Lexer) int {
   return kind;
 }
 
-const make_token -> fn (val: *byte, kind: int, len: int, line: int, 
-                        col: int, whitespace_len: int) sym::Token {
-  return sym::Token { val: val, kind: kind, len: len, line: line, 
-                 col: col, whitespace_len: whitespace_len };
-}
-
 // Record a lexical error. The lexer can't report through error.lx itself
 // (no file path, no token table to render a line_text from), so it stashes
 // the kind + location here and parse_file re-issues them as diagnostics.
-const lexer_add_error -> fn (lx: *sym::Lexer, kind: int, line: int, col: int, len: int, bad: int) void {
+const lexer_add_error -> fn (lx: *sym::Lexer, kind: i64, line: i64, col: i64, len: i64, bad: i64) void {
   lx.had_error = 1;
   if (lx.error_count >= sym::MAX_LEX_ERRORS) return;
   lx.errors[lx.error_count].kind = kind;
@@ -181,15 +173,15 @@ const lexer_add_error -> fn (lx: *sym::Lexer, kind: int, line: int, col: int, le
 
 pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
   loop (1) {
-    let ws: int = skip_whitespace(lx);
+    let ws: i64 = skip_whitespace(lx);
 
     if (lx.is_end() == 1)
-      return make_token(lx.current, sym::LumaTokenType::TOK_EOF, 0, lx.line, lx.col, ws);
+      return sym::Token::make(lx.current, sym::LumaTokenType::TOK_EOF, 0, lx.line, lx.col, ws);
 
     let start: *byte = lx.current;
     let c:     byte  = lx.peek(0);
-    let line:  int   = lx.line;
-    let col:   int   = lx.col;
+    let line:  i64   = lx.line;
+    let col:   i64   = lx.col;
 
     // `//!` module doc comment — emitted as a token (not skipped) so the
     // parser can attach it to the module node and the LSP can highlight it.
@@ -215,11 +207,11 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
 
     if (c == '"') {
       lx.advance();
-      let len: int = 0;
+      let len: i64 = 0;
       loop (lx.is_end() == 0 && lx.peek(0) != '"') {
         if (lx.peek(0) == '\n') {
           lexer_add_error(lx, sym::LEX_ERR_UNTERMINATED_STRING, line, col, len, 0);
-          return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
+          return sym::Token::make(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
         }
         // An escape sequence (`\"`, `\\`, `\n`, ...) consumes its backslash
         // and the following character as one unit, so an escaped quote is
@@ -238,11 +230,11 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
       }
       if (lx.is_end() == 1) {
         lexer_add_error(lx, sym::LEX_ERR_UNTERMINATED_STRING, line, col, len, 0);
-        return make_token(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
+        return sym::Token::make(start, sym::LumaTokenType::TOK_ERROR, len, line, col, ws);
       }
       lx.advance();
-      let inner_start: *byte = cast<*byte>(cast<int>(start) + 1);
-      return make_token(inner_start, sym::LumaTokenType::TOK_STRING, len, line, col, ws);
+      let inner_start: *byte = cast<*byte>(cast<i64>(start) + 1);
+      return sym::Token::make(inner_start, sym::LumaTokenType::TOK_STRING, len, line, col, ws);
     }
 
     if (c == '\'') {
@@ -252,7 +244,7 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
         // it isn't re-lexed as the start of yet another broken literal.
         lexer_add_error(lx, sym::LEX_ERR_EMPTY_CHAR, line, col, 1, 0);
         if (lx.peek(0) == '\'') { lx.advance(); }
-        return make_token(start, sym::LumaTokenType::TOK_ERROR, 1, line, col, ws);
+        return sym::Token::make(start, sym::LumaTokenType::TOK_ERROR, 1, line, col, ws);
       }
       if (lx.peek(0) == '\\') {
         lx.advance();
@@ -270,56 +262,56 @@ pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
         }
         if (lx.peek(0) == '\'') { lx.advance(); }
         lexer_add_error(lx, sym::LEX_ERR_BAD_CHAR, line, col, 2, 0);
-        return make_token(start, sym::LumaTokenType::TOK_ERROR, 2, line, col, ws);
+        return sym::Token::make(start, sym::LumaTokenType::TOK_ERROR, 2, line, col, ws);
       }
       lx.advance();
-      let len: int = cast<int>(lx.current) - cast<int>(start);
-      return make_token(start, sym::LumaTokenType::TOK_CHAR_LITERAL, len, line, col, ws);
+      let len: i64 = cast<i64>(lx.current) - cast<i64>(start);
+      return sym::Token::make(start, sym::LumaTokenType::TOK_CHAR_LITERAL, len, line, col, ws);
     }
 
     if (is_digit(c)) {
-      let kind: int = scan_number(lx);
-      let len: int = cast<int>(lx.current) - cast<int>(start);
-      return make_token(start, kind, len, line, col, ws);
+      let kind: i64 = scan_number(lx);
+      let len: i64 = cast<i64>(lx.current) - cast<i64>(start);
+      return sym::Token::make(start, kind, len, line, col, ws);
     }
 
     if (is_alpha(c)) {
-      let len: int = 0;
+      let len: i64 = 0;
       loop (lx.is_end() == 0 && is_alnum(lx.peek(0))) {
         lx.advance();
         len = len + 1;
       }
-      let kw_kind: int = sym::lookup_keyword(start, len);
-      if (kw_kind != -1) return make_token(start, kw_kind, len, line, col, ws);
-      return make_token(start, sym::LumaTokenType::TOK_IDENTIFIER, len, line, col, ws);
+      let kw_kind: i64 = sym::lookup_keyword(start, len);
+      if (kw_kind != -1) return sym::Token::make(start, kw_kind, len, line, col, ws);
+      return sym::Token::make(start, sym::LumaTokenType::TOK_IDENTIFIER, len, line, col, ws);
     }
 
     if (c == '.' && lx.peek(1) == '.' && lx.peek(2) == '.') {
       lx.advance();
       lx.advance();
       lx.advance();
-      return make_token(start, sym::LumaTokenType::TOK_ELLIPSIS, 3, line, col, ws);
+      return sym::Token::make(start, sym::LumaTokenType::TOK_ELLIPSIS, 3, line, col, ws);
     }
 
-    let kind: int = sym::lookup_double(c, lx.peek(1));
+    let kind: i64 = sym::lookup_double(c, lx.peek(1));
     if (kind != -1) {
       lx.advance();
       lx.advance();
-      return make_token(start, kind, 2, line, col, ws);
+      return sym::Token::make(start, kind, 2, line, col, ws);
     }
 
     kind = sym::lookup_single(c);
     if (kind != -1) {
       lx.advance();
-      return make_token(start, kind, 1, line, col, ws);
+      return sym::Token::make(start, kind, 1, line, col, ws);
     }
 
     // No token for this character — record it instead of silently dropping
     // it (dropping could otherwise produce a clean-looking but corrupted
     // parse downstream).
-    lexer_add_error(lx, sym::LEX_ERR_INVALID_CHARACTER, line, col, 1, cast<int>(c));
+    lexer_add_error(lx, sym::LEX_ERR_INVALID_CHARACTER, line, col, 1, cast<i64>(c));
     lx.advance();
   }
 
-  return make_token(lx.current, sym::LumaTokenType::TOK_EOF, 0, lx.line, lx.col, 0);
+  return sym::Token::make(lx.current, sym::LumaTokenType::TOK_EOF, 0, lx.line, lx.col, 0);
 }

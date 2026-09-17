@@ -5,15 +5,22 @@
 @use "ast"      as AST
 @use "cg_core"  as CG
 
-// Luma's `int`/`uint` are 64-bit, `byte` is 8-bit.
+// Luma's explicit-width types map to C's fixed-width types; `byte` is 8-bit
+// but kept as `char` (C's smallest addressable unit) for string interop.
 const basic_c_name -> fn (name: *byte) *byte {
-  if (STR::strcmp(name, "int")    == 0) return "long long";
-  if (STR::strcmp(name, "uint")   == 0) return "unsigned long long";
-  if (STR::strcmp(name, "float")  == 0) return "float";
-  if (STR::strcmp(name, "double") == 0) return "double";
-  if (STR::strcmp(name, "bool")   == 0) return "bool";
-  if (STR::strcmp(name, "void")   == 0) return "void";
-  if (STR::strcmp(name, "byte")   == 0) return "char";
+  if (STR::strcmp(name, "i8")    == 0) return "int8_t";
+  if (STR::strcmp(name, "i16")   == 0) return "int16_t";
+  if (STR::strcmp(name, "i32")   == 0) return "int32_t";
+  if (STR::strcmp(name, "i64")   == 0) return "int64_t";
+  if (STR::strcmp(name, "u8")    == 0) return "uint8_t";
+  if (STR::strcmp(name, "u16")   == 0) return "uint16_t";
+  if (STR::strcmp(name, "u32")   == 0) return "uint32_t";
+  if (STR::strcmp(name, "u64")   == 0) return "uint64_t";
+  if (STR::strcmp(name, "f32")   == 0) return "float";
+  if (STR::strcmp(name, "f64")   == 0) return "double";
+  if (STR::strcmp(name, "bool")  == 0) return "bool";
+  if (STR::strcmp(name, "void")  == 0) return "void";
+  if (STR::strcmp(name, "byte")  == 0) return "char";
   return cast<*byte>(0);
 }
 
@@ -57,7 +64,7 @@ pub const c_type_string -> fn (ctx: *CG::CodegenContext, t: *AST::AstNode) *byte
 
 pub const emit_value_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AST::AstNode, name: *byte) void;
 
-// Handles the common array-bound shapes (`[int; 10]`, `[int; size]`, simple
+// Handles the common array-bound shapes (`[i64; 10]`, `[i64; size]`, simple
 // arithmetic on those) without depending on the full expression codegen —
 // cg_expr already depends on cg_type, so pulling it in here would be
 // circular. A non-literal size becomes a plain C VLA, valid for a local decl.
@@ -73,7 +80,7 @@ pub const emit_value_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, 
 // `undeclared identifier` error instead.
 const emit_array_size -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, node: *AST::AstNode) void {
   if (node == cast<*AST::AstNode>(0)) return;
-  let k: int = node.kind;
+  let k: i64 = node.kind;
 
   if (k == AST::NodeType::EXPR_LITERAL) {
     let ln: *AST::LiteralNode = cast<*AST::LiteralNode>(node);
@@ -167,7 +174,7 @@ pub const emit_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AS
     if (asize != cast<*AST::AstNode>(0)) emit_array_size(ctx, inner, asize);
     CG::buf_str(inner, "]");
     let inner_name: *byte = CG::buf_finish(inner);
-    // An element that's itself a bare function type (`[fn(int)int; 4]`) is a
+    // An element that's itself a bare function type (`[fn(i64)i64; 4]`) is a
     // value position, same as a field or variable — route through
     // emit_value_declarator so it picks up the implicit pointer (see there).
     emit_value_declarator(ctx, buf, a.element_type, inner_name);
@@ -186,7 +193,7 @@ pub const emit_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AS
     let inner: *CG::Buf = CG::buf_init();
     CG::buf_str(inner, name);
     CG::buf_str(inner, "(");
-    let i: int = 0;
+    let i: i64 = 0;
     loop (i < f.param_count) {
       if (i > 0) CG::buf_str(inner, ", ");
       let ps: *byte = c_type_string(ctx, f.param_types[i]);
@@ -245,7 +252,7 @@ pub const c_type_string -> fn (ctx: *CG::CodegenContext, t: *AST::AstNode) *byte
   let s: *byte = CG::buf_finish(b);
 
   // Trim the trailing space emit_declarator leaves before an empty name.
-  let n: int = STR::strlen(s);
+  let n: i64 = STR::strlen(s);
   if (n > 0) {
     if (s[n - 1] == ' ') s[n - 1] = '\0';
   }

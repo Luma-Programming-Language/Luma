@@ -10,72 +10,72 @@
 
 @os {
     "linux" -> {
-        const SYS_READ: int  = 0;
-        const SYS_WRITE: int = 1;
-        const SYS_OPEN: int  = 2;
-        const SYS_CLOSE: int = 3;
-        const O_RDONLY: int  = 0;
-        const O_RDWR: int    = 2;
-        const STDOUT: int    = 1;
-        const STDERR: int    = 2;
+        const SYS_READ: i64  = 0;
+        const SYS_WRITE: i64 = 1;
+        const SYS_OPEN: i64  = 2;
+        const SYS_CLOSE: i64 = 3;
+        const O_RDONLY: i64  = 0;
+        const O_RDWR: i64    = 2;
+        const STDOUT: i64    = 1;
+        const STDERR: i64    = 2;
     }
     "macos" -> {
-        const SYS_READ: int  = 3;
-        const SYS_WRITE: int = 4;
-        const SYS_OPEN: int  = 5;
-        const SYS_CLOSE: int = 6;
-        const O_RDONLY: int  = 0;
-        const O_RDWR: int    = 2;
-        const STDOUT: int    = 1;
-        const STDERR: int    = 2;
+        const SYS_READ: i64  = 3;
+        const SYS_WRITE: i64 = 4;
+        const SYS_OPEN: i64  = 5;
+        const SYS_CLOSE: i64 = 6;
+        const O_RDONLY: i64  = 0;
+        const O_RDWR: i64    = 2;
+        const STDOUT: i64    = 1;
+        const STDERR: i64    = 2;
     }
     "windows64" -> {
-        const GENERIC_READ: int        = 2147483648; // 0x80000000
-        const GENERIC_WRITE: int       = 1073741824; // 0x40000000
-        const FILE_SHARE_READ: int     = 1;
-        const OPEN_EXISTING: int       = 3;
-        const INVALID_HANDLE_VALUE: int = -1;
-        const STD_OUTPUT_HANDLE: int   = -11;
-        const STD_ERROR_HANDLE: int    = -12;
-        const STD_INPUT_HANDLE: int    = -10;
+        const GENERIC_READ: i64        = 2147483648; // 0x80000000
+        const GENERIC_WRITE: i64       = 1073741824; // 0x40000000
+        const FILE_SHARE_READ: i64     = 1;
+        const OPEN_EXISTING: i64       = 3;
+        const INVALID_HANDLE_VALUE: i64 = -1;
+        const STD_OUTPUT_HANDLE: i64   = -11;
+        const STD_ERROR_HANDLE: i64    = -12;
+        const STD_INPUT_HANDLE: i64    = -10;
 
         #dll_import("kernel32.dll", callconv: "stdcall")
         pub const WriteFile -> fn (
-            hFile: int,
+            hFile: i64,
             lpBuffer: *void,
-            nNumberOfBytesToWrite: int,
-            lpNumberOfBytesWritten: *int,
+            nNumberOfBytesToWrite: i64,
+            lpNumberOfBytesWritten: *i64,
             lpOverlapped: *void
-        ) int;
+        ) i64;
 
         #dll_import("kernel32.dll", callconv: "stdcall")
         pub const ReadFile -> fn (
-            hFile: int,
+            hFile: i64,
             lpBuffer: *void,
-            nNumberOfBytesToRead: int,
-            lpNumberOfBytesRead: *int,
+            nNumberOfBytesToRead: i64,
+            lpNumberOfBytesRead: *i64,
             lpOverlapped: *void
-        ) int;
+        ) i64;
 
         #dll_import("kernel32.dll", callconv: "stdcall")
         pub const CreateFileA -> fn (
             lpFileName: *byte,
-            dwDesiredAccess: int,
-            dwShareMode: int,
+            dwDesiredAccess: i64,
+            dwShareMode: i64,
             lpSecurityAttributes: *void,
-            dwCreationDisposition: int,
-            dwFlagsAndAttributes: int,
-            hTemplateFile: int
-        ) int;
+            dwCreationDisposition: i64,
+            dwFlagsAndAttributes: i64,
+            hTemplateFile: i64
+        ) i64;
 
         #dll_import("kernel32.dll", callconv: "stdcall")
-        pub const CloseHandle -> fn (hObject: int) int;
+        pub const CloseHandle -> fn (hObject: i64) i64;
 
         #dll_import("kernel32.dll", callconv: "stdcall")
-        pub const GetStdHandle -> fn (nStdHandle: int) int;
+        pub const GetStdHandle -> fn (nStdHandle: i64) i64;
 
         #dll_import("kernel32.dll", callconv: "stdcall")
-        pub const SetStdHandle -> fn (nStdHandle: int, hHandle: int) int;
+        pub const SetStdHandle -> fn (nStdHandle: i64, hHandle: i64) i64;
     }
 }
 
@@ -83,17 +83,17 @@
 // Memory helpers (all platforms)
 // ============================================================================
 
-const local_memcpy -> fn (dest: *void, src: *void, n: int) *void {
+const local_memcpy -> fn (dest: *void, src: *void, n: i64) *void {
     let d: *byte = cast<*byte>(dest);
     let s: *byte = cast<*byte>(src);
-    loop [i: int = 0](i < n) : (++i) {
+    loop [i: i64 = 0](i < n) : (++i) {
         d[i] = s[i];
     }
     return dest;
 }
 
 #returns_ownership
-const local_realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
+const local_realloc -> fn (ptr: *void, old_size: i64, new_size: i64) *void {
     if (ptr == cast<*void>(0)) {
         return alloc(new_size);
     }
@@ -107,35 +107,35 @@ const local_realloc -> fn (ptr: *void, old_size: int, new_size: int) *void {
 // Low-level I/O — platform-specific
 // ============================================================================
 
-pub const local_write -> fn (fd: int, buf: *void, count: int) int {
+pub const local_write -> fn (fd: i64, buf: *void, count: i64) i64 {
     @os {
-        "linux"   -> { return __syscall__(SYS_WRITE, fd, cast<int>(buf), count); }
-        "macos"   -> { return __syscall__(SYS_WRITE, fd, cast<int>(buf), count); }
+        "linux"   -> { return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count); }
+        "macos"   -> { return __syscall__(SYS_WRITE, fd, cast<i64>(buf), count); }
         "windows64" -> {
-            let written: int = 0;
+            let written: i64 = 0;
             WriteFile(fd, buf, count, &written, cast<*void>(0));
             return written;
         }
     }
 }
 
-pub const local_read -> fn (fd: int, buf: *void, count: int) int {
+pub const local_read -> fn (fd: i64, buf: *void, count: i64) i64 {
     @os {
-        "linux"   -> { return __syscall__(SYS_READ, fd, cast<int>(buf), count); }
-        "macos"   -> { return __syscall__(SYS_READ, fd, cast<int>(buf), count); }
+        "linux"   -> { return __syscall__(SYS_READ, fd, cast<i64>(buf), count); }
+        "macos"   -> { return __syscall__(SYS_READ, fd, cast<i64>(buf), count); }
         "windows64" -> {
-            let bytes_read: int = 0;
-            let ok: int = ReadFile(fd, buf, count, &bytes_read, cast<*void>(0));
+            let bytes_read: i64 = 0;
+            let ok: i64 = ReadFile(fd, buf, count, &bytes_read, cast<*void>(0));
             if (ok == 0) { return INVALID_HANDLE_VALUE; }
             return bytes_read;
         }
     }
 }
 
-pub const local_open_read -> fn (path: *byte) int {
+pub const local_open_read -> fn (path: *byte) i64 {
     @os {
-        "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDONLY, 0); }
-        "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDONLY, 0); }
+        "linux"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDONLY, 0); }
+        "macos"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDONLY, 0); }
         "windows64" -> {
             return CreateFileA(
                 path, GENERIC_READ, FILE_SHARE_READ,
@@ -145,10 +145,10 @@ pub const local_open_read -> fn (path: *byte) int {
     }
 }
 
-const local_open_write -> fn (path: *byte) int {
+const local_open_write -> fn (path: *byte) i64 {
     @os {
-        "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDWR, 0); }
-        "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), O_RDWR, 0); }
+        "linux"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDWR, 0); }
+        "macos"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), O_RDWR, 0); }
         "windows64" -> {
             return CreateFileA(
                 path, GENERIC_READ | GENERIC_WRITE, FILE_SHARE_READ,
@@ -158,10 +158,10 @@ const local_open_write -> fn (path: *byte) int {
     }
 }
 
-pub const local_open_create -> fn (path: *byte) int {
+pub const local_open_create -> fn (path: *byte) i64 {
     @os {
-        "linux"   -> { return __syscall__(SYS_OPEN, cast<int>(path), 577, 420); }
-        "macos"   -> { return __syscall__(SYS_OPEN, cast<int>(path), 577, 420); }
+        "linux"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), 577, 420); }
+        "macos"   -> { return __syscall__(SYS_OPEN, cast<i64>(path), 577, 420); }
         "windows64" -> {
             return CreateFileA(
                 path, GENERIC_WRITE, 0,
@@ -171,7 +171,7 @@ pub const local_open_create -> fn (path: *byte) int {
     }
 }
 
-pub const local_close -> fn (fd: int) int {
+pub const local_close -> fn (fd: i64) i64 {
     @os {
         "linux"   -> { return __syscall__(SYS_CLOSE, fd); }
         "macos"   -> { return __syscall__(SYS_CLOSE, fd); }
@@ -179,7 +179,7 @@ pub const local_close -> fn (fd: int) int {
     }
 }
 
-pub const local_is_error -> fn (result: int) bool {
+pub const local_is_error -> fn (result: i64) bool {
     @os {
         "linux"   -> { return result < 0 && result >= -4095; }
         "macos"   -> { return result < 0 && result >= -4095; }
@@ -187,56 +187,56 @@ pub const local_is_error -> fn (result: int) bool {
     }
 }
 
-const local_write_str -> fn (fd: int, s: *byte) int {
-    let len: int = 0;
+const local_write_str -> fn (fd: i64, s: *byte) i64 {
+    let len: i64 = 0;
     loop (s[len] != cast<byte>(0)) : (++len) {}
     return local_write(fd, cast<*void>(s), len);
 }
 
-const local_eprint -> fn (s: *byte) int {
+const local_eprint -> fn (s: *byte) i64 {
     @os {
         "linux"   -> { return local_write_str(STDERR, s); }
         "macos"   -> { return local_write_str(STDERR, s); }
         "windows64" -> {
-            let handle: int = GetStdHandle(STD_ERROR_HANDLE);
+            let handle: i64 = GetStdHandle(STD_ERROR_HANDLE);
             return local_write_str(handle, s);
         }
     }
 }
 
-pub const write_binary -> fn (path: *byte, data: *void, size: int) int {
-    let fd: int = local_open_write(path);
+pub const write_binary -> fn (path: *byte, data: *void, size: i64) i64 {
+    let fd: i64 = local_open_write(path);
     if (local_is_error(fd)) {
         local_eprint("Error: Could not open file for binary write\n");
         return -1;
     }
-    let written: int = local_write(fd, data, size);
+    let written: i64 = local_write(fd, data, size);
     local_close(fd);
     return written;
 }
 
-pub const read_binary -> fn (path: *byte, data: *void, size: int) int {
-    let fd: int = local_open_read(path);
+pub const read_binary -> fn (path: *byte, data: *void, size: i64) i64 {
+    let fd: i64 = local_open_read(path);
     if (local_is_error(fd)) {
         local_eprint("Error: Could not open file for binary read\n");
         return -1;
     }
-    let bytes_read: int = local_read(fd, data, size);
+    let bytes_read: i64 = local_read(fd, data, size);
     local_close(fd);
     return bytes_read;
 }
 
-const INITIAL_BUFFER_SIZE: int  = 4096;
-const BUFFER_GROWTH_FACTOR: int = 2;
-const ARG_INT: int   = 0;
-const ARG_STR: int   = 1;
-const ARG_BYTE: int  = 2;
-const ARG_FLOAT: int = 3;
+const INITIAL_BUFFER_SIZE: i64  = 4096;
+const BUFFER_GROWTH_FACTOR: i64 = 2;
+const ARG_INT: i64   = 0;
+const ARG_STR: i64   = 1;
+const ARG_BYTE: i64  = 2;
+const ARG_FLOAT: i64 = 3;
 
 pub const FormatArg -> struct {
-    tag: int,
+    tag: i64,
     str_ptr: *byte,
-    int_val: int,
+    int_val: i64,
     byte_val: byte
 };
 
@@ -251,7 +251,7 @@ pub const str_arg -> fn (arg: *byte) FormatArg {
     return FormatArg { tag: ARG_STR, str_ptr: arg, int_val: 0, byte_val: '\0' };
 }
 
-pub const int_arg -> fn (arg: int) FormatArg {
+pub const int_arg -> fn (arg: i64) FormatArg {
     return FormatArg { tag: ARG_INT, str_ptr: "", int_val: arg, byte_val: '\0' };
 }
 
@@ -260,7 +260,7 @@ pub const byte_arg -> fn (arg: byte) FormatArg {
 }
 
 #returns_ownership
-const from_int -> fn (n: int) *byte {
+const from_int -> fn (n: i64) *byte {
     if (n == 0) {
         let s: *byte = cast<*byte>(alloc(2 * sizeof<byte>));
         s[0] = '0';
@@ -268,18 +268,18 @@ const from_int -> fn (n: int) *byte {
         return s;
     }
 
-    let negative: int = 0;
+    let negative: i64 = 0;
     if (n < 0) {
         negative = 1;
         n = -n;
     }
 
     let buffer: [byte; 20];
-    let i: int = 0;
+    let i: i64 = 0;
 
     loop (n != 0) {
-        let digit: int = n % 10;
-        buffer[i] = cast<byte>(digit + cast<int>('0'));
+        let digit: i64 = n % 10;
+        buffer[i] = cast<byte>(digit + cast<i64>('0'));
         n = n / 10;
         i = i + 1;
     }
@@ -290,7 +290,7 @@ const from_int -> fn (n: int) *byte {
     }
 
     let s: *byte = cast<*byte>(alloc((i + 1) * sizeof<byte>));
-    loop [j: int = 0](j < i) : (j = j + 1) {
+    loop [j: i64 = 0](j < i) : (j = j + 1) {
         s[j] = buffer[i - j - 1];
     }
     s[i] = cast<byte>(0);
@@ -305,14 +305,14 @@ const from_int -> fn (n: int) *byte {
 // *prototype* (only in the function's own definition, where per-function
 // codegen already has the right module context — narrow, cross-file
 // declaration-order limitation, not worth a bigger codegen rework for).
-const MAX_FORMAT_ARGS: int = 256;
+const MAX_FORMAT_ARGS: i64 = 256;
 
-pub const print -> fn (s: *byte, args: [FormatArg; 256]) int { // see MAX_FORMAT_ARGS above
+pub const print -> fn (s: *byte, args: [FormatArg; 256]) i64 { // see MAX_FORMAT_ARGS above
     let buffer: [byte; 1024];
-    let buf_index: int = 0;
-    let arg_index: int = 0;
+    let buf_index: i64 = 0;
+    let arg_index: i64 = 0;
 
-    let i: int = 0;
+    let i: i64 = 0;
     loop (s[i] != '\0') {
         if (s[i] == '%' && arg_index < MAX_FORMAT_ARGS) {
             let next: byte = s[i + 1];
@@ -322,7 +322,7 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int { // see MAX_FORMAT
                 'd' -> {
                     if (arg.tag == ARG_INT) {
                         let num_str: *byte = from_int(arg.int_val);
-                        loop [j: int = 0](num_str[j] != '\0') : (++j) {
+                        loop [j: i64 = 0](num_str[j] != '\0') : (++j) {
                             buffer[buf_index] = num_str[j];
                             buf_index = buf_index + 1;
                         }
@@ -344,7 +344,7 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int { // see MAX_FORMAT
                 's' -> {
                     if (arg.tag == ARG_STR) {
                         let str_ptr: *byte = arg.str_ptr;
-                        loop [j: int = 0](str_ptr[j] != '\0') : (++j) {
+                        loop [j: i64 = 0](str_ptr[j] != '\0') : (++j) {
                             buffer[buf_index] = str_ptr[j];
                             buf_index = buf_index + 1;
                         }
@@ -365,23 +365,23 @@ pub const print -> fn (s: *byte, args: [FormatArg; 256]) int { // see MAX_FORMAT
         "linux"   -> { return local_write(STDOUT, cast<*void>(&buffer), buf_index); }
         "macos"   -> { return local_write(STDOUT, cast<*void>(&buffer), buf_index); }
         "windows64" -> {
-            let handle: int = GetStdHandle(STD_OUTPUT_HANDLE);
+            let handle: i64 = GetStdHandle(STD_OUTPUT_HANDLE);
             return local_write(handle, cast<*void>(&buffer), buf_index);
         }
     }
 }
 
-pub const print_err -> fn (s: *byte, args: [int; 256]) int { // see MAX_FORMAT_ARGS above
+pub const print_err -> fn (s: *byte, args: [i64; 256]) i64 { // see MAX_FORMAT_ARGS above
     let buffer: *byte = cast<*byte>(alloc(MAX_FORMAT_ARGS * sizeof<byte>));
-    let buf_index: int = 0;
-    let arg_index: int = 0;
+    let buf_index: i64 = 0;
+    let arg_index: i64 = 0;
     defer { free(buffer); }
 
-    loop [i: int = 0](s[i] != '\0') : (++i) {
+    loop [i: i64 = 0](s[i] != '\0') : (++i) {
         if (s[i] == '%' && s[i + 1] == 'd' && arg_index < MAX_FORMAT_ARGS) {
             let num_str: *byte = from_int(args[arg_index]);
             defer { free(num_str); }
-            loop [j: int = 0](num_str[j] != '\0') : (++j) {
+            loop [j: i64 = 0](num_str[j] != '\0') : (++j) {
                 buffer[buf_index] = num_str[j];
                 buf_index = buf_index + 1;
             }
@@ -398,14 +398,14 @@ pub const print_err -> fn (s: *byte, args: [int; 256]) int { // see MAX_FORMAT_A
 
 #returns_ownership
 pub const read_file -> fn (path: *byte) *byte {
-    let fd: int = local_open_read(path);
+    let fd: i64 = local_open_read(path);
 
     if (local_is_error(fd)) {
         local_eprint("Error: File does not exist, can not read from file\n");
         return cast<*byte>(0);
     }
 
-    let buffer_size: int = INITIAL_BUFFER_SIZE;
+    let buffer_size: i64 = INITIAL_BUFFER_SIZE;
     let buffer: *byte = cast<*byte>(alloc(buffer_size * sizeof<byte>));
     if (buffer == cast<*byte>(0)) {
         local_eprint("Error: Failed to allocate initial buffer\n");
@@ -413,12 +413,12 @@ pub const read_file -> fn (path: *byte) *byte {
         return cast<*byte>(0);
     }
 
-    let total_read: int = 0;
-    let bytes_read: int = 0;
+    let total_read: i64 = 0;
+    let bytes_read: i64 = 0;
 
     loop {
-        let read_size: int = buffer_size - total_read - 1;
-        bytes_read = local_read(fd, cast<*void>(cast<int>(buffer) + total_read), read_size);
+        let read_size: i64 = buffer_size - total_read - 1;
+        bytes_read = local_read(fd, cast<*void>(cast<i64>(buffer) + total_read), read_size);
 
         if (local_is_error(bytes_read)) {
             local_eprint("Error: Failed to read from file\n");
@@ -434,7 +434,7 @@ pub const read_file -> fn (path: *byte) *byte {
         total_read = total_read + bytes_read;
 
         if (total_read >= buffer_size - 1) {
-            let new_size: int = buffer_size * BUFFER_GROWTH_FACTOR;
+            let new_size: i64 = buffer_size * BUFFER_GROWTH_FACTOR;
             let new_buffer: *byte = cast<*byte>(local_realloc(cast<*void>(buffer), buffer_size, new_size));
 
             if (new_buffer == cast<*byte>(0)) {
@@ -469,15 +469,15 @@ pub const read_file -> fn (path: *byte) *byte {
     return buffer;
 }
 
-pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) int {
-    let fd: int = local_open_write(path);
+pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) i64 {
+    let fd: i64 = local_open_write(path);
 
     if (local_is_error(fd)) {
         local_eprint("Error: File does not exist, can not write to file.\n");
         return -1;
     }
 
-    let length: int = 0;
+    let length: i64 = 0;
     loop (buffer[length] != '\0') {
         length = length + 1;
     }
@@ -488,7 +488,7 @@ pub const write_buffer_to_file -> fn (path: *byte, buffer: *byte) int {
         return -1;
     }
 
-    let written: int = local_write(fd, cast<*void>(buffer), length);
+    let written: i64 = local_write(fd, cast<*void>(buffer), length);
     local_close(fd);
     return written;
 }
