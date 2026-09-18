@@ -1,34 +1,83 @@
 @module "main"
 
-@use "std_hashmap" as HMAP
-
-/* 
-  const sort -> fn<@cmp<T>> ( // Means that there is something to compare on T, and that T must have some sort of compareson
-    value: [T; 256], 
-    sort: fn (T, T) bool
-  ) void;
-*/
-
-const hash_int -> fn (value: i64) u64 {
-  let x: u64 = cast<u64>(value);
-
-  x = (x ^ (x >> 30)) * 13787848793156543929;
-  x = (x ^ (x >> 27)) * 10723151780598845931;
-  x = (x ^ (x >> 31));
-
-  return x;
-}
+@use "vector" as VEC
 
 const int_equals -> fn (a: i64, b: i64) bool { return a == b; }
 
-pub const main -> fn () i64 {
-  let map: *HMAP::HashMap<i64, i64> = 
-    HMAP::HashMap::new<i64, i64>(hash_int, int_equals);
-  defer map._free();
+const main -> fn () i32 {
+    let v: VEC::Vector<i64> = VEC::Vector<i64>::create(2);
 
-  map.insert(0, 123);
+    outputln("=== Create ===");
+    outputln("size: ", v.size);
+    outputln("cap:  ", v.cap);
 
-  output(map.get(0));
+    outputln("\n=== Push ===");
 
-  return 0;
+    v.push_back(10);
+    v.push_back(20);
+
+    outputln("size: ", v.size);
+    outputln("cap:  ", v.cap);
+
+    // This should trigger 2 -> 4 growth.
+    v.push_back(30);
+
+    outputln("size: ", v.size);
+    outputln("cap:  ", v.cap);
+
+    outputln("v[0]: ", *v.get(0));
+    outputln("v[1]: ", *v.get(1));
+    outputln("v[2]: ", *v.get(2));
+
+
+    outputln("\n=== Insert ===");
+
+    // [10, 20, 30]
+    v.insert(15, 1);
+
+    // Should now be:
+    // [10, 15, 20, 30]
+
+    outputln("v[0]: ", *v.get(0));
+    outputln("v[1]: ", *v.get(1));
+    outputln("v[2]: ", *v.get(2));
+    outputln("v[3]: ", *v.get(3));
+
+
+    outputln("\n=== Pop ===");
+
+    let out: i64 = 0;
+
+    if (v.pop_back(&out)) {
+        outputln("popped: ", out);
+    }
+
+    // Should now be:
+    // [10, 15, 20]
+
+    outputln("size: ", v.size);
+    outputln("v[0]: ", *v.get(0));
+    outputln("v[1]: ", *v.get(1));
+    outputln("v[2]: ", *v.get(2));
+
+
+    outputln("\n=== Bounds ===");
+
+    if (v.get(-1) == cast<*i64>(0)) {
+        outputln("negative index correctly rejected");
+    }
+
+    if (v.get(v.size) == cast<*i64>(0)) {
+        outputln("out-of-bounds index correctly rejected");
+    }
+
+
+    outputln("\n=== Free ===");
+
+    v._free();
+
+    outputln("size after free: ", v.size);
+    outputln("cap after free:  ", v.cap);
+
+    return 0;
 }

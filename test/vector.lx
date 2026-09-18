@@ -1,0 +1,147 @@
+@module "vector"
+
+const DEFAULT_VECTOR_CAP: i32 = 1024;
+
+const local_memcpy -> fn<T>(
+    dest: *T,
+    src: *T,
+    count: i64
+) *T {
+  let d: *byte = cast<*byte>(dest);
+  let s: *byte = cast<*byte>(src);
+
+  let size: i64 = sizeof<T>();
+
+  loop [i: i64 = 0](i < count * size) : (++i) {
+      d[i] = s[i];
+  }
+
+  return dest;
+}
+
+#returns_ownership
+const local_realloc -> fn<T>(
+    ptr: *T,
+    old_count: i64,
+    new_count: i64
+) *T {
+  if (ptr == cast<*T>(0)) {
+      return cast<*T>(alloc(new_count * sizeof<T>()));
+  }
+
+  let new_ptr: *T = cast<*T>(
+      alloc(new_count * sizeof<T>())
+  );
+
+  local_memcpy<T>(
+      new_ptr,
+      ptr,
+      old_count
+  );
+
+  free(cast<*void>(ptr));
+
+  return new_ptr;
+}
+
+pub const Iter -> struct<T> {
+  data:  *T,
+  index: i64,
+  size:  i64,
+
+  next -> fn () T {
+    if (self.index >= self.size) return cast<T>(0);
+
+    let elem: *T = cast<*T>(
+        cast<i64>(self.data) + (self.index * sizeof<T>)
+    );
+
+    self.index = self.index + 1;
+    return *elem;
+  }
+};
+
+pub const Vector -> struct<T> {
+priv:
+  data: *T,
+  cap:  i64,
+  size: i64,
+
+pub:
+  #returns_ownership
+  static create -> fn<T> (capacity: i64) Vector<T> {
+    let v: Vector<T> = Vector<T> {
+      data: cast<*T>(alloc(capacity * sizeof<T>)),
+      size: 0,
+      cap: capacity
+    };
+
+    return v;
+  },
+
+  #takes_ownership
+  _free -> fn<T> () void {
+    free(self.data);
+    self.data = cast<*T>(0);
+    self.cap = 0;
+    self.size = 0;
+  },
+
+  insert -> fn (elem: T, index: i64) i64 {
+    if (index < 0 || index > self.size) 
+      return 0;
+
+    if (self.size >= self.cap) {
+      let old_cap: i64 = self.cap;
+
+      self.cap = self.cap * 2;
+
+      self.data = local_realloc<T>(
+        self.data,
+        old_cap,
+        self.cap
+      );
+    }
+
+    // Shift elements right
+    loop [i: i64 = self.size](i > index) : (--i) {
+      self.data[i] = self.data[i - 1];
+    }
+
+    self.data[index] = elem;
+    self.size = self.size + 1;
+
+    return 1;
+  },
+
+  push_back -> fn (elem: T) void {
+    if (self.size >= self.cap) {
+      let old_cap: i64 = self.cap;
+      self.cap = self.cap * 2;
+      self.data = local_realloc<T>(
+        self.data,
+        old_cap,
+        self.cap
+      );
+    }
+
+    self.data[self.size] = elem;
+    self.size = self.size + 1;
+  },
+
+  pop_back -> fn (out: *T) i64 {
+    if (self.size == 0) return 0;
+ 
+    self.size = self.size - 1;
+    *out = self.data[self.size];
+
+    return 1;
+  },
+
+  get -> fn (index: i64) *T { 
+    if (index < 0 || index >= self.size) {
+      return cast<*T>(0);
+    }
+    return &self.data[index];
+  },
+};
