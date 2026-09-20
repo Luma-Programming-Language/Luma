@@ -1,9 +1,16 @@
+//! Core AST definitions: the `AstNode` base struct, the `NodeType`,
+//! `NodeCategory` and operator/literal enums, and one concrete node struct per
+//! node kind (preprocessor, expression, statement, and type). Also provides
+//! `free_node` (recursive teardown) and `clone_node` (deep copy used for
+//! generic instantiation).
 @module "ast"
 
 @use "lexer_tokens" as TOK
 @use "std_cstring"  as STR
 @use "std_memory"   as MEM
 
+/// Discriminates every AST node kind; stored in `AstNode.kind` and matched by
+/// `free_node`, `clone_node`, and the tree printer.
 pub const NodeType -> enum {
   PREPROCESSOR_MODULE,
   PREPROCESSOR_USE,
@@ -64,6 +71,8 @@ pub const NodeType -> enum {
   TYPE_ENUM,
 };
 
+/// Tells which scalar flavor a `LiteralNode` stores (ident, int, float,
+/// double, string, char, bool, null).
 pub const LiteralType -> enum {
   LITERAL_IDENT,
   LITERAL_INT,
@@ -75,6 +84,7 @@ pub const LiteralType -> enum {
   LITERAL_NULL
 };
 
+/// Binary operators for `BinaryNode`; stored in `BinaryNode.op`.
 pub const BinaryOp -> enum {
   BINOP_ADD,
   BINOP_SUB,
@@ -98,6 +108,7 @@ pub const BinaryOp -> enum {
   BINOP_RANGE,
 };
 
+/// Unary operators for `UnaryNode`; stored in `UnaryNode.op`.
 pub const UnaryType -> enum {
   UNOP_NOT,
   UNOP_NEG,
@@ -111,6 +122,8 @@ pub const UnaryType -> enum {
   UNOP_ADDR,
 };
 
+/// Broad bucket classifying a node as an expression, statement, type, or
+/// preprocessor construct; stored in `AstNode.category`.
 pub const NodeCategory -> enum {
   Node_Category_EXPR,
   Node_Category_STMT,
@@ -120,6 +133,8 @@ pub const NodeCategory -> enum {
 
 // ─── Base Node ───────────────────────────────────────────────────────────────
 
+/// Base of every AST node: a `kind`/`category` pair plus source location.
+/// All concrete node structs embed `...AstNode` as their first member.
 pub const AstNode -> struct {
   kind:     i64,
   category: i64,
@@ -133,6 +148,9 @@ pub const AstNode -> struct {
   // -computed static type straight off the AST instead of re-inferring it.
   resolved_type: *AstNode,
 
+  /// Allocates a node of type `T` and stores `kind`, `category`, `line`, and
+  /// `col`; returns the raw `*T` for the caller to cast to its concrete node
+  /// struct. Caller owns the returned allocation.
   #returns_ownership
   static make -> fn<T> (
     kind: NodeType, 
@@ -152,6 +170,8 @@ pub const AstNode -> struct {
 
 // ─── Preprocessor Nodes ──────────────────────────────────────────────────────
 
+/// `@module` node: module name, doc comment, file path, body statement list,
+/// and the module's source text and token stream (retained for diagnostics).
 pub const ModuleNode -> struct {
   ...AstNode,
   name:        *byte,
@@ -167,12 +187,15 @@ pub const ModuleNode -> struct {
   token_count: i64,
 };
 
+/// `@use` import node: the imported module name and its local alias.
 pub const UseNode -> struct {
   ...AstNode,
   module_name: *byte,
   alias:       *byte,
 };
 
+/// `@os` conditional section: one body per platform plus an optional default
+/// body used when no platform matches.
 pub const OsNode -> struct {
   ...AstNode,
   platforms: **byte,
@@ -181,6 +204,7 @@ pub const OsNode -> struct {
   default_body: *AstNode,
 };
 
+/// `@link` node naming a library to link against.
 pub const LinkNode -> struct {
   ...AstNode,
   lib_name: *byte,
@@ -188,6 +212,8 @@ pub const LinkNode -> struct {
 
 // ─── Expression Nodes ────────────────────────────────────────────────────────
 
+/// Expression node for a literal value: one of int, float, double, string,
+/// char, bool, or null (selected by `lit_type`).
 pub const LiteralNode -> struct {
   ...AstNode,
   lit_type:   i64,
@@ -198,11 +224,14 @@ pub const LiteralNode -> struct {
   bool_val:   i64,
 };
 
+/// Expression node naming a symbol (`name`).
 pub const IdentifierNode -> struct {
   ...AstNode,
   name: *byte,
 };
 
+/// Expression node for a binary operation (`left op right`); also used for
+/// range expressions (`EXPR_RANGE`).
 pub const BinaryNode -> struct {
   ...AstNode,
   op:    i64,
@@ -210,12 +239,16 @@ pub const BinaryNode -> struct {
   right: *AstNode,
 };
 
+/// Expression node for a unary operation applied to `operand`; also reused
+/// for deref, address-of, grouping, and system-expression nodes.
 pub const UnaryNode -> struct {
   ...AstNode,
   op:      i64,
   operand: *AstNode,
 };
 
+/// Expression node for a function call: the `callee`, the `args` list
+/// (`arg_count`), and optional explicit generic `type_args`.
 pub const CallNode -> struct {
   ...AstNode,
   callee:    *AstNode,
@@ -228,12 +261,14 @@ pub const CallNode -> struct {
   type_arg_count: i64,
 };
 
+/// Expression node for an assignment (`target = value`).
 pub const AssignNode -> struct {
   ...AstNode,
   target: *AstNode,
   value:  *AstNode,
 };
 
+/// Expression node for a ternary `condition ? then_expr : else_expr`.
 pub const TernaryNode -> struct {
   ...AstNode,
   condition: *AstNode,
@@ -241,6 +276,9 @@ pub const TernaryNode -> struct {
   else_expr: *AstNode,
 };
 
+/// Expression node for a member access: `object.member` (`.`), or a compile
+/// time / qualified `object::member` (`is_compiletime`), with optional
+/// explicit generic `type_args`.
 pub const MemberNode -> struct {
   ...AstNode,
   is_compiletime: i64,
@@ -257,12 +295,15 @@ pub const MemberNode -> struct {
   type_arg_count:  i64,
 };
 
+/// Expression node for an index access (`object[index]`).
 pub const IndexNode -> struct {
   ...AstNode,
   object: *AstNode,
   index:  *AstNode,
 };
 
+/// Expression node for an array literal: the `elements` list
+/// (`element_count`) and an optional fixed `target_size`.
 pub const ArrayNode -> struct {
   ...AstNode,
   elements:      **AstNode,
@@ -270,22 +311,27 @@ pub const ArrayNode -> struct {
   target_size:   i64,
 };
 
+/// Expression node for a cast (`cast<T>(expr)`); also reused for `input`
+/// expressions (`EXPR_INPUT`).
 pub const CastNode -> struct {
   ...AstNode,
   type_node: *AstNode,
   castee:    *AstNode,
 };
 
+/// Expression node for `alloc(size)`.
 pub const AllocNode -> struct {
   ...AstNode,
   size: *AstNode,
 };
 
+/// Expression node for `free(ptr)`.
 pub const FreeNode -> struct {
   ...AstNode,
   ptr:  *AstNode,
 };
 
+/// Expression node for `memcpy(to, from, size)`.
 pub const MemcpyNode -> struct {
   ...AstNode,
   to:   *AstNode,
@@ -293,18 +339,23 @@ pub const MemcpyNode -> struct {
   size: *AstNode,
 };
 
+/// Expression node for `sizeof(...)`, taking the size of an object or a type
+/// (`is_type`).
 pub const SizeofNode -> struct {
   ...AstNode,
   object:  *AstNode,
   is_type: i64,
 };
 
+/// Expression node for an inline syscall with a raw argument list.
 pub const SyscallNode -> struct {
   ...AstNode,
   args:  **AstNode,
   count: i64,
 };
 
+/// Expression node for a struct literal `Name { field: value, ... }`, optionally
+/// qualified as `Alias::Name`, with optional explicit generic `type_args`.
 pub const StructExprNode -> struct {
   ...AstNode,
   name:        *byte,
@@ -325,17 +376,22 @@ pub const StructExprNode -> struct {
 
 // ─── Statement Nodes ─────────────────────────────────────────────────────────
 
+/// Root node of the whole program: the list of parsed `modules`.
 pub const ProgramNode -> struct {
   ...AstNode,
   modules:      **AstNode,
   module_count: i64,
 };
 
+/// Statement node wrapping a single expression statement.
 pub const ExprStmtNode -> struct {
   ...AstNode,
   expression: *AstNode,
 };
 
+/// Statement node for a `let`/`var`/`const` declaration: name, doc comment,
+/// optional type and initializer, and the `is_mutable`/`is_public` flags
+/// (const declarations store `is_mutable` = 0).
 pub const VarDeclNode -> struct {
   ...AstNode,
   name:        *byte,
@@ -346,6 +402,9 @@ pub const VarDeclNode -> struct {
   is_public:   i64,
 };
 
+/// Statement node for a function declaration: name, doc comment, parameter
+/// names/types (`param_count`), return type, visibility, ownership flags,
+/// body, DLL/lib import markers, and optional generic `type_params`.
 pub const FuncDeclNode -> struct {
   ...AstNode,
   name:              *byte,
@@ -374,6 +433,8 @@ pub const FuncDeclNode -> struct {
   type_param_count:  i64,
 };
 
+/// Statement node for a struct declaration: separate public/private member
+/// lists and optional generic `type_params`.
 pub const StructDeclNode -> struct {
   ...AstNode,
   name:            *byte,
@@ -389,6 +450,8 @@ pub const StructDeclNode -> struct {
   type_param_count:  i64,
 };
 
+/// Statement node for one struct member: a data field with a `type_node`, a
+/// method carried in `function`, or an embedded type (`is_embedded`).
 pub const FieldDeclNode -> struct {
   ...AstNode,
   name:        *byte,
@@ -406,6 +469,8 @@ pub const FieldDeclNode -> struct {
   is_static: i64,
 };
 
+/// Statement node for a C-style enum declaration: name, doc comment, member
+/// name list (`member_count`), and optional generic `type_params`.
 pub const EnumDeclNode -> struct {
   ...AstNode,
   name:         *byte,
@@ -423,6 +488,8 @@ pub const EnumDeclNode -> struct {
   type_param_count:  i64,
 };
 
+/// Statement node for an `if` with a condition, then-branch, `elif` list,
+/// and optional else-branch.
 pub const IfStmtNode -> struct {
   ...AstNode,
   condition:  *AstNode,
@@ -432,6 +499,8 @@ pub const IfStmtNode -> struct {
   else_stmt:  *AstNode,
 };
 
+/// Statement node for a `loop` with an optional init list, condition step,
+/// and body.
 pub const LoopStmtNode -> struct {
   ...AstNode,
   condition:   *AstNode,
@@ -441,17 +510,21 @@ pub const LoopStmtNode -> struct {
   init_count:  i64,
 };
 
+/// Statement node for `return value` (value may be null for bare returns).
 pub const ReturnStmtNode -> struct {
   ...AstNode,
   value: *AstNode,
 };
 
+/// Statement node for a brace-delimited block of `statements`.
 pub const BlockNode -> struct {
   ...AstNode,
   statements: **AstNode,
   stmt_count: i64,
 };
 
+/// Statement node for `print(...)`: the expression list (`expr_count`) and
+/// the `ln` flag selecting the newline-emitting form.
 pub const PrintStmtNode -> struct {
   ...AstNode,
   expressions: **AstNode,
@@ -459,16 +532,20 @@ pub const PrintStmtNode -> struct {
   ln:          i64,
 };
 
+/// Statement node for `break` or `continue` (`is_continue` selects which).
 pub const BreakContinueNode -> struct {
   ...AstNode,
   is_continue: i64,
 };
 
+/// Statement node for `defer statement`, run when the enclosing scope exits.
 pub const DeferNode -> struct {
   ...AstNode,
   statement: *AstNode,
 };
 
+/// Statement node for a `switch` on `condition`, with a `cases` list and an
+/// optional `default_case`.
 pub const SwitchNode -> struct {
   ...AstNode,
   condition:    *AstNode,
@@ -477,6 +554,8 @@ pub const SwitchNode -> struct {
   default_case: *AstNode,
 };
 
+/// Statement node for `impl`: pairs function names/types with the struct
+/// names they extend, plus a body.
 pub const ImplNode -> struct {
   ...AstNode,
   function_name_list:  **byte,
@@ -487,6 +566,7 @@ pub const ImplNode -> struct {
   body:                *AstNode,
 };
 
+/// Statement node for one switch `case`: a list of match `values` and a body.
 pub const CaseNode -> struct {
   ...AstNode,
   values:      **AstNode,
@@ -494,6 +574,7 @@ pub const CaseNode -> struct {
   body:        *AstNode,
 };
 
+/// Statement node for a switch `default` case, holding its body.
 pub const DefaultNode -> struct {
   ...AstNode,
   body: *AstNode,
@@ -501,6 +582,8 @@ pub const DefaultNode -> struct {
 
 // ─── Type Nodes ──────────────────────────────────────────────────────────────
 
+/// Type node for a named type (`i64`, user structs, ...), with optional
+/// explicit generic `type_args`.
 pub const BasicTypeNode -> struct {
   ...AstNode,
   name: *byte,
@@ -512,17 +595,20 @@ pub const BasicTypeNode -> struct {
   type_arg_count:  i64,
 };
 
+/// Type node for a pointer type (`*pointee_type`).
 pub const PointerTypeNode -> struct {
   ...AstNode,
   pointee_type: *AstNode,
 };
 
+/// Type node for an array of `element_type` sized by `size`.
 pub const ArrayTypeNode -> struct {
   ...AstNode,
   element_type: *AstNode,
   size:         *AstNode,
 };
 
+/// Type node for a function type: parameter types plus a return type.
 pub const FuncTypeNode -> struct {
   ...AstNode,
   param_types: **AstNode,
@@ -530,6 +616,8 @@ pub const FuncTypeNode -> struct {
   return_type: *AstNode,
 };
 
+/// Type node for a qualified type reference (e.g. `A::B`), assembled from
+/// `parts`, with optional explicit generic `type_args` on the last part.
 pub const ResolutionNode -> struct {
   ...AstNode,
   parts:      **byte,
@@ -542,6 +630,9 @@ pub const ResolutionNode -> struct {
   type_arg_count: i64,
 };
 
+/// Recursively frees an entire AST subtree, dispatching on `node.kind` to
+/// free each concrete node's owned buffers and child nodes. Takes ownership
+/// of `node` and frees the node itself; is null-safe.
 #takes_ownership
 pub const free_node -> fn (node: *AstNode) void {
   if (node == cast<*AstNode>(0)) return;
@@ -1097,6 +1188,10 @@ pub const free_node -> fn (node: *AstNode) void {
 // template containing one was already invalid before generics existed.
 // Returns NULL for any node kind it doesn't handle; callers (tc_generics)
 // turn that into a proper user-facing error rather than miscompiling.
+/// Deep-clones an entire AST subtree (used for generic monomorphization),
+/// substituting any active generic type parameters as it goes. Returns a
+/// fresh, independent clone, or null for node kinds that cannot appear in a
+/// generic template.
 #returns_ownership
 pub const clone_node -> fn (node: *AstNode) *AstNode;
 
@@ -1115,6 +1210,10 @@ let g_subst_count: i64       = 0;
 // arguments. Reentrant: an inner clone_node_substituting call (e.g. one
 // generic template's body calling another generic function) saves and
 // restores the outer table around its own, narrower one.
+/// Deep-clones `node` while replacing every bare type name matching `names[i]`
+/// with a clone of `types[i]` — the entry point used to instantiate a generic
+/// template at one concrete call site. Reentrant: an inner call saves and
+/// restores the outer substitution table.
 #returns_ownership
 pub const clone_node_substituting -> fn (node: *AstNode, names: **byte, types: **AstNode, count: i64) *AstNode {
   let save_names: **byte    = g_subst_names;
@@ -1134,6 +1233,7 @@ pub const clone_node_substituting -> fn (node: *AstNode, names: **byte, types: *
   return result;
 }
 
+/// Duplicates a null-terminated string (or returns null for a null input).
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
   if (s == cast<*byte>(0)) return cast<*byte>(0);
@@ -1143,6 +1243,7 @@ const dup_str -> fn (s: *byte) *byte {
   return out;
 }
 
+/// Deep-clones an array of `count` nodes into a fresh allocation.
 #returns_ownership
 const clone_node_array -> fn (arr: **AstNode, count: i64) **AstNode {
   if (count == 0) return cast<**AstNode>(0);
@@ -1155,6 +1256,7 @@ const clone_node_array -> fn (arr: **AstNode, count: i64) **AstNode {
   return out;
 }
 
+/// Duplicates an array of `count` strings into a fresh allocation.
 #returns_ownership
 const dup_str_array -> fn (arr: **byte, count: i64) **byte {
   if (count == 0) return cast<**byte>(0);
@@ -1167,6 +1269,8 @@ const dup_str_array -> fn (arr: **byte, count: i64) **byte {
   return out;
 }
 
+/// Implements `clone_node`: dispatches on `node.kind` to allocate a matching
+/// concrete clone and recursively deep-copy every owned field.
 #returns_ownership
 pub const clone_node -> fn (node: *AstNode) *AstNode {
   if (node == cast<*AstNode>(0)) return cast<*AstNode>(0);

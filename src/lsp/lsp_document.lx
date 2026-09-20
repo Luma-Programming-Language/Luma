@@ -26,6 +26,13 @@
 @use "json"          as J
 @use "lsp_transport" as T
 
+/// An open document tracked by the server.
+///
+/// # Fields
+/// - `uri`: owned URI identifying the document
+/// - `text`: owned latest full text from didOpen/didChange
+/// - `version`: version number reported by the client
+/// - `ast`: cached ProgramNode from the last analysis, or null when the current text fails to parse
 pub const LSPDocument -> struct {
   uri:     *byte,        // owned
   text:    *byte,        // owned, latest full content from didOpen/didChange
@@ -37,12 +44,16 @@ pub const LSPDocument -> struct {
                           // they don't need to re-parse on every request.
 };
 
+/// Vector of every open LSPDocument.
 pub let g_documents: VEC::Vector;
 
+/// Initializes the global document table; call once before any other
+/// lsp_document_* function.
 pub const lsp_document_init -> fn () void {
   g_documents = VEC::create_vector(sizeof<LSPDocument>);
 }
 
+/// Returns the index of the document whose uri matches, or -1 if not open.
 const find_index -> fn (uri: *byte) i64 {
   let n: i64 = g_documents.size;
   loop [i: i64 = 0](i < n) : (++i) {
@@ -52,6 +63,7 @@ const find_index -> fn (uri: *byte) i64 {
   return -1;
 }
 
+/// Returns a fresh heap copy of a NUL-terminated string.
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
   if (s == cast<*byte>(0)) return cast<*byte>(0);
@@ -61,12 +73,14 @@ const dup_str -> fn (s: *byte) *byte {
   return out;
 }
 
+/// Returns the open LSPDocument for uri, or null if not open.
 pub const lsp_document_find -> fn (uri: *byte) *LSPDocument {
   let idx: i64 = find_index(uri);
   if (idx < 0) return cast<*LSPDocument>(0);
   return cast<*LSPDocument>(g_documents.get(idx));
 }
 
+/// Registers uri with the given text and version, creating or replacing the document.
 pub const lsp_document_open -> fn (uri: *byte, text: *byte, version: i64) void {
   let idx: i64 = find_index(uri);
   if (idx >= 0) {
@@ -84,6 +98,7 @@ pub const lsp_document_open -> fn (uri: *byte, text: *byte, version: i64) void {
   g_documents.push_back(cast<*void>(&doc));
 }
 
+/// Replaces the text and version of an open document, opening it first if absent.
 pub const lsp_document_update -> fn (uri: *byte, text: *byte, version: i64) void {
   let idx: i64 = find_index(uri);
   if (idx < 0) { lsp_document_open(uri, text, version); return; }
@@ -94,6 +109,7 @@ pub const lsp_document_update -> fn (uri: *byte, text: *byte, version: i64) void
   d.version = version;
 }
 
+/// Unregisters uri and frees its URI, text, and cached AST.
 pub const lsp_document_close -> fn (uri: *byte) void {
   let idx: i64 = find_index(uri);
   if (idx < 0) return;
@@ -120,13 +136,21 @@ pub const lsp_document_close -> fn (uri: *byte) void {
 // a scratch file — simplest thing that works without adding a new FFI
 // surface just for this.
 
+/// One resolved module in the registry.
+///
+/// # Fields
+/// - `name`: owned `@module` name
+/// - `path`: owned absolute file path
 const ModuleRegistryEntry -> struct {
   name: *byte, // owned — the @module name
   path: *byte, // owned — absolute file path
 };
 
+/// Registry of known modules, keyed by `@module` name.
 let g_registry: VEC::Vector;
+/// True once the registry scan has run (the scan runs lazily, once).
 let g_registry_built: bool = false;
+/// Owned workspace root URI, set from the client's initialize request.
 let g_workspace_root: *byte = cast<*byte>(0); // owned; set via lsp_set_workspace_root
 
 @os {
@@ -146,8 +170,10 @@ let g_workspace_root: *byte = cast<*byte>(0); // owned; set via lsp_set_workspac
   _ -> { const CURRENT_OS: *byte = "unknown"; }
 }
 
+/// Scratch file that collects the recursive registry scan output.
 const REGISTRY_LISTING_PATH: *byte = "/tmp/.luma-lsp-registry-listing.txt";
 
+/// Stores the workspace root, stripping a leading `file://` prefix.
 // Call once at startup (from the `initialize` handler) with the client's
 // rootUri/workspaceFolder, if any — strips a leading "file://" if present.
 pub const lsp_set_workspace_root -> fn (uri: *byte) void {
@@ -170,6 +196,7 @@ pub const lsp_set_workspace_root -> fn (uri: *byte) void {
   g_workspace_root = dup_str(uri);
 }
 
+/// Returns the index of the first occurrence of needle in haystack, or -1.
 // Returns the index of the first occurrence of `needle` in `haystack`, or
 // -1. std_cstring doesn't have a strstr equivalent yet.
 const find_substr -> fn (haystack: *byte, needle: *byte) i64 {
@@ -187,6 +214,7 @@ const find_substr -> fn (haystack: *byte, needle: *byte) i64 {
   return -1;
 }
 
+/// Extracts the `@module "name"` from file contents, or null if none.
 // `@module` is always the very first statement in a valid Luma file, so a
 // left-to-right scan for the first "@module" followed by a quoted string
 // is safe even if that same text also shows up later (e.g. inside a
@@ -216,6 +244,7 @@ const extract_module_name -> fn (content: *byte) *byte {
   return name;
 }
 
+/// Returns the registered path for name, or null if unknown.
 const registry_lookup -> fn (name: *byte) *byte {
   let n: i64 = g_registry.size;
   loop [i: i64 = 0](i < n) : (++i) {
@@ -225,6 +254,7 @@ const registry_lookup -> fn (name: *byte) *byte {
   return cast<*byte>(0);
 }
 
+/// Parses a file's `@module` name and registers it in the registry.
 // Doesn't dedup by name here — registry_lookup/registry_has already scan
 // from index 0, so if two files declare the same @module name the first
 // one registered simply wins there instead. Keeping this free of any
@@ -250,6 +280,7 @@ const register_file -> fn (path: *byte) void {
   }
 }
 
+/// Appends every `*.lx` path under dir to the registry listing file.
 const append_dir_listing -> fn (dir: *byte) void {
   let mid: *byte = "' -name '*.lx' >> '";
   let tail: *byte = "' 2>/dev/null";
@@ -264,6 +295,7 @@ const append_dir_listing -> fn (dir: *byte) void {
   free(cmd);
 }
 
+/// Scans std and the workspace root and fills g_registry; only runs once.
 const build_registry -> fn () void {
   if (g_registry_built) return;
   g_registry_built = true;
@@ -300,6 +332,7 @@ const build_registry -> fn () void {
   free(listing);
 }
 
+/// True if name already appears in the seen list.
 const name_seen -> fn (seen: *VEC::Vector, name: *byte) bool {
   let n: i64 = seen.size;
   loop [i: i64 = 0](i < n) : (++i) {
@@ -309,6 +342,7 @@ const name_seen -> fn (seen: *VEC::Vector, name: *byte) bool {
   return false;
 }
 
+/// Returns the transitive closure of modules imported by main_module.
 // Parses `main_module`'s `@use` imports and, transitively, whatever those
 // import in turn, resolving each through the registry — the same closure
 // `-l` builds by hand for the CLI compiler. Modules the registry doesn't
@@ -358,8 +392,10 @@ const collect_modules -> fn (main_module: *AST::AstNode) VEC::Vector {
 // Analysis
 // ============================================================================
 
+/// Scratch file each document is written to for analysis.
 const SCRATCH_PATH: *byte = "/tmp/.luma-lsp-scratch.lx";
 
+/// Creates path if needed, then writes content to it.
 // std_io's write_buffer_to_file opens with local_open_write, which uses a
 // plain O_RDWR with no O_CREAT — it only ever writes to a file that already
 // exists. The scratch file needs to be created on first use, so write it
@@ -372,6 +408,7 @@ const write_scratch_file -> fn (path: *byte, content: *byte) void {
   IO::local_close(fd);
 }
 
+/// Parses and typechecks a document's text as a scratch file, caching the program.
 pub const lsp_analyze -> fn (doc: *LSPDocument) void {
   ERO::error_clear();
 
@@ -427,6 +464,7 @@ pub const lsp_analyze -> fn (doc: *LSPDocument) void {
 // Diagnostics
 // ============================================================================
 
+/// Appends the compiler's printed help text to a diagnostic message.
 #returns_ownership
 const build_message_with_help -> fn (message: *byte, help: *byte) *byte {
   let sep: *byte = "\n\nHelp: ";
@@ -437,6 +475,7 @@ const build_message_with_help -> fn (message: *byte, help: *byte) *byte {
   return out;
 }
 
+/// Builds the JSON diagnostics array for the current analysis errors.
 #returns_ownership
 const diagnostics_array -> fn () *J::JsonValue {
   let arr: *J::JsonValue = J::json_array();
@@ -494,6 +533,7 @@ const diagnostics_array -> fn () *J::JsonValue {
   return arr;
 }
 
+/// Publishes a textDocument/publishDiagnostics notification for uri.
 pub const lsp_publish_diagnostics -> fn (uri: *byte) void {
   let params: *J::JsonValue = J::json_object();
   J::json_object_set(params, "uri", J::json_string(uri));
@@ -505,6 +545,7 @@ pub const lsp_publish_diagnostics -> fn (uri: *byte) void {
   T::send_notification("textDocument/publishDiagnostics", params);
 }
 
+/// Re-analyzes uri and publishes fresh diagnostics for it.
 // Analyzes `uri`'s current buffer and publishes fresh diagnostics for it.
 pub const lsp_analyze_and_publish -> fn (uri: *byte) void {
   let doc: *LSPDocument = lsp_document_find(uri);
@@ -517,15 +558,24 @@ pub const lsp_analyze_and_publish -> fn (uri: *byte) void {
 // Document Symbols
 // ============================================================================
 
+/// SymbolKind code for functions.
 const SK_FUNCTION:   i64 = 12;
+/// SymbolKind code for structs.
 const SK_STRUCT:     i64 = 23;
+/// SymbolKind code for enums.
 const SK_ENUM:       i64 = 10;
+/// SymbolKind code for variables.
 const SK_VARIABLE:   i64 = 13;
+/// SymbolKind code for constants.
 const SK_CONSTANT:   i64 = 14;
+/// SymbolKind code for methods.
 const SK_METHOD:     i64 = 6;
+/// SymbolKind code for fields.
 const SK_FIELD:      i64 = 8;
+/// SymbolKind code for enum members.
 const SK_ENUM_MEMBER: i64 = 22;
 
+/// Unwraps the cached program into a ModuleNode, or null.
 // `doc.ast` is the ProgramNode built for the single scratch file this
 // document was last analyzed as (see lsp_analyze) — unwrap to its one
 // ModuleNode, or null if the current text doesn't parse at all.
@@ -537,6 +587,7 @@ const doc_module -> fn (doc: *LSPDocument) *AST::ModuleNode {
   return cast<*AST::ModuleNode>(prog.modules[0]);
 }
 
+/// Builds a JSON `{line, character}` position object.
 #returns_ownership
 const make_position -> fn (line: i64, character: i64) *J::JsonValue {
   let pos: *J::JsonValue = J::json_object();
@@ -545,6 +596,7 @@ const make_position -> fn (line: i64, character: i64) *J::JsonValue {
   return pos;
 }
 
+/// Builds a document-symbol node with a name, kind, range, and children.
 // Declaration nodes only carry a single (line, col) — where the declaration
 // itself starts (e.g. at `pub`/`const`), not a separate position for the
 // name token — so `range`/`selectionRange` here are an approximation: a
@@ -581,6 +633,7 @@ const make_symbol -> fn (name: *byte, kind: i64, line: i64, col: i64, children: 
   return sym;
 }
 
+/// Builds child symbols for a struct's fields and methods.
 #returns_ownership
 const make_struct_symbol_children -> fn (sd: *AST::StructDeclNode) *J::JsonValue {
   let arr: *J::JsonValue = J::json_array();
@@ -605,6 +658,7 @@ const make_struct_symbol_children -> fn (sd: *AST::StructDeclNode) *J::JsonValue
   return arr;
 }
 
+/// Builds child symbols for an enum's variants.
 #returns_ownership
 const make_enum_symbol_children -> fn (ed: *AST::EnumDeclNode) *J::JsonValue {
   // Enum members are plain name constants with no per-member position, so
@@ -617,6 +671,7 @@ const make_enum_symbol_children -> fn (ed: *AST::EnumDeclNode) *J::JsonValue {
   return arr;
 }
 
+/// Returns the document-symbol array for uri, or null.
 // List of the document's top-level declarations with struct/enum children
 // expanded — provides an editor's outline/breadcrumb view (LSP
 // `textDocument/documentSymbol`).
@@ -670,17 +725,25 @@ pub const lsp_document_symbols -> fn (uri: *byte) *J::JsonValue {
 // each resolved dependency. Good enough for "what is this function/struct/
 // enum/const", not for locals or shadowed names.
 
+/// A growable string buffer used to assemble signature text.
+///
+/// # Fields
+/// - `data`: owned byte buffer
+/// - `len`: number of bytes written
+/// - `cap`: allocated capacity
 const StrBuf -> struct {
   data: *byte,
   len:  i64,
   cap:  i64,
 };
 
+/// Returns an empty StrBuf with a preallocated buffer.
 const sb_init -> fn () StrBuf {
   let cap: i64 = 128;
   return StrBuf { data: cast<*byte>(alloc(cap)), len: 0, cap: cap };
 }
 
+/// Grows the buffer so `extra` more bytes fit.
 const sb_ensure -> fn (b: *StrBuf, extra: i64) void {
   if (b.len + extra + 1 <= b.cap) return;
   let old_cap: i64 = b.cap;
@@ -690,6 +753,7 @@ const sb_ensure -> fn (b: *StrBuf, extra: i64) void {
   b.cap = new_cap;
 }
 
+/// Appends the NUL-terminated string s.
 const sb_str -> fn (b: *StrBuf, s: *byte) void {
   let n: i64 = STR::strlen(s);
   sb_ensure(b, n);
@@ -697,6 +761,7 @@ const sb_str -> fn (b: *StrBuf, s: *byte) void {
   b.len = b.len + n;
 }
 
+/// NUL-terminates and returns the buffer as an owned string.
 #returns_ownership
 const sb_finish -> fn (b: *StrBuf) *byte {
   sb_ensure(b, 0);
@@ -704,10 +769,12 @@ const sb_finish -> fn (b: *StrBuf) *byte {
   return b.data;
 }
 
+/// True if c is a valid identifier character.
 const is_ident_char -> fn (c: byte) bool {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_';
 }
 
+/// Returns the identifier word touching (line, character) in text, or null.
 // Extracts the identifier touching (line, character) in `text` — LSP
 // positions are 0-indexed lines with a UTF-16-code-unit character offset,
 // same convention used elsewhere in this file.
@@ -752,6 +819,7 @@ const word_at_position -> fn (text: *byte, line: i64, character: i64) *byte {
   return word;
 }
 
+/// Formats a function header as `fn name<T>(args) Ret` plus its doc comment.
 #returns_ownership
 const format_func_signature -> fn (fd: *AST::FuncDeclNode) *byte {
   let b: StrBuf = sb_init();
@@ -781,6 +849,7 @@ const format_func_signature -> fn (fd: *AST::FuncDeclNode) *byte {
   return sb_finish(&b);
 }
 
+/// Formats one struct member (typed field or method) for a signature.
 #returns_ownership
 const format_struct_member -> fn (member: *AST::AstNode) *byte {
   let fld: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(member);
@@ -804,6 +873,7 @@ const format_struct_member -> fn (member: *AST::AstNode) *byte {
   return sb_finish(&b);
 }
 
+/// Formats a struct header as `struct Name<T> { ... }`.
 #returns_ownership
 const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
   let b: StrBuf = sb_init();
@@ -844,6 +914,7 @@ const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
   return sb_finish(&b);
 }
 
+/// Formats an enum header as `enum Name<T> { ... }`.
 #returns_ownership
 const format_enum_signature -> fn (ed: *AST::EnumDeclNode) *byte {
   let b: StrBuf = sb_init();
@@ -866,6 +937,7 @@ const format_enum_signature -> fn (ed: *AST::EnumDeclNode) *byte {
   return sb_finish(&b);
 }
 
+/// Formats a variable header as `let name: Type`.
 #returns_ownership
 const format_var_signature -> fn (vd: *AST::VarDeclNode) *byte {
   let b: StrBuf = sb_init();
@@ -880,6 +952,7 @@ const format_var_signature -> fn (vd: *AST::VarDeclNode) *byte {
   return sb_finish(&b);
 }
 
+/// Appends doc_comment (if any) to sig, returning a fresh owned string.
 // Takes ownership of `sig` and returns it unchanged when there's no doc
 // comment, otherwise a new buffer `sig + '\n' + doc_comment` (the trailing
 // blank line the parser's consume_doc_comments leaves behind is trimmed so
@@ -916,6 +989,7 @@ const append_doc_comment -> fn (sig: *byte, doc_comment: *byte) *byte {
 // go-to-definition — not real lexical scoping (no shadowing precision), but
 // right in the common case.
 
+/// Returns the function whose body spans one_indexed_line, or null.
 const find_enclosing_function -> fn (mod: *AST::ModuleNode, one_indexed_line: i64) *AST::FuncDeclNode {
   let best: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(0);
   let best_line: i64 = -1;
@@ -934,6 +1008,7 @@ const find_enclosing_function -> fn (mod: *AST::ModuleNode, one_indexed_line: i6
   return best;
 }
 
+/// Searches a statement recursively for a local or const named name.
 // Recursively searches `stmt` for a `let`/`const` declaration named `name`,
 // returning the VarDeclNode (as a plain AstNode) or null.
 const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::AstNode {
@@ -996,6 +1071,15 @@ const search_stmt_for_local_decl -> fn (stmt: *AST::AstNode, name: *byte) *AST::
   return cast<*AST::AstNode>(0);
 }
 
+/// Result of resolving a name inside a function body.
+///
+/// # Fields
+/// - `found`: whether the name was located
+/// - `is_param`: true for a parameter rather than a local
+/// - `line`: 1-based source line of the declaration
+/// - `col`: 0-based column of the declaration
+/// - `name_len`: length of the declared identifier
+/// - `type_node`: AST of the annotation, or null when untyped
 const LocalThing -> struct {
   found:     bool,
   is_param:  bool,
@@ -1005,6 +1089,7 @@ const LocalThing -> struct {
   type_node: *AST::AstNode, // null is a valid "no annotation" case, not "not found"
 };
 
+/// Resolves name to a LocalThing inside the function enclosing the line.
 const find_local_thing -> fn (mod: *AST::ModuleNode, one_indexed_line: i64, name: *byte) LocalThing {
   let miss: LocalThing = LocalThing {
     found: false, is_param: false, line: 0, col: 0, name_len: 0,
@@ -1038,6 +1123,7 @@ const find_local_thing -> fn (mod: *AST::ModuleNode, one_indexed_line: i64, name
   return miss;
 }
 
+/// Formats hover text for a resolved local or parameter.
 #returns_ownership
 const format_local_hover -> fn (name: *byte, thing: LocalThing) *byte {
   let b: StrBuf = sb_init();
@@ -1052,6 +1138,7 @@ const format_local_hover -> fn (name: *byte, thing: LocalThing) *byte {
   return sb_finish(&b);
 }
 
+/// Returns a formatted signature for the top-level declaration named name, or null.
 #returns_ownership
 const find_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: bool) *byte {
   if (mod == cast<*AST::ModuleNode>(0)) return cast<*byte>(0);
@@ -1098,6 +1185,7 @@ const find_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: boo
 // struct's own params), and enums (header only — plain name constants, no
 // body to reference `T` from).
 
+/// Returns the deepest line spanned by any node in stmt.
 const max_line_in_stmt -> fn (stmt: *AST::AstNode) i64 {
   if (stmt == cast<*AST::AstNode>(0)) return 0;
 
@@ -1148,11 +1236,13 @@ const max_line_in_stmt -> fn (stmt: *AST::AstNode) i64 {
   return best;
 }
 
+/// Returns the last line of a function body, or its header line if bodyless.
 const func_end_line -> fn (fd: *AST::FuncDeclNode) i64 {
   if (fd.body == cast<*AST::AstNode>(0)) return fd.line;
   return max_line_in_stmt(fd.body);
 }
 
+/// Returns the last line spanned by a struct field, including a method body.
 const field_end_line -> fn (f: *AST::AstNode) i64 {
   let fl: *AST::FieldDeclNode = cast<*AST::FieldDeclNode>(f);
   let end: i64 = fl.line;
@@ -1163,6 +1253,7 @@ const field_end_line -> fn (f: *AST::AstNode) i64 {
   return end;
 }
 
+/// Returns the deepest line spanned by any member of a struct.
 const struct_end_line -> fn (sd: *AST::StructDeclNode) i64 {
   let end: i64 = sd.line;
   loop [i: i64 = 0](i < sd.public_count) : (++i) {
@@ -1176,12 +1267,19 @@ const struct_end_line -> fn (sd: *AST::StructDeclNode) i64 {
   return end;
 }
 
+/// A generic declaration that owns a type parameter.
+///
+/// # Fields
+/// - `found`: whether the parameter was located
+/// - `node`: the generic Func/Struct/Enum declaration owning the parameter
+/// - `idx`: index of the parameter in that node's type_params
 const TypeParamHit -> struct {
   found: bool,
   node:  *AST::AstNode, // generic Func/Struct/Enum decl owning the type param
   idx:   i64,           // index into that node's type_params array
 };
 
+/// Searches a struct's methods (and self type params) for one that owns word.
 const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: i64, word: *byte) TypeParamHit {
   let miss: TypeParamHit = TypeParamHit { found: false, node: cast<*AST::AstNode>(0), idx: 0 };
   let best: TypeParamHit = miss;
@@ -1218,6 +1316,7 @@ const struct_method_hit -> fn (sd: *AST::StructDeclNode, one_indexed_line: i64, 
   return best;
 }
 
+/// Resolves word to the generic declaration that owns it at that line.
 const resolve_type_param -> fn (mod: *AST::ModuleNode, one_indexed_line: i64, word: *byte) TypeParamHit {
   let miss: TypeParamHit = TypeParamHit { found: false, node: cast<*AST::AstNode>(0), idx: 0 };
   if (mod == cast<*AST::ModuleNode>(0)) return miss;
@@ -1262,6 +1361,7 @@ const resolve_type_param -> fn (mod: *AST::ModuleNode, one_indexed_line: i64, wo
   return best;
 }
 
+/// Formats hover text for a type parameter under a generic header.
 #returns_ownership
 const format_type_param_hover -> fn (name: *byte, sig: *byte) *byte {
   let b: StrBuf = sb_init();
@@ -1273,12 +1373,19 @@ const format_type_param_hover -> fn (name: *byte, sig: *byte) *byte {
   return sb_finish(&b);
 }
 
+/// Source position of a located type parameter.
+///
+/// # Fields
+/// - `line`: 1-based source line
+/// - `col`: 0-based column
+/// - `len`: length of the parameter name
 const ParamPos -> struct {
   line: i64, // 1-based source line
   col:  i64, // 0-based column
   len:  i64,
 };
 
+/// Returns the byte offset of the start of zero-indexed line_index.
 const line_start_offset -> fn (text: *byte, line_index: i64) i64 {
   let len: i64 = STR::strlen(text);
   let i: i64 = 0;
@@ -1290,6 +1397,7 @@ const line_start_offset -> fn (text: *byte, line_index: i64) i64 {
   return i;
 }
 
+/// Finds where the type parameter appears inside its generic header.
 // Locates the hit's type parameter within its declaration's `<T, U>`
 // header (the keyword `fn`/`struct`/`enum` is `keylen` chars long, and the
 // list follows it on the same line). Falls back to just past the keyword if
@@ -1339,6 +1447,7 @@ const locate_type_param -> fn (text: *byte, hit: TypeParamHit) ParamPos {
   return ParamPos { line: line_index + 1, col: p - ls, len: plen };
 }
 
+/// Resolves name at a 0-based line to a signature string, or null.
 #returns_ownership
 const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_indexed_line: i64) *byte {
   if (doc == cast<*LSPDocument>(0) || doc.ast == cast<*AST::AstNode>(0)) return cast<*byte>(0);
@@ -1382,6 +1491,7 @@ const resolve_symbol_signature -> fn (doc: *LSPDocument, name: *byte, zero_index
   return cast<*byte>(0);
 }
 
+/// Returns hover text for the word at (line, character) in uri, or null.
 // Returns a formatted signature string for the declaration named at
 // (line, character) in `uri`'s current buffer, or null if there's no
 // document, no word at that position, or no matching declaration.
@@ -1405,6 +1515,13 @@ pub const lsp_hover -> fn (uri: *byte, line: i64, character: i64) *byte {
 // Same word-at-cursor + same-file-then-dependencies resolution as hover,
 // just returning a Location (uri + range) instead of formatted text.
 
+/// A definition-site position found for go-to-definition.
+///
+/// # Fields
+/// - `found`: whether a definition was located
+/// - `line`: 1-based source line
+/// - `col`: 0-based column
+/// - `name_len`: length of the definition's identifier
 const DefHit -> struct {
   found:    bool,
   line:     i64,
@@ -1412,6 +1529,7 @@ const DefHit -> struct {
   name_len: i64,
 };
 
+/// Finds the top-level declaration named name in a module, optionally public-only.
 const find_definition_in_module -> fn (mod: *AST::ModuleNode, name: *byte, public_only: bool) DefHit {
   let miss: DefHit = DefHit { found: false, line: 0, col: 0, name_len: 0 };
   if (mod == cast<*AST::ModuleNode>(0)) return miss;
@@ -1444,6 +1562,7 @@ const find_definition_in_module -> fn (mod: *AST::ModuleNode, name: *byte, publi
   return miss;
 }
 
+/// Prefixes a filesystem path with `file://`.
 #returns_ownership
 const path_to_uri -> fn (path: *byte) *byte {
   let prefix: *byte = "file://";
@@ -1453,6 +1572,7 @@ const path_to_uri -> fn (path: *byte) *byte {
   return out;
 }
 
+/// Builds a JSON Location object for a definition sitting at (line, col).
 #returns_ownership
 const make_location_json -> fn (uri: *byte, line: i64, col: i64, name_len: i64) *J::JsonValue {
   // line is 1-indexed; col is already 0-indexed (see diagnostics_array's note).
@@ -1472,6 +1592,7 @@ const make_location_json -> fn (uri: *byte, line: i64, col: i64, name_len: i64) 
   return loc;
 }
 
+/// Returns the definition Location for the word at (line, character) in uri, or null.
 // Returns a Location for the declaration named at (line, character) in
 // `uri`'s current buffer, or null if there's no match.
 #returns_ownership
@@ -1532,15 +1653,24 @@ pub const lsp_definition -> fn (uri: *byte, line: i64, character: i64) *J::JsonV
 // locals/parameters in whichever function encloses the cursor. A client's
 // own fuzzy-filtering does the rest.
 
+/// CompletionItemKind code for functions.
 const CK_FUNCTION: i64 = 3;
+/// CompletionItemKind code for variables.
 const CK_VARIABLE: i64 = 6;
+/// CompletionItemKind code for enums.
 const CK_ENUM:      i64 = 13;
+/// CompletionItemKind code for keywords.
 const CK_KEYWORD:   i64 = 14;
+/// CompletionItemKind code for constants.
 const CK_CONSTANT:  i64 = 21;
+/// CompletionItemKind code for structs.
 const CK_STRUCT:    i64 = 22;
+/// CompletionItemKind code for enum members.
 const CK_ENUM_MEMBER: i64 = 20;
 
+/// Number of keyword completions.
 const KEYWORD_COUNT: i64 = 43;
+/// The language keywords offered as completions.
 const KEYWORDS: [*byte; 43] = [
   "let", "const", "pub", "fn", "struct", "enum", "if", "elif", "else",
   "loop", "switch", "return", "break", "continue", "defer", "cast",
@@ -1550,6 +1680,7 @@ const KEYWORDS: [*byte; 43] = [
   "priv", "using", "static", "input", "system", "alloc", "free", "as"
 ];
 
+/// Builds a completion item with a label, kind, and detail.
 #returns_ownership
 const make_completion_item -> fn (label: *byte, kind: i64, detail: *byte) *J::JsonValue {
   let item: *J::JsonValue = J::json_object();
@@ -1573,16 +1704,26 @@ const make_completion_item -> fn (label: *byte, kind: i64, detail: *byte) *J::Js
 // against actual working code in this repo (e.g. #dll_import's exact
 // shape from std/io.lx, @link's from parser/stmt.lx's link_stmt).
 
+/// CompletionItemKind code for snippet completions.
 const CK_SNIPPET: i64 = 15;
 
+/// A snippet completion template.
+///
+/// # Fields
+/// - `label`: completion label
+/// - `snippet`: insertText body with $0-style tab stops
+/// - `detail`: explanatory detail
+/// - `filter`: filter text
 const SnippetDef -> struct { label: *byte, snippet: *byte, detail: *byte, filter: *byte };
 
+/// Number of snippet templates.
 // The block below adds patterns pulled from grepping this actual codebase
 // for what's repeated constantly, not just generic language shapes —
 // e.g. the AST-node-kind dispatch `if (x.kind == ...) { let n: *T =
 // cast<*T>(x); ... }` shows up ~190 times across src/, the null-guard
 // early-return ~95 times, `alloc(sizeof<T>)` node construction ~70 times.
 const SNIPPET_COUNT: i64 = 47;
+/// The snippet templates offered as completions.
 const SNIPPETS: [SnippetDef; 47] = [
   SnippetDef { label: "const fn", snippet: "const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Function declaration", filter: "const fn" },
   SnippetDef { label: "pub const fn", snippet: "pub const ${1:name} -> fn (${2:params}) ${3:Type} {\n\t$0\n}", detail: "Public function declaration", filter: "pub const fn" },
@@ -1633,6 +1774,7 @@ const SNIPPETS: [SnippetDef; 47] = [
   SnippetDef { label: "input", snippet: "let ${1:value}: ${2:Type} = input<${2:Type}>(\"${3:prompt}\");$0", detail: "Prompt for typed input from stdin", filter: "input prompt read stdin" },
 ];
 
+/// Builds a snippet completion item from a SnippetDef.
 #returns_ownership
 const make_snippet_item -> fn (def: SnippetDef) *J::JsonValue {
   let item: *J::JsonValue = J::json_object();
@@ -1656,6 +1798,7 @@ const make_snippet_item -> fn (def: SnippetDef) *J::JsonValue {
 // codebase's own style) case of having just typed the module alias and
 // wanting to see what hangs off it.
 
+/// Builds an `alias::name` completion item for an alias-prefixed access.
 #returns_ownership
 const make_prefixed_completion_item -> fn (alias: *byte, name: *byte, kind: i64) *J::JsonValue {
   let b: StrBuf = sb_init();
@@ -1673,6 +1816,7 @@ const make_prefixed_completion_item -> fn (alias: *byte, name: *byte, kind: i64)
   return item;
 }
 
+/// Adds `alias::name` completions for every dependency module.
 const collect_prefixed_import_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNode, prog: *AST::ProgramNode) void {
   let n: i64 = mod.body_count;
   loop [i: i64 = 0](i < n) : (++i) {
@@ -1707,6 +1851,7 @@ const collect_prefixed_import_completions -> fn (arr: *J::JsonValue, mod: *AST::
   }
 }
 
+/// Adds completions for a module's top-level declarations.
 const collect_module_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNode, public_only: bool) void {
   if (mod == cast<*AST::ModuleNode>(0)) return;
 
@@ -1743,6 +1888,7 @@ const collect_module_completions -> fn (arr: *J::JsonValue, mod: *AST::ModuleNod
   }
 }
 
+/// Adds completions for every local declaration inside stmt, recursively.
 // Same shape as search_stmt_for_local_decl, but collects every local
 // instead of stopping at the first name match.
 const collect_locals_completions -> fn (arr: *J::JsonValue, stmt: *AST::AstNode) void {
@@ -1792,6 +1938,7 @@ const collect_locals_completions -> fn (arr: *J::JsonValue, stmt: *AST::AstNode)
   }
 }
 
+/// Returns the completion list for the position in uri, or null.
 #returns_ownership
 pub const lsp_completions -> fn (uri: *byte, line: i64, character: i64) *J::JsonValue {
   let arr: *J::JsonValue = J::json_array();
@@ -1854,30 +2001,53 @@ pub const lsp_completions -> fn (uri: *byte, line: i64, character: i64) *J::Json
 // prefers the AST pass's answer wherever it has one for that exact
 // (line, col); the raw pass only fills gaps.
 
+/// Legend index for namespace tokens.
 const TT_NAMESPACE:      i64 = 0;
+/// Legend index for type tokens.
 const TT_TYPE:            i64 = 1;
+/// Legend index for type-parameter tokens.
 const TT_TYPE_PARAMETER:  i64 = 2;
+/// Legend index for function tokens.
 const TT_FUNCTION:        i64 = 3;
+/// Legend index for method tokens.
 const TT_METHOD:          i64 = 4;
+/// Legend index for property tokens.
 const TT_PROPERTY:        i64 = 5;
+/// Legend index for variable tokens.
 const TT_VARIABLE:        i64 = 6;
+/// Legend index for parameter tokens.
 const TT_PARAMETER:       i64 = 7;
+/// Legend index for keyword tokens.
 const TT_KEYWORD:         i64 = 8;
+/// Legend index for modifier tokens.
 const TT_MODIFIER:        i64 = 9;
+/// Legend index for comment tokens.
 const TT_COMMENT:         i64 = 10;
+/// Legend index for string tokens.
 const TT_STRING:          i64 = 11;
+/// Legend index for number tokens.
 const TT_NUMBER:          i64 = 12;
+/// Legend index for operator tokens.
 const TT_OPERATOR:        i64 = 13;
+/// Legend index for struct tokens.
 const TT_STRUCT:          i64 = 14;
+/// Legend index for enum tokens.
 const TT_ENUM:            i64 = 15;
+/// Legend index for enum-member tokens.
 const TT_ENUM_MEMBER:     i64 = 16;
 
+/// Modifier bit for a declaration.
 const MOD_DECLARATION: i64 = 1;
+/// Modifier bit for a definition.
 const MOD_DEFINITION:  i64 = 2;
+/// Modifier bit for a read-only value.
 const MOD_READONLY:    i64 = 4;
+/// Modifier bit for a static member.
 const MOD_STATIC:      i64 = 8;
+/// Modifier bit for a std-library symbol.
 const MOD_DEFAULT_LIB: i64 = 16;
 
+/// Live document text kept while emitting tokens so member names can be recovered.
 // The live text buffer being walked for the current lsp_semantic_tokens
 // call — needed by find_member_position below to recover a `::`/`.`
 // member name's own position (MemberNode doesn't carry one; see its note).
@@ -1885,6 +2055,7 @@ const MOD_DEFAULT_LIB: i64 = 16;
 // requests are handled one at a time.
 let g_sem_text: *byte = cast<*byte>(0);
 
+/// True while emitting tokens inside a struct method body, so self reads as a variable.
 // True while walk_field_for_tokens is walking a struct *method*'s body.
 // `self` inside a method is never a declared AST parameter — it's added
 // straight into the typecheck-time scope (see stmt.lx's typecheck_impl,
@@ -1893,6 +2064,7 @@ let g_sem_text: *byte = cast<*byte>(0);
 // being one of the most common identifiers in method bodies.
 let g_sem_in_method: bool = false;
 
+/// True while emitting tokens inside an uninstantiated generic body.
 // True while walking an *uninstantiated generic* body — a generic struct
 // template's methods (`struct<K, V> { ... }`, including methods that use the
 // inherited params by name without redeclaring them) or a top-level
@@ -1905,6 +2077,7 @@ let g_sem_in_method: bool = false;
 // Safe as a global since requests are handled one at a time.
 let g_sem_in_template: bool = false;
 
+/// One semantic token: position, length, legend type index, and modifier bits.
 const SemToken -> struct {
   line:     i64,
   col:      i64,
@@ -1913,12 +2086,14 @@ const SemToken -> struct {
   mods:     i64,
 };
 
+/// Appends a token to the vector, skipping zero-length tokens.
 const push_token -> fn (tokens: *VEC::Vector, line: i64, col: i64, length: i64, type_idx: i64, mods: i64) void {
   if (length <= 0) return;
   let t: SemToken = SemToken { line: line, col: col, length: length, type_idx: type_idx, mods: mods };
   tokens.push_back(cast<*void>(&t));
 }
 
+/// Sorts tokens by (line, column) so they are emitted in position order.
 // Simple insertion sort — semantic tokens must be emitted in position
 // order for the delta-encoding below to produce non-negative deltas.
 const sort_tokens -> fn (tokens: *VEC::Vector) void {
@@ -1935,6 +2110,7 @@ const sort_tokens -> fn (tokens: *VEC::Vector) void {
   }
 }
 
+/// Returns the legend index for a matching public declaration, or -1.
 const lookup_public_kind -> fn (mod: *AST::ModuleNode, name: *byte) i64 {
   let n: i64 = mod.body_count;
   loop [i: i64 = 0](i < n) : (++i) {
@@ -1956,6 +2132,7 @@ const lookup_public_kind -> fn (mod: *AST::ModuleNode, name: *byte) i64 {
   return -1;
 }
 
+/// Converts a 1-based line and 0-based column to a byte offset into text.
 // Converts a declaration-style position (1-indexed line, 0-indexed col —
 // the convention every *AstNode here uses) into a byte offset into `text`.
 const line_col_to_offset -> fn (text: *byte, one_indexed_line: i64, col: i64) i64 {
@@ -1971,12 +2148,19 @@ const line_col_to_offset -> fn (text: *byte, one_indexed_line: i64, col: i64) i6
   return offset;
 }
 
+/// Recovered source position of a member name following `::` or `.`.
+///
+/// # Fields
+/// - `line`: 1-based source line
+/// - `col`: 0-based column
+/// - `len`: length of the member name
 const MemberPos -> struct {
   found: bool,
   line:  i64,
   col:   i64,
 };
 
+/// Locates a member name in the live text just past a `::` or `.` access.
 // A MemberNode's own (line, col) is where the `.`/`::` operator token sits,
 // not the member name that follows it — there's no field for that (see
 // MemberNode's definition). Recover it by scanning forward in the live
@@ -2008,6 +2192,7 @@ const find_member_position -> fn (text: *byte, dot_line: i64, dot_col: i64, is_c
   return MemberPos { found: true, line: line, col: col };
 }
 
+/// Resolves an `@use` alias to its ModuleNode, or null.
 // Resolves a `@use "..." as ALIAS` alias declared in `mod` back to the
 // matching ModuleNode already resolved into `prog`, or null if `alias`
 // isn't actually an import alias (e.g. it's an enum/struct name instead —
@@ -2030,6 +2215,7 @@ const resolve_use_alias -> fn (mod: *AST::ModuleNode, prog: *AST::ProgramNode, a
   return cast<*AST::ModuleNode>(0);
 }
 
+/// Unwraps pointer/array wrappers to the named type node, or null.
 // Unwraps pointer/array wrappers to find the underlying named type — e.g.
 // both `*Counter` and `[Counter; 4]` resolve to "Counter". Null for
 // anything that doesn't bottom out at a named (TYPE_BASIC) type.
@@ -2050,6 +2236,7 @@ const resolve_type_name -> fn (t: *AST::AstNode) *byte {
   return cast<*byte>(0);
 }
 
+/// Finds a struct declaration by name in a module or its public dependencies.
 // Finds a struct declaration named `name` — first among `mod`'s own
 // top-level declarations (any visibility, since it's the doc's own file),
 // then among each resolved dependency module's *public* declarations.
@@ -2077,6 +2264,7 @@ const find_struct_decl -> fn (mod: *AST::ModuleNode, prog: *AST::ProgramNode, na
   return cast<*AST::StructDeclNode>(0);
 }
 
+/// Looks up a name among a struct's fields and methods.
 // Looks a member name up among a struct's fields (data or method — see
 // walk_field_for_tokens's note on how methods are represented). Checks
 // public members before private; there's no encapsulation enforcement
@@ -2099,6 +2287,7 @@ const find_field_in_struct -> fn (sd: *AST::StructDeclNode, name: *byte) *AST::F
   return cast<*AST::FieldDeclNode>(0);
 }
 
+/// Emits a semantic token for the member name of a `::` or `.` access when classifiable.
 // Classifies and tokenizes the *member* half of a `object::member` or
 // `object.member` access — the half nothing previously tokenized at all
 // (MemberNode has no position of its own for it; see find_member_position).
@@ -2155,6 +2344,7 @@ const emit_member_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, prog
   push_token(tokens, pos.line, pos.col, STR::strlen(n.member), kind, 0);
 }
 
+/// Emits semantic tokens for a single identifier expression.
 const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, id: *AST::IdentifierNode, prog: *AST::ProgramNode) void {
   let node: *AST::AstNode = cast<*AST::AstNode>(id);
   let name: *byte = id.name;
@@ -2215,6 +2405,7 @@ const emit_ident_token -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *
   }
 }
 
+/// Emits tokens for everything in a type annotation.
 // Type annotations (`let p: Point`, a parameter's `: T`, a field's `: T`,
 // a return type, `cast<T>`, `sizeof<T>`) are a completely separate node
 // family (TYPE_BASIC/TYPE_POINTER/...) from expressions, so walking
@@ -2267,6 +2458,7 @@ const walk_type_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, p
   // tc_type.lx's resolve_type_ref) — nothing further to resolve.
 }
 
+/// Walks an expression, emitting tokens for identifiers, members, and types.
 const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, prog: *AST::ProgramNode, expr: *AST::AstNode) void {
   if (expr == cast<*AST::AstNode>(0)) return;
 
@@ -2363,6 +2555,7 @@ const walk_expr_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   // EXPR_LITERAL, EXPR_SYSCALL: leaves, nothing further to classify.
 }
 
+/// Walks a struct field's type, or a method's params and body.
 // A struct field is either plain data (just a type to walk) or a method —
 // `name -> fn (...) T { ... }` declared inline in the struct body, stored
 // as the same FieldDeclNode with `function` set (see format_struct_signature's
@@ -2389,6 +2582,7 @@ const walk_field_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, 
   walk_type_for_tokens(tokens, mod, prog, f.type_node);
 }
 
+/// Selects the `@os` arm matching the current OS, or the default arm; null if none.
 // Mirrors typecheck's own arm selection for `@os {}` (resolve_os_body in
 // typechecker/stmt.lx) exactly — matching platform arm, else the `_ ->`
 // default, else nothing. This has to match, not just "walk every arm":
@@ -2406,6 +2600,7 @@ const resolve_os_body_for_tokens -> fn (n: *AST::OsNode) *AST::AstNode {
   return cast<*AST::AstNode>(0);
 }
 
+/// Walks a statement, emitting tokens for its expressions and nested statements.
 const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, fd: *AST::FuncDeclNode, prog: *AST::ProgramNode, stmt: *AST::AstNode) void {
   if (stmt == cast<*AST::AstNode>(0)) return;
 
@@ -2489,6 +2684,7 @@ const walk_stmt_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, f
   }
 }
 
+/// Emits tokens for one top-level declaration in a module.
 // Handles one top-level-shaped declaration for lsp_semantic_tokens — pulled
 // out of the main loop below so PREPROCESSOR_OS can recurse into it. `@os {
 // "linux" -> { ... } }` is legal directly at module scope (see e.g. this
@@ -2547,8 +2743,14 @@ const walk_module_decl_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::Module
 // its lexer kind (plus a little surrounding context for identifiers), no
 // AST needed — the fallback layer that gives every token *some* color.
 
+/// Classification of a raw token for the semantic-token fallback pass.
+///
+/// # Fields
+/// - `type_idx`: legend type index
+/// - `mods`: modifier bits
 const TokenClass -> struct { type_idx: i64, mods: i64 };
 
+/// True if a token's text equals s.
 // Token.val points into the source buffer and isn't null-terminated (its
 // length is the separate `len` field) — a *byte string constant is, so an
 // equality check needs both the length and the bytes to match.
@@ -2557,6 +2759,7 @@ const token_text_equals -> fn (tok: TOK::Token, s: *byte) bool {
   return STR::strncmp(tok.val, s, tok.len) == 0;
 }
 
+/// True if a token's text matches one of the module's `@use` aliases.
 const is_use_alias -> fn (mod: *AST::ModuleNode, tok: TOK::Token) bool {
   let n: i64 = mod.body_count;
   loop [i: i64 = 0](i < n) : (++i) {
@@ -2569,6 +2772,7 @@ const is_use_alias -> fn (mod: *AST::ModuleNode, tok: TOK::Token) bool {
   return false;
 }
 
+/// Classifies an identifier that the AST pass did not already resolve.
 // Classifies a TOK_IDENTIFIER the AST pass didn't already resolve. Tried in
 // order: `@use` alias (namespace) — ` -> fn/struct/enum` immediately after
 // it (Luma's decl arrow puts the name *before* the keyword, unlike most
@@ -2621,6 +2825,7 @@ const classify_raw_identifier -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, c
   return TokenClass { type_idx: TT_VARIABLE, mods: 0 };
 }
 
+/// Classifies a raw keyword or punctuation token, or -1 to skip it.
 // Mirrors the old C LSP's classify_token switch, adapted to this lexer's
 // actual token kinds (see lexer_tokens.lx) — including that its lexer
 // strips comments/whitespace before they ever become tokens (see
@@ -2736,6 +2941,7 @@ const classify_raw_token -> fn (mod: *AST::ModuleNode, toks: *TOK::Token, count:
   return none;
 }
 
+/// Returns delta-encoded semantic tokens for uri, merging both passes.
 #returns_ownership
 pub const lsp_semantic_tokens -> fn (uri: *byte) *J::JsonValue {
   let result: *J::JsonValue = J::json_object();

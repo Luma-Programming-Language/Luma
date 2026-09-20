@@ -8,6 +8,7 @@
 @use "std_cstring"   as STR
 @use "std_libc"      as LIBC
 
+/// Wraps a signature in a fenced `luma` code block for hover markdown.
 #returns_ownership
 const wrap_code_block -> fn (sig: *byte) *byte {
   let prefix: *byte = "```luma\n";
@@ -19,6 +20,7 @@ const wrap_code_block -> fn (sig: *byte) *byte {
   return out;
 }
 
+/// Builds the ServerCapabilities result returned for the `initialize` request.
 #returns_ownership
 const capabilities_result -> fn () *J::JsonValue {
   let caps: *J::JsonValue = J::json_object();
@@ -80,6 +82,7 @@ const capabilities_result -> fn () *J::JsonValue {
   return result;
 }
 
+/// Parses and dispatches one JSON-RPC message to the document API.
 pub const handle_message -> fn (raw: *byte) void {
   let msg: *J::JsonValue = J::json_parse(raw);
   if (msg == cast<*J::JsonValue>(0)) return;

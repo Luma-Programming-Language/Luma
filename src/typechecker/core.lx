@@ -1,15 +1,25 @@
+//! Core shared data types for the type checker.
+//!
+//! Defines the enumerations and records used throughout type checking —
+//! match results, scopes, symbols, static-memory analysis state, module
+//! imports/dependencies — plus module-level registries for synthesized
+//! (instantiated generic) declarations, deferred unresolved type names, and
+//! nominal (struct/enum) declarations.
+
 @module "tc_core"
 
 @use "std_vector" as VEC
 @use "std_cstring" as STR
 @use "ast"        as AST
 
+/// Result of comparing two types: none, compatible, or exact.
 pub const TypeMatchResult -> enum {
   TYPE_MATCH_NONE,
   TYPE_MATCH_COMPATIBLE,
   TYPE_MATCH_EXACT,
 };
 
+/// One typecheck error: message text, source position, and context.
 pub const TypeError -> struct {
   message: *byte,
   line:    i64,
@@ -17,6 +27,10 @@ pub const TypeError -> struct {
   context: *byte,
 };
 
+/// Tracks a single allocation site for the static memory checker.
+///
+/// Records the variable, its matching free/alias/address-taken state, and the
+/// counts used to report use-after-free and un-freed allocations.
 pub const StaticAllocation -> struct {
   line:                 i64,
   col:                  i64,
@@ -33,11 +47,15 @@ pub const StaticAllocation -> struct {
   file_path:            *byte,
 };
 
+/// Per-module scratch state for the static memory checker. One analyzer is
+/// shared (via pointer) across every scope in a module.
 pub const StaticMemoryAnalyzer -> struct {
   allocations:          *VEC::Vector,
   skip_memory_tracking: bool,
 };
 
+/// A name bound in a scope: its type, visibility, mutability, ownership
+/// attributes, and declaring scope depth.
 pub const Symbol -> struct {
   name:              *byte,
   type:              *AST::AstNode,
@@ -48,6 +66,10 @@ pub const Symbol -> struct {
   takes_ownership:   bool,
 };
 
+/// A lexical scope or, for the root of each module, the module scope itself.
+///
+/// Links to its parent, its symbols and imported modules, the enclosing
+/// function/module, ownership attributes, and the shared memory analyzer.
 pub const Scope -> struct {
   parent:            *Scope,
   symbols:           *VEC::Vector,
@@ -70,12 +92,15 @@ pub const Scope -> struct {
   os:                *byte,
 };
 
+/// A resolved `@use "module" as alias` import, bound to the imported module's
+/// scope.
 pub const ModuleImport -> struct {
   module_name:  *byte,
   alias:        *byte,
   module_scope: *Scope,
 };
 
+/// Records one module's dependency set for topological ordering of typecheck.
 pub const ModuleDependency -> struct {
   module_name:  *byte,
   dependencies: VEC::Vector,
@@ -88,6 +113,12 @@ pub const ModuleDependency -> struct {
 // any ModuleNode.body (that array is fixed-size from parse time) — codegen
 // reads this list in addition to each module's normal body so it emits a
 // prototype/definition for every instantiation actually used.
+/// A concrete generic instantiation synthesized during typechecking.
+///
+/// Instantiated declarations are appended here (in addition to any module
+/// body) so codegen's Pass A can emit a prototype/definition for each. For an
+/// instantiated generic method, `owner` names the owning struct and `is_static`
+/// records whether it is a static method.
 pub const GeneratedDecl -> struct {
   module_name: *byte,
   decl:        *AST::AstNode,
@@ -98,26 +129,33 @@ pub const GeneratedDecl -> struct {
   is_static:   i64,
 };
 
+/// Module-level registry of synthesized generic instantiations.
 let g_generated_decls: VEC::Vector;
+/// Whether the generated-decls registry has been initialized.
 let g_generated_decls_ready: bool = false;
 
+/// Lazily initializes the generated-decls registry exactly once.
 const generated_decls_init -> fn () void {
   if (g_generated_decls_ready) return;
   g_generated_decls_ready = true;
   g_generated_decls = VEC::create_vector(sizeof<GeneratedDecl>);
 }
 
+/// Appends a synthesized generic instantiation to the registry, initializing
+/// it if needed.
 pub const record_generated_decl -> fn (module_name: *byte, decl: *AST::AstNode, owner: *byte, is_static: i64) void {
   generated_decls_init();
   let gd: GeneratedDecl = GeneratedDecl { module_name: module_name, decl: decl, owner: owner, is_static: is_static };
   g_generated_decls.push_back(cast<*void>(&gd));
 }
 
+/// Returns how many generated declarations have been recorded.
 pub const generated_decl_count -> fn () i64 {
   generated_decls_init();
   return g_generated_decls.size;
 }
 
+/// Returns the generated declaration at index `i`.
 pub const generated_decl_at -> fn (i: i64) *GeneratedDecl {
   generated_decls_init();
   return cast<*GeneratedDecl>(g_generated_decls.get(i));
@@ -131,21 +169,32 @@ pub const generated_decl_at -> fn (i: i64) *GeneratedDecl {
 // the "unknown type" report until every declaration is registered. Left
 // unreported, an unknown type name silently falls through to codegen, which
 // emits it verbatim and lets cc produce a confusing "unknown type name".
+/// A name referenced in bare type position that matched nothing when first
+/// examined.
+///
+/// Type resolution runs in multiple passes, so a name used before its
+/// declaration appears later in a module is expected to resolve by the end of
+/// typecheck; reporting is deferred until then.
 pub const UnresolvedTypeName -> struct {
   module_scope: *Scope,
   name:         *byte,
   err_node:     *AST::AstNode,
 };
 
+/// Whether the unresolved-type registry has been initialized.
 let g_unresolved_types_ready: bool = false;
+/// Module-level registry of deferred, still-unresolved type names.
 let g_unresolved_types: VEC::Vector;
 
+/// Lazily initializes the unresolved-type registry exactly once.
 const unresolved_types_init -> fn () void {
   if (g_unresolved_types_ready) return;
   g_unresolved_types_ready = true;
   g_unresolved_types = VEC::create_vector(sizeof<UnresolvedTypeName>);
 }
 
+/// Records a deferred unresolved type name, skipping duplicates for the same
+/// error node.
 pub const record_unresolved_type_name -> fn (module_scope: *Scope, name: *byte, err_node: *AST::AstNode) void {
   unresolved_types_init();
   let c: i64 = g_unresolved_types.size;
@@ -157,11 +206,13 @@ pub const record_unresolved_type_name -> fn (module_scope: *Scope, name: *byte, 
   g_unresolved_types.push_back(cast<*void>(&u));
 }
 
+/// Returns how many unresolved type names are pending.
 pub const unresolved_type_name_count -> fn () i64 {
   unresolved_types_init();
   return g_unresolved_types.size;
 }
 
+/// Returns the unresolved type name at index `i`.
 pub const unresolved_type_name_at -> fn (i: i64) *UnresolvedTypeName {
   unresolved_types_init();
   return cast<*UnresolvedTypeName>(g_unresolved_types.get(i));
@@ -176,14 +227,22 @@ pub const unresolved_type_name_at -> fn (i: i64) *UnresolvedTypeName {
 // (during the drain), and the origin templates stay reachable via
 // tc_generics.find_template, so literals in generic bodies validate against
 // the right member set regardless of drain order.
+/// One struct/enum declaration registered by raw name.
+///
+/// The declaration (not just the scope symbol) is needed to tell real fields
+/// apart from promoted embedded ones when validating struct-literal field
+/// names.
 pub const NominalDecl -> struct {
   name: *byte,
   decl: *AST::AstNode,
 };
 
+/// Whether the nominal registry has been initialized.
 let g_nominals_ready: bool = false;
+/// Module-level registry of struct/enum declarations, keyed by name.
 let g_nominals: VEC::Vector;
 
+/// Lazily initializes the nominal registry exactly once.
 const nominals_init -> fn () void {
   if (g_nominals_ready) return;
   g_nominals_ready = true;
@@ -192,6 +251,9 @@ const nominals_init -> fn () void {
 
 // Reset per typecheck run (pairs with scope_arena_teardown): registered decl
 // pointers are only valid while the current run's AST is alive.
+/// Clears the nominal registry. Called once per typecheck run, since the
+/// registered declaration pointers are only valid while the current AST is
+/// alive.
 pub const nominal_registry_clear -> fn () void {
   if (g_nominals.data != cast<*void>(0)) {
     VEC::free_vector(&g_nominals);
@@ -200,12 +262,15 @@ pub const nominal_registry_clear -> fn () void {
   g_nominals = VEC::create_vector(sizeof<NominalDecl>);
 }
 
+/// Registers a struct/enum declaration under `name`, initializing the registry
+/// if needed.
 pub const record_nominal_decl -> fn (name: *byte, decl: *AST::AstNode) void {
   nominals_init();
   let nd: NominalDecl = NominalDecl { name: name, decl: decl };
   g_nominals.push_back(cast<*void>(&nd));
 }
 
+/// Looks up a registered struct/enum declaration by name, or null.
 pub const find_nominal_decl -> fn (name: *byte) *AST::AstNode {
   nominals_init();
   let c: i64 = g_nominals.size;

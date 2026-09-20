@@ -1,3 +1,8 @@
+//! Compiler error reporting.
+//!
+//! Collects diagnostics into a bounded list and renders them with source
+//! excerpts, line numbers, and caret indicators before the compiler aborts.
+
 @module "error"
 
 @use "lexer_tokens" as TOK
@@ -7,16 +12,36 @@
 // return string literals, not allocations — nothing here needs freeing).
 // These stay functions rather than module-level consts: a global's
 // initializer has to be a compile-time constant, and these are calls.
+/// Emits the ANSI reset escape sequence.
 const c_reset      -> fn () void { output(COLOR::RESET_CODE); }
+/// Emits the bold-red escape sequence (error labels).
 const c_bold_red   -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::RED)); }
+/// Emits the bold-white escape sequence (messages).
 const c_bold_white -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::WHITE)); }
+/// Emits the bold-blue escape sequence (file locations).
 const c_bold_blue  -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::BLUE)); }
+/// Emits the bold-yellow escape sequence (caret indicators).
 const c_bold_yellow -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::YELLOW)); }
+/// Emits the bold-cyan escape sequence (notes).
 const c_bold_cyan  -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::CYAN)); }
+/// Emits the bold-green escape sequence (help text).
 const c_bold_green -> fn () void { output(COLOR::style(COLOR::Style::BOLD), COLOR::fg(COLOR::Color::GREEN)); }
+/// Emits the plain blue escape sequence.
 const c_blue       -> fn () void { output(COLOR::fg(COLOR::Color::BLUE)); }
+/// Emits the gray (bright black) escape sequence.
 const c_gray       -> fn () void { output(COLOR::fg(COLOR::Color::BRIGHT_BLACK)); }
 
+/// Describes one compiler error with its location, source line, and notes.
+///
+/// # Fields
+/// - `error_type`: Category name shown in the square brackets
+/// - `file_path`: File the error occurred in
+/// - `message`: Main error text
+/// - `line`, `col`: Position of the error in the file
+/// - `line_text`: Reconstructed source text of the error line
+/// - `token_length`: Width of the underlined token span
+/// - `label`: Text printed next to the caret indicator
+/// - `note`, `help`: Optional supplementary messages
 pub const ErrorInformation -> struct {
   error_type:   *byte,
   file_path:    *byte,
@@ -33,10 +58,14 @@ pub const ErrorInformation -> struct {
   help:         *byte,
 };
 
+/// Maximum number of errors kept before the list silently stops growing.
 const MAX_ERRORS: i64 = 256;
+/// Fixed-size storage for queued errors.
 let error_list: [ErrorInformation; 256];
+/// Number of errors currently queued in `error_list`.
 let error_count: i64 = 0;
 
+/// Queues an error if the list is not full.
 pub const error_add -> fn (err: ErrorInformation) void {
   if (error_count < MAX_ERRORS) {
     error_list[error_count] = err;
@@ -49,33 +78,47 @@ pub const error_add -> fn (err: ErrorInformation) void {
 // analyzer reporting it as leaked (the queued error outlives this call and
 // is never freed — the compiler exits shortly after printing, and any
 // messages built from *byte literals are untouched).
+/// Queues an error, marking `message` as consumed so the static analyzer
+/// does not report a owned message as leaked.
 #takes_ownership
 pub const error_add_msg -> fn (message: *byte, err: ErrorInformation) void {
   error_add(err);
 }
 
+/// Clears all queued errors.
 pub const error_clear -> fn () void {
   error_count = 0;
 }
 
+/// Returns the number of queued errors.
 pub const error_get_count -> fn () i64 {
   return error_count;
 }
 
+/// Reduces the queued error count to at most `n`.
 pub const error_truncate -> fn (n: i64) void {
   if (n < error_count) error_count = n;
 }
 
+/// Returns 1 if any errors are queued, else 0.
 pub const error_has_errors -> fn () i64 {
   if (error_count > 0) return 1;
   return 0;
 }
 
+/// Returns a pointer to the queued error at `index`, or NULL when the index
+/// is out of bounds.
 pub const error_get_at_index -> fn (index: i64) *ErrorInformation {
   if (index < 0 || index >= error_count) return cast<*ErrorInformation>(0);
   return &error_list[index];
 }
 
+/// Reconstructs the source text of `target_line` from its tokens.
+///
+/// Restores inter-token whitespace, wraps string tokens in quotes, and
+/// re-emits `///` / `//!` doc-comment prefixes so the line can be shown
+/// verbatim in diagnostics. Returns an allocated string (an allocated empty
+/// string when the line is out of range or `tokens` is NULL).
 #returns_ownership
 pub const generate_line -> fn (tokens: *TOK::Token, token_count: i64, target_line: i64) *byte {
     if (target_line < 0 || tokens == cast<*TOK::Token>(0)) {
@@ -133,6 +176,7 @@ pub const generate_line -> fn (tokens: *TOK::Token, token_count: i64, target_lin
     return result;
 }
 
+/// Returns the number of digits in `line` (used for gutter alignment).
 const get_line_width -> fn (line: i64) i64 {
   let width: i64 = 1;
   let temp: i64 = line;
@@ -143,6 +187,7 @@ const get_line_width -> fn (line: i64) i64 {
   return width;
 }
 
+/// Returns the widest line number among the queued errors.
 const get_max_line_width -> fn () i64 {
   let max_width: i64 = 1;
   loop [i: i64 = 0](i < error_count) : (++i) {
@@ -152,18 +197,21 @@ const get_max_line_width -> fn () i64 {
   return max_width;
 }
 
+/// Prints spaces so `current_line` aligns to `max_width`.
 const print_line_padding -> fn (current_line: i64, max_width: i64) void {
   let current_width: i64 = get_line_width(current_line);
   let padding: i64 = max_width - current_width;
   loop [i: i64 = 0](i < padding) : (++i) { output(" "); }
 }
 
+/// Prints the blank gutter with its `|` separator.
 const print_gutter -> fn (max_width: i64) void {
   output(" ");
   loop [i: i64 = 0](i < max_width) : (++i) { output(" "); }
   c_blue(); output(" |"); c_reset(); output(" ");
 }
 
+/// Prints one source line prefixed by its line number in the gutter.
 const print_source_line -> fn (line: i64, text: *byte, max_width: i64) void {
   output(" ");
   print_line_padding(line, max_width);
@@ -174,6 +222,7 @@ const print_source_line -> fn (line: i64, text: *byte, max_width: i64) void {
   output("\n");
 }
 
+/// Prints the `^` caret indicator under a source position, plus its label.
 const print_indicator -> fn (col: i64, length: i64, max_width: i64, label: *byte) void {
   print_gutter(max_width);
   let actual_col: i64 = col;
@@ -188,6 +237,11 @@ const print_indicator -> fn (col: i64, length: i64, max_width: i64, label: *byte
   output("\n");
 }
 
+/// Prints all queued errors, each with location, source excerpt, and any
+/// note/help lines.
+///
+/// # Returns
+/// `1` if errors were printed, `0` when the queue was empty.
 pub const error_report -> fn () i64 {
   if (error_count == 0) return 0;
 

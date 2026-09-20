@@ -1,7 +1,13 @@
+//! Expression AST node constructors.
+//!
+//! Factory functions that allocate each kind of expression node used by the
+//! parser and return it as a generic `*AST::AstNode`.
+
 @module "ast_expr"
 
 @use "ast" as AST
 
+/// Creates an integer literal expression node.
 #returns_ownership
 pub const make_literal_int -> fn (int_val: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::LiteralNode = AST::AstNode::make<AST::LiteralNode>(
@@ -17,6 +23,7 @@ pub const make_literal_int -> fn (int_val: i64, line: i64, col: i64) *AST::AstNo
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a float literal expression node.
 #returns_ownership
 pub const make_literal_float -> fn (float_val: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::LiteralNode = AST::AstNode::make<AST::LiteralNode>(
@@ -32,6 +39,7 @@ pub const make_literal_float -> fn (float_val: i64, line: i64, col: i64) *AST::A
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a string literal expression node.
 #returns_ownership
 pub const make_literal_string -> fn (string_val: *byte, line: i64, col: i64) *AST::AstNode {
   let n: *AST::LiteralNode = AST::AstNode::make<AST::LiteralNode>(
@@ -47,6 +55,7 @@ pub const make_literal_string -> fn (string_val: *byte, line: i64, col: i64) *AS
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a character literal expression node.
 #returns_ownership
 pub const make_literal_char -> fn (char_val: byte, line: i64, col: i64) *AST::AstNode {
   let n: *AST::LiteralNode = AST::AstNode::make<AST::LiteralNode>(
@@ -62,6 +71,7 @@ pub const make_literal_char -> fn (char_val: byte, line: i64, col: i64) *AST::As
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a boolean literal expression node.
 #returns_ownership
 pub const make_literal_bool -> fn (bool_val: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::LiteralNode = AST::AstNode::make<AST::LiteralNode>(
@@ -77,6 +87,7 @@ pub const make_literal_bool -> fn (bool_val: i64, line: i64, col: i64) *AST::Ast
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a null literal expression node.
 #returns_ownership
 pub const make_literal_null -> fn (line: i64, col: i64) *AST::AstNode {
   let n: *AST::LiteralNode = AST::AstNode::make<AST::LiteralNode>(
@@ -91,6 +102,7 @@ pub const make_literal_null -> fn (line: i64, col: i64) *AST::AstNode {
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates an identifier expression node.
 #returns_ownership
 pub const make_identifier -> fn (name: *byte, line: i64, col: i64) *AST::AstNode {
   let n: *AST::IdentifierNode = AST::AstNode::make<AST::IdentifierNode>(
@@ -105,6 +117,7 @@ pub const make_identifier -> fn (name: *byte, line: i64, col: i64) *AST::AstNode
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a binary expression node from an operator and two operands.
 #returns_ownership
 pub const make_binary -> fn (op: i64, left: *AST::AstNode, right: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::BinaryNode = AST::AstNode::make<AST::BinaryNode>(
@@ -121,6 +134,7 @@ pub const make_binary -> fn (op: i64, left: *AST::AstNode, right: *AST::AstNode,
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a unary expression node from an operator and one operand.
 #returns_ownership
 pub const make_unary -> fn (op: i64, operand: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::UnaryNode = AST::AstNode::make<AST::UnaryNode>(
@@ -136,6 +150,7 @@ pub const make_unary -> fn (op: i64, operand: *AST::AstNode, line: i64, col: i64
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a function-call expression node.
 #returns_ownership
 pub const make_call -> fn (callee: *AST::AstNode, args: **AST::AstNode, arg_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::CallNode = AST::AstNode::make<AST::CallNode>(
@@ -154,6 +169,7 @@ pub const make_call -> fn (callee: *AST::AstNode, args: **AST::AstNode, arg_coun
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates an assignment expression node.
 #returns_ownership
 pub const make_assign -> fn (target: *AST::AstNode, value: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::AssignNode = AST::AstNode::make<AST::AssignNode>(
@@ -169,6 +185,7 @@ pub const make_assign -> fn (target: *AST::AstNode, value: *AST::AstNode, line: 
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a ternary (`condition ? then_expr : else_expr`) expression node.
 #returns_ownership
 pub const make_ternary -> fn (condition: *AST::AstNode, then_expr: *AST::AstNode, else_expr: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::TernaryNode = AST::AstNode::make<AST::TernaryNode>(
@@ -185,6 +202,7 @@ pub const make_ternary -> fn (condition: *AST::AstNode, then_expr: *AST::AstNode
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a member-access expression node (`object.member`).
 #returns_ownership
 pub const make_member -> fn (object: *AST::AstNode, member: *byte, is_compiletime: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::MemberNode = AST::AstNode::make<AST::MemberNode>(
@@ -203,6 +221,7 @@ pub const make_member -> fn (object: *AST::AstNode, member: *byte, is_compiletim
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates an index expression node (`object[index]`).
 #returns_ownership
 pub const make_index -> fn (object: *AST::AstNode, index: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::IndexNode = AST::AstNode::make<AST::IndexNode>(
@@ -218,6 +237,7 @@ pub const make_index -> fn (object: *AST::AstNode, index: *AST::AstNode, line: i
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates an array-literal expression node.
 #returns_ownership
 pub const make_array -> fn (elements: **AST::AstNode, element_count: i64, target_size: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ArrayNode = AST::AstNode::make<AST::ArrayNode>(
@@ -234,6 +254,7 @@ pub const make_array -> fn (elements: **AST::AstNode, element_count: i64, target
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a cast expression node.
 #returns_ownership
 pub const make_cast -> fn (type_node: *AST::AstNode, castee: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::CastNode = AST::AstNode::make<AST::CastNode>(
@@ -249,6 +270,7 @@ pub const make_cast -> fn (type_node: *AST::AstNode, castee: *AST::AstNode, line
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a memory-allocation (`alloc`) expression node.
 #returns_ownership
 pub const make_alloc -> fn (size: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::AllocNode = AST::AstNode::make<AST::AllocNode>(
@@ -263,6 +285,7 @@ pub const make_alloc -> fn (size: *AST::AstNode, line: i64, col: i64) *AST::AstN
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a memory-free (`free`) expression node.
 #returns_ownership
 pub const make_free -> fn (ptr: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::FreeNode = AST::AstNode::make<AST::FreeNode>(
@@ -277,6 +300,7 @@ pub const make_free -> fn (ptr: *AST::AstNode, line: i64, col: i64) *AST::AstNod
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a `memcpy` expression node (`to`, `from`, `size`).
 #returns_ownership
 pub const make_memcpy -> fn (to: *AST::AstNode, from: *AST::AstNode, size: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::MemcpyNode = AST::AstNode::make<AST::MemcpyNode>(
@@ -293,6 +317,8 @@ pub const make_memcpy -> fn (to: *AST::AstNode, from: *AST::AstNode, size: *AST:
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a `sizeof` expression node; `is_type` selects a type operand
+/// over a value operand.
 #returns_ownership
 pub const make_sizeof -> fn (object: *AST::AstNode, is_type: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::SizeofNode = AST::AstNode::make<AST::SizeofNode>(
@@ -308,6 +334,7 @@ pub const make_sizeof -> fn (object: *AST::AstNode, is_type: i64, line: i64, col
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a `syscall` expression node.
 #returns_ownership
 pub const make_syscall -> fn (args: **AST::AstNode, count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::SyscallNode = AST::AstNode::make<AST::SyscallNode>(
@@ -323,6 +350,7 @@ pub const make_syscall -> fn (args: **AST::AstNode, count: i64, line: i64, col: 
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a struct-literal expression node.
 #returns_ownership
 pub const make_struct_expr -> fn (name: *byte, alias: *byte, field_names: **byte, field_vals: **AST::AstNode, field_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::StructExprNode = AST::AstNode::make<AST::StructExprNode>(
@@ -343,6 +371,7 @@ pub const make_struct_expr -> fn (name: *byte, alias: *byte, field_names: **byte
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a pointer-dereference expression node.
 #returns_ownership
 pub const make_deref -> fn (operand: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::UnaryNode = AST::AstNode::make<AST::UnaryNode>(
@@ -358,6 +387,7 @@ pub const make_deref -> fn (operand: *AST::AstNode, line: i64, col: i64) *AST::A
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates an address-of expression node.
 #returns_ownership
 pub const make_addr -> fn (operand: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::UnaryNode = AST::AstNode::make<AST::UnaryNode>(
@@ -373,6 +403,7 @@ pub const make_addr -> fn (operand: *AST::AstNode, line: i64, col: i64) *AST::As
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a parenthesized grouping expression node.
 #returns_ownership
 pub const make_grouping -> fn (expr: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::UnaryNode = AST::AstNode::make<AST::UnaryNode>(
@@ -387,6 +418,8 @@ pub const make_grouping -> fn (expr: *AST::AstNode, line: i64, col: i64) *AST::A
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates an input expression node that reads a value of `type_node`,
+/// optionally prompting with `msg`.
 #returns_ownership
 pub const make_input -> fn (type_node: *AST::AstNode, msg: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::CastNode = AST::AstNode::make<AST::CastNode>(
@@ -402,6 +435,7 @@ pub const make_input -> fn (type_node: *AST::AstNode, msg: *AST::AstNode, line: 
   return cast<*AST::AstNode>(n);
 }
 
+/// Creates a `system` command-execution expression node.
 #returns_ownership
 pub const make_system -> fn (command: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::UnaryNode = AST::AstNode::make<AST::UnaryNode>(

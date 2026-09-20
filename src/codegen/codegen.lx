@@ -1,3 +1,10 @@
+//! Top-level codegen driver for the C backend.
+//!
+//! Pass A builds the symbol registries from the AST; Pass B emits the C
+//! translation unit (enums, structs, prototypes, globals, function bodies).
+//! The driver then transpiles the result to a .c file and compiles it with an
+//! external C compiler.
+
 @module "codegen"
 
 @use "std_cstring" as STR
@@ -29,7 +36,12 @@
 // one to size another *file-scope* array ("variably modified ... at file
 // scope" — confirmed by trying it here). Named sizes only work for a
 // *local* array, where C allows a runtime-sized VLA.
+/// Number of names in known_libc_names; must match the array size below by
+/// hand (a Luma-level `const` can't size a file-scope array in C).
 const KNOWN_LIBC_NAME_COUNT: i64 = 67;
+/// libc/libm symbol names already declared by the preamble's includes;
+/// functions with these names skip prototype generation to avoid a
+/// conflicting redeclaration.
 const known_libc_names: [*byte; 67] = [
   "printf", "puts", "putchar", "getchar", "fflush",
   "fopen", "fclose", "fread", "fwrite", "fgets", "fputs", "feof", "ferror",
@@ -44,6 +56,7 @@ const known_libc_names: [*byte; 67] = [
   "usleep", "execv", "fork", "strerror", "access", "close",
 ];
 
+/// Returns true if `name` is one of the libc/libm names in known_libc_names.
 const is_known_libc_name -> fn (name: *byte) bool {
   loop [i: i64 = 0](i < KNOWN_LIBC_NAME_COUNT) : (++i) {
     if (STR::strcmp(known_libc_names[i], name) == 0) return true;
@@ -51,6 +64,7 @@ const is_known_libc_name -> fn (name: *byte) bool {
   return false;
 }
 
+/// Writes string `s` to the output FILE* `out` (an fputs wrapper).
 const IOWRITE -> fn (out: *void, s: *byte) void {
   LIBC::fputs(s, out);
 }
@@ -74,6 +88,9 @@ const IOWRITE -> fn (out: *void, s: *byte) void {
 // rather than racing two different buffers over the same fd.
 // Windows has no raw-mode terminal story here (std/win32.lx's console API
 // is a separate path), so it just falls back to getchar() there.
+/// Emits the static C helper functions backing `input<T>(...)`: one raw
+/// `__luma_read_byte` primitive plus a type-specific wrapper per supported T,
+/// all reading through that un-buffered primitive.
 const write_input_helpers -> fn (out: *void, is_windows: bool) void {
   if (is_windows) {
     IOWRITE(out, "static int __luma_read_byte(void) {\n");
@@ -169,6 +186,9 @@ const write_input_helpers -> fn (out: *void, is_windows: bool) void {
   IOWRITE(out, "\n");
 }
 
+/// Emits the generated file's C preamble: `_GNU_SOURCE`, the standard
+/// headers (platform-conditional), the `__luma_range_t` typedef, and the
+/// input helpers.
 const write_preamble -> fn (out: *void, os: *byte) void {
   // Must come before ANY system header: glibc gates syscall()'s prototype
   // in <unistd.h> behind _GNU_SOURCE (or _DEFAULT_SOURCE, depending on
@@ -213,6 +233,8 @@ const write_preamble -> fn (out: *void, os: *byte) void {
 
 // ─── Pass A: registries ──────────────────────────────────────────────────────
 
+/// Registers a struct's method member (a field holding a function value) into
+/// the function registry, skipping generic templates and embedded members.
 const register_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, struct_name: *byte, member: *AST::AstNode) void {
   if (member == cast<*AST::AstNode>(0)) return;
   if (member.kind != AST::NodeType::STMT_FIELD_DECL) return;
@@ -243,6 +265,9 @@ const register_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, struc
 // name + static flag that tc_generics threaded through the pending queue —
 // emission (c_name_for_method, self handling) keys off owner/is_static just
 // like an ordinary method.
+/// Registers a concrete generic-method instantiation (a standalone
+/// FuncDeclNode with a mangled name) as a method, carrying its owner struct
+/// name and static flag.
 const register_generated_method -> fn (ctx: *CG::CodegenContext, module_name: *byte, owner: *byte, is_static: i64, decl: *AST::AstNode) void {
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(decl);
   let fi: CG::FuncInfo = CG::FuncInfo {
@@ -254,6 +279,9 @@ const register_generated_method -> fn (ctx: *CG::CodegenContext, module_name: *b
   v.push_back(cast<*void>(&fi));
 }
 
+/// Pass A workhorse: registers one module-level declaration (struct, enum,
+/// function, global, `@os` arm, or `@use` alias) into the appropriate
+/// registry, skipping generic templates.
 const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *byte, decl: *AST::AstNode) void {
   if (decl == cast<*AST::AstNode>(0)) return;
   let k: i64 = decl.kind;
@@ -362,6 +390,9 @@ const register_decl -> fn (ctx: *CG::CodegenContext, os: *byte, module_name: *by
   }
 }
 
+/// Pass A driver: walks every module in the program (plus the typechecker's
+/// generic instantiations) and registers all top-level declarations into the
+/// context's registries.
 const run_pass_a -> fn (ctx: *CG::CodegenContext, prog: *AST::ProgramNode, os: *byte) void {
   let i: i64 = 0;
   loop (i < prog.module_count) {
@@ -398,6 +429,8 @@ const run_pass_a -> fn (ctx: *CG::CodegenContext, prog: *AST::ProgramNode, os: *
 
 // ─── Pass B: emission ────────────────────────────────────────────────────────
 
+/// Emits a `typedef enum {...} Name;` for every registered enum, using mangled
+/// member names.
 const emit_enums -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.enums;
   let n: i64 = v.size;
@@ -424,6 +457,7 @@ const emit_enums -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   CG::buf_str(buf, "\n");
 }
 
+/// Emits a forward `typedef struct Name Name;` for every registered struct.
 const emit_struct_typedefs -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.structs;
   let n: i64 = v.size;
@@ -442,6 +476,9 @@ const emit_struct_typedefs -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void 
   CG::buf_str(buf, "\n");
 }
 
+/// Emits one struct's `struct Name {...};` body, first recursively emitting
+/// any structs it embeds by value (cycle-guarded). Skips already-defined
+/// structs.
 const emit_struct_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, s: *CG::StructInfo) void {
   if (s.defined) return;
   if (s.in_progress) return; // cycle guard — shouldn't happen for valid programs
@@ -508,6 +545,7 @@ const emit_struct_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, s: *CG::S
   s.in_progress = false;
 }
 
+/// Emits the C body for every registered struct.
 const emit_all_struct_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.structs;
   let n: i64 = v.size;
@@ -518,6 +556,10 @@ const emit_all_struct_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) voi
   }
 }
 
+/// Emits one function's C prototype: main is the fixed
+/// `int main(int, char**)`, methods gain a leading `Struct *self` parameter,
+/// and names are mangled per the FuncInfo. Known-libc and body-less extern
+/// declarations produce no prototype.
 const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::FuncInfo) void {
   let fd: *AST::FuncDeclNode = f.decl;
   if (f.is_extern) { if (is_known_libc_name(f.name)) return; }
@@ -574,6 +616,7 @@ const emit_func_prototype -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG
   free(cname);
 }
 
+/// Emits a C prototype for every registered function that needs one.
 const emit_all_prototypes -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.funcs;
   let n: i64 = v.size;
@@ -585,6 +628,8 @@ const emit_all_prototypes -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   CG::buf_str(buf, "\n");
 }
 
+/// Emits one mangled C global definition per registered global, with its
+/// initializer if any.
 const emit_globals -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.globals;
   let n: i64 = v.size;
@@ -611,6 +656,9 @@ const emit_globals -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   CG::buf_str(buf, "\n");
 }
 
+/// Emits one function's C definition: signature with `self`/param bindings,
+/// then the body statements. Skips externs and body-less declarations; main
+/// binds its fixed argc/argv under `__luma_argc`/`__luma_argv`.
 const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::FuncInfo) void {
   if (f.is_extern) return;
   let fd: *AST::FuncDeclNode = f.decl;
@@ -679,6 +727,8 @@ const emit_func_body -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, f: *CG::Fun
   CG::buf_str(buf, "\n");
 }
 
+/// Emits the C body for every non-extern registered function, main last
+/// (cosmetic; prototypes make ordering unnecessary).
 const emit_all_func_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
   let v: *VEC::Vector = &ctx.funcs;
   let n: i64 = v.size;
@@ -696,6 +746,8 @@ const emit_all_func_bodies -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void 
   }
 }
 
+/// Returns a pointer to the final `/`-separated segment of `path` (the
+/// basename), or `path` itself if it has no slash.
 const basename_of -> fn (path: *byte) *byte {
   let len: i64 = STR::strlen(path);
   let i: i64 = len - 1;
@@ -730,6 +782,8 @@ const basename_of -> fn (path: *byte) *byte {
 // gives it, not silently. -c/--no-compile is the supported way to cross
 // this gap: emit the C on any host, then hand it to an actual macOS
 // machine's own `cc` to link.
+/// Prefix for the compile command: host `cc -w` by default, or a mingw-w64
+/// cross compiler when a Windows target was explicitly requested.
 const target_cc_prefix -> fn (os: *byte, target_explicit: bool) *byte {
   if (!target_explicit || os == cast<*byte>(0)) return "cc -w ";
   if (STR::strcmp(os, "windows64") == 0) return "x86_64-w64-mingw32-gcc -w ";
@@ -737,6 +791,8 @@ const target_cc_prefix -> fn (os: *byte, target_explicit: bool) *byte {
   return "cc -w ";
 }
 
+/// Returns the output executable name: `.exe` appended on Windows targets
+/// unless already present. Caller owns the result.
 #returns_ownership
 const target_output_name -> fn (name: *byte, os: *byte) *byte {
   let is_windows: bool = os != cast<*byte>(0) &&
@@ -761,6 +817,9 @@ const target_output_name -> fn (name: *byte, os: *byte) *byte {
 // waiting on an external `cc` invocation.
 //
 // Returns the .c path (caller owns it — must free) on success, or NULL.
+/// Transpiles `program` to C, writes it to output/<name>.c (creating
+/// output/ if needed), and returns the .c path — caller owns it. Returns
+/// null on a null/non-program input or if the file can't be opened.
 #returns_ownership
 pub const codegen_transpile -> fn (program: *AST::AstNode, config: CONST::LumaBuildConfig) *byte {
   if (program == cast<*AST::AstNode>(0)) return cast<*byte>(0);
@@ -817,6 +876,9 @@ pub const codegen_transpile -> fn (program: *AST::AstNode, config: CONST::LumaBu
 // real C compiler (cc, mingw-w64-gcc, ...). Frees `c_path` itself either
 // way (kept on disk if config.save, removed otherwise), matching the
 // ownership codegen_transpile hands off.
+/// Compiles/links the C at `c_path` per `config` via an external C compiler,
+/// freeing `c_path` either way (kept on disk when config.save). Returns true
+/// on success.
 #takes_ownership
 pub const codegen_compile -> fn (c_path: *byte, config: CONST::LumaBuildConfig) bool {
   let out_name: *byte = target_output_name(config.name, config.os);

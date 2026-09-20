@@ -1,9 +1,17 @@
+//! Compiler-wide constants and shared configuration types.
+//!
+//! Defines the compiler version string, the error-code enum, and the
+//! `LumaBuildConfig` structure that carries CLI options through the
+//! compilation pipeline.
+
 @module "constants"
 
 @use "std_vector" as VEC
 
+/// Version string reported by `-v`/`--version` and the driver banner.
 pub const Luma_Compiler_version: *byte = "v0.3.8";
 
+/// Named exit/status codes used across the compiler.
 pub const LumaErrorCode -> enum {
   Argc_Error,
   File_Error,
@@ -15,11 +23,35 @@ pub const LumaErrorCode -> enum {
   Unknown_Error,
 };
 
+/// A message/code pair describing a single compiler error.
+///
+/// # Fields
+/// - `message`: Human-readable error text
+/// - `code`: Numeric status code
 pub const LumaErrorMessage -> struct {
   message: *byte,
   code: i64,
 };
 
+/// Full compiler configuration derived from command-line arguments.
+///
+/// # Fields
+/// - `filepath`: Main source file to compile
+/// - `name`: Output binary name
+/// - `os`: Target platform (`linux`, `macos`, `windows32`, `windows64`)
+/// - `target_explicit`: Whether `-t`/`--target-os` was given
+/// - `no_compile`: Emit transpiled C only (`-c`)
+/// - `save`: Keep generated intermediate files (`-save`)
+/// - `clean`: Clean build artifacts (`-clean`)
+/// - `check_mem`: Enable memory sanitization (disabled by `--no-sanitize`)
+/// - `lsp_mode`: Run as a language server (`-lsp`)
+/// - `debug`: Enable debug mode (`-debug`)
+/// - `anim`: Animate the progress bar (disabled by `--no-anim`)
+/// - `docs`: Generate Markdown API docs (`-docs`)
+/// - `docs_dir`: Directory for generated docs
+/// - `file_count`: Number of linked source files
+/// - `opt_level`: Optimization level (`-O0` through `-O3`)
+/// - `link_files`: Paths given via `-l`/`--link`
 pub const LumaBuildConfig -> struct {
   filepath: *byte,
   name: *byte,
@@ -38,6 +70,7 @@ pub const LumaBuildConfig -> struct {
   opt_level: i64,
   link_files: VEC::Vector,
 
+  /// Creates a default build config for the given source `filepath`.
   static init_build_config -> fn (filepath: *byte) LumaBuildConfig {
     return LumaBuildConfig {
       filepath: filepath,

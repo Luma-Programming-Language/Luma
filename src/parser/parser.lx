@@ -1,3 +1,6 @@
+//! Core parser state and helpers: the Parser struct over the token stream,
+//! operator binding powers, and the token-to-operator lookup tables used by
+//! the expression and statement parsers.
 @module "parser"
 
 @use "std_vector" as VEC
@@ -7,6 +10,8 @@
 @use "error"        as ERR
 @use "ast"          as AST
 
+/// Precedence (binding power) levels assigned to operator tokens for the
+/// Pratt-style expression parser.
 pub const BindingPower -> enum {
   BP_NONE,        /**< No binding power */
   BP_LOWEST,      /**< Lowest binding power */
@@ -30,14 +35,21 @@ pub const BindingPower -> enum {
   BP_PRIMARY      /**< Primary expressions (literals, variables) */
 };
 
+/// Number of entries in `PRIMARY_LILERAL_MAP`.
 const PRIMARY_LITERAL_TYPE_MAP: i64 =  7; 
+/// Number of entries in `BINOP_MAP`.
 const TOKEN_TO_BINOP_MAP:       i64 = 19;
+/// Number of entries in `UNOP_MAP`.
 const TOKEN_TO_UNOP_MAP:        i64 =  6;    
 
+/// Maps a literal-producing token kind to its AST LiteralType kind.
 const PRIMARY_LITERAL -> struct { tok: i64, literal: i64 };
+/// Maps an operator token kind to its AST BinaryOp kind.
 const TOKEN_TO_BINOP  -> struct { tok: i64, binop: i64   };
+/// Maps an operator token kind to its AST UnaryType kind.
 const TOKEN_TO_UNOP   -> struct { tok: i64, unop: i64    };
 
+/// Lookup table from literal-producing token kinds to AST LiteralType kinds.
 const PRIMARY_LILERAL_MAP: [PRIMARY_LITERAL; 7] = [
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_NUMBER,       literal: AST::LiteralType::LITERAL_INT    },      
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_NUM_FLOAT,    literal: AST::LiteralType::LITERAL_FLOAT  },
@@ -48,6 +60,7 @@ const PRIMARY_LILERAL_MAP: [PRIMARY_LITERAL; 7] = [
   PRIMARY_LITERAL { tok: TOK::LumaTokenType::TOK_IDENTIFIER,   literal: AST::LiteralType::LITERAL_IDENT  },
 ];
 
+/// Lookup table from operator tokens to AST BinaryOp kinds.
 const BINOP_MAP: [TOKEN_TO_BINOP; 19] = [
   TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_PLUS,        binop: AST::BinaryOp::BINOP_ADD     },
   TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_MINUS,       binop: AST::BinaryOp::BINOP_SUB     },
@@ -70,6 +83,7 @@ const BINOP_MAP: [TOKEN_TO_BINOP; 19] = [
   TOKEN_TO_BINOP { tok: TOK::LumaTokenType::TOK_SHIFT_RIGHT, binop: AST::BinaryOp::BINOP_SHR     },
 ];
 
+/// Lookup table from prefix operator tokens to AST UnaryType kinds.
 const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_BANG,       unop: AST::UnaryType::UNOP_NOT      },
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_TILDE,      unop: AST::UnaryType::UNOP_BIT_NOT  },
@@ -85,6 +99,8 @@ const UNOP_MAP: [TOKEN_TO_UNOP; 6] = [
   TOKEN_TO_UNOP { tok: TOK::LumaTokenType::TOK_MINUSMINUS, unop: AST::UnaryType::UNOP_PRE_DEC },
 ];
 
+/// Searches `PRIMARY_LILERAL_MAP` for a token kind, returning the matching
+/// LiteralType kind or -1.
 pub const search_literal_map -> fn (kind: i64) i64 {
   loop [i: i64 = 0](i < PRIMARY_LITERAL_TYPE_MAP) : (++i) {
     if (kind == PRIMARY_LILERAL_MAP[i].tok) 
@@ -93,6 +109,8 @@ pub const search_literal_map -> fn (kind: i64) i64 {
   return -1;
 }
 
+/// Searches `BINOP_MAP` for a token kind, returning the matching BinaryOp
+/// kind or -1.
 pub const search_binop_map -> fn (kind: i64) i64 {
   loop [i: i64 = 0](i < TOKEN_TO_BINOP_MAP) : (++i) {
     if (kind == BINOP_MAP[i].tok) 
@@ -101,6 +119,8 @@ pub const search_binop_map -> fn (kind: i64) i64 {
   return -1;
 }
 
+/// Searches `UNOP_MAP` for a token kind, returning the matching UnaryType
+/// kind or -1.
 pub const search_unop_map -> fn (kind: i64) i64 {
   loop [i: i64 = 0](i < TOKEN_TO_UNOP_MAP) : (++i) {
     if (kind == UNOP_MAP[i].tok) 
@@ -109,6 +129,8 @@ pub const search_unop_map -> fn (kind: i64) i64 {
   return -1;
 }
 
+/// The sentinel EOF token returned by navigation methods when the parser
+/// position runs past the end of the token table.
 const EOF_TOK: TOK::Token = { 
   val: "", 
   kind: TOK::LumaTokenType::TOK_EOF, 
@@ -118,6 +140,7 @@ const EOF_TOK: TOK::Token = {
   whitespace_len: 0 
 }; 
 
+/// Returns the binding-power level for an operator token kind, or BP_NONE.
 pub const get_bp -> fn (kind: i64) i64 {
   switch using TOK::LumaTokenType (kind) {
     TOK_EQUAL    -> return BindingPower::BP_ASSIGN;
@@ -156,12 +179,24 @@ pub const get_bp -> fn (kind: i64) i64 {
 }
 
 // See Parser.save/restore below.
+/// Snapshot of parser position, sticky error flag and global error-list
+/// length, used to roll back a failed speculative parse.
 pub const Savepoint -> struct {
   pos:       i64,
   had_error: i64,
   err_count: i64,
 };
 
+/// The main parser state: owns the token table, current position, file path
+/// and a sticky error flag, and exposes token-stream navigation plus
+/// speculative-parse save/restore.
+///
+/// # Fields
+/// - `file_path`: Path of the file being parsed
+/// - `tks`: The token table
+/// - `tok_count`: Number of tokens in `tks`
+/// - `pos`: Current position into the token table
+/// - `had_error`: Sticky flag set once any parse error has been recorded
 pub const Parser -> struct {
   file_path:   *byte,
   tks:         *TOK::Token,
@@ -169,21 +204,27 @@ pub const Parser -> struct {
   pos:         i64,
   had_error:   i64,
 
+  /// Returns true while the position points at a real token (not past the end
+  /// of the token table and not TOK_EOF).
   has_tokens -> fn () bool { 
     return (self.pos < self.tok_count && 
             self.tks[self.pos].kind != TOK::LumaTokenType::TOK_EOF); 
   },
+  /// Returns the token `offset` ahead of the current position without
+  /// advancing, or EOF_TOK past the end of the table.
   peek       -> fn (offset: i64) TOK::Token {
     let idx: i64 = self.pos + offset;
     if (idx < self.tok_count)  
       return self.tks[idx]; 
     return EOF_TOK; 
   },
+  /// Returns the token at the current position, or EOF_TOK past the end.
   current    -> fn () TOK::Token {
     if (self.pos < self.tok_count)  
       return self.tks[self.pos]; 
     return EOF_TOK; 
   },
+  /// Advances past and returns the current token, or EOF_TOK at the end.
   advance -> fn () TOK::Token {
     if (self.has_tokens()) {
       let tok: TOK::Token = self.tks[self.pos];
@@ -192,6 +233,9 @@ pub const Parser -> struct {
     }
     return EOF_TOK;
   },
+  /// If the current token has `kind`, advances past it and returns it; otherwise
+  /// records a Parser Error diagnostic, sets the sticky error flag, advances,
+  /// and returns EOF_TOK.
   consume    -> fn (kind: i64, err_msg: *byte) TOK::Token {
     let line: i64 = self.current().line;
     let col:  i64 = self.current().col;
@@ -220,6 +264,8 @@ pub const Parser -> struct {
     return EOF_TOK;
   },
 
+  /// Records a parser diagnostic at the current token's location and sets the
+  /// sticky error flag.
   error -> fn (err_type: *byte, err_msg: *byte) void {
     let line: i64 = self.current().line;
     let col:  i64 = self.current().col;
@@ -246,15 +292,23 @@ pub const Parser -> struct {
   // enough to undo a failed attempt — token position, the parser's own
   // sticky error flag, and the global error list's length (via
   // ERR::error_truncate) — so a failed speculative parse leaves no trace.
+  /// Snapshots the current token position, error flag and global error-list
+  /// length so a failed speculative parse can be undone with `restore`.
   save -> fn () Savepoint {
     return Savepoint { pos: self.pos, had_error: self.had_error, err_count: ERR::error_get_count() };
   },
+  /// Rolls the parser back to a `save` snapshot: restores position and error
+  /// flag and truncates any errors recorded since the snapshot.
   restore -> fn (sp: Savepoint) void {
     self.pos = sp.pos;
     self.had_error = sp.had_error;
     ERR::error_truncate(sp.err_count);
   },
 
+  /// Allocates and returns a `\0`-terminated copy of the current token's text.
+  ///
+  /// # Returns
+  /// A heap-allocated buffer the caller must free.
   #returns_ownership
   get_name -> fn () *byte {
     let name: *byte = cast<*byte>(alloc(self.current().len + 1));
@@ -267,6 +321,7 @@ pub const Parser -> struct {
     return name;
   },
 
+  /// Allocates a Parser over the given token table and file path.
   #returns_ownership
   static create_parser -> fn (tks: *TOK::Token, tok_count: i64, file_path: *byte) *Parser {
     let p: *Parser = cast<*Parser>(alloc(sizeof<Parser>));
@@ -280,12 +335,15 @@ pub const Parser -> struct {
     return p;
   },
   
+  /// Frees a parser previously created with `create_parser`.
   #takes_ownership
   static free_parser -> fn (p: *Parser) void {
     free(p);
   },
 };
 
+/// Copies the contents of a Vector of `*AST::AstNode` into a new
+/// heap-allocated array and returns it (the caller owns it).
 #returns_ownership
 pub const vec_to_node_array -> fn (v: *VEC::Vector) **AST::AstNode {
   if (v.size == 0) return cast<**AST::AstNode>(0);
@@ -296,6 +354,8 @@ pub const vec_to_node_array -> fn (v: *VEC::Vector) **AST::AstNode {
   return arr;
 }
 
+/// Copies the contents of a Vector of `*byte` into a new heap-allocated array
+/// and returns it (the caller owns it).
 #returns_ownership
 pub const vec_to_byte_array -> fn (v: *VEC::Vector) **byte {
   if (v.size == 0) return cast<**byte>(0);

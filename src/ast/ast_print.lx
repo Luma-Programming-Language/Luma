@@ -1,27 +1,52 @@
+//! Pretty-printer for the AST: renders any `*AST::AstNode` as an indented,
+//! colorized tree via `print_node`. The `pn` dispatcher handles every
+//! `NodeType` and, when `USE_COLOR` is off, emits plain text through the
+//! no-color escape constants.
 @module "ast_print"
 @use "ast" as AST
 
+/// When 1 (default), ANSI escape sequences are emitted; the plain `_*0`
+/// constants are used otherwise.
 const USE_COLOR: i64 = 1;
 
+/// ANSI cyan escape sequence.
 const _C: *byte = "\x1b[36m";
+/// ANSI green escape sequence.
 const _G: *byte = "\x1b[32m";
+/// ANSI yellow escape sequence.
 const _Y: *byte = "\x1b[33m";
+/// ANSI magenta escape sequence.
 const _M: *byte = "\x1b[35m";
+/// ANSI blue escape sequence.
 const _B: *byte = "\x1b[34m";
+/// ANSI dim escape sequence.
 const _D: *byte = "\x1b[2m";
+/// ANSI reset escape sequence.
 const _R: *byte = "\x1b[0m";
+/// Empty (no-color) counterpart of `_C`.
 const _C0: *byte = "";
+/// Empty (no-color) counterpart of `_G`.
 const _G0: *byte = "";
+/// Empty (no-color) counterpart of `_Y`.
 const _Y0: *byte = "";
+/// Empty (no-color) counterpart of `_M`.
 const _M0: *byte = "";
+/// Empty (no-color) counterpart of `_B`.
 const _B0: *byte = "";
+/// Empty (no-color) counterpart of `_D`.
 const _D0: *byte = "";
+/// Empty (no-color) counterpart of `_R`.
 const _R0: *byte = "";
 
+/// Maximum recursion depth supported by the tree printer's flag array.
 const MAX_DEPTH: i64 = 128;
 
+/// Public entry point: prints `node` as an indented tree, starting each line
+/// at `indent`.
 pub const print_node -> fn (node: *AST::AstNode, indent: i64) void;
 
+/// Prints the indentation prefix for a line at `depth`, emitting a vertical
+/// pipe for each ancestor level whose `flags[i]` says more siblings follow.
 const pf -> fn (flags: *i64, depth: i64) void {
   loop [i: i64 = 1](i < depth) : (++i) {
     if (flags[i] == 1) output("│   ");
@@ -29,21 +54,28 @@ const pf -> fn (flags: *i64, depth: i64) void {
   }
 }
 
+/// Prints the tree connector: `└──` for a last sibling, `├──` otherwise.
 const cn -> fn (is_last: i64) void {
   if (is_last == 1) output("└── ");
   else              output("├── ");
 }
 
+/// Prints one node of the tree at `depth`, dispatching on `node.kind` to
+/// render each node's fields and recurse into its children.
 const pn -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64, color: *byte) void;
 
+/// Prints a child node using the default cyan color.
 const r -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64) void {
   pn(node, flags, depth, is_last, _C);
 }
 
+/// Prints a type node using the blue color.
 const rt -> fn (node: *AST::AstNode, flags: *i64, depth: i64) void {
   pn(node, flags, depth, 1, _B);
 }
 
+/// Prints a labeled child `field` (e.g. `cond`, `body`) and recurses into
+/// it; `more` adds a connector implying further siblings follow.
 const field -> fn (label: *byte, node: *AST::AstNode, flags: *i64, parent_depth: i64, more: i64, color: *byte) void {
   pf(flags, parent_depth + 1);
   if (more == 1) output("├── ");
@@ -52,21 +84,29 @@ const field -> fn (label: *byte, node: *AST::AstNode, flags: *i64, parent_depth:
   pn(node, flags, parent_depth + 2, 1, _C);
 }
 
+/// Returns the ANSI code `c` when colors are on, else its empty no-color
+/// counterpart `c0`.
 const col -> fn (c: *byte, c0: *byte) *byte {
   if (USE_COLOR == 1) return c;
   return c0;
 }
 
+/// Prints a dim `(line:col)` annotation, but only when colors are enabled.
 const ann_lc -> fn (node: *AST::AstNode) void {
   if (USE_COLOR == 0) return;
   output(col(_D, _D0), "(", node.line, ":", node.col, ")", col(_R, _R0));
 }
 
+/// Prints a dim ` (count word)` annotation (e.g. ` (3 stmts)`), but only
+/// when colors are enabled.
 const ann_n -> fn (cnt: i64, word: *byte) void {
   if (USE_COLOR == 0) return;
   output(col(_D, _D0), " (", cnt, " ", word, ")", col(_R, _R0));
 }
 
+/// Implements `pn`: prints one tree line for `node` (rendering `<null>` for a
+/// null node and `Unknown(kind)` for unhandled kinds) and recurses into its
+/// children.
 const pn -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64, color: *byte) void {
   if (node == cast<*AST::AstNode>(0)) {
     pf(flags, depth);
@@ -949,6 +989,8 @@ const pn -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64, colo
   }
 }
 
+/// Implements `print_node`: allocates the depth-flag array, walks the tree
+/// from `node`, and frees the flags when done.
 pub const print_node -> fn (node: *AST::AstNode, indent: i64) void {
   let flags: *i64 = cast<*i64>(alloc(MAX_DEPTH * sizeof<i64>));
   loop [i: i64 = 0](i < MAX_DEPTH) : (++i) { flags[i] = 0; }

@@ -2,6 +2,10 @@
 
 *Source: `src/ast/type.lx`*
 
+Constructors for the type AST nodes: basic, pointer, array, function, and
+qualified (resolved) types. Each returns a freshly allocated node boxed as
+an `*AST::AstNode`.
+
 ## Table of Contents
 
 - [Functions](#functions)
@@ -10,6 +14,9 @@
 ## Functions
 
 ### `make_basic_type`
+
+Builds a `TYPE_BASIC` node for a named type (`i64`, user structs, ...).
+The generic `type_args` list is left empty.
 
 ```luma
 pub #returns_ownership
@@ -22,6 +29,8 @@ make_basic_type -> fn(
 
 ### `make_pointer_type`
 
+Builds a `TYPE_POINTER` node for a pointer to `pointee_type`.
+
 ```luma
 pub #returns_ownership
 make_pointer_type -> fn(
@@ -32,6 +41,8 @@ make_pointer_type -> fn(
 ```
 
 ### `make_array_type`
+
+Builds a `TYPE_ARRAY` node for an array of `element_type` sized by `size`.
 
 ```luma
 pub #returns_ownership
@@ -45,6 +56,9 @@ make_array_type -> fn(
 
 ### `make_func_type`
 
+Builds a `TYPE_FUNCTION` node from the parameter type list `param_types`
+(`param_count` entries) and `return_type`.
+
 ```luma
 pub #returns_ownership
 make_func_type -> fn(
@@ -57,6 +71,9 @@ make_func_type -> fn(
 ```
 
 ### `make_resolution_type`
+
+Builds a `TYPE_RESOLUTION` node for a qualified name assembled from `parts`
+(e.g. `A::B`). The generic `type_args` list is left empty.
 
 ```luma
 pub #returns_ownership

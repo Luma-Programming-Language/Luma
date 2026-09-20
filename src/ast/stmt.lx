@@ -1,7 +1,12 @@
+//! Constructors for the statement AST nodes: the program root, declarations
+//! (var, const, function, struct, enum, field), and all control-flow
+//! statements. Each returns a freshly allocated node boxed as an
+//! `*AST::AstNode`.
 @module "ast_stmt"
 
 @use "ast" as AST
 
+/// Builds a `PROGRAM` node holding the compilation unit's list of modules.
 #returns_ownership
 pub const make_program -> fn (modules: **AST::AstNode, module_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ProgramNode = AST::AstNode::make<AST::ProgramNode>(
@@ -17,6 +22,7 @@ pub const make_program -> fn (modules: **AST::AstNode, module_count: i64, line: 
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_EXPRESSION` node wrapping a single expression statement.
 #returns_ownership
 pub const make_expr_stmt -> fn (expression: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ExprStmtNode = AST::AstNode::make<AST::ExprStmtNode>(
@@ -31,6 +37,9 @@ pub const make_expr_stmt -> fn (expression: *AST::AstNode, line: i64, col: i64) 
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_VAR_DECL` node for a mutable or immutable `let`/`var`
+/// declaration: name, doc comment, optional type and initializer, and the
+/// `is_mutable`/`is_public` flags.
 #returns_ownership
 pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST::AstNode,
                                initializer: *AST::AstNode, is_mutable: i64, is_public: i64, line: i64, col: i64) *AST::AstNode {
@@ -51,6 +60,8 @@ pub const make_var_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST::
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_CONST_DECL` node for an immutable `const` declaration
+/// (`is_mutable` is forced to 0).
 #returns_ownership
 pub const make_const_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST::AstNode,
                                  initializer: *AST::AstNode, is_public: i64, line: i64, col: i64) *AST::AstNode {
@@ -71,6 +82,9 @@ pub const make_const_decl -> fn (name: *byte, doc_comment: *byte, var_type: *AST
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_FUNCTION` node describing a function declaration: name, doc
+/// comment, parameter names/types (`param_count` entries), return type,
+/// visibility, ownership flags, body, and whether it is forward declared.
 #returns_ownership
 pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **byte, param_types: **AST::AstNode,
                                 param_count: i64, return_type: *AST::AstNode, is_public: i64, body: *AST::AstNode,
@@ -105,6 +119,8 @@ pub const make_func_decl -> fn (name: *byte, doc_comment: *byte, param_names: **
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_STRUCT` node holding the struct's name, doc comment,
+/// separate public/private member lists, and `is_public` visibility.
 #returns_ownership
 pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_members: **AST::AstNode,
                                   public_count: i64, private_members: **AST::AstNode, private_count: i64,
@@ -129,6 +145,8 @@ pub const make_struct_decl -> fn (name: *byte, doc_comment: *byte, public_member
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_FIELD_DECL` node for one struct member: a data field with
+/// `type_node`, a method with a `function` node, or an embedded type.
 #returns_ownership
 pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AST::AstNode,
                                  function: *AST::AstNode, is_public: i64, is_embedded: i64,
@@ -151,6 +169,8 @@ pub const make_field_decl -> fn (name: *byte, doc_comment: *byte, type_node: *AS
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_ENUM` node with the enum's name, doc comment, member name
+/// list (`member_count` entries), and `is_public` visibility.
 #returns_ownership
 pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte,
                                 member_count: i64, is_public: i64, line: i64, col: i64) *AST::AstNode {
@@ -172,6 +192,8 @@ pub const make_enum_decl -> fn (name: *byte, doc_comment: *byte, members: **byte
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_IF` node from the `condition`, `then_stmt`, an `elif_stmts`
+/// list (`elif_count` entries), and an optional `else_stmt`.
 #returns_ownership
 pub const make_if_stmt -> fn (condition: *AST::AstNode, then_stmt: *AST::AstNode, elif_stmts: **AST::AstNode,
                               elif_count: i64, else_stmt: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
@@ -191,6 +213,8 @@ pub const make_if_stmt -> fn (condition: *AST::AstNode, then_stmt: *AST::AstNode
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_LOOP` node from the `condition`, optional step clause,
+/// loop `body`, and an `initializer` list (`init_count` entries).
 #returns_ownership
 pub const make_loop_stmt -> fn (condition: *AST::AstNode, optional: *AST::AstNode, body: *AST::AstNode,
                                 initializer: **AST::AstNode, init_count: i64, line: i64, col: i64) *AST::AstNode {
@@ -210,6 +234,7 @@ pub const make_loop_stmt -> fn (condition: *AST::AstNode, optional: *AST::AstNod
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_RETURN` node wrapping the returned expression `value`.
 #returns_ownership
 pub const make_return_stmt -> fn (value: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ReturnStmtNode = AST::AstNode::make<AST::ReturnStmtNode>(
@@ -224,6 +249,7 @@ pub const make_return_stmt -> fn (value: *AST::AstNode, line: i64, col: i64) *AS
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_BLOCK` node from a list of `statements` (`stmt_count`).
 #returns_ownership
 pub const make_block -> fn (statements: **AST::AstNode, stmt_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::BlockNode = AST::AstNode::make<AST::BlockNode>(
@@ -239,6 +265,8 @@ pub const make_block -> fn (statements: **AST::AstNode, stmt_count: i64, line: i
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_PRINT` node for `print(...)`: a list of `expressions`
+/// (`expr_count`), with `ln` selecting the newline-emitting form.
 #returns_ownership
 pub const make_print_stmt -> fn (expressions: **AST::AstNode, expr_count: i64, ln: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::PrintStmtNode = AST::AstNode::make<AST::PrintStmtNode>(
@@ -255,6 +283,8 @@ pub const make_print_stmt -> fn (expressions: **AST::AstNode, expr_count: i64, l
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_BREAK_CONTINUE` node; `is_continue` selects `continue`
+/// (1) over `break` (0).
 #returns_ownership
 pub const make_break_continue -> fn (is_continue: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::BreakContinueNode = AST::AstNode::make<AST::BreakContinueNode>(
@@ -269,6 +299,7 @@ pub const make_break_continue -> fn (is_continue: i64, line: i64, col: i64) *AST
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_DEFER` node wrapping the deferred `statement`.
 #returns_ownership
 pub const make_defer_stmt -> fn (statement: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::DeferNode = AST::AstNode::make<AST::DeferNode>(
@@ -283,6 +314,8 @@ pub const make_defer_stmt -> fn (statement: *AST::AstNode, line: i64, col: i64) 
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_SWITCH` node from the `condition`, a `cases` list
+/// (`case_count`), and an optional `default_case`.
 #returns_ownership
 pub const make_switch_stmt -> fn (condition: *AST::AstNode, cases: **AST::AstNode, case_count: i64,
                                   default_case: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
@@ -301,6 +334,8 @@ pub const make_switch_stmt -> fn (condition: *AST::AstNode, cases: **AST::AstNod
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_IMPL` node connecting function names/types to struct names
+/// with a body: `impl fn1, fn2 for Struct1, Struct2 { ... }`.
 #returns_ownership
 pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: **AST::AstNode, struct_name_list: **byte,
                                 function_name_count: i64, struct_name_count: i64, body: *AST::AstNode,
@@ -322,6 +357,8 @@ pub const make_impl_stmt -> fn (function_name_list: **byte, function_type_list: 
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_CASE` node for one switch case: the match `values` list
+/// (`value_count`) and its `body`.
 #returns_ownership
 pub const make_case_stmt -> fn (values: **AST::AstNode, value_count: i64, body: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::CaseNode = AST::AstNode::make<AST::CaseNode>(
@@ -338,6 +375,7 @@ pub const make_case_stmt -> fn (values: **AST::AstNode, value_count: i64, body: 
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `STMT_DEFAULT` node holding a switch default case's `body`.
 #returns_ownership
 pub const make_default_stmt -> fn (body: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::DefaultNode = AST::AstNode::make<AST::DefaultNode>(

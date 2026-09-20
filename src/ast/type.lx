@@ -1,7 +1,12 @@
+//! Constructors for the type AST nodes: basic, pointer, array, function, and
+//! qualified (resolved) types. Each returns a freshly allocated node boxed as
+//! an `*AST::AstNode`.
 @module "ast_type"
 
 @use "ast" as AST
 
+/// Builds a `TYPE_BASIC` node for a named type (`i64`, user structs, ...).
+/// The generic `type_args` list is left empty.
 #returns_ownership
 pub const make_basic_type -> fn (name: *byte, line: i64, col: i64) *AST::AstNode {
   let n: *AST::BasicTypeNode = AST::AstNode::make<AST::BasicTypeNode>(
@@ -17,6 +22,7 @@ pub const make_basic_type -> fn (name: *byte, line: i64, col: i64) *AST::AstNode
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `TYPE_POINTER` node for a pointer to `pointee_type`.
 #returns_ownership
 pub const make_pointer_type -> fn (pointee_type: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::PointerTypeNode = AST::AstNode::make<AST::PointerTypeNode>(
@@ -29,6 +35,7 @@ pub const make_pointer_type -> fn (pointee_type: *AST::AstNode, line: i64, col: 
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `TYPE_ARRAY` node for an array of `element_type` sized by `size`.
 #returns_ownership
 pub const make_array_type -> fn (element_type: *AST::AstNode, size: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ArrayTypeNode = AST::AstNode::make<AST::ArrayTypeNode>(
@@ -42,6 +49,8 @@ pub const make_array_type -> fn (element_type: *AST::AstNode, size: *AST::AstNod
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `TYPE_FUNCTION` node from the parameter type list `param_types`
+/// (`param_count` entries) and `return_type`.
 #returns_ownership
 pub const make_func_type -> fn (param_types: **AST::AstNode, param_count: i64, return_type: *AST::AstNode, line: i64, col: i64) *AST::AstNode {
   let n: *AST::FuncTypeNode = AST::AstNode::make<AST::FuncTypeNode>(
@@ -56,6 +65,8 @@ pub const make_func_type -> fn (param_types: **AST::AstNode, param_count: i64, r
   return cast<*AST::AstNode>(n);
 }
 
+/// Builds a `TYPE_RESOLUTION` node for a qualified name assembled from `parts`
+/// (e.g. `A::B`). The generic `type_args` list is left empty.
 #returns_ownership
 pub const make_resolution_type -> fn (parts: **byte, part_count: i64, line: i64, col: i64) *AST::AstNode {
   let n: *AST::ResolutionNode = AST::AstNode::make<AST::ResolutionNode>(

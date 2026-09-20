@@ -2,11 +2,16 @@
 
 *Source: `src/constants.lx`*
 
+Compiler-wide constants and shared configuration types.
+
+Defines the compiler version string, the error-code enum, and the
+`LumaBuildConfig` structure that carries CLI options through the
+compilation pipeline.
+
 ## Table of Contents
 
 - [Structures](#structures)
 - [Enumerations](#enumerations)
-- [Functions](#functions)
 - [Variables](#variables)
 
 ---
@@ -15,12 +20,18 @@
 
 ### `LumaErrorMessage`
 
+A message/code pair describing a single compiler error.
+
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `message` | *byte |  |
 | `code` | i64 |  |
 
 ### `LumaBuildConfig`
+
+Full compiler configuration derived from command-line arguments.
+
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -41,10 +52,22 @@
 | `opt_level` | i64 |  |
 | `link_files` | VEC::Vector |  |
 
+**Methods:**
+
+#### `LumaBuildConfig::init_build_config()`
+
+```luma
+static LumaBuildConfig::init_build_config -> fn(
+    filepath: *byte
+) LumaBuildConfig
+```
+
 
 ## Enumerations
 
 ### pub `LumaErrorCode`
+
+Named exit/status codes used across the compiler.
 
 **Values:**
 
@@ -58,17 +81,6 @@
 - `Unknown_Error`
 
 
-## Functions
-
-### `init_build_config`
-
-```luma
-pub init_build_config -> fn(
-    filepath: *byte
-) LumaBuildConfig
-```
-
-
 ## Variables
 
-- **`Luma_Compiler_version`** : *byte *(const)*
+- **`Luma_Compiler_version`** : *byte *(const)* — Version string reported by `-v`/`--version` and the driver banner.

@@ -55,7 +55,9 @@ pub const DocGenConfig -> struct {
 
 /// Builds a `DocGenConfig` with sensible defaults.
 ///
-/// When `output_dir` is NULL it falls back to `"docs"`.
+/// When `output_dir` is NULL it falls back to `"docs"`. Private declarations
+/// are included by default so the reference is complete; set
+/// `include_private` to false to restrict the pages to the public API.
 ///
 /// # Parameters
 /// - `arena`: Scratch arena to associate with the config (pass 0 if unused)
@@ -75,7 +77,7 @@ pub const create_doc_config -> fn (arena: *void, output_dir: *byte) DocGenConfig
   return DocGenConfig {
     output_dir:           dir,
     format:               "markdown",
-    include_private:      false,
+    include_private:      true,
     include_source_links: false,
     arena:                arena,
   };
@@ -872,8 +874,10 @@ pub const generate_module_docs -> fn (module: *AST::AstNode, config: DocGenConfi
 ///
 /// Creates `output_dir` if needed, then writes one `<module>.md` per module
 /// plus a `README.md` index linking to each page with a one-line summary taken
-/// from the module's `//!` doc comment. Progress is reported through the
-/// compiler's `output` builtin.
+/// from the module's `//!` doc comment. Only modules whose source lives under
+/// `src/` are emitted — linked std/lib dependencies (e.g. transitive `@use`s)
+/// are skipped so the reference mirrors the project's own source tree.
+/// Progress is reported through the compiler's `output` builtin.
 ///
 /// # Parameters
 /// - `program`: A `PROGRAM` AST node, as produced by the parser
@@ -916,6 +920,14 @@ pub const generate_documentation -> fn (program: *AST::AstNode, config: DocGenCo
     if (module != cast<*AST::AstNode>(0) && module.kind == AST::NodeType::PREPROCESSOR_MODULE) {
       let mn: *AST::ModuleNode = cast<*AST::ModuleNode>(module);
       let module_name: *byte = mn.name;
+
+      // Only modules from the project's own `src/` tree are part of the API
+      // reference. std/lib modules pulled in transitively via `@use` are
+      // skipped, or the index would show every dependency of the build.
+      let from_src: bool = mn.file_path != cast<*byte>(0)
+        && STR::strncmp(mn.file_path, "src/", 4) == 0;
+      if (!from_src) continue;
+
       if (module_name == cast<*byte>(0)) module_name = "unnamed";
 
       CG::buf_str(index, "- [");

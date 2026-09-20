@@ -2,6 +2,9 @@
 
 *Source: `src/lexer/tokens.lx`*
 
+Token types, token and error structures, and the keyword and operator
+lookup tables shared by the lexer and the parser.
+
 ## Table of Contents
 
 - [Structures](#structures)
@@ -15,6 +18,9 @@
 
 ### `LexError`
 
+A lexical error recorded by the lexer: an error-kind code, the source
+location of the offending text, and the offending byte itself.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `kind` | i64 |  |
@@ -24,6 +30,10 @@
 | `bad` | byte |  |
 
 ### `Lexer`
+
+Stateful scanner over a `\0`-terminated source buffer that tracks the
+current position, line and column and buffers lexical errors.
+
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -69,6 +79,10 @@ Lexer::advance -> fn(
 
 ### `Token`
 
+A lexed token: a span of the source buffer plus its kind, length and
+source position.
+
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `val` | *byte |  |
@@ -101,10 +115,23 @@ Token::token_value_string -> fn(
 ) *byte
 ```
 
+### `Keyword`
+
+A keyword or directive spelling paired with the token kind it lexes to.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `val` | *byte |  |
+| `kind` | i64 |  |
+
 
 ## Enumerations
 
 ### pub `LumaTokenType`
+
+The complete set of token kinds the lexer can emit: single- and
+double-character operators, keywords, primitive-type tokens, directives
+and doc comments.
 
 **Values:**
 
@@ -221,6 +248,9 @@ Token::token_value_string -> fn(
 
 ### `lookup_single`
 
+Maps a single-character operator to its token kind, or -1 if the
+character is not an operator.
+
 ```luma
 pub lookup_single -> fn(
     c: byte
@@ -229,6 +259,9 @@ pub lookup_single -> fn(
 
 ### `lookup_double`
 
+Maps a two-character operator sequence to its token kind, or -1 if the
+pair is not an operator.
+
 ```luma
 pub lookup_double -> fn(
     c: byte,
@@ -236,7 +269,23 @@ pub lookup_double -> fn(
 ) i64
 ```
 
+### `compare_word`
+
+Compares a scanned word against a keyword entry, returning negative, zero
+or positive (strcmp-style) as used by the binary search in `lookup_keyword`.
+
+```luma
+      compare_word -> fn(
+    val: *byte,
+    len: i64,
+    kw: *byte
+) i64
+```
+
 ### `lookup_keyword`
+
+Binary-searches `keyword_map` for a word (given as value and length) and
+returns the matching token kind, or -1 if it is not a keyword.
 
 ```luma
 pub lookup_keyword -> fn(
@@ -248,10 +297,11 @@ pub lookup_keyword -> fn(
 
 ## Variables
 
-- **`MAX_LEX_ERRORS`** : i64 *(const)*
-- **`LEX_ERR_UNKNOWN_DIRECTIVE`** : i64 *(const)*
-- **`LEX_ERR_UNTERMINATED_STRING`** : i64 *(const)*
-- **`LEX_ERR_EMPTY_CHAR`** : i64 *(const)*
-- **`LEX_ERR_BAD_CHAR`** : i64 *(const)*
-- **`LEX_ERR_INVALID_CHARACTER`** : i64 *(const)*
-- **`keyword_map`** : [Keyword; 52] *(const)*
+- **`MAX_LEX_ERRORS`** : i64 *(const)* — Maximum number of lexical errors the lexer buffers before dropping later ones.
+- **`LEX_ERR_UNKNOWN_DIRECTIVE`** : i64 *(const)* — Error kind: an `@word` or `#word` directive that isn't a keyword.
+- **`LEX_ERR_UNTERMINATED_STRING`** : i64 *(const)* — Error kind: a string literal that hit a newline or EOF without a closing quote.
+- **`LEX_ERR_EMPTY_CHAR`** : i64 *(const)* — Error kind: an empty character literal, or an opening quote running into EOF.
+- **`LEX_ERR_BAD_CHAR`** : i64 *(const)* — Error kind: a character literal missing its closing quote or holding multiple characters.
+- **`LEX_ERR_INVALID_CHARACTER`** : i64 *(const)* — Error kind: a character Luma has no token for, previously silently skipped.
+- **`KEYWORD_COUNT`** : i64 *(const)* — Number of entries in `keyword_map`.
+- **`keyword_map`** : [Keyword; 52] *(const)* — The binary-search lookup table mapping keyword and directive spellings to

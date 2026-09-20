@@ -1,3 +1,9 @@
+//! Typechecking of Luma expressions.
+//!
+//! Dispatches every expression node form to a per-kind typechecker, resolving
+//! each to a Luma type, and drives the static memory analyzer (use-after-free
+//! and leak tracking) for pointer-producing expressions.
+
 @module "tc_expr"
 
 @use "std_cstring" as STR
@@ -36,6 +42,7 @@ const track_free                -> fn (ptr_expr: *AST::AstNode, scope: *CORE::Sc
 const call_is_returns_ownership -> fn (call_expr: *AST::AstNode, scope: *CORE::Scope) bool;
 pub const track_pointer_source  -> fn (name: *byte, value_expr: *AST::AstNode, scope: *CORE::Scope) void;
 
+/// Returns a heap-allocated `a.b` string splicing two identifiers.
 #returns_ownership
 pub const qualify -> fn (a: *byte, b: *byte) *byte {
   let la: i64 = STR::strlen(a);
@@ -48,6 +55,7 @@ pub const qualify -> fn (a: *byte, b: *byte) *byte {
   return s;
 }
 
+/// Returns a heap-allocated NUL-terminated copy of `s`.
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
   let len: i64 = STR::strlen(s);
@@ -56,6 +64,7 @@ const dup_str -> fn (s: *byte) *byte {
   return out;
 }
 
+/// Unwraps a pointer type to its pointee type; non-pointers pass through.
 const strip_pointer -> fn (t: *AST::AstNode) *AST::AstNode {
   if (TYPE::is_pointer_type(t)) {
     let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
@@ -64,6 +73,8 @@ const strip_pointer -> fn (t: *AST::AstNode) *AST::AstNode {
   return t;
 }
 
+/// Reports a use-after-free error if `node` is an identifier freed earlier
+/// in the enclosing function.
 const check_uaf -> fn (node: *AST::AstNode, scope: *CORE::Scope) void {
   if (node == cast<*AST::AstNode>(0)) return;
   if (node.kind != AST::NodeType::EXPR_IDENTIFIER) return;
@@ -78,6 +89,9 @@ const check_uaf -> fn (node: *AST::AstNode, scope: *CORE::Scope) void {
   }
 }
 
+/// Records an explicit free of an identifier on the enclosing function's
+/// static memory analyzer (deferred to the function's deferred-frees list
+/// while tracking is skipped).
 const track_free -> fn (ptr_expr: *AST::AstNode, scope: *CORE::Scope) void {
   if (ptr_expr == cast<*AST::AstNode>(0)) return;
   if (ptr_expr.kind != AST::NodeType::EXPR_IDENTIFIER) return;
@@ -102,6 +116,7 @@ const track_free -> fn (ptr_expr: *AST::AstNode, scope: *CORE::Scope) void {
   SCOPE::analyzer_track_free(analyzer, id.name, fname, is_conditional);
 }
 
+/// Returns whether the callee symbol of a call is marked `#returns_ownership`.
 const call_is_returns_ownership -> fn (call_expr: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::CallNode = cast<*AST::CallNode>(call_expr);
   let callee: *AST::AstNode = n.callee;
@@ -116,6 +131,8 @@ const call_is_returns_ownership -> fn (call_expr: *AST::AstNode, scope: *CORE::S
   return false;
 }
 
+/// Returns whether a callee (identifier or module-qualified member) names a
+/// symbol marked `#takes_ownership`.
 const call_is_takes_ownership -> fn (callee: *AST::AstNode, scope: *CORE::Scope) bool {
   if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
     let id: *AST::IdentifierNode = cast<*AST::IdentifierNode>(callee);
@@ -142,6 +159,9 @@ const call_is_takes_ownership -> fn (callee: *AST::AstNode, scope: *CORE::Scope)
   return false;
 }
 
+/// Tracks where a pointer binding gets its value — an `alloc`, a
+/// `#returns_ownership` call, or an alias of another tracked variable — so
+/// the leak checker can account for it.
 pub const track_pointer_source -> fn (name: *byte, value_expr: *AST::AstNode, scope: *CORE::Scope) void {
   if (value_expr == cast<*AST::AstNode>(0)) return;
 
@@ -186,6 +206,9 @@ pub const track_pointer_source -> fn (name: *byte, value_expr: *AST::AstNode, sc
 // resolved type onto the node itself (`AstNode.resolved_type`, see ast.lx)
 // so codegen can later read a static type straight off the AST without
 // re-running inference or rebuilding a scope tree.
+/// Public entry point: typechecks an expression and stashes the resolved
+/// type on the node (`AstNode.resolved_type`) so codegen can read a static
+/// type straight off the AST without re-running inference.
 #returns_ownership
 pub const typecheck_expression -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
   let result: *AST::AstNode = typecheck_expression_inner(expr, scope, expected);
@@ -193,6 +216,8 @@ pub const typecheck_expression -> fn (expr: *AST::AstNode, scope: *CORE::Scope, 
   return result;
 }
 
+/// Dispatches an expression to its per-kind typechecker; grouping, system,
+/// alloc/free, sizeof, input, syscall, and memcpy forms are handled here.
 #returns_ownership
 const typecheck_expression_inner -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
   if (expr == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
@@ -284,6 +309,7 @@ const typecheck_expression_inner -> fn (expr: *AST::AstNode, scope: *CORE::Scope
   return cast<*AST::AstNode>(0);
 }
 
+/// Typechecks a literal, mapping its literal kind to the corresponding type.
 #returns_ownership
 const tc_literal -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::LiteralNode = cast<*AST::LiteralNode>(expr);
@@ -305,6 +331,8 @@ const tc_literal -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode 
   return cast<*AST::AstNode>(0);
 }
 
+/// Looks up an identifier in scope, reports undeclared identifiers, runs the
+/// use-after-free check, and returns the symbol's type.
 #returns_ownership
 const tc_identifier -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::IdentifierNode = cast<*AST::IdentifierNode>(expr);
@@ -317,6 +345,9 @@ const tc_identifier -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNo
   return sym.type;
 }
 
+/// Typechecks a binary or range expression: comparisons and logic yield
+/// bool, bitwise yields i64, arithmetic follows numeric rank, and pointer
+/// arithmetic returns the pointer type.
 #returns_ownership
 const tc_binary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::BinaryNode = cast<*AST::BinaryNode>(expr);
@@ -374,6 +405,8 @@ const tc_binary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return rt;
 }
 
+/// Typechecks a unary expression: logical `!` yields bool, otherwise the
+/// operand's type.
 #returns_ownership
 const tc_unary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
@@ -386,6 +419,8 @@ const tc_unary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return ot;
 }
 
+/// Typechecks `*ptr`, returning the pointee type (error on non-pointers and
+/// use-after-free).
 #returns_ownership
 const tc_deref -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
@@ -400,6 +435,8 @@ const tc_deref -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return p.pointee_type;
 }
 
+/// Typechecks `&x`, returning a pointer to the operand's type and marking
+/// the identifier's address taken for the analyzer.
 #returns_ownership
 const tc_addr -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
@@ -419,6 +456,8 @@ const tc_addr -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return TYPE::make_pointer_to(ot);
 }
 
+/// Typechecks `a[i]`: the index must be an integer, and the result is the
+/// array's element type or the pointer's pointee type.
 #returns_ownership
 const tc_index -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::IndexNode = cast<*AST::IndexNode>(expr);
@@ -446,6 +485,9 @@ const tc_index -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return cast<*AST::AstNode>(0);
 }
 
+/// Typechecks member access: compiletime `Enum::Member` / `Alias::symbol`
+/// (including module-alias and generic enum members) and runtime `obj.field`
+/// access on nominal types.
 #returns_ownership
 const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::MemberNode = cast<*AST::MemberNode>(expr);
@@ -620,6 +662,8 @@ const tc_member -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return cast<*AST::AstNode>(0);
 }
 
+/// Resolves a callee to its function type; the `output()`/`outputln()`
+/// builtins (variadic) are exempt and yield NULL.
 #returns_ownership
 const resolve_callee_type -> fn (callee: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
@@ -634,6 +678,9 @@ const resolve_callee_type -> fn (callee: *AST::AstNode, scope: *CORE::Scope) *AS
   return typecheck_expression(callee, scope, cast<*AST::AstNode>(0));
 }
 
+/// Typechecks a call: builtin output, explicit generic instantiations,
+/// argument count/types, `#takes_ownership` tracking, and error reporting for
+/// non-callable or undeclared callees.
 #returns_ownership
 const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::CallNode = cast<*AST::CallNode>(expr);
@@ -815,6 +862,8 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return cast<*AST::AstNode>(0);
 }
 
+/// Typechecks an assignment: mutability, type match, pointer-source tracking,
+/// and escape handling for member targets.
 #returns_ownership
 const tc_assign -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::AssignNode = cast<*AST::AssignNode>(expr);
@@ -866,6 +915,8 @@ const tc_assign -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return tt;
 }
 
+/// Typechecks `c ? a : b`, returning the then-branch type (or the else-branch
+/// type if the then-branch didn't resolve).
 #returns_ownership
 const tc_ternary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::TernaryNode = cast<*AST::TernaryNode>(expr);
@@ -876,6 +927,8 @@ const tc_ternary -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode 
   return b;
 }
 
+/// Typechecks a cast by resolving the target type and rejecting casts between
+/// incompatible types.
 #returns_ownership
 const tc_cast -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let n: *AST::CastNode = cast<*AST::CastNode>(expr);
@@ -889,6 +942,9 @@ const tc_cast -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   return n.type_node;
 }
 
+/// Typechecks an array literal: the element type comes from the first element
+/// (or the expected type), the rest must match, and empty literals defer to
+/// the expected type.
 #returns_ownership
 const tc_array -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
   let n: *AST::ArrayNode = cast<*AST::ArrayNode>(expr);
@@ -926,6 +982,8 @@ const tc_array -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::
 // names used to fall straight through to codegen, which emitted `.name =
 // value` designators that cc then rejected with a confusing "has no member
 // named" error (instead of a proper Luma diagnostic).
+/// Returns whether a struct (directly or via `...Embedded` promotion) accepts
+/// `field` in a literal; unknown decls stay permissive.
 const struct_decl_has_field -> fn (scope: *CORE::Scope, sname: *byte, field: *byte) bool {
   let decl: *AST::AstNode = cast<*AST::AstNode>(0);
   let mscope: *CORE::Scope = SCOPE::find_containing_module(scope);
@@ -987,6 +1045,7 @@ const struct_decl_has_field -> fn (scope: *CORE::Scope, sname: *byte, field: *by
   return false;
 }
 
+/// Reports a Type Error for the first unknown field name in a struct literal.
 const validate_struct_literal_fields -> fn (expr: *AST::AstNode, scope: *CORE::Scope, sname: *byte) void {
   let sn: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
   let fi: i64 = 0;
@@ -1000,6 +1059,9 @@ const validate_struct_literal_fields -> fn (expr: *AST::AstNode, scope: *CORE::S
   }
 }
 
+/// Typechecks a struct literal: validates field names, instantiates generic
+/// structs (`Box<i64> { ... }`, including through a module alias), resolves
+/// bare vs. aliased names, and returns the struct's type.
 #returns_ownership
 const tc_struct_expr -> fn (expr: *AST::AstNode, scope: *CORE::Scope, expected: *AST::AstNode) *AST::AstNode {
   let n: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);

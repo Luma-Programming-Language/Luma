@@ -1,24 +1,35 @@
+//! Scans raw source text into a stream of tokens: whitespace and comments
+//! are skipped or emitted (for `//!` / `///` doc comments) while literals,
+//! operators and directive keywords become tokens.
 @module "lexer"
 
 @use "lexer_tokens" as sym
 
+/// Returns true if `c` is an ASCII letter or underscore.
 const is_alpha -> fn (c: byte) bool {
   return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c == '_');
 }
+/// Returns true if `c` is an ASCII digit.
 const is_digit -> fn (c: byte) bool { return (c >= '0' && c <= '9'); }
+/// Returns true if `c` is alphanumeric (letter, digit or underscore).
 const is_alnum -> fn (c: byte) bool { return is_alpha(c) || is_digit(c); }
+/// Returns true if `c` is a hexadecimal digit (0-9, a-f, A-F).
 const is_hex_digit -> fn (c: byte) bool {
   return is_digit(c) || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F');
 }
+/// Returns true if `c` is a binary digit (0 or 1).
 const is_bin_digit -> fn (c: byte) bool { return (c == '0' || c == '1'); }
+/// Returns true if `c` is an octal digit (0-7).
 const is_oct_digit -> fn (c: byte) bool { return (c >= '0' && c <= '7'); }
 
+/// Advances past a `//` line comment up to (but not including) the newline.
 const skip_line_comment -> fn (lx: *sym::Lexer) void {
   loop (lx.is_end() == 0 && lx.peek(0) != '\n') {
     lx.advance();
   }
 }
 
+/// Advances past a `/* ... */` block comment (nesting is not supported).
 const skip_block_comment -> fn (lx: *sym::Lexer) void {
   lx.advance(); // skip /
   lx.advance(); // skip *
@@ -33,6 +44,9 @@ const skip_block_comment -> fn (lx: *sym::Lexer) void {
   }
 }
 
+/// Skips whitespace and comments, returning the count of consecutive
+/// whitespace bytes before the last newline (recorded as the token's
+/// `whitespace_len`). Doc comments stop the scan so they can become tokens.
 const skip_whitespace -> fn (lx: *sym::Lexer) i64 {
   let count: i64 = 0;
   loop (lx.is_end() == 0) {
@@ -62,6 +76,8 @@ const skip_whitespace -> fn (lx: *sym::Lexer) i64 {
 
 // Scan the text after a `//!` or `///` opener (none of the three bytes
 // consumed yet) up to end of line and emit it as a doc-comment token.
+/// Scans the text after a `//!` or `///` opener to end of line and emits it
+/// as a TOK_MODULE_DOC or TOK_DOC_COMMENT token.
 const scan_doc_comment -> fn (lx: *sym::Lexer, kind: i64, start: *byte,
                               line: i64, col: i64, ws: i64) sym::Token {
   lx.advance(); // '/'
@@ -80,6 +96,9 @@ const scan_doc_comment -> fn (lx: *sym::Lexer, kind: i64, start: *byte,
 // consumed by the caller. Known words become their directive/attribute
 // token via the binary-search keyword lookup; anything else is recorded as
 // LEX_ERR_UNKNOWN_DIRECTIVE and returned as a TOK_ERROR token.
+/// Scans an `@word` / `#word` directive whose prefix was already consumed.
+/// Known words resolve to their directive/attribute token via the keyword
+/// lookup; unknown ones are recorded as an error and returned as TOK_ERROR.
 const scan_prefixed_word -> fn (lx: *sym::Lexer, start: *byte,
                                 line: i64, col: i64, ws: i64) sym::Token {
   let len: i64 = 1; // the '@' or '#' prefix
@@ -100,6 +119,9 @@ const scan_prefixed_word -> fn (lx: *sym::Lexer, start: *byte,
 // non-numeric character, so the value is unaffected). The prefixed forms are
 // only entered when a valid digit actually follows, so `0` before an
 // identifier still lexes as `0` + identifier (e.g. the `0..` range).
+/// Consumes a numeric literal and returns TOK_NUMBER or TOK_NUM_FLOAT,
+/// handling decimal/hex/binary/octal forms, `_` digit separators, fractional
+/// parts and optional type suffixes.
 const scan_number -> fn (lx: *sym::Lexer) i64 {
   let kind: i64 = sym::LumaTokenType::TOK_NUMBER;
   let prefixed: i64 = 0;
@@ -160,6 +182,8 @@ const scan_number -> fn (lx: *sym::Lexer) i64 {
 // Record a lexical error. The lexer can't report through error.lx itself
 // (no file path, no token table to render a line_text from), so it stashes
 // the kind + location here and parse_file re-issues them as diagnostics.
+/// Records a lexical error in the lexer's fixed-size error buffer (up to
+/// MAX_LEX_ERRORS); stashed errors are re-issued as diagnostics later.
 const lexer_add_error -> fn (lx: *sym::Lexer, kind: i64, line: i64, col: i64, len: i64, bad: i64) void {
   lx.had_error = 1;
   if (lx.error_count >= sym::MAX_LEX_ERRORS) return;
@@ -171,6 +195,9 @@ const lexer_add_error -> fn (lx: *sym::Lexer, kind: i64, line: i64, col: i64, le
   lx.error_count = lx.error_count + 1;
 }
 
+/// Scans and returns the next token, skipping whitespace and comments;
+/// characters the language has no token for become recorded error tokens
+/// rather than being silently dropped.
 pub const next_token -> fn (lx: *sym::Lexer) sym::Token {
   loop (1) {
     let ws: i64 = skip_whitespace(lx);

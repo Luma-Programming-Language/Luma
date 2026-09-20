@@ -2,17 +2,27 @@
 
 *Source: `src/ast/ast.lx`*
 
+Core AST definitions: the `AstNode` base struct, the `NodeType`,
+`NodeCategory` and operator/literal enums, and one concrete node struct per
+node kind (preprocessor, expression, statement, and type). Also provides
+`free_node` (recursive teardown) and `clone_node` (deep copy used for
+generic instantiation).
+
 ## Table of Contents
 
 - [Structures](#structures)
 - [Enumerations](#enumerations)
 - [Functions](#functions)
+- [Variables](#variables)
 
 ---
 
 ## Structures
 
 ### `AstNode`
+
+Base of every AST node: a `kind`/`category` pair plus source location.
+All concrete node structs embed `...AstNode` as their first member.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -38,6 +48,9 @@ AstNode::make<T> -> fn(
 
 ### `ModuleNode`
 
+`@module` node: module name, doc comment, file path, body statement list,
+and the module's source text and token stream (retained for diagnostics).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -52,6 +65,8 @@ AstNode::make<T> -> fn(
 
 ### `UseNode`
 
+`@use` import node: the imported module name and its local alias.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -59,6 +74,9 @@ AstNode::make<T> -> fn(
 | `alias` | *byte |  |
 
 ### `OsNode`
+
+`@os` conditional section: one body per platform plus an optional default
+body used when no platform matches.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -70,12 +88,17 @@ AstNode::make<T> -> fn(
 
 ### `LinkNode`
 
+`@link` node naming a library to link against.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `lib_name` | *byte |  |
 
 ### `LiteralNode`
+
+Expression node for a literal value: one of int, float, double, string,
+char, bool, or null (selected by `lit_type`).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -89,12 +112,17 @@ AstNode::make<T> -> fn(
 
 ### `IdentifierNode`
 
+Expression node naming a symbol (`name`).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `name` | *byte |  |
 
 ### `BinaryNode`
+
+Expression node for a binary operation (`left op right`); also used for
+range expressions (`EXPR_RANGE`).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -105,6 +133,9 @@ AstNode::make<T> -> fn(
 
 ### `UnaryNode`
 
+Expression node for a unary operation applied to `operand`; also reused
+for deref, address-of, grouping, and system-expression nodes.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -112,6 +143,9 @@ AstNode::make<T> -> fn(
 | `operand` | *AstNode |  |
 
 ### `CallNode`
+
+Expression node for a function call: the `callee`, the `args` list
+(`arg_count`), and optional explicit generic `type_args`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -124,6 +158,8 @@ AstNode::make<T> -> fn(
 
 ### `AssignNode`
 
+Expression node for an assignment (`target = value`).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -131,6 +167,8 @@ AstNode::make<T> -> fn(
 | `value` | *AstNode |  |
 
 ### `TernaryNode`
+
+Expression node for a ternary `condition ? then_expr : else_expr`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -140,6 +178,10 @@ AstNode::make<T> -> fn(
 | `else_expr` | *AstNode |  |
 
 ### `MemberNode`
+
+Expression node for a member access: `object.member` (`.`), or a compile
+time / qualified `object::member` (`is_compiletime`), with optional
+explicit generic `type_args`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -152,6 +194,8 @@ AstNode::make<T> -> fn(
 
 ### `IndexNode`
 
+Expression node for an index access (`object[index]`).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -159,6 +203,9 @@ AstNode::make<T> -> fn(
 | `index` | *AstNode |  |
 
 ### `ArrayNode`
+
+Expression node for an array literal: the `elements` list
+(`element_count`) and an optional fixed `target_size`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -169,6 +216,9 @@ AstNode::make<T> -> fn(
 
 ### `CastNode`
 
+Expression node for a cast (`cast<T>(expr)`); also reused for `input`
+expressions (`EXPR_INPUT`).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -177,6 +227,8 @@ AstNode::make<T> -> fn(
 
 ### `AllocNode`
 
+Expression node for `alloc(size)`.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -184,12 +236,16 @@ AstNode::make<T> -> fn(
 
 ### `FreeNode`
 
+Expression node for `free(ptr)`.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `ptr` | *AstNode |  |
 
 ### `MemcpyNode`
+
+Expression node for `memcpy(to, from, size)`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -200,6 +256,9 @@ AstNode::make<T> -> fn(
 
 ### `SizeofNode`
 
+Expression node for `sizeof(...)`, taking the size of an object or a type
+(`is_type`).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -208,6 +267,8 @@ AstNode::make<T> -> fn(
 
 ### `SyscallNode`
 
+Expression node for an inline syscall with a raw argument list.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -215,6 +276,9 @@ AstNode::make<T> -> fn(
 | `count` | i64 |  |
 
 ### `StructExprNode`
+
+Expression node for a struct literal `Name { field: value, ... }`, optionally
+qualified as `Alias::Name`, with optional explicit generic `type_args`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -229,6 +293,8 @@ AstNode::make<T> -> fn(
 
 ### `ProgramNode`
 
+Root node of the whole program: the list of parsed `modules`.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -237,12 +303,18 @@ AstNode::make<T> -> fn(
 
 ### `ExprStmtNode`
 
+Statement node wrapping a single expression statement.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `expression` | *AstNode |  |
 
 ### `VarDeclNode`
+
+Statement node for a `let`/`var`/`const` declaration: name, doc comment,
+optional type and initializer, and the `is_mutable`/`is_public` flags
+(const declarations store `is_mutable` = 0).
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -255,6 +327,10 @@ AstNode::make<T> -> fn(
 | `is_public` | i64 |  |
 
 ### `FuncDeclNode`
+
+Statement node for a function declaration: name, doc comment, parameter
+names/types (`param_count`), return type, visibility, ownership flags,
+body, DLL/lib import markers, and optional generic `type_params`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -280,6 +356,9 @@ AstNode::make<T> -> fn(
 
 ### `StructDeclNode`
 
+Statement node for a struct declaration: separate public/private member
+lists and optional generic `type_params`.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -295,6 +374,9 @@ AstNode::make<T> -> fn(
 
 ### `FieldDeclNode`
 
+Statement node for one struct member: a data field with a `type_node`, a
+method carried in `function`, or an embedded type (`is_embedded`).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -307,6 +389,9 @@ AstNode::make<T> -> fn(
 | `is_static` | i64 |  |
 
 ### `EnumDeclNode`
+
+Statement node for a C-style enum declaration: name, doc comment, member
+name list (`member_count`), and optional generic `type_params`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -321,6 +406,9 @@ AstNode::make<T> -> fn(
 
 ### `IfStmtNode`
 
+Statement node for an `if` with a condition, then-branch, `elif` list,
+and optional else-branch.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -331,6 +419,9 @@ AstNode::make<T> -> fn(
 | `else_stmt` | *AstNode |  |
 
 ### `LoopStmtNode`
+
+Statement node for a `loop` with an optional init list, condition step,
+and body.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -343,12 +434,16 @@ AstNode::make<T> -> fn(
 
 ### `ReturnStmtNode`
 
+Statement node for `return value` (value may be null for bare returns).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `value` | *AstNode |  |
 
 ### `BlockNode`
+
+Statement node for a brace-delimited block of `statements`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -357,6 +452,9 @@ AstNode::make<T> -> fn(
 | `stmt_count` | i64 |  |
 
 ### `PrintStmtNode`
+
+Statement node for `print(...)`: the expression list (`expr_count`) and
+the `ln` flag selecting the newline-emitting form.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -367,6 +465,8 @@ AstNode::make<T> -> fn(
 
 ### `BreakContinueNode`
 
+Statement node for `break` or `continue` (`is_continue` selects which).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -374,12 +474,17 @@ AstNode::make<T> -> fn(
 
 ### `DeferNode`
 
+Statement node for `defer statement`, run when the enclosing scope exits.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `statement` | *AstNode |  |
 
 ### `SwitchNode`
+
+Statement node for a `switch` on `condition`, with a `cases` list and an
+optional `default_case`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -390,6 +495,9 @@ AstNode::make<T> -> fn(
 | `default_case` | *AstNode |  |
 
 ### `ImplNode`
+
+Statement node for `impl`: pairs function names/types with the struct
+names they extend, plus a body.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -403,6 +511,8 @@ AstNode::make<T> -> fn(
 
 ### `CaseNode`
 
+Statement node for one switch `case`: a list of match `values` and a body.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -412,12 +522,17 @@ AstNode::make<T> -> fn(
 
 ### `DefaultNode`
 
+Statement node for a switch `default` case, holding its body.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `body` | *AstNode |  |
 
 ### `BasicTypeNode`
+
+Type node for a named type (`i64`, user structs, ...), with optional
+explicit generic `type_args`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -428,12 +543,16 @@ AstNode::make<T> -> fn(
 
 ### `PointerTypeNode`
 
+Type node for a pointer type (`*pointee_type`).
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
 | `pointee_type` | *AstNode |  |
 
 ### `ArrayTypeNode`
+
+Type node for an array of `element_type` sized by `size`.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -443,6 +562,8 @@ AstNode::make<T> -> fn(
 
 ### `FuncTypeNode`
 
+Type node for a function type: parameter types plus a return type.
+
 | Field | Type | Description |
 |-------|------|-------------|
 | `AstNode` | AstNode |  |
@@ -451,6 +572,9 @@ AstNode::make<T> -> fn(
 | `return_type` | *AstNode |  |
 
 ### `ResolutionNode`
+
+Type node for a qualified type reference (e.g. `A::B`), assembled from
+`parts`, with optional explicit generic `type_args` on the last part.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -464,6 +588,9 @@ AstNode::make<T> -> fn(
 ## Enumerations
 
 ### pub `NodeType`
+
+Discriminates every AST node kind; stored in `AstNode.kind` and matched by
+`free_node`, `clone_node`, and the tree printer.
 
 **Values:**
 
@@ -524,6 +651,9 @@ AstNode::make<T> -> fn(
 
 ### pub `LiteralType`
 
+Tells which scalar flavor a `LiteralNode` stores (ident, int, float,
+double, string, char, bool, null).
+
 **Values:**
 
 - `LITERAL_IDENT`
@@ -536,6 +666,8 @@ AstNode::make<T> -> fn(
 - `LITERAL_NULL`
 
 ### pub `BinaryOp`
+
+Binary operators for `BinaryNode`; stored in `BinaryNode.op`.
 
 **Values:**
 
@@ -562,6 +694,8 @@ AstNode::make<T> -> fn(
 
 ### pub `UnaryType`
 
+Unary operators for `UnaryNode`; stored in `UnaryNode.op`.
+
 **Values:**
 
 - `UNOP_NOT`
@@ -577,6 +711,9 @@ AstNode::make<T> -> fn(
 
 ### pub `NodeCategory`
 
+Broad bucket classifying a node as an expression, statement, type, or
+preprocessor construct; stored in `AstNode.category`.
+
 **Values:**
 
 - `Node_Category_EXPR`
@@ -589,6 +726,10 @@ AstNode::make<T> -> fn(
 
 ### `free_node`
 
+Recursively frees an entire AST subtree, dispatching on `node.kind` to
+free each concrete node's owned buffers and child nodes. Takes ownership
+of `node` and frees the node itself; is null-safe.
+
 ```luma
 pub #takes_ownership
 free_node -> fn(
@@ -598,6 +739,11 @@ free_node -> fn(
 
 ### `clone_node`
 
+Deep-clones an entire AST subtree (used for generic monomorphization),
+substituting any active generic type parameters as it goes. Returns a
+fresh, independent clone, or null for node kinds that cannot appear in a
+generic template.
+
 ```luma
 pub #returns_ownership
 clone_node -> fn(
@@ -606,6 +752,11 @@ clone_node -> fn(
 ```
 
 ### `clone_node_substituting`
+
+Deep-clones `node` while replacing every bare type name matching `names[i]`
+with a clone of `types[i]` — the entry point used to instantiate a generic
+template at one concrete call site. Reentrant: an inner call saves and
+restores the outer substitution table.
 
 ```luma
 pub #returns_ownership
@@ -617,7 +768,45 @@ clone_node_substituting -> fn(
 ) *AstNode
 ```
 
+### `dup_str`
+
+Duplicates a null-terminated string (or returns null for a null input).
+
+```luma
+      #returns_ownership
+dup_str -> fn(
+    s: *byte
+) *byte
+```
+
+### `clone_node_array`
+
+Deep-clones an array of `count` nodes into a fresh allocation.
+
+```luma
+      #returns_ownership
+clone_node_array -> fn(
+    arr: **AstNode,
+    count: i64
+) **AstNode
+```
+
+### `dup_str_array`
+
+Duplicates an array of `count` strings into a fresh allocation.
+
+```luma
+      #returns_ownership
+dup_str_array -> fn(
+    arr: **byte,
+    count: i64
+) **byte
+```
+
 ### `clone_node`
+
+Implements `clone_node`: dispatches on `node.kind` to allocate a matching
+concrete clone and recursively deep-copy every owned field.
 
 ```luma
 pub #returns_ownership
@@ -626,3 +815,9 @@ clone_node -> fn(
 ) *AstNode
 ```
 
+
+## Variables
+
+- **`g_subst_names`** : **byte *(let)*
+- **`g_subst_types`** : **AstNode *(let)*
+- **`g_subst_count`** : i64 *(let)*

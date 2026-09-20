@@ -1,3 +1,9 @@
+//! Error reporting for the Luma typechecker.
+//!
+//! Bridges typechecker source locations to the shared error module: builds
+//! `ErrorInformation` entries with reconstructed source-line text and queues
+//! them for the final report.
+
 @module "tc_error"
 
 @use "std_cstring" as STR
@@ -5,16 +11,22 @@
 @use "ast"        as AST
 @use "lexer_tokens" as TOK
 
+/// Current module's token array, used to reconstruct source lines for errors.
 pub let g_tokens:      *TOK::Token = cast<*TOK::Token>(0);
+/// Token count for the current module.
 pub let g_token_count: i64    = 0;
+/// Path of the current module's source file.
 pub let g_file_path:   *byte  = cast<*byte>(0);
 
+/// Sets the current module's tokens/path so subsequent errors resolve the
+/// right source context.
 pub const tc_error_init -> fn (mod: *AST::ModuleNode) void {
   g_tokens      = mod.tokens;
   g_token_count = mod.token_count;
   g_file_path   = mod.file_path;
 }
 
+/// Reconstructs the source text of `line` from the current module's tokens.
 #returns_ownership
 pub const generate_line_for_current_module -> fn (line: i64) *byte {
   return ERR::generate_line(g_tokens, g_token_count, line);
@@ -23,6 +35,8 @@ pub const generate_line_for_current_module -> fn (line: i64) *byte {
 // `label` is the short caption printed right after the caret underline
 // (e.g. `^^^^ not a numeric type`) — a few words, distinct from the full
 // sentence in `message`.
+/// Builds an `ErrorInformation` from a node's location and queues it via
+/// `error_add` for the final report.
 const do_error -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, help: *byte, token_len: i64, label: *byte) void {
   let err: ERR::ErrorInformation = ERR::ErrorInformation {
     error_type:   error_type,
@@ -48,16 +62,27 @@ const do_error -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, he
 // as a leak (the message is never freed explicitly, since the compiler
 // exits shortly after printing — the same accepted "process-lifetime
 // allocation" pattern #returns_ownership already covers for callers).
+/// Queues a typechecking error at the node's location with a caret width of
+/// one.
+///
+/// # Parameters
+/// - `node`: erroneous AST node (source of the location)
+/// - `error_type`: headline, e.g. "Type Error"
+/// - `message`: full sentence stashed in the queued ErrorInformation
+/// - `label`: short caption printed after the caret underline
 #takes_ownership
 pub const tc_error -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, label: *byte) void {
   do_error(node, error_type, message, cast<*byte>(0), 1, label);
 }
 
+/// Like `tc_error`, but carrying an additional `help` hint for the report.
 #takes_ownership
 pub const tc_error_help -> fn (node: *AST::AstNode, error_type: *byte, help: *byte, message: *byte, label: *byte) void {
   do_error(node, error_type, message, help, 1, label);
 }
 
+/// Queues an error whose caret underlines the whole `identifier` token (or a
+/// single char when the identifier is NULL/empty).
 #takes_ownership
 pub const tc_error_id -> fn (node: *AST::AstNode, identifier: *byte, error_type: *byte, message: *byte, label: *byte) void {
   let len: i64 = 1;
@@ -70,6 +95,8 @@ pub const tc_error_id -> fn (node: *AST::AstNode, identifier: *byte, error_type:
 // Like tc_error, but with an explicit caret width instead of the default 1
 // — for pointing at something wider than a single token, e.g. a quoted
 // string literal (whose reconstructed line text includes the quotes).
+/// Like `tc_error`, but with an explicit caret width for spans wider than one
+/// token (e.g. a quoted string literal).
 #takes_ownership
 pub const tc_error_len -> fn (node: *AST::AstNode, error_type: *byte, message: *byte, token_len: i64, label: *byte) void {
   do_error(node, error_type, message, cast<*byte>(0), token_len, label);

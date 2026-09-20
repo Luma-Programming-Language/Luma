@@ -17,7 +17,23 @@ nothing more.
 
 ## Functions
 
+### `read_byte`
+
+Reads a single raw byte from stdin (fd 0).
+
+
+```luma
+      read_byte -> fn(
+) i64
+```
+
+**Returns:**
+-1 on EOF or read error.
+
 ### `read_message`
+
+Reads one full Content-Length-framed JSON-RPC message from stdin.
+
 
 ```luma
 pub #returns_ownership
@@ -25,7 +41,17 @@ read_message -> fn(
 ) *byte
 ```
 
+**Parameters:**
+- `saved`: real stdout fd to restore once the body is read
+- `bytes_len`: output slot that receives the total bytes read
+
+
+**Returns:**
+A heap-allocated, NUL-terminated JSON body, or null on EOF or a bad header.
+
 ### `send_raw`
+
+Writes a Content-Length-framed message to stdout.
 
 ```luma
 pub send_raw -> fn(
@@ -34,6 +60,8 @@ pub send_raw -> fn(
 ```
 
 ### `send_response`
+
+Sends a JSON-RPC response carrying `result` for the request `id`.
 
 ```luma
 pub send_response -> fn(
@@ -44,6 +72,8 @@ pub send_response -> fn(
 
 ### `send_notification`
 
+Sends a JSON-RPC notification with the given `method` and `params`.
+
 ```luma
 pub send_notification -> fn(
     method: *byte,
@@ -52,6 +82,8 @@ pub send_notification -> fn(
 ```
 
 ### `send_error`
+
+Sends a JSON-RPC error response with `code` and `message` for `id`.
 
 ```luma
 pub send_error -> fn(
@@ -63,12 +95,21 @@ pub send_error -> fn(
 
 ### `suppress_stdout_begin`
 
+Redirects stdout (fd 1) to /dev/null so the compiler's diagnostic
+printer cannot corrupt the JSON-RPC channel.
+
+
 ```luma
 pub suppress_stdout_begin -> fn(
 ) i64
 ```
 
+**Returns:**
+The saved real stdout fd to pass back to `suppress_stdout_end`.
+
 ### `suppress_stdout_end`
+
+Restores stdout from the fd saved by `suppress_stdout_begin`.
 
 ```luma
 pub suppress_stdout_end -> fn(

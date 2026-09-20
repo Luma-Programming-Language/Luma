@@ -1,3 +1,9 @@
+//! Driver for the Luma typechecker.
+//!
+//! Runs every module through scope setup, `@use` resolution,
+//! forward-registration, and body typechecking; reports per-module leak /
+//! double-free diagnostics, then drains queued generic instantiations.
+
 @module "tc"
 
 @use "std_vector"   as VEC
@@ -14,6 +20,7 @@
 @use "tc_type"      as TYPE
 @use "tc_error"     as ERR
 
+/// Returns the module scope registered under `name`, or NULL.
 const find_module_scope -> fn (registry: *VEC::Vector, name: *byte) *CORE::Scope {
   let c: i64 = registry.size;
   loop [i: i64 = 0](i < c) : (++i) {
@@ -23,6 +30,8 @@ const find_module_scope -> fn (registry: *VEC::Vector, name: *byte) *CORE::Scope
   return cast<*CORE::Scope>(0);
 }
 
+/// Adds a module import to `ms` for every `@use` directive in the module
+/// body.
 const resolve_uses -> fn (mnode: *AST::AstNode, ms: *CORE::Scope, registry: *VEC::Vector) void {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let body: **AST::AstNode = mod.body;
@@ -38,6 +47,8 @@ const resolve_uses -> fn (mnode: *AST::AstNode, ms: *CORE::Scope, registry: *VEC
   }
 }
 
+/// Reports a Module Error for every `@use` whose target module is missing
+/// from the registry.
 const check_module_uses -> fn (mnode: *AST::AstNode, registry: *VEC::Vector) void {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let bc: i64 = mod.body_count;
@@ -56,6 +67,8 @@ const check_module_uses -> fn (mnode: *AST::AstNode, registry: *VEC::Vector) voi
   }
 }
 
+/// Forward-registers every declaration in the module body via
+/// `STMT::register_declaration`.
 const register_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) void {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let body: **AST::AstNode = mod.body;
@@ -65,6 +78,8 @@ const register_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) void {
   }
 }
 
+/// Typechecks each statement of the module body, applying `@os` conditionals;
+/// returns false if any statement failed.
 const check_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) bool {
   let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
   let bc: i64 = mod.body_count;
@@ -91,6 +106,7 @@ const check_module_body -> fn (mnode: *AST::AstNode, ms: *CORE::Scope) bool {
   return ok;
 }
 
+/// Reports double-free and never-freed allocations recorded for `file_path`.
 const report_module_allocations -> fn (analyzer: *CORE::StaticMemoryAnalyzer, file_path: *byte) void {
   if (analyzer == cast<*CORE::StaticMemoryAnalyzer>(0)) return;
 
@@ -138,6 +154,12 @@ const report_module_allocations -> fn (analyzer: *CORE::StaticMemoryAnalyzer, fi
   }
 }
 
+/// Entry point: typechecks a whole program (or a single stmt node). Registers
+/// per-module scopes, resolves `@use`, forward-registers and body-checks every
+/// module, drains generic instantiations, and reports errors.
+///
+/// # Returns
+/// True when the program typechecked without errors.
 pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) bool {
   if (node == cast<*AST::AstNode>(0)) return true;
 

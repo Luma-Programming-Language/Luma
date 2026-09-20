@@ -14,6 +14,10 @@
 @use "std_cstring" as STR
 @use "json"        as J
 
+/// Reads a single raw byte from stdin (fd 0).
+///
+/// # Returns
+/// -1 on EOF or read error.
 const read_byte -> fn () i64 {
   let c: byte;
   let n: i64 = IO::local_read(0, cast<*void>(&c), 1);
@@ -21,6 +25,14 @@ const read_byte -> fn () i64 {
   return cast<i64>(c);
 }
 
+/// Reads one full Content-Length-framed JSON-RPC message from stdin.
+///
+/// # Parameters
+/// - `saved`: real stdout fd to restore once the body is read
+/// - `bytes_len`: output slot that receives the total bytes read
+///
+/// # Returns
+/// A heap-allocated, NUL-terminated JSON body, or null on EOF or a bad header.
 // Reads one full JSON-RPC message from stdin. Returns a heap-owned,
 // NUL-terminated JSON body, or null on EOF / a malformed header.
 #returns_ownership
@@ -85,6 +97,7 @@ pub const read_message -> fn () *byte {
   return body;
 }
 
+/// Writes a Content-Length-framed message to stdout.
 // Writes one Content-Length-framed message to stdout.
 pub const send_raw -> fn (body: *byte) void {
   if (body == cast<*byte>(0)) return;
@@ -107,6 +120,7 @@ pub const send_raw -> fn (body: *byte) void {
   free(len_str);
 }
 
+/// Sends a JSON-RPC response carrying `result` for the request `id`.
 pub const send_response -> fn (id: i64, result: *J::JsonValue) void {
   let msg: *J::JsonValue = J::json_object();
   J::json_object_set(msg, "jsonrpc", J::json_string("2.0"));
@@ -119,6 +133,7 @@ pub const send_response -> fn (id: i64, result: *J::JsonValue) void {
   J::json_free(msg);
 }
 
+/// Sends a JSON-RPC notification with the given `method` and `params`.
 pub const send_notification -> fn (method: *byte, params: *J::JsonValue) void {
   let msg: *J::JsonValue = J::json_object();
   J::json_object_set(msg, "jsonrpc", J::json_string("2.0"));
@@ -131,6 +146,7 @@ pub const send_notification -> fn (method: *byte, params: *J::JsonValue) void {
   J::json_free(msg);
 }
 
+/// Sends a JSON-RPC error response with `code` and `message` for `id`.
 pub const send_error -> fn (id: i64, code: i64, message: *byte) void {
   let err: *J::JsonValue = J::json_object();
   J::json_object_set(err, "code", J::json_int(code));
@@ -147,6 +163,11 @@ pub const send_error -> fn (id: i64, code: i64, message: *byte) void {
   J::json_free(msg);
 }
 
+/// Redirects stdout (fd 1) to /dev/null so the compiler's diagnostic
+/// printer cannot corrupt the JSON-RPC channel.
+///
+/// # Returns
+/// The saved real stdout fd to pass back to `suppress_stdout_end`.
 // Temporarily redirects fd 1 (stdout) to /dev/null and returns a saved copy
 // of the real stdout fd. The compiler's own error/diagnostic printer
 // (error.lx's error_report, called internally by both parse_file and
@@ -190,6 +211,7 @@ pub const suppress_stdout_begin -> fn () i64 {
   }
 }
 
+/// Restores stdout from the fd saved by `suppress_stdout_begin`.
 pub const suppress_stdout_end -> fn (saved: i64) void {
   @os {
     "linux" -> {

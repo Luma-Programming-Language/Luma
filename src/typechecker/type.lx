@@ -1,3 +1,9 @@
+//! Type-related helpers for the type checker.
+//!
+//! Provides predicates over type AST nodes, constructors for builtin basic
+//! types, type-compatibility (`types_match`, `is_cast_valid`), type-to-string
+//! rendering, and bare/qualified nominal type name resolution.
+
 @module "tc_type"
 
 @use "std_cstring" as STR
@@ -11,6 +17,7 @@
 @use "ast_type" as TAST
 @use "error" as ERR
 
+/// Returns a heap-allocated copy of `s`.
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
   let len: i64 = STR::strlen(s);
@@ -19,16 +26,20 @@ const dup_str -> fn (s: *byte) *byte {
   return out;
 }
 
+/// Returns true if `t` is non-null and its node kind is `kind`.
 pub const type_is_kind -> fn (t: *AST::AstNode, kind: i64) bool {
   if (t == cast<*AST::AstNode>(0)) return false;
   return t.kind == kind;
 }
 
+/// Returns the name of a basic type node.
 pub const basic_name -> fn (t: *AST::AstNode) *byte {
   let n: *AST::BasicTypeNode = cast<*AST::BasicTypeNode>(t);
   return n.name;
 }
 
+/// Returns true if `name` is one of the builtin scalar types
+/// (`i8..i64`, `u8..u64`, `f32`, `f64`, `bool`, `void`, `byte`).
 pub const is_builtin_name -> fn (name: *byte) bool {
   if (STR::strcmp(name, "i8")    == 0) return true;
   if (STR::strcmp(name, "i16")   == 0) return true;
@@ -46,11 +57,13 @@ pub const is_builtin_name -> fn (name: *byte) bool {
   return false;
 }
 
+/// Returns true if `t` is a basic type node named `name`.
 pub const is_basic_named -> fn (t: *AST::AstNode, name: *byte) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   return STR::strcmp(basic_name(t), name) == 0;
 }
 
+/// Returns true if `t` is a numeric basic type (int, uint, float, or byte).
 pub const is_numeric_type -> fn (t: *AST::AstNode) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   let n: *byte = basic_name(t);
@@ -68,6 +81,7 @@ pub const is_numeric_type -> fn (t: *AST::AstNode) bool {
   return false;
 }
 
+/// Returns true if `n` names a signed or unsigned integer type.
 pub const is_integer_kind_name -> fn (n: *byte) bool {
   if (STR::strcmp(n, "i8")    == 0) return true;
   if (STR::strcmp(n, "i16")   == 0) return true;
@@ -80,6 +94,7 @@ pub const is_integer_kind_name -> fn (n: *byte) bool {
   return false;
 }
 
+/// Returns true if `t` is an integer basic type (including `byte`).
 pub const is_integer_type -> fn (t: *AST::AstNode) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   let n: *byte = basic_name(t);
@@ -95,6 +110,7 @@ pub const is_integer_type -> fn (t: *AST::AstNode) bool {
   return false;
 }
 
+/// Returns true if `t` is `f32` or `f64`.
 pub const is_float_type -> fn (t: *AST::AstNode) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   let n: *byte = basic_name(t);
@@ -103,128 +119,155 @@ pub const is_float_type -> fn (t: *AST::AstNode) bool {
   return false;
 }
 
+/// Returns true if `t` is a pointer type.
 pub const is_pointer_type -> fn (t: *AST::AstNode) bool {
   return type_is_kind(t, AST::NodeType::TYPE_POINTER);
 }
 
+/// Returns true if `t` is an array type.
 pub const is_array_type -> fn (t: *AST::AstNode) bool {
   return type_is_kind(t, AST::NodeType::TYPE_ARRAY);
 }
 
+/// Returns true if `t` is a function type.
 pub const is_function_type -> fn (t: *AST::AstNode) bool {
   return type_is_kind(t, AST::NodeType::TYPE_FUNCTION);
 }
 
+/// Returns true if `t` is the `void` type.
 pub const is_void_type -> fn (t: *AST::AstNode) bool {
   return is_basic_named(t, "void");
 }
 
+/// Returns true if `t` is the `bool` type.
 pub const is_bool_type -> fn (t: *AST::AstNode) bool {
   return is_basic_named(t, "bool");
 }
 
+/// Returns true if `t` is a non-builtin named (struct/enum) type.
 pub const is_nominal_type -> fn (t: *AST::AstNode) bool {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return false;
   if (is_builtin_name(basic_name(t)) == true) return false;
   return true;
 }
 
+/// Returns true if `t` is a pointer whose pointee is a function type.
 pub const is_pointer_to_function_type -> fn (t: *AST::AstNode) bool {
   if (is_pointer_type(t) == false) return false;
   let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(t);
   return is_function_type(p.pointee_type);
 }
 
+/// Returns a new `i32` type node.
 #returns_ownership
 pub const make_int_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("i32", 0, 0);
 }
 
+/// Returns a new `i8` type node.
 #returns_ownership
 pub const make_i8_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("i8", 0, 0);
 }
 
+/// Returns a new `i16` type node.
 #returns_ownership
 pub const make_i16_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("i16", 0, 0);
 }
 
+/// Returns a new `i32` type node.
 #returns_ownership
 pub const make_i32_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("i32", 0, 0);
 }
 
+/// Returns a new `i64` type node.
 #returns_ownership
 pub const make_i64_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("i64", 0, 0);
 }
 
+/// Returns a new `u8` type node.
 #returns_ownership
 pub const make_u8_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("u8", 0, 0);
 }
 
+/// Returns a new `u16` type node.
 #returns_ownership
 pub const make_u16_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("u16", 0, 0);
 }
 
+/// Returns a new `u32` type node.
 #returns_ownership
 pub const make_u32_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("u32", 0, 0);
 }
 
+/// Returns a new `u64` type node.
 #returns_ownership
 pub const make_u64_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("u64", 0, 0);
 }
 
+/// Returns a new `f32` type node.
 #returns_ownership
 pub const make_f32_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("f32", 0, 0);
 }
 
+/// Returns a new `f64` type node.
 #returns_ownership
 pub const make_f64_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("f64", 0, 0);
 }
 
+/// Returns a new `bool` type node.
 #returns_ownership
 pub const make_bool_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("bool", 0, 0);
 }
 
+/// Returns a new `void` type node.
 #returns_ownership
 pub const make_void_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("void", 0, 0);
 }
 
+/// Returns a new `byte` type node.
 #returns_ownership
 pub const make_byte_type -> fn () *AST::AstNode {
   return TAST::make_basic_type("byte", 0, 0);
 }
 
+/// Returns a basic type node named `name`.
 #returns_ownership
 pub const make_named_type -> fn (name: *byte) *AST::AstNode {
   return TAST::make_basic_type(name, 0, 0);
 }
 
+/// Returns a new pointer-to-`byte` (string) type node.
 #returns_ownership
 pub const make_string_type -> fn () *AST::AstNode {
   return TAST::make_pointer_type(make_byte_type(), 0, 0);
 }
 
+/// Returns a new `*void` type node.
 #returns_ownership
 pub const make_voidptr_type -> fn () *AST::AstNode {
   return TAST::make_pointer_type(make_void_type(), 0, 0);
 }
 
+/// Returns a new pointer type over `pointee`.
 #returns_ownership
 pub const make_pointer_to -> fn (pointee: *AST::AstNode) *AST::AstNode {
   return TAST::make_pointer_type(pointee, 0, 0);
 }
 
+/// Returns a promotion rank for numeric types (`f64` highest down to the 1-byte
+/// integers), or -1 if `t` is not a numeric basic type.
 pub const numeric_rank -> fn (t: *AST::AstNode) i64 {
   if (type_is_kind(t, AST::NodeType::TYPE_BASIC) == false) return -1;
   let n: *byte = basic_name(t);
@@ -244,6 +287,9 @@ pub const numeric_rank -> fn (t: *AST::AstNode) i64 {
 
 pub const types_match -> fn (a: *AST::AstNode, b: *AST::AstNode) i64;
 
+/// Typecompat between two basic types. Exact names match exactly; `f32`<->`f64`
+/// and any signed/unsigned integer pair are compatible; a non-builtin nominal
+/// (enum) is compatible with an integer type.
 const match_basic -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let an: *byte = basic_name(a);
   let bn: *byte = basic_name(b);
@@ -267,6 +313,8 @@ const match_basic -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   return CORE::TypeMatchResult::TYPE_MATCH_NONE;
 }
 
+/// Typecompat between two pointer types, treating a `void` pointee on either
+/// side as compatible with anything.
 const match_pointer -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let pa: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(a);
   let pb: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(b);
@@ -277,6 +325,9 @@ const match_pointer -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   return types_match(pa.pointee_type, pb.pointee_type);
 }
 
+/// Typecompat between two array types. Element types must be compatible those
+/// of the other; unsized arrays are compatible, and differing literal integer
+/// sizes reject the match.
 const match_array -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let aa: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(a);
   let ab: *AST::ArrayTypeNode = cast<*AST::ArrayTypeNode>(b);
@@ -304,6 +355,8 @@ const match_array -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 }
 
+/// Array<->pointer (decay) compatibility, comparing the array element type to
+/// the pointer pointee.
 const match_array_pointer -> fn (arr: *AST::AstNode, ptr: *AST::AstNode) i64 {
   let a: *AST::ArrayTypeNode   = cast<*AST::ArrayTypeNode>(arr);
   let p: *AST::PointerTypeNode = cast<*AST::PointerTypeNode>(ptr);
@@ -314,6 +367,8 @@ const match_array_pointer -> fn (arr: *AST::AstNode, ptr: *AST::AstNode) i64 {
   return CORE::TypeMatchResult::TYPE_MATCH_COMPATIBLE;
 }
 
+/// Typecompat between two function types: equal parameter counts with matching
+/// parameter and return types.
 const match_function -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   let fa: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(a);
   let fb: *AST::FuncTypeNode = cast<*AST::FuncTypeNode>(b);
@@ -330,6 +385,11 @@ const match_function -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   return CORE::TypeMatchResult::TYPE_MATCH_EXACT;
 }
 
+/// Determines compatibility between two type nodes, handling basic/pointer/
+/// array/function kinds plus array<->pointer and function<->pointer coercion.
+///
+/// # Returns
+/// `TYPE_MATCH_EXACT`, `TYPE_MATCH_COMPATIBLE`, or `TYPE_MATCH_NONE`.
 pub const types_match -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   if (a == cast<*AST::AstNode>(0) || b == cast<*AST::AstNode>(0))
     return CORE::TypeMatchResult::TYPE_MATCH_NONE;
@@ -365,6 +425,7 @@ pub const types_match -> fn (a: *AST::AstNode, b: *AST::AstNode) i64 {
   }
 }
 
+/// Returns true if an explicit cast from `from` to `to` is permitted.
 pub const is_cast_valid -> fn (from: *AST::AstNode, to: *AST::AstNode) bool {
   if (from == cast<*AST::AstNode>(0) || to == cast<*AST::AstNode>(0)) return false;
 
@@ -395,6 +456,7 @@ pub const is_cast_valid -> fn (from: *AST::AstNode, to: *AST::AstNode) bool {
   return false;
 }
 
+/// Appends `s` to `buf` at byte offset `pos`, returning the new offset.
 const append_str -> fn (buf: *byte, pos: i64, s: *byte) i64 {
   let len: i64 = STR::strlen(s);
   MEM::memcpy(cast<*void>(cast<i64>(buf) + pos), cast<*void>(s), len);
@@ -404,6 +466,8 @@ const append_str -> fn (buf: *byte, pos: i64, s: *byte) i64 {
 #returns_ownership
 pub const type_to_string -> fn (t: *AST::AstNode) *byte;
 
+/// Renders type `t` into `buf` starting at offset `pos`, returning the new
+/// offset. Internal worker for `type_to_string`.
 const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: i64) i64 {
   if (t == cast<*AST::AstNode>(0)) return append_str(buf, pos, "<null>");
 
@@ -445,6 +509,8 @@ const type_to_string_into -> fn (t: *AST::AstNode, buf: *byte, pos: i64) i64 {
   }
 }
 
+/// Returns a heap-allocated string rendering of type `t`
+/// (e.g. `*i64`, `fn(i64) void`). The caller owns the result.
 #returns_ownership
 pub const type_to_string -> fn (t: *AST::AstNode) *byte {
   let buf: *byte = cast<*byte>(alloc(256 * sizeof<byte>));
@@ -457,6 +523,8 @@ pub const type_to_string -> fn (t: *AST::AstNode) *byte {
 // type is that same named type (see stmt.lx's register_struct_decl /
 // handle_enum_decl) — so "is `name` a nominal symbol matching itself" is
 // how we tell a real struct/enum name apart from an ordinary variable.
+/// Returns true if `sym` is non-null and its type is a bare nominal type named
+/// `name`.
 const symbol_is_nominal_named -> fn (sym: *CORE::Symbol, name: *byte) bool {
   if (sym == cast<*CORE::Symbol>(0)) return false;
   if (is_nominal_type(sym.type) == false) return false;
@@ -468,6 +536,8 @@ const symbol_is_nominal_named -> fn (sym: *CORE::Symbol, name: *byte) bool {
 // end of typecheck against the deferred-unknown list, by which time every
 // declaration (including ones that appear later in a module than the
 // reference) is registered.
+/// Returns true if `mscope`'s own registry holds `name` as a bare nominal
+/// symbol (struct or enum declared in that module).
 pub const nominal_known_in_module -> fn (mscope: *CORE::Scope, name: *byte) bool {
   if (mscope == cast<*CORE::Scope>(0)) return false;
   let local_sym: *CORE::Symbol = SCOPE::scope_lookup_current(mscope, name);
@@ -480,6 +550,9 @@ pub const nominal_known_in_module -> fn (mscope: *CORE::Scope, name: *byte) bool
 // to only resolve via an import. Shared by resolve_type_leaf below (type
 // annotations) and tc_expr.lx's tc_struct_expr (struct literals), since a
 // struct literal's name is a plain string, not a type node.
+/// Validates a bare `name` used in type position: reports an error when it only
+/// resolves via an import (must be qualified) or is not a type at all, and
+/// defers the verdict when the name is not yet registered.
 pub const check_nominal_bare -> fn (name: *byte, scope: *CORE::Scope, err_node: *AST::AstNode) void {
   if (is_builtin_name(name)) return;
 
@@ -509,6 +582,12 @@ pub const check_nominal_bare -> fn (name: *byte, scope: *CORE::Scope, err_node: 
 // qualified `ALIAS::Name` is resolved down to the plain named type (struct
 // /enum identity doesn't change, only the syntax required to reference an
 // imported one).
+/// Validates and normalizes a single type leaf (`TYPE_BASIC` /
+/// `TYPE_RESOLUTION`). Qualified names (`ALIAS::Name`) and generic references
+/// (`Box<i64>`) are resolved down to a plain concrete named type.
+/// 
+/// # Returns
+/// The resolved type node (possibly a new node).
 #returns_ownership
 const resolve_type_leaf -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (t.kind == AST::NodeType::TYPE_BASIC) {
@@ -584,6 +663,12 @@ const resolve_type_leaf -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstN
 // nominal leaf type reachable from `t`. Safe to call more than once on the
 // same node (already-resolved leaves are plain TYPE_BASIC and pass through
 // resolve_type_leaf as a no-op).
+/// Recursively resolves every nominal type leaf reachable from `t`, including
+/// through pointer/array/function wrappers. Safe to call repeatedly on the same
+/// node.
+/// 
+/// # Returns
+/// `t` itself (wrappers are rewritten in place).
 #returns_ownership
 pub const resolve_type_ref -> fn (t: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (t == cast<*AST::AstNode>(0)) return t;

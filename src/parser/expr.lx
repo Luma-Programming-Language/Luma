@@ -1,3 +1,10 @@
+//! Parses Luma expressions into AST nodes (a Pratt / precedence-climbing parser).
+//!
+//! A token `nud`/`led` dispatch table drives parsing of literals, operators,
+//! calls, indexing, member access, struct expressions, and the `__alloc__`,
+//! `__free__`, `__cast__`, `__input__`, `__system__`, `__syscall__`, and
+//! `__sizeof__` builtins.
+
 @module "parser_expr"
 
 @use "std_cstring" as STRING
@@ -14,6 +21,8 @@
 // String/char literal token text is raw source bytes (the lexer does not
 // interpret `\n`/`\t`/etc. — see src/lexer/lexer.lx's '"'/'\'' cases). Resolve
 // escapes here, once, when building the literal AST node.
+/// Resolves a single escape character (the character after a `\`) to its byte
+/// value; unknown escapes pass the character through unchanged.
 const unescape_char -> fn (c: byte) byte {
   if (c == 'n')  return cast<byte>(10);
   if (c == 't')  return cast<byte>(9);
@@ -25,6 +34,8 @@ const unescape_char -> fn (c: byte) byte {
   return c; // unknown escape — pass the character through as-is
 }
 
+/// Returns the value of a hex digit character (`0`-`9`, `a`-`f`, `A`-`F`), or
+/// -1 if `c` is not a hex digit.
 const hex_digit_val -> fn (c: byte) i64 {
   if (c >= '0' && c <= '9') return cast<i64>(c) - cast<i64>('0');
   if (c >= 'a' && c <= 'f') return cast<i64>(c) - cast<i64>('a') + 10;
@@ -32,6 +43,13 @@ const hex_digit_val -> fn (c: byte) i64 {
   return -1;
 }
 
+/// Returns a heap-allocated copy of `s` with escape sequences resolved.
+///
+/// Handles `\n`, `\t`, `\r`, `\0`, `\\`, `\'`, `\"`, and `\xHH` hex-byte
+/// escapes; unknown escapes pass through unchanged.
+///
+/// # Returns
+/// Newly allocated, NUL-terminated string; the caller owns the buffer.
 #returns_ownership
 const unescape_str -> fn (s: *byte) *byte {
   let len: i64 = STRING::strlen(s);
@@ -100,6 +118,12 @@ const current_bp     -> fn (p: *PARS::Parser) i64;
 #returns_ownership const _sizeof  -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const estruct  -> fn (p: *PARS::Parser) *AST::AstNode;
 
+/// Parses the left-hand operand (the "null denotation") of an expression,
+/// dispatching on the current token. Lexer-detected error tokens are consumed
+/// and reported without an extra diagnostic.
+/// 
+/// # Returns
+/// The parsed node, or null after recording an error.
 #returns_ownership
 const nud -> fn (p: *PARS::Parser) *AST::AstNode { 
   // Lexer-detected problems already have their own precise diagnostic;
@@ -137,6 +161,11 @@ const nud -> fn (p: *PARS::Parser) *AST::AstNode {
   }
 }
 
+/// Parses an infix/postfix continuation (the "left denotation") for `left` at
+/// binding power `bp`, dispatching on the current token.
+/// 
+/// # Returns
+/// The combined node, or null after recording an error.
 #returns_ownership
 const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode {
   switch using TOK::LumaTokenType (p.current().kind) {
@@ -179,6 +208,12 @@ const led -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode {
 // started via Parser.save/restore, so the caller can fall through to
 // parsing `<` as plain less-than with no trace of the attempt left behind
 // (no partial AST, no recorded errors, no moved token position).
+/// Speculatively parses `left '<' Type (',' Type)* '>'` as a generic
+/// call/struct-literal/member site and attaches the type arguments, provided
+/// the `(')`/`{`/`::` following shape holds.
+///
+/// On failure the parser and error state are rolled back to the savepoint so
+/// the `<` can be parsed as an ordinary comparison.
 #returns_ownership
 const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode {
   let ident_ok: bool = left.kind == AST::NodeType::EXPR_IDENTIFIER;
@@ -272,6 +307,11 @@ const try_generic_instantiation -> fn (p: *PARS::Parser, left: *AST::AstNode, bp
   return cast<*AST::AstNode>(0);
 }
 
+/// Parses a full expression at binding power `bp` using the `nud`/`led`
+/// loop, stopping once the current token binds tighter than `bp`.
+/// 
+/// # Returns
+/// The expression node, or null on error.
 #returns_ownership
 pub const parse_expr -> fn (p: *PARS::Parser, bp: i64) *AST::AstNode {
   let left: *AST::AstNode = nud(p);
@@ -290,6 +330,8 @@ pub const parse_expr -> fn (p: *PARS::Parser, bp: i64) *AST::AstNode {
   return left;
 }
 
+/// Parses `left { name: value, ... }` — a named struct literal — into a
+/// struct-expression AST node.
 #returns_ownership 
 const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -383,6 +425,8 @@ const enstruct -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstN
   return node;
 }
 
+/// Parses a binary operator: consumes the operator token (plus a second `>`
+/// when it forms a right-shift) and parses the right operand at `bp`.
 #returns_ownership 
 const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -413,16 +457,20 @@ const binary -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNod
 // are a right-shift, not a comparison followed by <something>. Being adjacent,
 // they can only be a shift — a comparison's right operand could never start
 // with a bare `>`.
+/// Returns true when the current and next tokens are both `>` (adjacent `>`
+/// tokens after a comparison could only form a right-shift).
 const is_shift_right -> fn (p: *PARS::Parser) bool {
   return p.current().kind == TOK::LumaTokenType::TOK_GT
       && p.peek(1).kind == TOK::LumaTokenType::TOK_GT;
 }
 
+/// Returns the binding power of the current token, treating `>>` as a shift.
 const current_bp -> fn (p: *PARS::Parser) i64 {
   if (is_shift_right(p)) return PARS::BindingPower::BP_SHIFT;
   return PARS::get_bp(p.current().kind);
 }
 
+/// Parses `left(args)` into a call node.
 #returns_ownership 
 const call -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -451,6 +499,7 @@ const call -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode 
   return node;
 }
 
+/// Parses `left = value` into an assignment node.
 #returns_ownership 
 const assign -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -467,6 +516,8 @@ const assign -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNod
   return EAST::make_assign(left, value, line, col); 
 }
 
+/// Parses a postfix/prefix expression on `left`: indexing `left[...]`, member
+/// access `left.m` / `left::m`, or postfix `++`/`--`.
 #returns_ownership 
 const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -513,6 +564,8 @@ const prefix -> fn (p: *PARS::Parser, left: *AST::AstNode, bp: i64) *AST::AstNod
   return cast<*AST::AstNode>(0);
 }
 
+/// Parses a primary expression: integer, float, string, char, or bool literal
+/// or an identifier. String/char literals are unescaped here.
 #returns_ownership 
 const primary -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -573,6 +626,7 @@ const primary -> fn (p: *PARS::Parser) *AST::AstNode {
   return cast<*AST::AstNode>(0);
 }
 
+/// Parses a prefix unary expression (`-`, `+`, `!`, `~`, `++`, `--`).
 #returns_ownership 
 const unary -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -589,6 +643,7 @@ const unary -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_unary(op, operand, line, col); 
 }
 
+/// Parses a parenthesized `( ... )` grouping expression.
 #returns_ownership 
 const group -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -600,6 +655,7 @@ const group -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_grouping(expr, line, col);
 }
 
+/// Parses an array literal `[elem, ...]` into an array node.
 #returns_ownership 
 const array -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -628,6 +684,7 @@ const array -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses `*object` into a dereference node.
 #returns_ownership 
 const deref -> fn (p: *PARS::Parser) *AST::AstNode {
   p.advance();
@@ -637,6 +694,7 @@ const deref -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_deref(object, line, col);
 }
 
+/// Parses `&object` into an address-of node.
 #returns_ownership 
 const addr -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance();
@@ -646,6 +704,7 @@ const addr -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_addr(object, line, col);
 }
 
+/// Parses `__alloc__(size)` into an allocation node.
 #returns_ownership 
 const _alloc -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume alloc
@@ -659,6 +718,7 @@ const _alloc -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_alloc(size, line, col);
 }
 
+/// Parses `__free__(ptr)` into a deallocation node.
 #returns_ownership 
 const _free -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume free
@@ -672,6 +732,7 @@ const _free -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_free(ptr, line, col);
 }
 
+/// Parses `__cast__<Type>(expr)` into a cast node.
 #returns_ownership 
 const _cast -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -688,6 +749,7 @@ const _cast -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_cast(cast_type, castee, line, col);
 }
 
+/// Parses `__input__<Type>(msg)` into an input node.
 #returns_ownership 
 const _input -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -704,6 +766,7 @@ const _input -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_input(input_type, msg, line, col);
 }
 
+/// Parses `__system__(cmd)` into a system-command node.
 #returns_ownership 
 const _system -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume system
@@ -717,6 +780,7 @@ const _system -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_system(command, line, col);
 }
 
+/// Parses `__syscall__(arg, ...)` into a syscall node.
 #returns_ownership 
 const syscall -> fn (p: *PARS::Parser) *AST::AstNode { 
   p.advance(); // consume __syscall__
@@ -746,6 +810,7 @@ const syscall -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses `__sizeof__<Type>` into a sizeof node.
 #returns_ownership 
 const _sizeof -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -759,6 +824,8 @@ const _sizeof -> fn (p: *PARS::Parser) *AST::AstNode {
   return EAST::make_sizeof(type_node, 1, line, col);
 }
 
+/// Parses an anonymous struct literal `{ name: value, ... }` (struct name and
+/// alias null) into a struct-expression node.
 #returns_ownership 
 const estruct -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -818,6 +885,7 @@ const estruct -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses `left[expr]` into an index node.
 #returns_ownership 
 const index -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;

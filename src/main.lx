@@ -1,3 +1,9 @@
+//! Entry point of the Luma compiler driver.
+//!
+//! Parses command-line arguments, then drives the parse → typecheck →
+//! codegen → compile pipeline (or the docs / LSP passes) and returns the
+//! process exit status.
+
 @module "main"
 
 @use "std_vector" as VEC
@@ -20,6 +26,12 @@
 
 // @use "ast_print" as PRINT
 
+/// Program entry point: parses CLI arguments into a build config and runs
+/// the requested pipeline — the Markdown docs pass, the LSP, or typecheck
+/// plus transpile-to-C plus compile.
+///
+/// # Returns
+/// `0` on success; `1` or a `LumaErrorCode` status on failure.
 pub const main -> fn (argc: i64, argv: **byte) i64 {
   let args: ARGS::Args = ARGS::init_args(argc, argv);
   args = args.tail();

@@ -1,3 +1,11 @@
+//! Parses Luma statements into AST nodes.
+//!
+//! Dispatches top-level and block statements by keyword: const/var/use/return
+//! declarations, `if`/`loop`/`switch`/`defer`, `@os`, `@link`, `@use`, and
+//! expression statements. Also handles doc comments, `pub`/`priv` visibility,
+//! and the `#returns_ownership` / `#takes_ownership` / `#dll_import` /
+//! `#lib_import` attributes.
+
 @module "parse_stmt"
 
 @use "std_cstring" as STRING
@@ -43,6 +51,12 @@ const free_using_path -> fn (using_path: *VEC::Vector) void;
 #returns_ownership const _impl       -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const _loop       -> fn (p: *PARS::Parser) *AST::AstNode;
 
+/// Parses a single statement, collecting the leading doc comment, ownership
+/// and import attributes, and visibility, then dispatching on the keyword.
+/// Applies `#dll_import`/`#lib_import` to the resulting function node.
+/// 
+/// # Returns
+/// The statement node, or null after a lexical/parse error.
 #returns_ownership
 pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   let doc_comment: *byte = consume_doc_comments(p);
@@ -199,6 +213,8 @@ pub const parse_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Consumes consecutive doc-comment tokens (`///` and `//!`), returning their
+/// newline-joined text, or null when the current token is not a doc comment.
 #returns_ownership
 pub const consume_doc_comments -> fn (p: *PARS::Parser) *byte {
   let lines: VEC::Vector = VEC::create_vector(sizeof<*byte>);
@@ -239,6 +255,8 @@ pub const consume_doc_comments -> fn (p: *PARS::Parser) *byte {
   return result;
 }
 
+/// Marks `node` (a function declaration) as a DLL import, storing the DLL name
+/// and optional calling convention.
 const apply_dll_import -> fn (node: *AST::AstNode, dll_name: *byte, dll_callconv: *byte) void {
   let n: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(node);
   n.dll_import = 1;
@@ -246,12 +264,16 @@ const apply_dll_import -> fn (node: *AST::AstNode, dll_name: *byte, dll_callconv
   n.dll_callconv = dll_callconv;
 }
 
+/// Marks `node` (a function declaration) as a library import, storing the
+/// library name.
 const apply_lib_import -> fn (node: *AST::AstNode, lib_name: *byte) void {
   let n: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(node);
   n.lib_import = 1;
   n.lib_name = lib_name;
 }
 
+/// Parses `@os { "platform" -> stmt, _ -> stmt, ... }`, building an OS node
+/// with per-platform bodies and an optional default arm.
 #returns_ownership 
 const os_stmt     -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -348,6 +370,7 @@ const os_stmt     -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses `@link("name")` into a link directive node.
 #returns_ownership 
 const link_stmt   -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -369,6 +392,9 @@ const link_stmt   -> fn (p: *PARS::Parser) *AST::AstNode {
   return MAST::make_link(lib_name, line, col);
 }
 
+/// Parses a `const` declaration: either a typed constant
+/// (`const name: Type = value;`) or the start of a function, struct, or enum
+/// declaration, delegated to `_fn`/`_struct`/`_enum`.
 #returns_ownership 
 const _const -> fn (p: *PARS::Parser, is_public: i64, returns_ownership: i64, takes_ownership: i64, doc_comment: *byte) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -441,6 +467,9 @@ const parse_type_param_list -> fn (p: *PARS::Parser) VEC::Vector {
   return names;
 }
 
+/// Parses a function declaration (optionally generic), producing a
+/// function-declaration node. A trailing `;` yields a forward declaration
+/// without a body.
 #returns_ownership
 const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: i64, returns_ownership: i64, takes_ownership: i64, doc_comment: *byte) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -544,6 +573,8 @@ const _fn -> fn (p: *PARS::Parser, name: *byte, is_public: i64, returns_ownershi
   return node;
 }
 
+/// Parses an enum declaration (optionally generic; parameters act as phantom
+/// type tags), producing an enum-declaration node.
 #returns_ownership
 const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment: *byte) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -598,6 +629,9 @@ const _enum -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment: *
   return node;
 }
 
+/// Parses a struct declaration (optionally generic), producing a
+/// struct-declaration node. Handles `pub:`/`priv:` sections, `...Embedded`
+/// members, static and ownership markers, and method members.
 #returns_ownership
 const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment: *byte) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -801,8 +835,11 @@ const _struct -> fn (p: *PARS::Parser, name: *byte, is_public: i64, doc_comment:
   return node;
 }
 
+/// Stub; always returns null.
 #returns_ownership const print -> fn (p: *PARS::Parser, ln: i64) *AST::AstNode { return cast<*AST::AstNode>(0); }
 
+/// Parses `var name: Type` with an optional `= value;` initializer into a
+/// variable-declaration node.
 #returns_ownership
 const var -> fn (p: *PARS::Parser, is_public: i64, doc_comment: *byte) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -829,6 +866,7 @@ const var -> fn (p: *PARS::Parser, is_public: i64, doc_comment: *byte) *AST::Ast
   return SAST::make_var_decl(name, doc_comment, type, value, 1, is_public, line, col);
 }
 
+/// Parses an expression statement followed by `;`.
 #returns_ownership 
 const expr -> fn (p: *PARS::Parser) *AST::AstNode { 
   let line: i64 = p.current().line;
@@ -840,6 +878,7 @@ const expr -> fn (p: *PARS::Parser) *AST::AstNode {
   return SAST::make_expr_stmt(e, line, col); 
 }
 
+/// Parses `@use "module" as alias` into a use-declaration node.
 #returns_ownership 
 const use -> fn (p: *PARS::Parser) *AST::AstNode {
   p.consume(TOK::LumaTokenType::TOK_USE, "Expected '@use' keyword.");
@@ -859,6 +898,7 @@ const use -> fn (p: *PARS::Parser) *AST::AstNode {
   return MAST::make_use(mod_name, mod_alias, line, col); 
 }
 
+/// Parses a `return;` or `return expr;` statement.
 #returns_ownership
 const return_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -876,6 +916,7 @@ const return_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   return SAST::make_return_stmt(value, line, col);
 }
 
+/// Parses a `{ ... }` block of statements into a block node.
 #returns_ownership
 const block -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -898,6 +939,8 @@ const block -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses an `if (cond) ...` statement with optional `elif` chain and `else`
+/// branch into an if node.
 #returns_ownership
 const _if -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -984,6 +1027,7 @@ const _if -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses a `break;` or `continue;` statement.
 #returns_ownership
 const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: i64) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -998,6 +1042,7 @@ const break_continue_stmt -> fn (p: *PARS::Parser, is_continue: i64) *AST::AstNo
   return SAST::make_break_continue(is_continue, line, col);
 }
 
+/// Parses a `defer <stmt>` statement.
 #returns_ownership
 const _defer -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -1012,6 +1057,9 @@ const _defer -> fn (p: *PARS::Parser) *AST::AstNode {
   return SAST::make_defer_stmt(stmt, line, col);
 }
 
+/// Parses a `switch(cond) { ... }` statement, supporting an optional
+/// `using Path::To::Enum` label namespace, multi-value case labels, and a
+/// default case.
 #returns_ownership
 const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -1163,6 +1211,8 @@ const _switch -> fn (p: *PARS::Parser) *AST::AstNode {
 // (an explicit `::` chain, a call, a literal, ...) falls through to normal
 // expression parsing untouched, so `using` never shadows an intentionally
 // qualified or non-enum case value.
+/// Parses one switch case-label expression. A bare identifier under a `using`
+/// path is desugared to `<path>::<identifier>`.
 #returns_ownership
 const parse_case_value -> fn (p: *PARS::Parser, using_path: *VEC::Vector) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -1185,6 +1235,8 @@ const parse_case_value -> fn (p: *PARS::Parser, using_path: *VEC::Vector) *AST::
 // would produce. Each segment gets its own duplicated string, since
 // `using_path`'s strings are reused across every case label in the switch
 // and each resulting AST node owns its own name.
+/// Builds `<path[0]>::<path[1]>::...::<member>` as a chain of compiletime
+/// member-access nodes, duplicating each segment string.
 #returns_ownership
 const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: i64, col: i64) *AST::AstNode {
   let segments: **byte = cast<**byte>(using_path.data);
@@ -1200,14 +1252,18 @@ const scoped_member -> fn (using_path: *VEC::Vector, member: *byte, line: i64, c
   return EAST::make_member(node, member, 1, line, col);
 }
 
+/// Frees every segment string in `using_path` and the vector itself.
 const free_using_path -> fn (using_path: *VEC::Vector) void {
   let segments: **byte = cast<**byte>(using_path.data);
   loop [i: i64 = 0](i < using_path.size) : (++i) { free(segments[i]); }
   VEC::free_vector(using_path);
 }
 
+/// Stub; always returns null.
 #returns_ownership const _impl -> fn (p: *PARS::Parser) *AST::AstNode { return cast<*AST::AstNode>(0); }
 
+/// Parses a loop initializer `name: Type = expr` inside a `loop [ ... ]`
+/// header into a variable-declaration node.
 #returns_ownership
 const loop_init -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -1223,6 +1279,8 @@ const loop_init -> fn (p: *PARS::Parser) *AST::AstNode {
   return SAST::make_var_decl(name, cast<*byte>(0), type, initializer, 1, 0, line, col);
 }
 
+/// Parses `loop [init, ...] (condition) : (post) { body }` — a loop with a
+/// header — into a loop node.
 #returns_ownership
 const for_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -1278,6 +1336,8 @@ const for_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses `loop { body }`, an infinite loop with no condition, into a loop
+/// node.
 #returns_ownership
 const infinite_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -1290,6 +1350,8 @@ const infinite_loop_stmt -> fn (p: *PARS::Parser) *AST::AstNode {
   return SAST::make_loop_stmt(cast<*AST::AstNode>(0), cast<*AST::AstNode>(0), body, cast<**AST::AstNode>(0), 0, line, col);
 }
 
+/// Parses a `loop` statement: dispatch to `infinite_loop_stmt` for `loop { }`,
+/// `for_loop_stmt` for `loop [ ... ]`, otherwise `loop (cond) : (post) { }`.
 #returns_ownership
 const _loop -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;

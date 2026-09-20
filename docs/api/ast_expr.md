@@ -2,6 +2,11 @@
 
 *Source: `src/ast/expr.lx`*
 
+Expression AST node constructors.
+
+Factory functions that allocate each kind of expression node used by the
+parser and return it as a generic `*AST::AstNode`.
+
 ## Table of Contents
 
 - [Functions](#functions)
@@ -10,6 +15,8 @@
 ## Functions
 
 ### `make_literal_int`
+
+Creates an integer literal expression node.
 
 ```luma
 pub #returns_ownership
@@ -22,6 +29,8 @@ make_literal_int -> fn(
 
 ### `make_literal_float`
 
+Creates a float literal expression node.
+
 ```luma
 pub #returns_ownership
 make_literal_float -> fn(
@@ -32,6 +41,8 @@ make_literal_float -> fn(
 ```
 
 ### `make_literal_string`
+
+Creates a string literal expression node.
 
 ```luma
 pub #returns_ownership
@@ -44,6 +55,8 @@ make_literal_string -> fn(
 
 ### `make_literal_char`
 
+Creates a character literal expression node.
+
 ```luma
 pub #returns_ownership
 make_literal_char -> fn(
@@ -54,6 +67,8 @@ make_literal_char -> fn(
 ```
 
 ### `make_literal_bool`
+
+Creates a boolean literal expression node.
 
 ```luma
 pub #returns_ownership
@@ -66,6 +81,8 @@ make_literal_bool -> fn(
 
 ### `make_literal_null`
 
+Creates a null literal expression node.
+
 ```luma
 pub #returns_ownership
 make_literal_null -> fn(
@@ -75,6 +92,8 @@ make_literal_null -> fn(
 ```
 
 ### `make_identifier`
+
+Creates an identifier expression node.
 
 ```luma
 pub #returns_ownership
@@ -86,6 +105,8 @@ make_identifier -> fn(
 ```
 
 ### `make_binary`
+
+Creates a binary expression node from an operator and two operands.
 
 ```luma
 pub #returns_ownership
@@ -100,6 +121,8 @@ make_binary -> fn(
 
 ### `make_unary`
 
+Creates a unary expression node from an operator and one operand.
+
 ```luma
 pub #returns_ownership
 make_unary -> fn(
@@ -111,6 +134,8 @@ make_unary -> fn(
 ```
 
 ### `make_call`
+
+Creates a function-call expression node.
 
 ```luma
 pub #returns_ownership
@@ -125,6 +150,8 @@ make_call -> fn(
 
 ### `make_assign`
 
+Creates an assignment expression node.
+
 ```luma
 pub #returns_ownership
 make_assign -> fn(
@@ -136,6 +163,8 @@ make_assign -> fn(
 ```
 
 ### `make_ternary`
+
+Creates a ternary (`condition ? then_expr : else_expr`) expression node.
 
 ```luma
 pub #returns_ownership
@@ -150,6 +179,8 @@ make_ternary -> fn(
 
 ### `make_member`
 
+Creates a member-access expression node (`object.member`).
+
 ```luma
 pub #returns_ownership
 make_member -> fn(
@@ -163,6 +194,8 @@ make_member -> fn(
 
 ### `make_index`
 
+Creates an index expression node (`object[index]`).
+
 ```luma
 pub #returns_ownership
 make_index -> fn(
@@ -174,6 +207,8 @@ make_index -> fn(
 ```
 
 ### `make_array`
+
+Creates an array-literal expression node.
 
 ```luma
 pub #returns_ownership
@@ -188,6 +223,8 @@ make_array -> fn(
 
 ### `make_cast`
 
+Creates a cast expression node.
+
 ```luma
 pub #returns_ownership
 make_cast -> fn(
@@ -200,6 +237,8 @@ make_cast -> fn(
 
 ### `make_alloc`
 
+Creates a memory-allocation (`alloc`) expression node.
+
 ```luma
 pub #returns_ownership
 make_alloc -> fn(
@@ -211,6 +250,8 @@ make_alloc -> fn(
 
 ### `make_free`
 
+Creates a memory-free (`free`) expression node.
+
 ```luma
 pub #returns_ownership
 make_free -> fn(
@@ -221,6 +262,8 @@ make_free -> fn(
 ```
 
 ### `make_memcpy`
+
+Creates a `memcpy` expression node (`to`, `from`, `size`).
 
 ```luma
 pub #returns_ownership
@@ -235,6 +278,9 @@ make_memcpy -> fn(
 
 ### `make_sizeof`
 
+Creates a `sizeof` expression node; `is_type` selects a type operand
+over a value operand.
+
 ```luma
 pub #returns_ownership
 make_sizeof -> fn(
@@ -247,6 +293,8 @@ make_sizeof -> fn(
 
 ### `make_syscall`
 
+Creates a `syscall` expression node.
+
 ```luma
 pub #returns_ownership
 make_syscall -> fn(
@@ -258,6 +306,8 @@ make_syscall -> fn(
 ```
 
 ### `make_struct_expr`
+
+Creates a struct-literal expression node.
 
 ```luma
 pub #returns_ownership
@@ -274,6 +324,8 @@ make_struct_expr -> fn(
 
 ### `make_deref`
 
+Creates a pointer-dereference expression node.
+
 ```luma
 pub #returns_ownership
 make_deref -> fn(
@@ -284,6 +336,8 @@ make_deref -> fn(
 ```
 
 ### `make_addr`
+
+Creates an address-of expression node.
 
 ```luma
 pub #returns_ownership
@@ -296,6 +350,8 @@ make_addr -> fn(
 
 ### `make_grouping`
 
+Creates a parenthesized grouping expression node.
+
 ```luma
 pub #returns_ownership
 make_grouping -> fn(
@@ -306,6 +362,9 @@ make_grouping -> fn(
 ```
 
 ### `make_input`
+
+Creates an input expression node that reads a value of `type_node`,
+optionally prompting with `msg`.
 
 ```luma
 pub #returns_ownership
@@ -318,6 +377,8 @@ make_input -> fn(
 ```
 
 ### `make_system`
+
+Creates a `system` command-execution expression node.
 
 ```luma
 pub #returns_ownership

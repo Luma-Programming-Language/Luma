@@ -1,3 +1,5 @@
+//! Parses type syntax - primitive, pointer, array, resolution and function
+//! types, plus generic type-argument lists - into AST type nodes.
 @module "parser_type"
 
 @use "std_cstring" as STRING
@@ -14,12 +16,16 @@
 #returns_ownership const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const function_type   -> fn (p: *PARS::Parser) *AST::AstNode;
 
+/// Parses a primitive/basic type name from the current token into a
+/// BasicTypeNode.
 const make_simple_type -> fn (p: *PARS::Parser, line: i64, col: i64) *AST::AstNode {
   let name: *byte = p.get_name();
   p.advance();
   return TAST::make_basic_type(name, line, col);
 }
 
+/// Token-nud type parser: dispatches on the current token to the matching
+/// simple, pointer, array, function or resolution type parser.
 #returns_ownership
 const tnud -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -48,6 +54,8 @@ const tnud -> fn (p: *PARS::Parser) *AST::AstNode {
   }
 }
 
+/// Public entry point: parses a type at the current token position and
+/// returns an AST type node, or NULL if the token cannot start a type.
 #returns_ownership
 pub const parse_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let kind: i64 = p.current().kind;
@@ -65,6 +73,8 @@ pub const parse_type -> fn (p: *PARS::Parser) *AST::AstNode {
   }
 }
 
+/// Parses a sized array type `[elem_type; size]` (size is an integer literal
+/// or identifier) into an ArrayTypeNode.
 #returns_ownership
 const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -104,6 +114,7 @@ const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
   return cast<*AST::AstNode>(0);
 }
 
+/// Parses a `*type` pointer type into a PointerTypeNode.
 #returns_ownership
 const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -126,6 +137,9 @@ const pointer_type -> fn (p: *PARS::Parser) *AST::AstNode {
 // expressions, so there's no competing '<' operator to confuse it with —
 // only the expression-position callers in parser_expr.lx (generic calls and
 // struct literals) need the speculative try/rollback dance around *this*.
+/// Parses a `<Type (',' Type)*>` type-argument list after a caller-confirmed
+/// '<' token and returns the parsed type nodes in a vector. In type position
+/// the '<' is unambiguous, so no speculative parsing is needed.
 #returns_ownership
 pub const parse_type_arg_list -> fn (p: *PARS::Parser) VEC::Vector {
   let args: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
@@ -147,6 +161,8 @@ pub const parse_type_arg_list -> fn (p: *PARS::Parser) VEC::Vector {
   return args;
 }
 
+/// Parses a (possibly qualified `A::B::`) type reference, attaching generic
+/// type arguments when a '<' follows the last name segment.
 #returns_ownership
 const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -207,6 +223,8 @@ const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode {
   return node;
 }
 
+/// Parses a function type: a parenthesised parameter-type list followed by a
+/// return type, into a FuncTypeNode.
 #returns_ownership 
 const function_type   -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;

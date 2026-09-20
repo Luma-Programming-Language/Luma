@@ -1,5 +1,3 @@
-@module "tc_generics"
-
 //! Monomorphization for `fn<T>`/`struct<T>`/`enum<T>` (see docs/docs.md's
 //! Generics section). An instantiation is just an ordinary, concrete
 //! FuncDeclNode / StructDeclNode / EnumDeclNode
@@ -10,6 +8,8 @@
 //! declaration already uses. Nothing in codegen needs to know generics
 //! exist; see tc_core's generated-decl registry, which codegen's Pass A
 //! reads in addition to each module's normal body.
+
+@module "tc_generics"
 //!
 //! Deliberately does NOT depend on tc_stmt (register_declaration /
 //! typecheck_statement live there): tc_stmt already depends on tc_expr,
@@ -37,6 +37,7 @@
 // Mirror cg_core's mangle2 — kept local rather than shared, since the
 // typechecker shouldn't depend on codegen.
 
+/// Returns a heap-allocated NUL-terminated copy of `s`.
 #returns_ownership
 const dup_str -> fn (s: *byte) *byte {
   let len: i64 = STR::strlen(s);
@@ -45,6 +46,7 @@ const dup_str -> fn (s: *byte) *byte {
   return out;
 }
 
+/// Returns a heap-allocated string joining `a` and `b` with `__` between them.
 #returns_ownership
 const join2 -> fn (a: *byte, b: *byte) *byte {
   let la: i64 = STR::strlen(a);
@@ -60,6 +62,10 @@ const join2 -> fn (a: *byte, b: *byte) *byte {
 // tc_generics can't import tc_expr (tc_expr imports tc_generics), so a
 // local copy of EXPR::qualify — identical `a.b` splice as the one in
 // tc_expr's module scope.
+/// Returns a heap-allocated `a.b` string splicing two identifiers.
+///
+/// Local copy of `EXPR::qualify`: tc_generics can't import tc_expr (tc_expr
+/// imports tc_generics), so the splice is duplicated here.
 #returns_ownership
 const qualify_member -> fn (a: *byte, b: *byte) *byte {
   let la: i64 = STR::strlen(a);
@@ -74,6 +80,8 @@ const qualify_member -> fn (a: *byte, b: *byte) *byte {
 
 // A concrete type's own type_to_string (e.g. "*byte") isn't a valid C
 // identifier fragment — replace anything but [A-Za-z0-9_] with '_'.
+/// Returns a heap-allocated copy of `s` with every char outside
+/// `[A-Za-z0-9_]` replaced by `_`, so it forms a valid C identifier fragment.
 #returns_ownership
 const sanitize -> fn (s: *byte) *byte {
   let len: i64 = STR::strlen(s);
@@ -89,6 +97,8 @@ const sanitize -> fn (s: *byte) *byte {
   return out;
 }
 
+/// Mangles a generic's base name by appending each concrete type as a
+/// sanitized `__<type>` segment; returns a heap-allocated string.
 #returns_ownership
 const build_mangled_name -> fn (base_name: *byte, concretes: **AST::AstNode, count: i64) *byte {
   let mangled: *byte = dup_str(base_name);
@@ -108,6 +118,19 @@ const build_mangled_name -> fn (base_name: *byte, concretes: **AST::AstNode, cou
 
 // ─── one entry per `fn<T,...>`/`struct<T,...>` template ───────────────────
 
+/// One entry per `fn<T,...>` / `struct<T,...>` / `enum<T,...>` template.
+///
+/// Holds the raw, unresolved declaration and the scope it was declared in
+/// (not the caller's scope), so instantiations are created there. Method
+/// templates carry their owning struct and static flag.
+///
+/// # Fields
+/// - `module_name`: module that defines the template
+/// - `name`: template name (`Thing.make` for method templates)
+/// - `decl`: raw decl node, type params unresolved
+/// - `def_scope`: scope the template was declared in
+/// - `owner`: owning struct name for method templates, NULL otherwise
+/// - `method_is_static`: nonzero for static method templates
 pub const GenericTemplate -> struct {
   module_name: *byte,
   name:        *byte,
@@ -120,15 +143,20 @@ pub const GenericTemplate -> struct {
   method_is_static: i64,
 };
 
+/// Registry of all registered generic templates.
 let g_templates: VEC::Vector;
+/// Lazily-initialized flag for `g_templates`.
 let g_templates_ready: bool = false;
 
+/// Initializes `g_templates` on first use (idempotent).
 const templates_init -> fn () void {
   if (g_templates_ready) return;
   g_templates_ready = true;
   g_templates = VEC::create_vector(sizeof<GenericTemplate>);
 }
 
+/// Registers a module-level `fn<T>` / `struct<T>` / `enum<T>` template under
+/// its defining module and name.
 pub const register_template -> fn (module_name: *byte, name: *byte, decl: *AST::AstNode, def_scope: *CORE::Scope) void {
   templates_init();
   let t: GenericTemplate = GenericTemplate { module_name: module_name, name: name, decl: decl, def_scope: def_scope, owner: cast<*byte>(0), method_is_static: 0 };
@@ -141,6 +169,9 @@ pub const register_template -> fn (module_name: *byte, name: *byte, decl: *AST::
 // is registered under. The owner struct name + static flag ride along so
 // tc.lx's drain can hand codegen enough to register the concrete method as
 // a method of `Thing` (not a standalone function).
+/// Registers a generic method template (`Thing::make<T>` on a non-generic
+/// struct). Keyed under the qualified name `Thing.make` so it can't collide
+/// with module-level templates; the owner + static flag ride along for codegen.
 #returns_ownership
 pub const register_method_template -> fn (module_name: *byte, owner: *byte, decl: *AST::AstNode, is_static: i64, def_scope: *CORE::Scope) void {
   templates_init();
@@ -150,6 +181,8 @@ pub const register_method_template -> fn (module_name: *byte, owner: *byte, decl
   g_templates.push_back(cast<*void>(&t));
 }
 
+/// Looks up a template by defining module and name; returns NULL when none
+/// is registered.
 pub const find_template -> fn (module_name: *byte, name: *byte) *GenericTemplate {
   templates_init();
   let n: i64 = g_templates.size;
@@ -162,21 +195,32 @@ pub const find_template -> fn (module_name: *byte, name: *byte) *GenericTemplate
 
 // ─── instantiation cache — one entry per concrete (module, name, types) ──
 
+/// One cached concrete instantiation per unique (module, name, types)
+/// combination.
+///
+/// # Fields
+/// - `key`: joined module name + mangled name
+/// - `ftype`: concrete function/type used to typecheck call sites
+/// - `mangled_name`: name of the synthesized concrete declaration
 pub const Instantiation -> struct {
   key:          *byte,
   ftype:        *AST::AstNode,
   mangled_name: *byte,
 };
 
+/// Cache of concrete instantiation entries.
 let g_insts: VEC::Vector;
+/// Lazily-initialized flag for `g_insts`.
 let g_insts_ready: bool = false;
 
+/// Initializes `g_insts` on first use (idempotent).
 const insts_init -> fn () void {
   if (g_insts_ready) return;
   g_insts_ready = true;
   g_insts = VEC::create_vector(sizeof<Instantiation>);
 }
 
+/// Returns the cached concrete instantiation for `key`, or NULL.
 const find_instantiation -> fn (key: *byte) *Instantiation {
   insts_init();
   let n: i64 = g_insts.size;
@@ -187,6 +231,8 @@ const find_instantiation -> fn (key: *byte) *Instantiation {
   return cast<*Instantiation>(0);
 }
 
+/// Adds a concrete instantiation to the cache under `key` (key ownership
+/// passes to the entry).
 const add_instantiation -> fn (key: *byte, ftype: *AST::AstNode, mangled_name: *byte) void {
   insts_init();
   let inst: Instantiation = Instantiation { key: key, ftype: ftype, mangled_name: mangled_name };
@@ -195,6 +241,15 @@ const add_instantiation -> fn (key: *byte, ftype: *AST::AstNode, mangled_name: *
 
 // ─── pending queue — drained by tc.lx, see module doc comment above ──────
 
+/// One queued concrete instantiation awaiting registration + typechecking by
+/// tc.lx's drain.
+///
+/// # Fields
+/// - `decl`: cloned concrete declaration (type params substituted)
+/// - `def_scope`: scope the template was declared in
+/// - `module_name`: original defining module
+/// - `owner`: owning struct for method instantiations, NULL otherwise
+/// - `is_static`: nonzero for method instantiations
 pub const Pending -> struct {
   decl:        *AST::AstNode,
   def_scope:   *CORE::Scope,
@@ -207,21 +262,26 @@ pub const Pending -> struct {
   is_static:   i64,
 };
 
+/// Queue of pending concrete instantiations awaiting the drain.
 let g_pending: VEC::Vector;
+/// Lazily-initialized flag for `g_pending`.
 let g_pending_ready: bool = false;
 
+/// Initializes `g_pending` on first use (idempotent).
 const pending_init -> fn () void {
   if (g_pending_ready) return;
   g_pending_ready = true;
   g_pending = VEC::create_vector(sizeof<Pending>);
 }
 
+/// Queues a concrete instantiation for the drain (see module doc comment).
 const pending_push -> fn (decl: *AST::AstNode, def_scope: *CORE::Scope, module_name: *byte, owner: *byte, is_static: i64) void {
   pending_init();
   let p: Pending = Pending { decl: decl, def_scope: def_scope, module_name: module_name, owner: owner, is_static: is_static };
   g_pending.push_back(cast<*void>(&p));
 }
 
+/// Number of concretes still awaiting the drain.
 pub const pending_count -> fn () i64 {
   pending_init();
   return g_pending.size;
@@ -229,6 +289,7 @@ pub const pending_count -> fn () i64 {
 
 // Pops the last entry (order doesn't matter — every entry is independent).
 // Only call when pending_count() > 0.
+/// Removes and returns the last queued instantiation (order is irrelevant).
 pub const pending_pop -> fn () Pending {
   pending_init();
   let idx: i64 = g_pending.size - 1;
@@ -240,6 +301,8 @@ pub const pending_pop -> fn () Pending {
 
 // ─── the entry point — called from tc_expr's tc_call ─────────────────────
 
+/// Rewrites a call's callee to a new name, preserving identifier vs. member
+/// shape so codegen still resolves module-qualified calls.
 const rename_callee -> fn (call_node: *AST::CallNode, new_name: *byte) void {
   let callee: *AST::AstNode = call_node.callee;
   if (callee.kind == AST::NodeType::EXPR_IDENTIFIER) {
@@ -263,6 +326,17 @@ const rename_callee -> fn (call_node: *AST::CallNode, new_name: *byte) void {
 // against, or NULL (with a tc_error already reported) on failure. Also
 // rewrites call_node's callee to the mangled concrete name, so codegen —
 // completely unaware generics exist — just emits an ordinary call.
+/// Typechecks a generic function call: resolves the explicit type arguments,
+/// returns the concrete FuncType to check the args/result against (or NULL
+/// with an error already reported), rewrites the callee to the mangled name,
+/// and queues the concrete body for tc.lx's drain.
+///
+/// # Parameters
+/// - `call_node`: the call site; callee is rewritten to the mangled name on success
+/// - `tmpl`: the matched template
+/// - `caller_scope`: scope the call is typechecked in
+/// # Returns
+/// Concrete function type, or NULL after reporting an error.
 #returns_ownership
 pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *GenericTemplate, caller_scope: *CORE::Scope) *AST::AstNode {
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(tmpl.decl);
@@ -336,6 +410,18 @@ pub const instantiate_function_call -> fn (call_node: *AST::CallNode, tmpl: *Gen
 // concrete method as a method of `Thing` (see tc.lx's drain and codegen's
 // generated-decl handling).
 
+/// Method-template counterpart of `instantiate_function_call`, for
+/// `Thing::make<T>(...)` on a non-generic struct. The owner struct name +
+/// static flag ride through the pending queue so codegen registers the
+/// concrete method with the right ownership.
+///
+/// # Parameters
+/// - `call_node`: the call site; callee is rewritten to the mangled name on success
+/// - `owner`: owning struct name (e.g. `Thing` in `Thing::make<T>`)
+/// - `tmpl`: the matched method template
+/// - `caller_scope`: scope the call is typechecked in
+/// # Returns
+/// Concrete function type, or NULL after reporting an error.
 #returns_ownership
 pub const instantiate_method_call -> fn (call_node: *AST::CallNode, owner: *byte, tmpl: *GenericTemplate, caller_scope: *CORE::Scope) *AST::AstNode {
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(tmpl.decl);
@@ -412,18 +498,22 @@ pub const instantiate_method_call -> fn (call_node: *AST::CallNode, owner: *byte
 // Both StructDeclNode and EnumDeclNode carry the identical
 // `type_params: **byte` / `type_param_count: i64` pair that literal
 // initialization can't see statically, so branch to pull the right field.
+/// Returns the type-parameter count of a struct/enum decl (0 otherwise).
 const decl_tp_count -> fn (decl: *AST::AstNode) i64 {
   if (decl.kind == AST::NodeType::STMT_STRUCT) return cast<*AST::StructDeclNode>(decl).type_param_count;
   if (decl.kind == AST::NodeType::STMT_ENUM)   return cast<*AST::EnumDeclNode>(decl).type_param_count;
   return 0;
 }
 
+/// Returns the type-parameter name array of a struct/enum decl (NULL
+/// otherwise).
 const decl_tp_names -> fn (decl: *AST::AstNode) **byte {
   if (decl.kind == AST::NodeType::STMT_STRUCT) return cast<*AST::StructDeclNode>(decl).type_params;
   if (decl.kind == AST::NodeType::STMT_ENUM)   return cast<*AST::EnumDeclNode>(decl).type_params;
   return cast<**byte>(0);
 }
 
+/// Returns the base (unmangled) name of a struct/enum template.
 const decl_base_name -> fn (decl: *AST::AstNode) *byte {
   if (decl.kind == AST::NodeType::STMT_STRUCT) return cast<*AST::StructDeclNode>(decl).name;
   if (decl.kind == AST::NodeType::STMT_ENUM)   return cast<*AST::EnumDeclNode>(decl).name;
@@ -434,6 +524,8 @@ const decl_base_name -> fn (decl: *AST::AstNode) *byte {
 // generic decl — called on a clone after substitution, turning it into an
 // ordinary concrete decl. (The commented code is the struct/enum-specific
 // reopen block that strips method type params / anything else kind-specific.)
+/// Frees and zeroes the `type_params`/`type_param_count` pair on a cloned
+/// struct/enum decl, turning it into an ordinary concrete decl.
 const degenericize_decl -> fn (cloned: *AST::AstNode) void {
   if (cloned.kind == AST::NodeType::STMT_STRUCT) {
     let csd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(cloned);
@@ -458,6 +550,8 @@ const degenericize_decl -> fn (cloned: *AST::AstNode) void {
 // K/V substituted but leaves `FuncDeclNode.type_param_count` intact —
 // handle_func_decl then skips the body as still-generic. This strips those
 // cloned-away params from each method so the pending drain can check them.
+/// Strips cloned-away type params from methods of a generic struct template
+/// so the pending drain typechecks them as ordinary concrete methods.
 const strip_method_type_params -> fn (members: **AST::AstNode, count: i64) void {
   let mi: i64 = 0;
   loop (mi < count) {
@@ -478,6 +572,7 @@ const strip_method_type_params -> fn (members: **AST::AstNode, count: i64) void 
   }
 }
 
+/// Returns the name of the innermost enclosing module scope, or NULL.
 #returns_ownership
 const scope_module_name -> fn (scope: *CORE::Scope) *byte {
   let s: *CORE::Scope = scope;
@@ -488,6 +583,15 @@ const scope_module_name -> fn (scope: *CORE::Scope) *byte {
   return cast<*byte>(0);
 }
 
+/// Resolves a same-module `Box<i64>` type leaf (struct/enum instantiation):
+/// rewrites it in place to the mangled concrete name and queues the concrete
+/// decl for tc.lx's drain. Returns the rewritten leaf.
+///
+/// # Parameters
+/// - `leaf`: TYPE_BASIC node carrying the concrete type arguments
+/// - `scope`: scope to resolve the type arguments in
+/// # Returns
+/// The resolved leaf (rewritten in place), or errors at the leaf on failure.
 #returns_ownership
 pub const resolve_nominal_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   let mod_name: *byte = scope_module_name(scope);
@@ -503,6 +607,9 @@ pub const resolve_nominal_type_ref -> fn (leaf: *AST::AstNode, scope: *CORE::Sco
 // concrete instantiation is keyed on `(tmpl.module_name, mangled)`, and the
 // template's module_name is the module the caller passes in, so two modules
 // referencing the same concrete type yield the identical cached clone.
+/// `resolve_nominal_type_ref` for an explicitly named defining module, so a
+/// qualified `G::Box<i64>` reference resolves the template in *G*'s registry
+/// instead of the caller's own.
 #returns_ownership
 pub const resolve_nominal_type_ref_in -> fn (leaf: *AST::AstNode, scope: *CORE::Scope, def_module_name: *byte) *AST::AstNode {
   if (leaf == cast<*AST::AstNode>(0)) return leaf;
@@ -588,6 +695,9 @@ pub const resolve_nominal_type_ref_in -> fn (leaf: *AST::AstNode, scope: *CORE::
 // whether *any* concrete instantiation could have it — tc_call uses this to
 // report `Foo::missing()` before letting the call fall through to codegen's
 // placeholder.
+/// Checks whether a struct template declares a method (public or private)
+/// with the given name — used to report missing static methods before the
+/// call falls through to codegen.
 pub const struct_template_has_method -> fn (sd: *AST::StructDeclNode, method_name: *byte) bool {
   let groups: i64 = 0;
   loop (groups < 2) {

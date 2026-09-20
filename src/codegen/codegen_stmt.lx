@@ -1,3 +1,9 @@
+//! Statement codegen for the C backend.
+//!
+//! Dispatches a statement AST node and writes the corresponding C statements
+//! into the output buffer: declarations, control flow, blocks, and defer
+//! bookkeeping.
+
 @module "cg_stmt"
 
 @use "std_vector"  as VEC
@@ -13,6 +19,9 @@ pub const gen_stmt -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::A
 // Declared type if present, else inferred from the initializer's
 // resolved_type (the typechecker doesn't store this anywhere else codegen
 // can read it).
+/// The declared type of a variable declaration, or the initializer's
+/// resolved_type when no type was written (the only place codegen can read
+/// the inferred type).
 const var_decl_type -> fn (ctx: *CG::CodegenContext, n: *AST::VarDeclNode) *AST::AstNode {
   if (n.var_type != cast<*AST::AstNode>(0)) return n.var_type;
   let init: *AST::AstNode = n.initializer;
@@ -23,6 +32,9 @@ const var_decl_type -> fn (ctx: *CG::CodegenContext, n: *AST::VarDeclNode) *AST:
   return cast<*AST::AstNode>(0);
 }
 
+/// Emits a local `let`/`const` declaration: the initializer is generated in
+/// the *previous* binding's scope first (so `let x = x + 1` reads the old
+/// value), then the declarator uses the newly registered C name.
 const gen_local_var_decl -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::VarDeclNode = cast<*AST::VarDeclNode>(stmt);
   let t: *AST::AstNode = var_decl_type(ctx, n);
@@ -63,6 +75,7 @@ const gen_local_var_decl -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *
 
 // ─── defer bookkeeping ───────────────────────────────────────────────────────
 
+/// Records a `defer` statement's target on the context's defer stack.
 const push_defer -> fn (ctx: *CG::CodegenContext, stmt: *AST::AstNode) void {
   let n: *AST::DeferNode = cast<*AST::DeferNode>(stmt);
   let target: *AST::AstNode = n.statement;
@@ -70,12 +83,15 @@ const push_defer -> fn (ctx: *CG::CodegenContext, stmt: *AST::AstNode) void {
   v.push_back(cast<*void>(&target));
 }
 
+/// Returns the deferred statement at index `i` of the context's defer stack.
 const defer_at -> fn (ctx: *CG::CodegenContext, i: i64) *AST::AstNode {
   let v: *VEC::Vector = &ctx.defer_stack;
   return cast<**AST::AstNode>(v.data)[i];
 }
 
 // Emits (in LIFO order) every deferred statement pushed since `from_len`.
+/// Emits every deferred statement from the top of the stack down through
+/// index `from_len` (LIFO order).
 const flush_defers_from -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, from_len: i64) void {
   let v: *VEC::Vector = &ctx.defer_stack;
   let i: i64 = v.size - 1;
@@ -87,6 +103,9 @@ const flush_defers_from -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, from_len
 
 // ─── return / block (defer flush points) ────────────────────────────────────
 
+/// Emits a `return`: plain when no defers are pending; otherwise the value is
+/// stashed in `__retval`, deferred statements are flushed, and the return
+/// uses the stashed value.
 const gen_return -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::ReturnStmtNode = cast<*AST::ReturnStmtNode>(stmt);
   let v: *VEC::Vector = &ctx.defer_stack;
@@ -113,6 +132,8 @@ const gen_return -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::Ast
   CG::buf_str(buf, "}\n");
 }
 
+/// Emits a block as `{ ... }`, flushing and popping any defers pushed inside
+/// it and truncating the local stack so names don't escape the block.
 const gen_block -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
   let v: *VEC::Vector = &ctx.defer_stack;
@@ -134,6 +155,8 @@ const gen_block -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstN
 
 // ─── if / loop / switch ──────────────────────────────────────────────────────
 
+/// Emits an `if`/`elif`/`else` chain, flattening elifs into `else if`
+/// branches rather than re-dispatching nested IfStmtNodes.
 const gen_if -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
   CG::buf_str(buf, "if (");
@@ -159,6 +182,9 @@ const gen_if -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode
   }
 }
 
+/// Emits a `loop` as a C `for`: init declarations, condition (defaulting to
+/// constant 1 when absent), optional post expression, then the body. Init
+/// vars stay scoped to the whole for-statement.
 const gen_loop -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
   let lv: *VEC::Vector = &ctx.locals;
@@ -189,6 +215,8 @@ const gen_loop -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNo
   lv.size = locals_start; // init var(s) scoped to the whole for(...), including the body
 }
 
+/// Emits a `switch`: each case's values as `case` labels with a trailing
+/// `break;`, plus the `default` arm if present.
 const gen_switch -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
   CG::buf_str(buf, "switch (");
@@ -222,6 +250,8 @@ const gen_switch -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::Ast
 
 // ─── top-level statement dispatcher ──────────────────────────────────────────
 
+/// Top-level statement dispatcher: routes a statement node by kind to the
+/// per-node generators. Nested struct/function/enum declarations are no-ops.
 pub const gen_stmt -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, stmt: *AST::AstNode) void {
   if (stmt == cast<*AST::AstNode>(0)) return;
   let k: i64 = stmt.kind;

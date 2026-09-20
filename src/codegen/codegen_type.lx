@@ -1,3 +1,8 @@
+//! C type emission for the codegen backend.
+//!
+//! Maps Luma type nodes to C type strings and declarators: basic type names,
+//! pointer/array/function declarators (spiral rule), and array-bound sizes.
+
 @module "cg_type"
 
 @use "std_cstring" as STR
@@ -7,6 +12,8 @@
 
 // Luma's explicit-width types map to C's fixed-width types; `byte` is 8-bit
 // but kept as `char` (C's smallest addressable unit) for string interop.
+/// Maps a Luma basic type name to its C fixed-width equivalent, or null if
+/// the name isn't a recognized basic type.
 const basic_c_name -> fn (name: *byte) *byte {
   if (STR::strcmp(name, "i8")    == 0) return "int8_t";
   if (STR::strcmp(name, "i16")   == 0) return "int16_t";
@@ -26,6 +33,9 @@ const basic_c_name -> fn (name: *byte) *byte {
 
 // Base ("leaf") type name for a TYPE_BASIC / TYPE_RESOLUTION node — pointer
 // /array/function wrapping is emit_declarator's job. Caller owns the result.
+/// Resolves a TYPE_BASIC / TYPE_RESOLUTION node's leaf type to its C spelling
+/// (fixed-width builtin, mangled struct/enum name, or the bare name if
+/// unknown). Caller owns the result.
 #returns_ownership
 pub const c_base_type_string -> fn (ctx: *CG::CodegenContext, t: *AST::AstNode) *byte {
   if (t == cast<*AST::AstNode>(0)) return CG::dup_str("void");
@@ -78,6 +88,9 @@ pub const emit_value_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, 
 // Luma and C names happen to be the same); for a module-level global —
 // mangled to `<module>__<name>` everywhere else — it produced an
 // `undeclared identifier` error instead.
+/// Emits the C expression for an array-size node (`[i64; 10]`, `[i64; size]`,
+/// simple arithmetic on those) without invoking full expression codegen,
+/// which would be circular here; non-literal sizes become plain C VLAs.
 const emit_array_size -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, node: *AST::AstNode) void {
   if (node == cast<*AST::AstNode>(0)) return;
   let k: i64 = node.kind;
@@ -138,6 +151,9 @@ const emit_array_size -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, node: *AST
 
 // Emits a full C declarator for `name` of Luma type `t` (e.g. "long long x",
 // "long long x[10]", "long long (*x)(long long)") — standard spiral-rule recursion.
+/// Emits a full C declarator for `name` of Luma type `t` — standard
+/// spiral-rule recursion covering pointer, array, and function types
+/// (e.g. "long long x", "long long x[10]", "long long (*x)(long long)").
 pub const emit_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AST::AstNode, name: *byte) void {
   if (t == cast<*AST::AstNode>(0)) {
     CG::buf_str(buf, "void ");
@@ -230,6 +246,10 @@ pub const emit_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AS
 // emit_declarator's TYPE_POINTER case directly, which adds the same
 // `(*name)` wrap itself before recursing into TYPE_FUNCTION — routing it
 // through here too would wrap it a second time.
+/// Entry point for value-position declarators (struct fields, locals, params,
+/// array elements, return types): a bare `fn (...) T` is wrapped as `(*name)`
+/// so it becomes a valid C function pointer, then delegates to
+/// emit_declarator.
 pub const emit_value_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, t: *AST::AstNode, name: *byte) void {
   if (t != cast<*AST::AstNode>(0) && t.kind == AST::NodeType::TYPE_FUNCTION) {
     let inner: *CG::Buf = CG::buf_init();
@@ -245,6 +265,8 @@ pub const emit_value_declarator -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, 
 }
 
 // Full type string with no variable name attached (casts, sizeof, param lists).
+/// Returns the C type string for `t` with no variable name attached (casts,
+/// sizeof, parameter-list entries). Caller owns the result.
 #returns_ownership
 pub const c_type_string -> fn (ctx: *CG::CodegenContext, t: *AST::AstNode) *byte {
   let b: *CG::Buf = CG::buf_init();

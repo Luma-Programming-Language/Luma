@@ -1,5 +1,10 @@
+//! Token types, token and error structures, and the keyword and operator
+//! lookup tables shared by the lexer and the parser.
 @module "lexer_tokens"
 
+/// The complete set of token kinds the lexer can emit: single- and
+/// double-character operators, keywords, primitive-type tokens, directives
+/// and doc comments.
 pub const LumaTokenType -> enum {
   TOK_EOF,          /**< End of file/input */
   TOK_ERROR,        /**< Error token */
@@ -120,6 +125,8 @@ pub const LumaTokenType -> enum {
   TOK_DOCUMENT     
 };
 
+/// A lexical error recorded by the lexer: an error-kind code, the source
+/// location of the offending text, and the offending byte itself.
 pub const LexError -> struct {
   kind: i64,
   line: i64,
@@ -128,14 +135,30 @@ pub const LexError -> struct {
   bad:  byte,
 };
 
+/// Maximum number of lexical errors the lexer buffers before dropping later ones.
 pub const MAX_LEX_ERRORS: i64 = 32;
 
+/// Error kind: an `@word` or `#word` directive that isn't a keyword.
 pub const LEX_ERR_UNKNOWN_DIRECTIVE:   i64 = 0; /**< an @word or #word that isn't a keyword */
+/// Error kind: a string literal that hit a newline or EOF without a closing quote.
 pub const LEX_ERR_UNTERMINATED_STRING: i64 = 1; /**< string literal hitting \n or EOF without a closing " */
+/// Error kind: an empty character literal, or an opening quote running into EOF.
 pub const LEX_ERR_EMPTY_CHAR:          i64 = 2; /**< '' or an opening ' run into EOF */
+/// Error kind: a character literal missing its closing quote or holding multiple characters.
 pub const LEX_ERR_BAD_CHAR:            i64 = 3; /**< 'a' missing its closing ', or 'ab' multi-char */
+/// Error kind: a character Luma has no token for, previously silently skipped.
 pub const LEX_ERR_INVALID_CHARACTER:   i64 = 4; /**< a character Luma has no token for (silently skipped before) */
 
+/// Stateful scanner over a `\0`-terminated source buffer that tracks the
+/// current position, line and column and buffers lexical errors.
+///
+/// # Fields
+/// - `current`: Pointer to the current byte being scanned
+/// - `src`: Start of the source buffer
+/// - `line` / `col`: Source line and column of `current`
+/// - `errors`: Fixed-size buffer of recorded lexical errors
+/// - `error_count`: Number of buffered errors
+/// - `had_error`: Non-zero after the first recorded error
 pub const Lexer -> struct {
   current: *byte,
   src: *byte,
@@ -146,6 +169,8 @@ pub const Lexer -> struct {
   error_count: i64,
   had_error: i64,
 
+  /// Constructs a lexer over `src`, initialised at line 1, column 0, with an
+  /// empty error buffer.
   static make -> fn (src: *byte) Lexer {
     let lx: Lexer = Lexer {
       current: src,
@@ -167,8 +192,12 @@ pub const Lexer -> struct {
     return lx;
   },
   
+  /// Returns 1 if the scanner has reached the end of the source buffer.
   is_end  -> fn () i64 { if(self.current[0] == '\0') return 1; return 0; },
+  /// Returns the byte `offset` positions ahead of the current one without
+  /// advancing the scanner.
   peek    -> fn (offset: i64) byte { return self.current[offset]; },
+  /// Consumes and returns the next byte, updating the tracked line and column.
   advance -> fn () byte {
     let c: byte = self.peek(0);
     self.current = cast<*byte>(cast<i64>(self.current) + 1);
@@ -187,6 +216,15 @@ pub const Lexer -> struct {
   },
 };
 
+/// A lexed token: a span of the source buffer plus its kind, length and
+/// source position.
+///
+/// # Fields
+/// - `val`: Pointer to the token's first character in the source
+/// - `kind`: The token kind (from `LumaTokenType`)
+/// - `len`: Length of the token text in bytes
+/// - `line` / `col`: Source position where the token starts
+/// - `whitespace_len`: Whitespace characters between this token and the previous
 pub const Token -> struct {
   val:            *byte,
   kind:           i64,
@@ -195,6 +233,7 @@ pub const Token -> struct {
   col:            i64,
   whitespace_len: i64,
 
+  /// Builds a token from explicit value, kind, length and position fields.
   static make -> fn (
     val: *byte, 
     kind: i64, 
@@ -213,6 +252,10 @@ pub const Token -> struct {
     };
   },
 
+  /// Returns a newly allocated, `\0`-terminated copy of the token's text.
+  ///
+  /// # Returns
+  /// A heap-allocated buffer the caller must free.
   #returns_ownership
   token_value_string -> fn () *byte {
     let s: *byte = cast<*byte>(alloc((self.len + 1) * sizeof<byte>));
@@ -224,6 +267,8 @@ pub const Token -> struct {
   },
 };
 
+/// Maps a single-character operator to its token kind, or -1 if the
+/// character is not an operator.
 pub const lookup_single -> fn (c: byte) i64 {
   switch (c) {
     '(' -> return LumaTokenType::TOK_LPAREN;
@@ -255,6 +300,8 @@ pub const lookup_single -> fn (c: byte) i64 {
   return -1;
 }
 
+/// Maps a two-character operator sequence to its token kind, or -1 if the
+/// pair is not an operator.
 pub const lookup_double -> fn (c: byte, c2: byte) i64 {
   switch (c) {
     '=' -> { if (c2 == '=') return LumaTokenType::TOK_EQEQ;    }
@@ -278,9 +325,13 @@ pub const lookup_double -> fn (c: byte, c2: byte) i64 {
   return -1;
 }
 
+/// Number of entries in `keyword_map`.
 const KEYWORD_COUNT: i64 = 52;
+/// A keyword or directive spelling paired with the token kind it lexes to.
 const Keyword -> struct { val: *byte, kind: i64 };
 
+/// The binary-search lookup table mapping keyword and directive spellings to
+/// their token kinds.
 pub const keyword_map: [Keyword; 52] = [
   // Function attributes
   Keyword { val: "#dll_import",        kind: LumaTokenType::TOK_DLL_IMPORT },
@@ -343,6 +394,8 @@ pub const keyword_map: [Keyword; 52] = [
   Keyword { val: "void",    kind: LumaTokenType::TOK_VOID },
 ];
 
+/// Compares a scanned word against a keyword entry, returning negative, zero
+/// or positive (strcmp-style) as used by the binary search in `lookup_keyword`.
 const compare_word -> fn (val: *byte, len: i64, kw: *byte) i64 {
   loop [i: i64 = 0](i < len) : (++i) {
     let kc: byte = kw[i];
@@ -354,6 +407,8 @@ const compare_word -> fn (val: *byte, len: i64, kw: *byte) i64 {
   return 0;
 }
 
+/// Binary-searches `keyword_map` for a word (given as value and length) and
+/// returns the matching token kind, or -1 if it is not a keyword.
 pub const lookup_keyword -> fn (val: *byte, len: i64) i64 {
   let lo: i64 = 0;
   let hi: i64 = KEYWORD_COUNT - 1;

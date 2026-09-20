@@ -12,6 +12,11 @@
 @use "lsp_dispatch"  as D
 @use "lsp_document"  as DOC
 
+/// Runs the language-server event loop, reading messages from stdin and
+/// dispatching them until stdin closes.
+///
+/// # Returns
+/// 0 when the loop ends.
 pub const lsp_run -> fn () i64 {
   DOC::lsp_document_init();
 

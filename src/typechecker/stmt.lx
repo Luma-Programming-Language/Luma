@@ -1,3 +1,10 @@
+//! Statement typechecking and declaration registration.
+//!
+//! Dispatches statements to per-form handlers and provides the
+//! `register_declaration` forward-registration pass that tc.lx drives for
+//! every module, including generic templates and their concrete
+//! instantiations.
+
 @module "tc_stmt"
 
 @use "std_memory" as MEM
@@ -31,6 +38,8 @@ const handle_return      -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 const handle_block       -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 const handle_defer       -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool;
 
+/// Dispatches a statement node to its handler; returns false when the
+/// statement failed to typecheck. `@os` conditionals are handled inline.
 pub const typecheck_statement -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   if (stmt == cast<*AST::AstNode>(0)) return true;
 
@@ -77,6 +86,8 @@ pub const typecheck_statement -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) b
   return true;
 }
 
+/// Returns the `@os` arm matching the target OS (or the default body), or
+/// NULL when no arm matches.
 pub const resolve_os_body -> fn (node: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
   if (node == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
   if (node.kind != AST::NodeType::PREPROCESSOR_OS) return cast<*AST::AstNode>(0);
@@ -96,6 +107,9 @@ pub const resolve_os_body -> fn (node: *AST::AstNode, scope: *CORE::Scope) *AST:
   return cast<*AST::AstNode>(0);
 }
 
+/// Forward-registers a declaration's symbols without typechecking bodies:
+/// generic templates, functions, structs/enums, typed globals, and `@os`
+/// contents.
 pub const register_declaration -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   if (stmt == cast<*AST::AstNode>(0)) return true;
   let k: i64 = stmt.kind;
@@ -163,6 +177,8 @@ pub const register_declaration -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) 
   return true;
 }
 
+/// Typechecks a `let`/`const` declaration: resolves/infers the type, checks
+/// the initializer against the declared type, and registers the symbol.
 const handle_var_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::VarDeclNode = cast<*AST::VarDeclNode>(stmt);
   n.var_type = TYPE::resolve_type_ref(n.var_type, scope);
@@ -246,6 +262,9 @@ const handle_var_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return ok;
 }
 
+/// Typechecks a function declaration: resolves param/return types, registers
+/// the function symbol, and checks the body in a fresh function scope with
+/// parameters as mutable locals.
 const handle_func_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let fd: *AST::FuncDeclNode = cast<*AST::FuncDeclNode>(stmt);
 
@@ -298,6 +317,8 @@ const handle_func_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return ok;
 }
 
+/// Registers a struct member (field or method) as a `Struct.member` symbol;
+/// generic methods become templates and embedded members are skipped.
 const register_field -> fn (struct_name: *byte, member: *AST::AstNode, scope: *CORE::Scope) void {
   if (member == cast<*AST::AstNode>(0)) return;
   if (member.kind != AST::NodeType::STMT_FIELD_DECL) return;
@@ -337,6 +358,8 @@ const register_field -> fn (struct_name: *byte, member: *AST::AstNode, scope: *C
   SCOPE::scope_add_symbol(scope, qname, f.type_node, f.is_public == 1, true);
 }
 
+/// Registers a struct's type symbol, its fields/methods, and its nominal
+/// declaration; generic structs are registered as templates instead.
 const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(stmt);
 
@@ -366,6 +389,8 @@ const register_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool
   return true;
 }
 
+/// Body typecheck of a struct declaration: re-registers the struct and checks
+/// each method body in a method scope (`self` for instance methods).
 const handle_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let sd: *AST::StructDeclNode = cast<*AST::StructDeclNode>(stmt);
 
@@ -402,6 +427,8 @@ const handle_struct_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return true;
 }
 
+/// Registers an enum's type symbol, its `Enum.Member` symbols, and its
+/// nominal declaration; generic enums are registered as templates instead.
 const register_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(stmt);
 
@@ -429,12 +456,16 @@ const register_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return true;
 }
 
+/// Body typecheck of an enum declaration: generic templates are skipped;
+/// concrete enums re-register their members.
 const handle_enum_decl -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let ed: *AST::EnumDeclNode = cast<*AST::EnumDeclNode>(stmt);
   if (ed.type_param_count > 0) return true;
   return register_enum_decl(stmt, scope);
 }
 
+/// Typechecks a condition expression, erroring when it is neither boolean
+/// nor numeric.
 const check_condition -> fn (cond: *AST::AstNode, scope: *CORE::Scope) void {
   if (cond == cast<*AST::AstNode>(0)) return;
   let ct: *AST::AstNode = EXPR::typecheck_expression(cond, scope, cast<*AST::AstNode>(0));
@@ -445,6 +476,7 @@ const check_condition -> fn (cond: *AST::AstNode, scope: *CORE::Scope) void {
   }
 }
 
+/// Typechecks an if / elif / else chain, each branch in its own child scope.
 const handle_if -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::IfStmtNode = cast<*AST::IfStmtNode>(stmt);
 
@@ -466,6 +498,8 @@ const handle_if -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return true;
 }
 
+/// Typechecks a loop: initializers, condition, optional step, and body all in
+/// the (shared) loop scope.
 const handle_loop -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::LoopStmtNode = cast<*AST::LoopStmtNode>(stmt);
   let loop_scope: *CORE::Scope = SCOPE::scope_create_child(scope, "loop");
@@ -485,6 +519,8 @@ const handle_loop -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return typecheck_statement(n.body, loop_scope);
 }
 
+/// Typechecks a switch: enum case values are deduplicated, duplicate cases
+/// are errors, and non-exhaustive switches without a default are reported.
 const handle_switch -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::SwitchNode = cast<*AST::SwitchNode>(stmt);
   let cond_type: *AST::AstNode = EXPR::typecheck_expression(n.condition, scope, cast<*AST::AstNode>(0));
@@ -560,6 +596,7 @@ const handle_switch -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return true;
 }
 
+/// Typechecks a `return` against the enclosing function's return type.
 const handle_return -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::ReturnStmtNode = cast<*AST::ReturnStmtNode>(stmt);
 
@@ -595,6 +632,7 @@ const handle_return -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return true;
 }
 
+/// Typechecks a block's statements in a child scope.
 const handle_block -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::BlockNode = cast<*AST::BlockNode>(stmt);
   let block_scope: *CORE::Scope = SCOPE::scope_create_child(scope, "block");
@@ -608,6 +646,8 @@ const handle_block -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   return ok;
 }
 
+/// Typechecks a `defer` statement with memory tracking suppressed, so the
+/// deferred action isn't double-analyzed as a free inside the function.
 const handle_defer -> fn (stmt: *AST::AstNode, scope: *CORE::Scope) bool {
   let n: *AST::DeferNode = cast<*AST::DeferNode>(stmt);
 

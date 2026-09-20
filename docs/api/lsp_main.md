@@ -19,8 +19,15 @@ points at `luma -lsp`.
 
 ### `lsp_run`
 
+Runs the language-server event loop, reading messages from stdin and
+dispatching them until stdin closes.
+
+
 ```luma
 pub lsp_run -> fn(
 ) i64
 ```
+
+**Returns:**
+0 when the loop ends.
 

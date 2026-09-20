@@ -1,3 +1,9 @@
+//! Expression codegen for the C backend.
+//!
+//! Dispatches an expression AST node and writes the corresponding C
+//! expression into the output buffer: literals, operators, calls, member
+//! access, struct/array literals, casts, and builtins.
+
 @module "cg_expr"
 
 @use "std_cstring" as STR
@@ -10,6 +16,7 @@
 pub const gen_expr -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void;
 const static_type_of -> fn (ctx: *CG::CodegenContext, expr: *AST::AstNode) *AST::AstNode;
 
+/// Returns `t`'s pointee type if it is a pointer type, else `t` unchanged.
 const strip_ptr -> fn (t: *AST::AstNode) *AST::AstNode {
   if (t == cast<*AST::AstNode>(0)) return t;
   if (TCT::is_pointer_type(t)) {
@@ -21,6 +28,8 @@ const strip_ptr -> fn (t: *AST::AstNode) *AST::AstNode {
 
 // Picks the write_input_helpers() runtime function backing `input<T>(...)`
 // for a given T, or NULL if T isn't one of the types input<T> can read yet.
+/// Returns the input helper C function name backing `input<T>(...)` for
+/// type `t`, or null if T isn't one of the readable types yet.
 const input_helper_name -> fn (t: *AST::AstNode) *byte {
   if (t == cast<*AST::AstNode>(0)) return cast<*byte>(0);
 
@@ -48,6 +57,9 @@ const input_helper_name -> fn (t: *AST::AstNode) *byte {
 // accesses (it never registers promoted names in its own symbol table), so
 // this walk is done straight from the StructDeclNode AST instead.
 
+/// Result of resolving a member against a struct: whether a field or method
+/// was found, its type, the dotted C path from the struct root, and (for
+/// methods) the struct that actually owns the method.
 pub const FieldLookup -> struct {
   found:     bool,
   is_method: bool,
@@ -56,10 +68,14 @@ pub const FieldLookup -> struct {
   owner:     *byte,      // struct name the method actually belongs to (for is_method)
 };
 
+/// Returns a `FieldLookup` with `found` false.
 const not_found -> fn () FieldLookup {
   return FieldLookup { found: false, is_method: false, type_node: cast<*AST::AstNode>(0), c_path: cast<*byte>(0), owner: cast<*byte>(0) };
 }
 
+/// Looks `member` up on `struct_name` — direct public/private fields and
+/// methods first, then recursively through `...Type,` embedded members.
+/// Returns the describing `FieldLookup`, or a not-found lookup.
 const resolve_field -> fn (ctx: *CG::CodegenContext, struct_name: *byte, member: *byte) FieldLookup {
   let s: *CG::StructInfo = CG::find_struct(ctx, struct_name);
   if (s == cast<*CG::StructInfo>(0)) return not_found();
@@ -150,6 +166,9 @@ const resolve_field -> fn (ctx: *CG::CodegenContext, struct_name: *byte, member:
 // base-method dispatch (`Embedded.method(...)`, bypassing an override) —
 // distinct from `resolve_field`, which looks a *member name* up, not a
 // *type name*.
+/// Dotted C path from `struct_name` down to an `...target,` embedded member
+/// of type `target` (direct or nested), or null if not embedded anywhere.
+/// Drives explicit base-method dispatch. Caller owns the result.
 #returns_ownership
 const find_embedded_path -> fn (ctx: *CG::CodegenContext, struct_name: *byte, target: *byte) *byte {
   let s: *CG::StructInfo = CG::find_struct(ctx, struct_name);
@@ -194,6 +213,9 @@ const find_embedded_path -> fn (ctx: *CG::CodegenContext, struct_name: *byte, ta
 // Static type of an arbitrary expression, used to drive member access and
 // method-call resolution. Falls back to `resolved_type` (reliable for
 // identifiers/calls/casts/literals, not for promoted/embedded field access).
+/// Static type of an arbitrary expression, used to drive member access and
+/// method-call resolution; falls back to `expr.resolved_type` where the
+/// embedding-aware walk isn't needed.
 const static_type_of -> fn (ctx: *CG::CodegenContext, expr: *AST::AstNode) *AST::AstNode {
   if (expr == cast<*AST::AstNode>(0)) return cast<*AST::AstNode>(0);
 
@@ -243,6 +265,8 @@ const static_type_of -> fn (ctx: *CG::CodegenContext, expr: *AST::AstNode) *AST:
 
 // ─── String / char escaping ──────────────────────────────────────────────────
 
+/// Writes `s` as a C string literal, escaping quotes, backslashes, and the
+/// common control characters.
 const emit_c_string_literal -> fn (buf: *CG::Buf, s: *byte) void {
   CG::buf_char(buf, '"');
   if (s != cast<*byte>(0)) {
@@ -262,6 +286,8 @@ const emit_c_string_literal -> fn (buf: *CG::Buf, s: *byte) void {
   CG::buf_char(buf, '"');
 }
 
+/// Writes the byte `c` as a C char literal, escaping quotes, backslashes, and
+/// the common control characters.
 const emit_c_char_literal -> fn (buf: *CG::Buf, c: byte) void {
   CG::buf_char(buf, '\'');
   if (c == '\'')                 { CG::buf_str(buf, "\\'"); }
@@ -276,6 +302,9 @@ const emit_c_char_literal -> fn (buf: *CG::Buf, c: byte) void {
 
 // ─── output()/outputln() argument formatting ────────────────────────────────
 
+/// Writes the C argument expression for one `output(...)` argument, cast to
+/// match its printf format (bool -> "true"/"false", byte -> int, floats ->
+/// double, pointers as-is, else long long).
 const gen_output_arg -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, arg: *AST::AstNode) void {
   let t: *AST::AstNode = static_type_of(ctx, arg);
 
@@ -313,6 +342,8 @@ const gen_output_arg -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, arg: *AST::
   CG::buf_str(buf, "))");
 }
 
+/// Returns the printf format specifier matching one `output(...)` argument's
+/// static type.
 const output_fmt_for -> fn (ctx: *CG::CodegenContext, arg: *AST::AstNode) *byte {
   let t: *AST::AstNode = static_type_of(ctx, arg);
   if (t != cast<*AST::AstNode>(0)) {
@@ -325,6 +356,7 @@ const output_fmt_for -> fn (ctx: *CG::CodegenContext, arg: *AST::AstNode) *byte 
   return "%lld";
 }
 
+/// Writes one `printf(...)` statement per `output(...)` argument.
 pub const gen_output_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, args: **AST::AstNode, arg_count: i64) void {
   let i: i64 = 0;
   loop (i < arg_count) {
@@ -339,6 +371,10 @@ pub const gen_output_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, args: 
 
 // ─── Call-site self-prepending (obj.method(args)) ───────────────────────────
 
+/// Emits a call expression: output/outputln lowered to printf, plain
+/// identifier calls, module-qualified and static-method calls, explicit
+/// base-method dispatch, instance-method calls (self passed by pointer), and
+/// a function-pointer fallthrough.
 const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   let n: *AST::CallNode = cast<*AST::CallNode>(expr);
   let callee: *AST::AstNode = n.callee;
@@ -568,6 +604,9 @@ const gen_call -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNo
 
 // ─── Member access (data field, embedding-aware) ────────────────────────────
 
+/// Emits a member access: module-qualified globals/functions and enum members
+/// (compiletime), embedding-aware field paths, and plain `.`/`->` field
+/// access.
 const gen_member -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   let n: *AST::MemberNode = cast<*AST::MemberNode>(expr);
 
@@ -649,6 +688,8 @@ const gen_member -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::Ast
 
 // ─── Struct literal ──────────────────────────────────────────────────────────
 
+/// Emits a C compound literal for a struct expression, routing promoted
+/// `...Embedded` fields to their dotted C paths.
 const gen_struct_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   let n: *AST::StructExprNode = cast<*AST::StructExprNode>(expr);
 
@@ -700,6 +741,8 @@ const gen_struct_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *
 
 // ─── Binary / unary operators ────────────────────────────────────────────────
 
+/// Returns the C operator string for a `BinaryOp`, or null for operators
+/// with no direct C spelling (pow, range).
 const binop_str -> fn (op: i64) *byte {
   if (op == AST::BinaryOp::BINOP_ADD)     return "+";
   if (op == AST::BinaryOp::BINOP_SUB)     return "-";
@@ -722,6 +765,9 @@ const binop_str -> fn (op: i64) *byte {
   return cast<*byte>(0);
 }
 
+/// Emits a binary expression: `**` lowers to a `pow()` call, `..` to a
+/// `__luma_range_t{ ... }` value, everything else to a parenthesized infix
+/// C expression.
 const gen_binary -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   let n: *AST::BinaryNode = cast<*AST::BinaryNode>(expr);
 
@@ -755,6 +801,8 @@ const gen_binary -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::Ast
   CG::buf_str(buf, ")");
 }
 
+/// Emits a unary expression: postfix/prefix inc/dec and the prefix `!`, `-`,
+/// `+`, `~` operators as parenthesized C.
 const gen_unary -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   let n: *AST::UnaryNode = cast<*AST::UnaryNode>(expr);
   let op: i64 = n.op;
@@ -780,6 +828,9 @@ const gen_unary -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstN
 // C only allows a bare `{ ... }` brace list directly in a declaration's
 // initializer position (as_compound_literal == false); anywhere else it
 // needs a C99 compound literal `(T[]){ ... }` to be a valid expression.
+/// Emits an array literal: a bare `{ ... }` brace list for initializer
+/// position, or a C99 compound literal `(T[]){ ... }` for expression
+/// position.
 pub const gen_array_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode, as_compound_literal: bool) void {
   let n: *AST::ArrayNode = cast<*AST::ArrayNode>(expr);
 
@@ -816,6 +867,8 @@ pub const gen_array_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr
 
 // ─── Top-level dispatcher ────────────────────────────────────────────────────
 
+/// Top-level expression dispatcher: routes an expression node by kind to the
+/// per-node generators, emitting the C expression into `buf`.
 pub const gen_expr -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::AstNode) void {
   if (expr == cast<*AST::AstNode>(0)) return;
 

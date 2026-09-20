@@ -24,6 +24,7 @@ DOCS::generate_documentation(program, config);
 
 - [Structures](#structures)
 - [Functions](#functions)
+- [Variables](#variables)
 
 ---
 
@@ -52,7 +53,9 @@ Created with `create_doc_config`; every field is plain data. Only
 
 Builds a `DocGenConfig` with sensible defaults.
 
-When `output_dir` is NULL it falls back to `"docs"`.
+When `output_dir` is NULL it falls back to `"docs"`. Private declarations
+are included by default so the reference is complete; set
+`include_private` to false to restrict the pages to the public API.
 
 
 ```luma
@@ -74,6 +77,204 @@ A `DocGenConfig` value ready to pass to `generate_documentation`.
 **Example:**
 ```luma
 let config: DOCS::DocGenConfig = DOCS::create_doc_config(0, "docs/api");
+```
+
+### `generate_os_docs`
+
+```luma
+      generate_os_docs -> fn(
+    f: *CG::Buf,
+    os_node: *AST::AstNode,
+    config: DocGenConfig
+) void
+```
+
+### `generate_link_docs`
+
+```luma
+      generate_link_docs -> fn(
+    f: *CG::Buf,
+    link_node: *AST::AstNode
+) void
+```
+
+### `ensure_directory`
+
+```luma
+      ensure_directory -> fn(
+    path: *byte
+) bool
+```
+
+### `write_doc_file`
+
+```luma
+      write_doc_file -> fn(
+    path: *byte,
+    content: *byte
+) bool
+```
+
+### `first_doc_marker`
+
+```luma
+      first_doc_marker -> fn(
+    doc: *byte
+) *byte
+```
+
+### `clean_doc`
+
+```luma
+      #returns_ownership
+clean_doc -> fn(
+    doc: *byte
+) *byte
+```
+
+### `write_doc_comment`
+
+```luma
+      write_doc_comment -> fn(
+    f: *CG::Buf,
+    doc: *byte,
+    indent_level: i64
+) void
+```
+
+### `write_doc_comment_until_marker`
+
+```luma
+      write_doc_comment_until_marker -> fn(
+    f: *CG::Buf,
+    doc: *byte,
+    stop: *byte
+) void
+```
+
+### `print_doc_sections`
+
+```luma
+      print_doc_sections -> fn(
+    f: *CG::Buf,
+    doc: *byte
+) void
+```
+
+### `print_type`
+
+```luma
+      print_type -> fn(
+    f: *CG::Buf,
+    type: *AST::AstNode
+) void
+```
+
+### `write_func_attributes`
+
+```luma
+      write_func_attributes -> fn(
+    f: *CG::Buf,
+    fd: *AST::FuncDeclNode
+) void
+```
+
+### `write_type_params`
+
+```luma
+      write_type_params -> fn(
+    f: *CG::Buf,
+    params: **byte,
+    count: i64
+) void
+```
+
+### `write_func_signature`
+
+```luma
+      write_func_signature -> fn(
+    f: *CG::Buf,
+    fd: *AST::FuncDeclNode,
+    header: *byte
+) void
+```
+
+### `generate_function_docs`
+
+```luma
+      generate_function_docs -> fn(
+    f: *CG::Buf,
+    func: *AST::AstNode,
+    config: DocGenConfig
+) void
+```
+
+### `write_inline_doc`
+
+```luma
+      write_inline_doc -> fn(
+    f: *CG::Buf,
+    doc: *byte
+) void
+```
+
+### `generate_struct_docs`
+
+```luma
+      generate_struct_docs -> fn(
+    f: *CG::Buf,
+    strct: *AST::AstNode,
+    config: DocGenConfig
+) void
+```
+
+### `generate_enum_docs`
+
+```luma
+      generate_enum_docs -> fn(
+    f: *CG::Buf,
+    enm: *AST::AstNode,
+    config: DocGenConfig
+) void
+```
+
+### `generate_var_docs`
+
+```luma
+      generate_var_docs -> fn(
+    f: *CG::Buf,
+    var: *AST::AstNode,
+    config: DocGenConfig
+) void
+```
+
+### `generate_block_decls`
+
+```luma
+      generate_block_decls -> fn(
+    f: *CG::Buf,
+    block: *AST::AstNode,
+    config: DocGenConfig
+) void
+```
+
+### `generate_os_docs`
+
+```luma
+      generate_os_docs -> fn(
+    f: *CG::Buf,
+    os_node: *AST::AstNode,
+    config: DocGenConfig
+) void
+```
+
+### `generate_link_docs`
+
+```luma
+      generate_link_docs -> fn(
+    f: *CG::Buf,
+    link_node: *AST::AstNode
+) void
 ```
 
 ### `generate_module_docs`
@@ -117,8 +318,10 @@ Generates the full API reference for a parsed program.
 
 Creates `output_dir` if needed, then writes one `<module>.md` per module
 plus a `README.md` index linking to each page with a one-line summary taken
-from the module's `//!` doc comment. Progress is reported through the
-compiler's `output` builtin.
+from the module's `//!` doc comment. Only modules whose source lives under
+`src/` are emitted — linked std/lib dependencies (e.g. transitive `@use`s)
+are skipped so the reference mirrors the project's own source tree.
+Progress is reported through the compiler's `output` builtin.
 
 
 ```luma
@@ -143,3 +346,7 @@ to render or any file could not be created.
 DOCS::generate_documentation(program, DOCS::create_doc_config(0, "docs/api"));
 ```
 
+
+## Variables
+
+- **`DOC_MARKERS`** : [*byte; 3] *(const)*
