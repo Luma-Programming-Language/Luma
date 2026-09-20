@@ -14,6 +14,12 @@
 #returns_ownership const resolution_type -> fn (p: *PARS::Parser) *AST::AstNode;
 #returns_ownership const function_type   -> fn (p: *PARS::Parser) *AST::AstNode;
 
+const make_simple_type -> fn (p: *PARS::Parser, line: i64, col: i64) *AST::AstNode {
+  let name: *byte = p.get_name();
+  p.advance();
+  return TAST::make_basic_type(name, line, col);
+}
+
 #returns_ownership
 const tnud -> fn (p: *PARS::Parser) *AST::AstNode {
   let line: i64 = p.current().line;
@@ -21,19 +27,19 @@ const tnud -> fn (p: *PARS::Parser) *AST::AstNode {
   let kind: i64 = p.current().kind;
 
   switch using TOK::LumaTokenType (kind) {
-    TOK_I8      -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_I16     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_I32     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_I64     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_U8      -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_U16     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_U32     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_U64     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_F32     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_F64     -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_BOOL    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_VOID    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
-    TOK_CHAR    -> { let name: *byte = p.get_name(); p.advance(); return TAST::make_basic_type(name, line, col); }
+    TOK_I8      -> return make_simple_type(p, line, col);
+    TOK_I16     -> return make_simple_type(p, line, col);
+    TOK_I32     -> return make_simple_type(p, line, col);
+    TOK_I64     -> return make_simple_type(p, line, col);
+    TOK_U8      -> return make_simple_type(p, line, col);
+    TOK_U16     -> return make_simple_type(p, line, col);
+    TOK_U32     -> return make_simple_type(p, line, col);
+    TOK_U64     -> return make_simple_type(p, line, col);
+    TOK_F32     -> return make_simple_type(p, line, col);
+    TOK_F64     -> return make_simple_type(p, line, col);
+    TOK_BOOL    -> return make_simple_type(p, line, col);
+    TOK_VOID    -> return make_simple_type(p, line, col);
+    TOK_CHAR    -> return make_simple_type(p, line, col);
     TOK_STAR       -> { p.advance(); return pointer_type(p);    }
     TOK_LBRACKET   -> { p.advance(); return array_type(p);      }
     TOK_FN         -> { p.advance(); return function_type(p);   }
@@ -61,7 +67,6 @@ pub const parse_type -> fn (p: *PARS::Parser) *AST::AstNode {
 
 #returns_ownership
 const array_type -> fn (p: *PARS::Parser) *AST::AstNode {
-
   let line: i64 = p.current().line;
   let col:  i64 = p.current().col;
 

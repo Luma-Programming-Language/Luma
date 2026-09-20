@@ -25,7 +25,7 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
   args = args.tail();
 
   let modules: VEC::Vector = VEC::create_vector(sizeof<*AST::AstNode>);
-  let build_config: CONST::LumaBuildConfig = CONST::init_build_config(args.get(0));
+  let build_config: CONST::LumaBuildConfig = CONST::LumaBuildConfig::init_build_config(args.get(0));
   
   let args: i64 = COMD::parse_args(&args, &build_config);
   if (args != 0) {

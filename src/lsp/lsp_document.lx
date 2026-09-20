@@ -391,7 +391,7 @@ pub const lsp_analyze -> fn (doc: *LSPDocument) void {
   // lsp_transport.lx's suppress_stdout_begin for why.
   let saved_stdout: i64 = T::suppress_stdout_begin();
 
-  let build_config: CONST::LumaBuildConfig = CONST::init_build_config(SCRATCH_PATH);
+  let build_config: CONST::LumaBuildConfig = CONST::LumaBuildConfig::init_build_config(SCRATCH_PATH);
   // The static memory analyzer has known false-positive edge cases (see
   // build_registry's comment on register_file) and live-as-you-type
   // feedback is far more sensitive to that noise than a one-shot CLI

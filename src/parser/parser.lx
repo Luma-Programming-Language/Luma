@@ -266,25 +266,25 @@ pub const Parser -> struct {
     name[self.current().len] = '\0';
     return name;
   },
+
+  #returns_ownership
+  static create_parser -> fn (tks: *TOK::Token, tok_count: i64, file_path: *byte) *Parser {
+    let p: *Parser = cast<*Parser>(alloc(sizeof<Parser>));
+  
+    p.file_path = file_path;
+    p.tok_count = tok_count;
+    p.had_error = 0;
+    p.tks = tks;
+    p.pos = 0;
+  
+    return p;
+  },
+  
+  #takes_ownership
+  static free_parser -> fn (p: *Parser) void {
+    free(p);
+  },
 };
-
-#returns_ownership
-pub const create_parser -> fn (tks: *TOK::Token, tok_count: i64, file_path: *byte) *Parser {
-  let p: *Parser = cast<*Parser>(alloc(sizeof<Parser>));
-
-  p.file_path = file_path;
-  p.tok_count = tok_count;
-  p.had_error = 0;
-  p.tks = tks;
-  p.pos = 0;
-
-  return p;
-}
-
-#takes_ownership
-pub const free_parser -> fn (p: *Parser) void {
-  free(p);
-}
 
 #returns_ownership
 pub const vec_to_node_array -> fn (v: *VEC::Vector) **AST::AstNode {

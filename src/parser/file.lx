@@ -125,7 +125,7 @@ const fail -> fn (
   if (stmts != cast<*VEC::Vector>(0)) { VEC::free_vector(stmts); }
   if (tokens != cast<*VEC::Vector>(0)) { VEC::free_vector(tokens); }
   if (src != cast<*byte>(0)) { free(src); }
-  if (p != cast<*PARS::Parser>(0)) { PARS::free_parser(p); }
+  if (p != cast<*PARS::Parser>(0)) { PARS::Parser::free_parser(p); }
 
   return cast<*AST::AstNode>(0);
 }
@@ -163,7 +163,7 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
   }
 
   let tks: *TOK::Token = cast<*TOK::Token>(tokens.data);
-  let p: *PARS::Parser = PARS::create_parser(tks, tokens.size, path);
+  let p: *PARS::Parser = PARS::Parser::create_parser(tks, tokens.size, path);
 
   // Lexer-detected problems become real diagnostics now that the token
   // table (and file path) exist; any of them fails the parse.
@@ -219,7 +219,7 @@ pub const parse_file -> fn (path: *byte) *AST::AstNode {
   }
 
   VEC::free_vector(&stmts);
-  PARS::free_parser(p);
+  PARS::Parser::free_parser(p);
 
   return module_node;
 }
