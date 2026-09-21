@@ -10,7 +10,7 @@ const local_memcpy -> fn<T>(
   let d: *byte = cast<*byte>(dest);
   let s: *byte = cast<*byte>(src);
 
-  let size: i64 = sizeof<T>();
+  let size: i64 = sizeof<T>;
 
   loop [i: i64 = 0](i < count * size) : (++i) {
       d[i] = s[i];
@@ -26,11 +26,11 @@ const local_realloc -> fn<T>(
     new_count: i64
 ) *T {
   if (ptr == cast<*T>(0)) {
-      return cast<*T>(alloc(new_count * sizeof<T>()));
+      return cast<*T>(alloc(new_count * sizeof<T>));
   }
 
   let new_ptr: *T = cast<*T>(
-      alloc(new_count * sizeof<T>())
+      alloc(new_count * sizeof<T>)
   );
 
   local_memcpy<T>(
@@ -69,7 +69,7 @@ priv:
 
 pub:
   #returns_ownership
-  static create -> fn<T> (capacity: i64) Vector<T> {
+  static create -> fn (capacity: i64) Vector<T> {
     let v: Vector<T> = Vector<T> {
       data: cast<*T>(alloc(capacity * sizeof<T>)),
       size: 0,
@@ -80,7 +80,7 @@ pub:
   },
 
   #takes_ownership
-  _free -> fn<T> () void {
+  _free -> fn () void {
     free(self.data);
     self.data = cast<*T>(0);
     self.cap = 0;

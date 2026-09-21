@@ -1,0 +1,18 @@
+// error-type: Call Error
+@module "main"
+
+// Calling the *result* of a value expression — `sizeof<T>()`, `alloc(16)()`,
+// `(1 + 2)()` — used to fall silently through parsing and typechecking: the
+// parser built a call whose callee was the value expression, tc_call only
+// reported "called value is not a function" for identifier/member callees,
+// and codegen emitted `expr(...)` that cc alone rejected ("called object is
+// not a function or function pointer"). It must be a typecheck error so the
+// user gets a real Luma diagnostic before any C is generated.
+
+const grow -> fn (data: *byte, new_count: i64) *byte {
+    return cast<*byte>(alloc(new_count * sizeof<i64>()));
+}
+
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+    return 0;
+}

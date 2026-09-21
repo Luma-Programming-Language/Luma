@@ -854,6 +854,8 @@ const tc_call -> fn (expr: *AST::AstNode, scope: *CORE::Scope) *AST::AstNode {
         // permissive here (codegen resolves the concrete mangled form).
       }
     }
+  } elif (ftype != cast<*AST::AstNode>(0)) {
+    ERR::tc_error(expr, "Call Error", "called value is not a function", "not a function");
   }
 
   loop [i: i64 = 0](i < n.arg_count) : (++i) {
