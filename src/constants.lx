@@ -52,6 +52,8 @@ pub const LumaErrorMessage -> struct {
 /// - `file_count`: Number of linked source files
 /// - `opt_level`: Optimization level (`-O0` through `-O3`)
 /// - `link_files`: Paths given via `-l`/`--link`
+/// - `link_libraries`: Shared-library names collected from `@link`
+///   directives across the program; turned into `-l` cc flags at link time
 pub const LumaBuildConfig -> struct {
   filepath: *byte,
   name: *byte,
@@ -69,6 +71,7 @@ pub const LumaBuildConfig -> struct {
   file_count: i64,
   opt_level: i64,
   link_files: VEC::Vector,
+  link_libraries: VEC::Vector,
 
   /// Creates a default build config for the given source `filepath`.
   static init_build_config -> fn (filepath: *byte) LumaBuildConfig {
@@ -89,6 +92,7 @@ pub const LumaBuildConfig -> struct {
       file_count: 0,
       opt_level: 2,
       link_files: VEC::create_vector(sizeof<*byte>),
+      link_libraries: VEC::create_vector(sizeof<*byte>),
     };
   },
 };

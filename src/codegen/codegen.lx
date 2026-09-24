@@ -871,6 +871,68 @@ pub const codegen_transpile -> fn (program: *AST::AstNode, config: CONST::LumaBu
   return c_path;
 }
 
+// ─── @link library collection ─────────────────────────────────────────────────
+
+/// Walks every module of `prog` and appends each `@link`ed library name to
+/// `out`, as `*byte` values owned by the AST (valid as long as `prog` is).
+/// Both module-level `@link`s and those inside the `@os` arm matching `os`
+/// are honored.
+pub const collect_link_libs -> fn (prog: *AST::ProgramNode, os: *byte, out: *VEC::Vector) void {
+  let i: i64 = 0;
+  loop (i < prog.module_count) {
+    let mnode: *AST::AstNode = prog.modules[i];
+    if (mnode != cast<*AST::AstNode>(0) && mnode.kind == AST::NodeType::PREPROCESSOR_MODULE) {
+      let mod: *AST::ModuleNode = cast<*AST::ModuleNode>(mnode);
+      let j: i64 = 0;
+      loop (j < mod.body_count) {
+        collect_link_decl(mod.body[j], os, out);
+        j = j + 1;
+      }
+    }
+    i = i + 1;
+  }
+}
+
+/// Appends the library names reachable from one top-level declaration `decl` —
+/// a direct `@link`, or `@link`s nested in the `@os` arm matching `os`.
+const collect_link_decl -> fn (decl: *AST::AstNode, os: *byte, out: *VEC::Vector) void {
+  if (decl == cast<*AST::AstNode>(0)) return;
+  if (decl.kind == AST::NodeType::PREPROCESSOR_LINK) {
+    let lk: *AST::LinkNode = cast<*AST::LinkNode>(decl);
+    if (lk.lib_name != cast<*byte>(0)) out.push_back(cast<*void>(&lk.lib_name));
+  } elif (decl.kind == AST::NodeType::PREPROCESSOR_OS) {
+    let body: *AST::AstNode = CG::resolve_os_for(decl, os);
+    if (body != cast<*AST::AstNode>(0) && body.kind == AST::NodeType::STMT_BLOCK) {
+      let blk: *AST::BlockNode = cast<*AST::BlockNode>(body);
+      let k: i64 = 0;
+      loop (k < blk.stmt_count) {
+        let inner: *AST::AstNode = blk.statements[k];
+        if (inner != cast<*AST::AstNode>(0) && inner.kind == AST::NodeType::PREPROCESSOR_LINK) {
+          let lk: *AST::LinkNode = cast<*AST::LinkNode>(inner);
+          if (lk.lib_name != cast<*byte>(0)) out.push_back(cast<*void>(&lk.lib_name));
+        }
+        k = k + 1;
+      }
+    }
+  }
+}
+
+/// Converts a `@link` library name (`libSDL3.so`, `libc.so.6`,
+/// `libSDL3.dylib`) into a `-l<name>` cc/ld flag (`-lSDL3`, `-lc`, ...) by
+/// stripping a leading `lib` prefix and cutting at the first extension dot.
+/// Caller owns the result.
+#returns_ownership
+const link_flag_for -> fn (lib: *byte) *byte {
+  let start: i64 = 0;
+  if (STR::strncmp(lib, "lib", 3) == 0) start = 3;
+  let end: i64 = start;
+  loop (lib[end] != 0 && lib[end] != '.') { end = end + 1; }
+  let b: *CG::Buf = CG::buf_init();
+  CG::buf_str(b, "-l");
+  CG::buf_nstr(b, cast<*byte>(cast<i64>(lib) + start), end - start);
+  return CG::buf_finish(b);
+}
+
 // Compiles/links the C at `c_path` (as produced by codegen_transpile)
 // according to `config` — this is the slow half, an opaque call out to a
 // real C compiler (cc, mingw-w64-gcc, ...). Frees `c_path` itself either
@@ -888,6 +950,21 @@ pub const codegen_compile -> fn (c_path: *byte, config: CONST::LumaBuildConfig) 
   if (config.debug) CG::buf_str(cmd, "-g ");
   if (config.opt_level > 0) { CG::buf_str(cmd, "-O"); CG::buf_int(cmd, config.opt_level); CG::buf_str(cmd, " "); }
   CG::buf_str(cmd, c_path);
+
+  let it: VEC::VectorIter = config.link_libraries.iter();
+  loop {
+    let ptr: *void = it.next();
+    if (ptr == cast<*void>(0)) break;
+    let addr: *i64 = cast<*i64>(ptr);
+    let lib_name: *byte = cast<*byte>(*addr);
+    if (lib_name != cast<*byte>(0)) {
+      let flag: *byte = link_flag_for(lib_name);
+      CG::buf_str(cmd, " ");
+      CG::buf_str(cmd, flag);
+      free(flag);
+    }
+  }
+
   CG::buf_str(cmd, " -lm -o ");
   CG::buf_str(cmd, out_name);
 

@@ -48,6 +48,7 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
   if (build_config.lsp_mode) {
     VEC::free_vector(&modules);
     VEC::free_vector(&build_config.link_files);
+    VEC::free_vector(&build_config.link_libraries);
     return LSP::lsp_run();
   }
 
@@ -112,7 +113,11 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
       DOCS::create_doc_config(cast<*void>(0), build_config.docs_dir);
     let docs_ok: bool = DOCS::generate_documentation(program, doc_config);
     AST::free_node(program);
-    if (docs_ok == false) return CONST::LumaErrorCode::Runtime_Error;
+    if (docs_ok == false) {
+      VEC::free_vector(&build_config.link_libraries);
+      return CONST::LumaErrorCode::Runtime_Error;
+    }
+    VEC::free_vector(&build_config.link_libraries);
     return 0;
   }
 
@@ -138,6 +143,7 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
       free(c_path);
       ok = true;
     } else {
+      CODEGEN::collect_link_libs(cast<*AST::ProgramNode>(program), build_config.os, &build_config.link_libraries);
       if (build_config.anim) {
         bar.update("Compiling", "|");
         let cg_tid: i64 = PBAR::start(&bar);
@@ -154,6 +160,7 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
   }
 
   AST::free_node(program);
+  VEC::free_vector(&build_config.link_libraries);
   
   if (build_config.anim) {
     if (ok) bar.finish();

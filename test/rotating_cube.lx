@@ -1,0 +1,71 @@
+@module "main"
+
+@use "std_sdl3"   as sdl
+@use "std_opengl" as gl
+
+const Error -> enum {
+  Success,
+  Init_Sdl3,
+  Create_Window_Error,
+  Create_Renderer_Error,
+  Create_Context_Error,
+};
+
+const WIDTH:  i64 = 900;
+const HEIGHT: i64 = 900;
+
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  if (!sdl::SDL_Init(SDL3::SDL_INIT_VIDEO)) {
+    outputln("SDL initialization failed: ", sdl::SDL_GetError());
+    return Error::Init_Sdl3;
+  }
+  defer sdl::SDL_Quit();
+
+  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_MINOR_VERSION, 3);
+  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_PROFILE_MASK, sdl::SDL_GL_CONTEXT_PROFILE_CORE);
+
+  let window: *void = sdl::SDL_CreateWindow(
+    "Rotating Cube", 
+    WIDTH, HEIGHT, 
+    sdl::SDL_WINDOW_OPENGL + sdl::SDL_WINDOW_RESIZABLE
+  );
+  if (window == cast<*void>(0)) {
+      outputln("SDL_CreateWindow failed: ", sdl::SDL_GetError());
+      return Error::Create_Window_Error;
+  }
+  defer sdl::SDL_DestroyWindow(window);
+
+  let context: *void = sdl::SDL_GL_CreateContext(window);
+  if (context == cast<*void>(0)) {
+      return Error::Create_Context_Error;
+  }
+  defer sdl::SDL_GL_DestroyContext(context);
+
+  sdl::SDL_GL_MakeCurrent(window, context);
+  sdl::SDL_GL_SetSwapInterval(1);
+
+  gl::glViewport(0, 0, WIDTH, HEIGHT);
+  gl::glClearColor(0.2, 0.2, 0.3, 1.0);
+
+  gl::glMatrixMode(gl::GL_PROJECTION);
+  gl::glLoadIdentity();
+
+  let running: bool = true;
+  let event: [byte; 128];
+  loop (running) {
+    gl::glClearColor(0.1, 0.1, 0.15, 1.0);
+    gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+    gl::glLoadIdentity();
+
+    sdl::SDL_GL_SwapWindow(window);
+
+    loop (sdl::SDL_PollEvent(cast<*void>(&event)) > 0) {
+      if (sdl::event_type(cast<*byte>(&event)) == sdl::SDL_EVENT_QUIT)
+        running = false;
+    }
+    sdl::SDL_Delay(16);
+  }
+
+  return Error::Success;
+}

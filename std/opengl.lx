@@ -1,0 +1,421 @@
+// ============================================================================
+// opengl.lx - OpenGL (libGL) FFI bindings
+// ============================================================================
+
+//! Direct FFI bindings to the OpenGL C API.
+//!
+//! Provides raw access to the classic fixed-function pipeline (GL 1.1), the
+//! GL 2.0 shader API, and the common texture/VBO helpers — everything you
+//! need to draw with an OpenGL context created by SDL, GLFW, or a window
+//! manager directly.
+//!
+//! Integer-typed GL handle/enum parameters are mapped to `i64` and
+//! `GLfloat`/`GLdouble` values to `f32`/`f64` — the prototypes are generated
+//! locally so no GL header is needed at the C level, and pointers are passed
+//! through as `*void`/typed pointers exactly as the GL API expects.
+//!
+//! PLATFORM: Linux/macOS via `@link`, Windows via `opengl32`
+//!
+//! # Example
+//! ```luma
+//! gl::glClearColor(0.1, 0.1, 0.15, 1.0);
+//! gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+//! gl::glMatrixMode(gl::GL_PROJECTION);
+//! gl::glLoadIdentity();
+//! ```
+
+@module "std_opengl"
+
+@os {
+    "linux"      -> { @link("libGL.so") }
+    "macos"      -> { @link("libGL.dylib") }
+    "windows64"  -> { @link("opengl32") }
+    "windows32"  -> { @link("opengl32") }
+}
+
+// ============================================================================
+// CLEAR MASKS  (glClear)
+// ============================================================================
+
+/// Clear the depth buffer
+pub const GL_DEPTH_BUFFER_BIT: i64 = 0x100;
+/// Clear the stencil buffer
+pub const GL_STENCIL_BUFFER_BIT: i64 = 0x400;
+/// Clear the color buffer
+pub const GL_COLOR_BUFFER_BIT: i64 = 0x4000;
+
+// ============================================================================
+// BEGIN MODES  (glBegin / glPolygonMode)
+// ============================================================================
+
+pub const GL_POINTS: i64 = 0x0;
+pub const GL_LINES: i64 = 0x1;
+pub const GL_LINE_LOOP: i64 = 0x2;
+pub const GL_LINE_STRIP: i64 = 0x3;
+pub const GL_TRIANGLES: i64 = 0x4;
+pub const GL_TRIANGLE_STRIP: i64 = 0x5;
+pub const GL_TRIANGLE_FAN: i64 = 0x6;
+pub const GL_QUADS: i64 = 0x7;
+pub const GL_QUAD_STRIP: i64 = 0x8;
+pub const GL_POLYGON: i64 = 0x9;
+
+// ============================================================================
+// ENABLE CAPABILITIES  (glEnable / glDisable)
+// ============================================================================
+
+/// Face culling
+pub const GL_CULL_FACE: i64 = 0xB44;
+/// Which face to cull/wind-order test
+pub const GL_CULL_FACE_MODE: i64 = 0xB45;
+/// Lighting
+pub const GL_LIGHTING: i64 = 0xB50;
+/// Depth buffer test
+pub const GL_DEPTH_TEST: i64 = 0xB71;
+/// Texturing
+pub const GL_TEXTURE_2D: i64 = 0xDE1;
+/// Blending
+pub const GL_BLEND: i64 = 0xBE2;
+/// Scissor test
+pub const GL_SCISSOR_TEST: i64 = 0xC11;
+/// Line anti-aliasing
+pub const GL_LINE_SMOOTH: i64 = 0xB20;
+/// Multisample anti-aliasing
+pub const GL_MULTISAMPLE: i64 = 0x809D;
+
+// ============================================================================
+// MATRIX MODES  (glMatrixMode)
+// ============================================================================
+
+/// Modelview matrix stack
+pub const GL_MODELVIEW: i64 = 0x1700;
+/// Projection matrix stack
+pub const GL_PROJECTION: i64 = 0x1701;
+/// Texture matrix stack
+pub const GL_TEXTURE: i64 = 0x1702;
+
+// ============================================================================
+// CULL FACES  (glCullFace)
+// ============================================================================
+
+pub const GL_FRONT: i64 = 0x404;
+pub const GL_BACK: i64 = 0x405;
+pub const GL_FRONT_AND_BACK: i64 = 0x408;
+
+// ============================================================================
+// DEPTH FUNCTIONS  (glDepthFunc)
+// ============================================================================
+
+pub const GL_NEVER: i64 = 0x200;
+pub const GL_LESS: i64 = 0x201;
+pub const GL_EQUAL: i64 = 0x202;
+pub const GL_LEQUAL: i64 = 0x203;
+pub const GL_GREATER: i64 = 0x204;
+pub const GL_NOTEQUAL: i64 = 0x205;
+pub const GL_GEQUAL: i64 = 0x206;
+pub const GL_ALWAYS: i64 = 0x207;
+
+// ============================================================================
+// BLEND FACTORS  (glBlendFunc)
+// ============================================================================
+
+pub const GL_ZERO: i64 = 0;
+pub const GL_ONE: i64 = 1;
+pub const GL_SRC_ALPHA: i64 = 0x302;
+pub const GL_ONE_MINUS_SRC_ALPHA: i64 = 0x303;
+pub const GL_SRC_COLOR: i64 = 0x300;
+pub const GL_ONE_MINUS_SRC_COLOR: i64 = 0x301;
+pub const GL_DST_ALPHA: i64 = 0x304;
+pub const GL_ONE_MINUS_DST_ALPHA: i64 = 0x305;
+
+// ============================================================================
+// ERROR CODES  (glGetError)
+// ============================================================================
+
+/// No error
+pub const GL_NO_ERROR: i64 = 0;
+/// Invalid value for enum argument
+pub const GL_INVALID_ENUM: i64 = 0x500;
+/// Numeric argument out of range
+pub const GL_INVALID_VALUE: i64 = 0x501;
+/// Operation illegal in current state
+pub const GL_INVALID_OPERATION: i64 = 0x502;
+/// Stack overflow
+pub const GL_STACK_OVERFLOW: i64 = 0x503;
+/// Stack underflow
+pub const GL_STACK_UNDERFLOW: i64 = 0x504;
+/// Not enough memory to perform the operation
+pub const GL_OUT_OF_MEMORY: i64 = 0x505;
+
+// ============================================================================
+// TEXTURE PARAMETERS  (glTexParameteri / glTexImage2D)
+// ============================================================================
+
+/// Magnification filter (parameter name)
+pub const GL_TEXTURE_MAG_FILTER: i64 = 0x2800;
+/// Minification filter (parameter name)
+pub const GL_TEXTURE_MIN_FILTER: i64 = 0x2801;
+/// Horizontal wrap mode (parameter name)
+pub const GL_TEXTURE_WRAP_S: i64 = 0x2802;
+/// Vertical wrap mode (parameter name)
+pub const GL_TEXTURE_WRAP_T: i64 = 0x2803;
+/// Nearest-neighbor sampling
+pub const GL_NEAREST: i64 = 0x2600;
+/// Linear filtering
+pub const GL_LINEAR: i64 = 0x2601;
+/// Wrap around
+pub const GL_REPEAT: i64 = 0x2901;
+/// Clamp to texture edge
+pub const GL_CLAMP_TO_EDGE: i64 = 0x812F;
+/// Red/green/blue, 8-bit each
+pub const GL_RGB: i64 = 0x1907;
+/// Red/green/blue/alpha, 8-bit each
+pub const GL_RGBA: i64 = 0x1908;
+/// Unsigned byte pixel type
+pub const GL_UNSIGNED_BYTE: i64 = 0x1401;
+
+// ============================================================================
+// VERTEX DATA TYPES  (glVertexAttribPointer)
+// ============================================================================
+
+pub const GL_FLOAT: i64 = 0x1406;
+pub const GL_FALSE: i64 = 0;
+pub const GL_TRUE: i64 = 1;
+
+// ============================================================================
+// BUFFER OBJECT TARGETS  (glBindBuffer)
+// ============================================================================
+
+/// Vertex-attribute data buffer
+pub const GL_ARRAY_BUFFER: i64 = 0x8892;
+/// Element/indices buffer
+pub const GL_ELEMENT_ARRAY_BUFFER: i64 = 0x8893;
+pub const GL_STREAM_DRAW: i64 = 0x88E0;
+pub const GL_STATIC_DRAW: i64 = 0x88E4;
+pub const GL_DYNAMIC_DRAW: i64 = 0x88E8;
+
+// ============================================================================
+// SHADER TYPES & PARAMETERS
+// ============================================================================
+
+/// Fragment shader object
+pub const GL_FRAGMENT_SHADER: i64 = 0x8B30;
+/// Vertex shader object
+pub const GL_VERTEX_SHADER: i64 = 0x8B31;
+/// Shader compile status (glGetShaderiv)
+pub const GL_COMPILE_STATUS: i64 = 0x8B81;
+/// Program link status (glGetProgramiv)
+pub const GL_LINK_STATUS: i64 = 0x8B82;
+/// Shader/program info-log length (glGetShaderiv / glGetProgramiv)
+pub const GL_INFO_LOG_LENGTH: i64 = 0x8B84;
+
+// ============================================================================
+// STATE
+// ============================================================================
+
+/// Clear all pending GL errors and return the first one encountered. Returns
+/// GL_NO_ERROR when the error queue is empty.
+pub const check_error -> fn () i64 {
+    return glGetError();
+}
+
+/// Get the current error flag. Unlike check_error this does not reset it.
+pub const glGetError -> fn () i64;
+/// Return a string describing the GL implementation (GL_VERSION,
+/// GL_VENDOR, GL_RENDERER, ...)
+pub const glGetString -> fn (name: i64) *byte;
+/// Enable a capability (see GL_* enable constants)
+pub const glEnable -> fn (cap: i64) void;
+/// Disable a capability
+pub const glDisable -> fn (cap: i64) void;
+/// Query whether a capability is currently enabled
+pub const glIsEnabled -> fn (cap: i64) i64;
+/// Read integer state values into `params`
+pub const glGetIntegerv -> fn (pname: i64, params: *i64) void;
+
+// ============================================================================
+// CLEARING
+// ============================================================================
+
+/// Clear the buffers named by `mask` (GL_COLOR_BUFFER_BIT | ...)
+pub const glClear -> fn (mask: i64) void;
+/// Set the clear color
+pub const glClearColor -> fn (r: f32, g: f32, b: f32, a: f32) void;
+/// Set the clear depth value
+pub const glClearDepth -> fn (depth: f64) void;
+/// Set the clear stencil value
+pub const glClearStencil -> fn (s: i64) void;
+
+// ============================================================================
+// VIEWPORT & MATRICES
+// ============================================================================
+
+/// Set the viewport rectangle (pixels)
+pub const glViewport -> fn (x: i64, y: i64, width: i64, height: i64) void;
+/// Select the active matrix stack (GL_MODELVIEW / GL_PROJECTION / GL_TEXTURE)
+pub const glMatrixMode -> fn (mode: i64) void;
+/// Replace the current matrix with the identity
+pub const glLoadIdentity -> fn () void;
+/// Push the current matrix onto the stack
+pub const glPushMatrix -> fn () void;
+/// Pop the top of the matrix stack
+pub const glPopMatrix -> fn () void;
+/// Multiply the current matrix by an orthographic projection
+pub const glOrtho -> fn (left: f64, right: f64, bottom: f64, top: f64, near_plane: f64, far_plane: f64) void;
+/// Multiply the current matrix by a perspective frustum
+pub const glFrustum -> fn (left: f64, right: f64, bottom: f64, top: f64, near_plane: f64, far_plane: f64) void;
+/// Translate the current matrix
+pub const glTranslatef -> fn (x: f32, y: f32, z: f32) void;
+/// Rotate the current matrix by `angle` degrees around (x, y, z)
+pub const glRotatef -> fn (angle: f32, x: f32, y: f32, z: f32) void;
+/// Scale the current matrix
+pub const glScalef -> fn (x: f32, y: f32, z: f32) void;
+
+// ============================================================================
+// IMMEDIATE MODE  (fixed-function pipeline)
+// ============================================================================
+
+/// Begin drawing a primitive (see GL_* begin modes)
+pub const glBegin -> fn (mode: i64) void;
+/// End the current primitive
+pub const glEnd -> fn () void;
+/// Set the current color
+pub const glColor3f -> fn (r: f32, g: f32, b: f32) void;
+/// Set the current color (with alpha)
+pub const glColor4f -> fn (r: f32, g: f32, b: f32, a: f32) void;
+/// Emit a 2D vertex
+pub const glVertex2f -> fn (x: f32, y: f32) void;
+/// Emit a 3D vertex
+pub const glVertex3f -> fn (x: f32, y: f32, z: f32) void;
+/// Set the current texture coordinate
+pub const glTexCoord2f -> fn (s: f32, t: f32) void;
+/// Set the current normal vector
+pub const glNormal3f -> fn (x: f32, y: f32, z: f32) void;
+
+// ============================================================================
+// DEPTH TEST
+// ============================================================================
+
+/// Set the depth-comparison function (GL_LESS, GL_LEQUAL, ...)
+pub const glDepthFunc -> fn (func: i64) void;
+/// Enable/disable depth writes
+pub const glDepthMask -> fn (flag: i64) void;
+/// Set the depth range (both clamped to [0, 1])
+pub const glDepthRange -> fn (near_val: f64, far_val: f64) void;
+
+// ============================================================================
+// CULLING & BLENDING
+// ============================================================================
+
+/// Which faces to cull (GL_BACK, GL_FRONT, GL_FRONT_AND_BACK)
+pub const glCullFace -> fn (mode: i64) void;
+/// Set the blend factor pair (src, dst) — see GL_* blend constants
+pub const glBlendFunc -> fn (sfactor: i64, dfactor: i64) void;
+/// Set how polygons are rasterized (GL_POINT, GL_LINE, GL_FILL)
+pub const glPolygonMode -> fn (face: i64, mode: i64) void;
+
+// ============================================================================
+// TEXTURES
+// ============================================================================
+
+/// Generate `n` texture names into `textures`
+pub const glGenTextures -> fn (n: i64, textures: *i64) void;
+/// Bind a named texture to `target` (GL_TEXTURE_2D)
+pub const glBindTexture -> fn (target: i64, texture: i64) void;
+/// Delete `n` textures named in `textures`
+pub const glDeleteTextures -> fn (n: i64, textures: *i64) void;
+/// Set a single texture parameter (GL_TEXTURE_MIN_FILTER, ...)
+pub const glTexParameteri -> fn (target: i64, pname: i64, param: i64) void;
+/// Upload a 2D texture image from `pixels`
+pub const glTexImage2D -> fn (target: i64, level: i64, internalformat: i64, width: i64, height: i64, border: i64, format: i64, type: i64, pixels: *void) void;
+
+// ============================================================================
+// VERTEX BUFFER OBJECTS  (GL 1.5)
+// ============================================================================
+
+/// Generate `n` buffer names into `buffers`
+pub const glGenBuffers -> fn (n: i64, buffers: *i64) void;
+/// Bind a named buffer to `target` (GL_ARRAY_BUFFER / GL_ELEMENT_ARRAY_BUFFER)
+pub const glBindBuffer -> fn (target: i64, buffer: i64) void;
+/// Allocate/upload data into the bound buffer
+pub const glBufferData -> fn (target: i64, size: i64, data: *void, usage: i64) void;
+/// Delete `n` buffers named in `buffers`
+pub const glDeleteBuffers -> fn (n: i64, buffers: *i64) void;
+
+// ============================================================================
+// SHADERS  (GL 2.0)
+// ============================================================================
+
+/// Create an empty shader object (GL_VERTEX_SHADER / GL_FRAGMENT_SHADER)
+pub const glCreateShader -> fn (type: i64) i64;
+/// Set a shader's source. `string` is an array of `count` strings.
+pub const glShaderSource -> fn (shader: i64, count: i64, string: **byte, length: *i64) void;
+/// Compile a shader object
+pub const glCompileShader -> fn (shader: i64) void;
+/// Query a shader parameter (GL_COMPILE_STATUS, GL_INFO_LOG_LENGTH, ...)
+pub const glGetShaderiv -> fn (shader: i64, pname: i64, params: *i64) void;
+/// Fetch a shader info log into `info_log` (max `buf_size` bytes)
+pub const glGetShaderInfoLog -> fn (shader: i64, buf_size: i64, length: *i64, info_log: *byte) void;
+/// Delete a shader object
+pub const glDeleteShader -> fn (shader: i64) void;
+
+// ============================================================================
+// PROGRAMS  (GL 2.0)
+// ============================================================================
+
+/// Create an empty program object
+pub const glCreateProgram -> fn () i64;
+/// Attach a shader object to a program
+pub const glAttachShader -> fn (program: i64, shader: i64) void;
+/// Detach a shader object from a program
+pub const glDetachShader -> fn (program: i64, shader: i64) void;
+/// Link a program object
+pub const glLinkProgram -> fn (program: i64) void;
+/// Validate a program object against the current GL state
+pub const glValidateProgram -> fn (program: i64) void;
+/// Query a program parameter (GL_LINK_STATUS, GL_INFO_LOG_LENGTH, ...)
+pub const glGetProgramiv -> fn (program: i64, pname: i64, params: *i64) void;
+/// Fetch a program info log into `info_log` (max `buf_size` bytes)
+pub const glGetProgramInfoLog -> fn (program: i64, buf_size: i64, length: *i64, info_log: *byte) void;
+/// Install a program object as part of the current rendering state
+pub const glUseProgram -> fn (program: i64) void;
+/// Delete a program object
+pub const glDeleteProgram -> fn (program: i64) void;
+
+// ============================================================================
+// UNIFORMS  (GL 2.0)
+// ============================================================================
+
+/// Look up the location of a uniform variable
+pub const glGetUniformLocation -> fn (program: i64, name: *byte) i64;
+pub const glUniform1i -> fn (location: i64, v0: i64) void;
+pub const glUniform2i -> fn (location: i64, v0: i64, v1: i64) void;
+pub const glUniform3i -> fn (location: i64, v0: i64, v1: i64, v2: i64) void;
+pub const glUniform4i -> fn (location: i64, v0: i64, v1: i64, v2: i64, v3: i64) void;
+pub const glUniform1f -> fn (location: i64, v0: f32) void;
+pub const glUniform2f -> fn (location: i64, v0: f32, v1: f32) void;
+pub const glUniform3f -> fn (location: i64, v0: f32, v1: f32, v2: f32) void;
+pub const glUniform4f -> fn (location: i64, v0: f32, v1: f32, v2: f32, v3: f32) void;
+/// Upload a 4x4 column-major matrix uniform; `transpose` is normally GL_FALSE
+pub const glUniformMatrix4fv -> fn (location: i64, count: i64, transpose: i64, value: *f32) void;
+
+// ============================================================================
+// VERTEX ATTRIBUTES  (GL 2.0)
+// ============================================================================
+
+/// Enable a generic vertex attribute array
+pub const glEnableVertexAttribArray -> fn (index: i64) void;
+/// Disable a generic vertex attribute array
+pub const glDisableVertexAttribArray -> fn (index: i64) void;
+/// Define a generic vertex attribute pointer
+pub const glVertexAttribPointer -> fn (index: i64, size: i64, type: i64, normalized: i64, stride: i64, pointer: *void) void;
+
+// ============================================================================
+// FLUSH / FINISH
+// ============================================================================
+
+/// Force the GL command stream to execute without waiting
+pub const glFlush -> fn () void;
+/// Force all GL commands to complete before returning
+pub const glFinish -> fn () void;
+/// Set a hint (line smoothing, etc.)
+pub const glHint -> fn (target: i64, mode: i64) void;
