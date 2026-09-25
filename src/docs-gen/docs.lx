@@ -45,12 +45,15 @@ const DOC_MARKERS: [*byte; 3] = [
 /// - `include_private`: When true, private declarations are documented too
 /// - `include_source_links`: Reserved; not currently used
 /// - `arena`: Scratch arena; not currently used
+/// - `project_root`: Directory prefix that filters which modules become pages
+///   (NULL defaults to `src/`)
 pub const DocGenConfig -> struct {
   output_dir:           *byte,
   format:               *byte,
   include_private:      bool,
   include_source_links: bool,
   arena:                *void,
+  project_root:         *byte,
 };
 
 /// Builds a `DocGenConfig` with sensible defaults.
@@ -80,6 +83,7 @@ pub const create_doc_config -> fn (arena: *void, output_dir: *byte) DocGenConfig
     include_private:      true,
     include_source_links: false,
     arena:                arena,
+    project_root:         cast<*byte>(0),
   };
 }
 
@@ -874,10 +878,11 @@ pub const generate_module_docs -> fn (module: *AST::AstNode, config: DocGenConfi
 ///
 /// Creates `output_dir` if needed, then writes one `<module>.md` per module
 /// plus a `README.md` index linking to each page with a one-line summary taken
-/// from the module's `//!` doc comment. Only modules whose source lives under
-/// `src/` are emitted — linked std/lib dependencies (e.g. transitive `@use`s)
-/// are skipped so the reference mirrors the project's own source tree.
-/// Progress is reported through the compiler's `output` builtin.
+/// from the module's `//!` doc comment. Only modules under the build's
+/// project root are emitted (default `src/`, overridable through
+/// `config.project_root`) — linked std/lib dependencies (e.g. transitive
+/// `@use`s) are skipped so the reference mirrors the project's own source
+/// tree. Progress is reported through the compiler's `output` builtin.
 ///
 /// # Parameters
 /// - `program`: A `PROGRAM` AST node, as produced by the parser
@@ -921,12 +926,18 @@ pub const generate_documentation -> fn (program: *AST::AstNode, config: DocGenCo
       let mn: *AST::ModuleNode = cast<*AST::ModuleNode>(module);
       let module_name: *byte = mn.name;
 
-      // Only modules from the project's own `src/` tree are part of the API
+      // Only modules under the build's project root are part of the API
       // reference. std/lib modules pulled in transitively via `@use` are
       // skipped, or the index would show every dependency of the build.
-      let from_src: bool = mn.file_path != cast<*byte>(0)
-        && STR::strncmp(mn.file_path, "src/", 4) == 0;
-      if (!from_src) continue;
+      // The root is derived from the entry file's directory (set from the
+      // driver in `project_root`); when none is configured it falls back to
+      // the legacy `src/` default.
+      let root: *byte = config.project_root;
+      if (root == cast<*byte>(0)) root = "src/";
+      let root_len: i64 = STR::strlen(root);
+      let from_project: bool = mn.file_path != cast<*byte>(0)
+        && STR::strncmp(mn.file_path, root, root_len) == 0;
+      if (!from_project) continue;
 
       if (module_name == cast<*byte>(0)) module_name = "unnamed";
 

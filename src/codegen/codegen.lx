@@ -648,7 +648,21 @@ const emit_globals -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf) void {
     free(cname);
     if (vd.initializer != cast<*AST::AstNode>(0)) {
       CG::buf_str(buf, " = ");
-      CGE::gen_expr(ctx, buf, vd.initializer);
+      // `let arr: [T; N] = [a, b, c];` needs a bare brace-list, not a
+      // compound literal (see CGE::gen_array_literal). Compound literals
+      // are not constant expressions, so multi-dimensional array globals
+      // (`[[f32; 3]; 8]`) would otherwise fail to compile at file scope.
+      let is_direct_array_init: bool = false;
+      if (t != cast<*AST::AstNode>(0) && TCT::is_array_type(t)) {
+        if (vd.initializer.kind == AST::NodeType::EXPR_ARRAY) {
+          is_direct_array_init = true;
+        }
+      }
+      if (is_direct_array_init) {
+        CGE::gen_array_literal(ctx, buf, vd.initializer, false);
+      } else {
+        CGE::gen_expr(ctx, buf, vd.initializer);
+      }
     }
     CG::buf_str(buf, ";\n");
     i = i + 1;

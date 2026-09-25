@@ -14,21 +14,61 @@ const Error -> enum {
 const WIDTH:  i64 = 900;
 const HEIGHT: i64 = 900;
 
+const draw_cube -> fn () void {
+  let cube: [[f32; 3]; 8] = [
+    [0.5,  0.5,  -0.5],
+    [0.5,  -0.5, -0.5],
+    [-0.5, -0.5, -0.5],
+    [-0.5, 0.5,  -0.5],
+    [-0.5, 0.5,  0.5],
+    [0.5,  0.5,  0.5],
+    [0.5,  -0.5, 0.5],
+    [-0.5, -0.5, 0.5]
+  ];
+  
+  let colors: [[f32; 3]; 8] = [
+    [1.0, 0.0, 0.0],
+    [0.0, 1.0, 0.0],
+    [0.0, 0.0, 1.0],
+    [1.0, 1.0, 0.0],
+    [1.0, 0.0, 1.0],
+    [0.0, 1.0, 1.0],
+    [1.0, 1.0, 1.0],
+    [0.5, 0.5, 0.5]
+  ];
+
+  let faces: [[i32; 4]; 6] = [
+    [0, 1, 2, 3], // Back
+    [5, 4, 7, 6], // Front
+    [3, 2, 7, 4], // Left
+    [0, 5, 6, 1], // Right
+    [0, 3, 4, 5], // Top
+    [1, 6, 7, 2]  // Bottom
+  ];
+
+  gl::glBegin(gl::GL_QUADS);
+
+  loop [i: i64 = 0](i < 6) : (++i) {
+    loop [j: i64 = 0](j < 4) : (++j) {
+      gl::glColor3fv(colors[faces[i][j]]);
+      gl::glVertex3fv(cube[faces[i][j]]);
+    }
+  }
+
+  gl::glEnd();
+}
+
 pub const main -> fn (argc: i64, argv: **byte) i64 {
-  if (!sdl::SDL_Init(SDL3::SDL_INIT_VIDEO)) {
+  if (!sdl::SDL_Init(sdl::SDL_INIT_VIDEO)) {
     outputln("SDL initialization failed: ", sdl::SDL_GetError());
     return Error::Init_Sdl3;
   }
   defer sdl::SDL_Quit();
 
-  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_MINOR_VERSION, 3);
-  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_PROFILE_MASK, sdl::SDL_GL_CONTEXT_PROFILE_CORE);
-
   let window: *void = sdl::SDL_CreateWindow(
     "Rotating Cube", 
     WIDTH, HEIGHT, 
-    sdl::SDL_WINDOW_OPENGL + sdl::SDL_WINDOW_RESIZABLE
+    sdl::SDL_WINDOW_OPENGL
   );
   if (window == cast<*void>(0)) {
       outputln("SDL_CreateWindow failed: ", sdl::SDL_GetError());
@@ -41,29 +81,35 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
       return Error::Create_Context_Error;
   }
   defer sdl::SDL_GL_DestroyContext(context);
-
   sdl::SDL_GL_MakeCurrent(window, context);
-  sdl::SDL_GL_SetSwapInterval(1);
 
-  gl::glViewport(0, 0, WIDTH, HEIGHT);
-  gl::glClearColor(0.2, 0.2, 0.3, 1.0);
+  gl::glEnable(gl::GL_DEPTH_TEST);
 
   gl::glMatrixMode(gl::GL_PROJECTION);
   gl::glLoadIdentity();
 
+  gl::glOrtho(-2.0, 2.0, -2.0, 2.0, -20.0, 20.0);
+  gl::glMatrixMode(gl::GL_MODELVIEW);
+
   let running: bool = true;
   let event: [byte; 128];
+  let angle: f32 = 0.0;
+
   loop (running) {
-    gl::glClearColor(0.1, 0.1, 0.15, 1.0);
-    gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
-    gl::glLoadIdentity();
-
-    sdl::SDL_GL_SwapWindow(window);
-
     loop (sdl::SDL_PollEvent(cast<*void>(&event)) > 0) {
       if (sdl::event_type(cast<*byte>(&event)) == sdl::SDL_EVENT_QUIT)
         running = false;
     }
+
+    gl::glClearColor(0.1, 0.1, 0.1, 1.0);
+    gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+
+    gl::glLoadIdentity();
+    gl::glRotatef(angle, 1.0f, 1.0f, 0.0f);
+    draw_cube();
+
+    sdl::SDL_GL_SwapWindow(window);
+    angle = angle + 0.5;
     sdl::SDL_Delay(16);
   }
 

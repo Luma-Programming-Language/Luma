@@ -285,6 +285,48 @@ codegen_transpile -> fn(
 ) *byte
 ```
 
+### `collect_link_libs`
+
+Walks every module of `prog` and appends each `@link`ed library name to
+`out`, as `*byte` values owned by the AST (valid as long as `prog` is).
+Both module-level `@link`s and those inside the `@os` arm matching `os`
+are honored.
+
+```luma
+pub collect_link_libs -> fn(
+    prog: *AST::ProgramNode,
+    os: *byte,
+    out: *VEC::Vector
+) void
+```
+
+### `collect_link_decl`
+
+Appends the library names reachable from one top-level declaration `decl` —
+a direct `@link`, or `@link`s nested in the `@os` arm matching `os`.
+
+```luma
+      collect_link_decl -> fn(
+    decl: *AST::AstNode,
+    os: *byte,
+    out: *VEC::Vector
+) void
+```
+
+### `link_flag_for`
+
+Converts a `@link` library name (`libSDL3.so`, `libc.so.6`,
+`libSDL3.dylib`) into a `-l<name>` cc/ld flag (`-lSDL3`, `-lc`, ...) by
+stripping a leading `lib` prefix and cutting at the first extension dot.
+Caller owns the result.
+
+```luma
+      #returns_ownership
+link_flag_for -> fn(
+    lib: *byte
+) *byte
+```
+
 ### `codegen_compile`
 
 Compiles/links the C at `c_path` per `config` via an external C compiler,

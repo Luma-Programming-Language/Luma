@@ -51,6 +51,7 @@ Full compiler configuration derived from command-line arguments.
 | `file_count` | i64 |  |
 | `opt_level` | i64 |  |
 | `link_files` | VEC::Vector |  |
+| `link_libraries` | VEC::Vector |  |
 
 **Methods:**
 

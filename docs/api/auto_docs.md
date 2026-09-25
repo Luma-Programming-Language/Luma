@@ -45,6 +45,7 @@ Created with `create_doc_config`; every field is plain data. Only
 | `include_private` | bool |  |
 | `include_source_links` | bool |  |
 | `arena` | *void |  |
+| `project_root` | *byte |  |
 
 
 ## Functions
@@ -318,10 +319,11 @@ Generates the full API reference for a parsed program.
 
 Creates `output_dir` if needed, then writes one `<module>.md` per module
 plus a `README.md` index linking to each page with a one-line summary taken
-from the module's `//!` doc comment. Only modules whose source lives under
-`src/` are emitted — linked std/lib dependencies (e.g. transitive `@use`s)
-are skipped so the reference mirrors the project's own source tree.
-Progress is reported through the compiler's `output` builtin.
+from the module's `//!` doc comment. Only modules under the build's
+project root are emitted (default `src/`, overridable through
+`config.project_root`) — linked std/lib dependencies (e.g. transitive
+`@use`s) are skipped so the reference mirrors the project's own source
+tree. Progress is reported through the compiler's `output` builtin.
 
 
 ```luma

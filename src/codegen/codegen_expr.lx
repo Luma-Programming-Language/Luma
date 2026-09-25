@@ -859,7 +859,18 @@ pub const gen_array_literal -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr
   let i: i64 = 0;
   loop (i < n.element_count) {
     if (i > 0) CG::buf_str(buf, ", ");
-    gen_expr(ctx, buf, n.elements[i]);
+    let elem: *AST::AstNode = n.elements[i];
+    // Inside a bare brace-list (initializer position), an element that is
+    // itself an array literal must stay a bare `{ ... }` list too: C does
+    // not allow `(float[]){ ... }` compound literals as elements of an
+    // aggregate initializer ("array initialized from non-constant array
+    // expression"). `[[f32; 3]; 8]` cube tables hit this. Recursion keeps
+    // arbitrary nesting correct.
+    if (!as_compound_literal && elem.kind == AST::NodeType::EXPR_ARRAY) {
+      gen_array_literal(ctx, buf, elem, false);
+    } else {
+      gen_expr(ctx, buf, elem);
+    }
     i = i + 1;
   }
   CG::buf_str(buf, " }");
@@ -878,7 +889,7 @@ pub const gen_expr -> fn (ctx: *CG::CodegenContext, buf: *CG::Buf, expr: *AST::A
     let n: *AST::LiteralNode = cast<*AST::LiteralNode>(expr);
     let lt: i64 = n.lit_type;
     if (lt == AST::LiteralType::LITERAL_INT)    { CG::buf_int(buf, n.int_val); return; }
-    if (lt == AST::LiteralType::LITERAL_FLOAT)  { CG::buf_str(buf, "((float)"); CG::buf_int(buf, n.float_val); CG::buf_str(buf, ")"); return; }
+    if (lt == AST::LiteralType::LITERAL_FLOAT)  { CG::buf_str(buf, "((float)"); CG::buf_str(buf, n.float_src); CG::buf_str(buf, ")"); return; }
     if (lt == AST::LiteralType::LITERAL_DOUBLE) { CG::buf_str(buf, "((double)"); CG::buf_int(buf, n.float_val); CG::buf_str(buf, ")"); return; }
     if (lt == AST::LiteralType::LITERAL_STRING) { emit_c_string_literal(buf, n.string_val); return; }
     if (lt == AST::LiteralType::LITERAL_CHAR)   { emit_c_char_literal(buf, n.char_val); return; }

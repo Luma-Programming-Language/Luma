@@ -8,6 +8,7 @@
 
 @use "std_vector" as VEC
 @use "std_args"   as ARGS
+@use "std_libc"   as LIBC
 
 @use "parser_file"   as PFILE
 @use "constants"    as CONST
@@ -111,8 +112,23 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
   if (build_config.docs) {
     let doc_config: DOCS::DocGenConfig =
       DOCS::create_doc_config(cast<*void>(0), build_config.docs_dir);
+
+    // Root the module filter at the entry file's directory so modules under
+    // std/, test/, or any other path are documented too. Left NULL when the
+    // entry has no directory component (the docs pass falls back to `src/`).
+    let project_root: *byte = cast<*byte>(0);
+    let last_slash: *byte = LIBC::strrchr(build_config.filepath, cast<i64>('/'));
+    if (last_slash != cast<*byte>(0)) {
+      let root_len: i64 = cast<i64>(last_slash) - cast<i64>(build_config.filepath) + 1;
+      project_root = LIBC::malloc(root_len + 1);
+      LIBC::memcpy(cast<*void>(project_root), cast<*void>(build_config.filepath), root_len);
+      project_root[root_len] = '\0';
+    }
+    doc_config.project_root = project_root;
+
     let docs_ok: bool = DOCS::generate_documentation(program, doc_config);
     AST::free_node(program);
+    if (project_root != cast<*byte>(0)) free(project_root);
     if (docs_ok == false) {
       VEC::free_vector(&build_config.link_libraries);
       return CONST::LumaErrorCode::Runtime_Error;

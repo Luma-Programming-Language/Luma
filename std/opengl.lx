@@ -282,10 +282,20 @@ pub const glEnd -> fn () void;
 pub const glColor3f -> fn (r: f32, g: f32, b: f32) void;
 /// Set the current color (with alpha)
 pub const glColor4f -> fn (r: f32, g: f32, b: f32, a: f32) void;
+/// Set the current color from a pointer to three floats (packed RGB)
+pub const glColor3fv -> fn (v: *f32) void;
+/// Set the current color from a pointer to four floats (packed RGBA)
+pub const glColor4fv -> fn (v: *f32) void;
 /// Emit a 2D vertex
 pub const glVertex2f -> fn (x: f32, y: f32) void;
 /// Emit a 3D vertex
 pub const glVertex3f -> fn (x: f32, y: f32, z: f32) void;
+/// Emit a vertex from a pointer to two floats
+pub const glVertex2fv -> fn (v: *f32) void;
+/// Emit a vertex from a pointer to three floats
+pub const glVertex3fv -> fn (v: *f32) void;
+/// Emit a vertex from a pointer to four floats (in projective coordinates)
+pub const glVertex4fv -> fn (v: *f32) void;
 /// Set the current texture coordinate
 pub const glTexCoord2f -> fn (s: f32, t: f32) void;
 /// Set the current normal vector

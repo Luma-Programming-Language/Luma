@@ -593,7 +593,7 @@ const pn -> fn (node: *AST::AstNode, flags: *i64, depth: i64, is_last: i64, colo
           output(nc, "Literal(i32)", col(_R, _R0), ": ", col(_Y, _Y0), n.int_val, col(_R, _R0), "\n");
         }
         AST::LiteralType::LITERAL_FLOAT -> {
-          output(nc, "Literal(f32)", col(_R, _R0), ": ", col(_Y, _Y0), n.float_val, col(_R, _R0), "\n");
+          output(nc, "Literal(f32)", col(_R, _R0), ": ", col(_Y, _Y0), n.float_src, col(_R, _R0), "\n");
         }
         AST::LiteralType::LITERAL_STRING -> {
           output(nc, "Literal(str)", col(_R, _R0), ": \'", col(_G, _G0), n.string_val, col(_R, _R0), "\'\n");

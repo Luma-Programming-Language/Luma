@@ -219,6 +219,7 @@ pub const LiteralNode -> struct {
   lit_type:   i64,
   int_val:    i64,
   float_val:  i64,
+  float_src:  *byte,
   string_val: *byte,
   char_val:   byte,
   bool_val:   i64,
@@ -693,6 +694,9 @@ pub const free_node -> fn (node: *AstNode) void {
     let n: *LiteralNode = cast<*LiteralNode>(node);
     if (n.lit_type == LiteralType::LITERAL_STRING) {
       free(n.string_val);
+    }
+    if (n.lit_type == LiteralType::LITERAL_FLOAT) {
+      free(n.float_src);
     }
     free(node);
     return;
@@ -1283,6 +1287,8 @@ pub const clone_node -> fn (node: *AstNode) *AstNode {
     c.lit_type = n.lit_type;
     c.int_val = n.int_val;
     c.float_val = n.float_val;
+    c.float_src = cast<*byte>(0);
+    if (n.lit_type == LiteralType::LITERAL_FLOAT) { c.float_src = dup_str(n.float_src); }
     c.string_val = cast<*byte>(0);
     if (n.lit_type == LiteralType::LITERAL_STRING) { c.string_val = dup_str(n.string_val); }
     c.char_val = n.char_val;

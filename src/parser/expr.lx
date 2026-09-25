@@ -584,9 +584,22 @@ const primary -> fn (p: *PARS::Parser) *AST::AstNode {
   if (lit_type == AST::LiteralType::LITERAL_FLOAT) {
     let val: *byte = p.get_name();
     let float_val: i64 = STRING::atio(val);
+    let vlen: i64 = STRING::strlen(val);
+    let clean: *byte = cast<*byte>(alloc(vlen + 1));
+    let w: i64 = 0;
+    let r: i64 = 0;
+    loop (r < vlen) {
+      let c: byte = val[r];
+      if (STRING::is_digit(c) || c == '.') {
+        clean[w] = c;
+        w = w + 1;
+      }
+      r = r + 1;
+    }
+    clean[w] = cast<byte>(0);
     free(val);
     p.advance();
-    return EAST::make_literal_float(float_val, line, col);
+    return EAST::make_literal_float(clean, float_val, line, col);
   }
   
   if (lit_type == AST::LiteralType::LITERAL_STRING) {
