@@ -59,6 +59,7 @@ pub const SDL_EVENT_WINDOW_HIDDEN:            i64 = 0x203;
 pub const SDL_EVENT_WINDOW_EXPOSED:           i64 = 0x204;
 pub const SDL_EVENT_WINDOW_MOVED:             i64 = 0x205;
 pub const SDL_EVENT_WINDOW_RESIZED:           i64 = 0x206;   // 518 (data1,data2 = w,h)
+pub const SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED: i64 = 0x207;  // 519
 pub const SDL_EVENT_WINDOW_MINIMIZED:         i64 = 0x209;
 pub const SDL_EVENT_WINDOW_MAXIMIZED:         i64 = 0x20A;
 pub const SDL_EVENT_WINDOW_RESTORED:          i64 = 0x20B;

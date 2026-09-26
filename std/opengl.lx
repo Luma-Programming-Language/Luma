@@ -420,6 +420,25 @@ pub const glDisableVertexAttribArray -> fn (index: i64) void;
 pub const glVertexAttribPointer -> fn (index: i64, size: i64, type: i64, normalized: i64, stride: i64, pointer: *void) void;
 
 // ============================================================================
+// VERTEX ARRAY OBJECTS  (GL 3.0)  +  instancing/draw calls
+// ============================================================================
+
+/// Generate `n` vertex array object names into `arrays`
+pub const glGenVertexArrays -> fn (n: i64, arrays: *i64) void;
+/// Bind a vertex array object
+pub const glBindVertexArray -> fn (array: i64) void;
+/// Delete `n` vertex array objects named in `arrays`
+pub const glDeleteVertexArrays -> fn (n: i64, arrays: *i64) void;
+/// Render primitives from array data
+pub const glDrawArrays -> fn (mode: i64, first: i64, count: i64) void;
+/// Render primitives from indexed array data
+pub const glDrawElements -> fn (mode: i64, count: i64, type: i64, indices: *void) void;
+/// Draw multiple instances of an array of primitives
+pub const glDrawArraysInstanced -> fn (mode: i64, first: i64, count: i64, instancecount: i64) void;
+/// Draw multiple instances of a set of indexed primitives
+pub const glDrawElementsInstanced -> fn (mode: i64, count: i64, type: i64, indices: *void, instancecount: i64) void;
+
+// ============================================================================
 // FLUSH / FINISH
 // ============================================================================
 

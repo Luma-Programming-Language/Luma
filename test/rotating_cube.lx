@@ -110,7 +110,7 @@ pub const main -> fn (argc: i64, argv: **byte) i64 {
 
     sdl::SDL_GL_SwapWindow(window);
     angle = angle + 0.5;
-    sdl::SDL_Delay(16);
+    sdl::SDL_Delay(5);
   }
 
   return Error::Success;

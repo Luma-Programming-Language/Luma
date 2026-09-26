@@ -1,0 +1,538 @@
+@module "main"
+
+@use "std_sdl3"   as sdl
+@use "std_opengl" as gl
+@use "std_libc"   as LIBC
+
+const FOVY: f32 = 1.0471975512;  // 60 degrees, radians
+
+// Platform obstacle: an AABB box. Player can walk on it.
+const PLAT_MIN: [f32; 3] = [-2.0, 0.0, -2.0];
+const PLAT_MAX: [f32; 3] = [ 2.0, 1.0,  2.0];
+
+const GRAVITY:     f32 = 22.0;
+const MOVE_SPEED:  f32 = 4.5;
+const JUMP_SPEED:  f32 = 7.2;
+const TURN_SPEED:  f32 = 2.4;
+const PLAYER_HALF: f32 = 0.3;
+
+const Player -> struct {
+  x:  f32,
+  y:  f32,
+  z:  f32,
+  vx: f32,
+  vy: f32,
+  vz: f32,
+  yaw: f32,
+  half: f32,
+  on_ground: bool,
+
+  update -> fn (dt: f32, keys: *byte) void {
+    let turn: f32 = TURN_SPEED * dt;
+    if (sdl::key_down(keys, sdl::SDL_SCANCODE_A)) self.yaw = self.yaw + turn;
+    if (sdl::key_down(keys, sdl::SDL_SCANCODE_D)) self.yaw = self.yaw - turn;
+
+    let sa: f32 = cast<f32>(LIBC::sin(cast<f64>(self.yaw)));
+    let ca: f32 = cast<f32>(LIBC::cos(cast<f64>(self.yaw)));
+
+    // forward = (-sin, 0, -cos), right = (cos, 0, -sin)
+    let mv_x: f32 = 0.0;
+    let mv_z: f32 = 0.0;
+    if (sdl::key_down(keys, sdl::SDL_SCANCODE_W)) { mv_x = mv_x - sa; mv_z = mv_z - ca; }
+    if (sdl::key_down(keys, sdl::SDL_SCANCODE_S)) { mv_x = mv_x + sa; mv_z = mv_z + ca; }
+
+    let len: f64 = LIBC::sqrt(cast<f64>(mv_x * mv_x + mv_z * mv_z));
+    if (len > 0.0) {
+      mv_x = mv_x / cast<f32>(len);
+      mv_z = mv_z / cast<f32>(len);
+    }
+    self.vx = mv_x * MOVE_SPEED;
+    self.vz = mv_z * MOVE_SPEED;
+
+    if (sdl::key_down(keys, sdl::SDL_SCANCODE_SPACE) && self.on_ground) {
+      self.vy = JUMP_SPEED;
+      self.on_ground = false;
+    }
+    self.vy = self.vy - GRAVITY * dt;
+
+    // Axis-separated movement + AABB collision against the platform box.
+    self.x = self.x + self.vx * dt;
+    if (self.overlaps_plat()) {
+      if (self.vx > 0.0) self.x = PLAT_MIN[0] - self.half;
+      if (self.vx < 0.0) self.x = PLAT_MAX[0] + self.half;
+    }
+
+    self.z = self.z + self.vz * dt;
+    if (self.overlaps_plat()) {
+      if (self.vz > 0.0) self.z = PLAT_MIN[2] - self.half;
+      if (self.vz < 0.0) self.z = PLAT_MAX[2] + self.half;
+    }
+
+    self.y = self.y + self.vy * dt;
+    if (self.overlaps_plat()) {
+      if (self.vy < 0.0) {
+        self.y = PLAT_MAX[1] + self.half;  // landed on top
+        self.vy = 0.0;
+        self.on_ground = true;
+      } elif (self.vy > 0.0) {
+        self.y = PLAT_MIN[1] - self.half;  // bumped head on bottom
+        self.vy = 0.0;
+      }
+    }
+
+    // Ground plane at y = 0
+    if (self.y - self.half <= 0.0) {
+      self.y = self.half;
+      self.vy = 0.0;
+      self.on_ground = true;
+    }
+  },
+
+  overlaps_plat -> fn () bool {
+    let half: f32 = self.half;
+    let ox: bool = self.x - PLAT_MIN[0] < half + 2.0  && PLAT_MAX[0] - self.x < half + 2.0;
+    let in_y: bool = self.y - half < PLAT_MAX[1] && self.y + half > PLAT_MIN[1];
+    let oz: bool = self.z - PLAT_MIN[2] < half + 2.0  && PLAT_MAX[2] - self.z < half + 2.0;
+    return ox && in_y && oz;
+  },
+};
+
+/// Reads an entire file into a NUL-terminated buffer (caller frees).
+#returns_ownership
+const load_shader_source -> fn (path: *byte) *byte {
+  let f: *void = LIBC::fopen(path, "rb");
+  if (f == cast<*void>(0)) {
+    outputln("Could not open shader file: ", path);
+    return cast<*byte>(0);
+  }
+  LIBC::fseek(f, 0, 2);
+  let size: i64 = LIBC::ftell(f);
+  LIBC::fseek(f, 0, 0);
+  let buf: *byte = cast<*byte>(alloc(size + 1));
+  LIBC::fread(buf, 1, size, f);
+  buf[size] = cast<byte>(0);
+  LIBC::fclose(f);
+  return buf;
+}
+
+const check_shader -> fn (shader: i64, label: *byte) i64 {
+  let status: i64 = 0;
+  gl::glGetShaderiv(shader, gl::GL_COMPILE_STATUS, &status);
+  if (status == 0) {
+    outputln(label, " compile failed");
+    let len: i64 = 0;
+    gl::glGetShaderiv(shader, gl::GL_INFO_LOG_LENGTH, &len);
+    if (len > 0) {
+      let log: *byte = cast<*byte>(alloc(len + 1));
+      let got: i64 = 0;
+      gl::glGetShaderInfoLog(shader, len, &got, log);
+      outputln(log);
+      free(log);
+    }
+    return 1;
+  }
+  return 0;
+}
+
+const check_program -> fn (program: i64) i64 {
+  let status: i64 = 0;
+  gl::glGetProgramiv(program, gl::GL_LINK_STATUS, &status);
+  if (status == 0) {
+    outputln("shader program link failed");
+    let len: i64 = 0;
+    gl::glGetProgramiv(program, gl::GL_INFO_LOG_LENGTH, &len);
+    if (len > 0) {
+      let log: *byte = cast<*byte>(alloc(len + 1));
+      let got: i64 = 0;
+      gl::glGetProgramInfoLog(program, len, &got, log);
+      outputln(log);
+      free(log);
+    }
+    return 1;
+  }
+  return 0;
+}
+
+// ── Minimal column-major mat4 helpers (out is *f32 to a [f32; 16]) ──────────
+
+const mat4_identity -> fn (out: *f32) void {
+  out[0] = 1.0; out[1] = 0.0; out[2] = 0.0; out[3] = 0.0;
+  out[4] = 0.0; out[5] = 1.0; out[6] = 0.0; out[7] = 0.0;
+  out[8] = 0.0; out[9] = 0.0; out[10] = 1.0; out[11] = 0.0;
+  out[12] = 0.0; out[13] = 0.0; out[14] = 0.0; out[15] = 1.0;
+}
+
+/// out = a * b  (column-major)
+const mat4_mul -> fn (out: *f32, a: *f32, b: *f32) void {
+  let tmp: [f32; 16];
+  loop [r: i64 = 0](r < 4) : (++r) {
+    loop [c: i64 = 0](c < 4) : (++c) {
+      let sum: f32 = 0.0;
+      loop [k: i64 = 0](k < 4) : (++k) {
+        sum = sum + a[k * 4 + r] * b[c * 4 + k];
+      }
+      tmp[c * 4 + r] = sum;
+    }
+  }
+  loop [i: i64 = 0](i < 16) : (++i) { out[i] = tmp[i]; }
+}
+
+const mat4_perspective -> fn (out: *f32, fovy: f32, aspect: f32, z_near: f32, z_far: f32) void {
+  let f: f32 = 1.0 / cast<f32>(LIBC::tan(cast<f64>(fovy) / 2.0));
+  loop [i: i64 = 0](i < 16) : (++i) { out[i] = 0.0; }
+  out[0] = f / aspect;
+  out[5] = f;
+  out[10] = (z_far + z_near) / (z_near - z_far);
+  out[11] = -1.0;
+  out[14] = (2.0 * z_far * z_near) / (z_near - z_far);
+}
+
+const mat4_rotate_y -> fn (out: *f32, angle: f32) void {
+  let c: f32 = cast<f32>(LIBC::cos(cast<f64>(angle)));
+  let s: f32 = cast<f32>(LIBC::sin(cast<f64>(angle)));
+  mat4_identity(out);
+  out[0] = c;  out[2] = s;
+  out[8] = -s; out[10] = c;
+}
+
+const mat4_translate -> fn (out: *f32, x: f32, y: f32, z: f32) void {
+  mat4_identity(out);
+  out[12] = x; out[13] = y; out[14] = z;
+}
+
+const vec3_normalize -> fn (v: *f32) void {
+  let x: f64 = cast<f64>(v[0]);
+  let y: f64 = cast<f64>(v[1]);
+  let z: f64 = cast<f64>(v[2]);
+  let len: f64 = LIBC::sqrt(x * x + y * y + z * z);
+  if (len > 0.0) {
+    v[0] = cast<f32>(x / len);
+    v[1] = cast<f32>(y / len);
+    v[2] = cast<f32>(z / len);
+  }
+}
+
+const mat4_look_at -> fn (out: *f32, eye: *f32, center: *f32, up: *f32) void {
+  let f: [f32; 3];
+  f[0] = center[0] - eye[0]; f[1] = center[1] - eye[1]; f[2] = center[2] - eye[2];
+  vec3_normalize(cast<*f32>(&f));
+
+  let s: [f32; 3];
+  s[0] = f[1] * up[2] - f[2] * up[1];
+  s[1] = f[2] * up[0] - f[0] * up[2];
+  s[2] = f[0] * up[1] - f[1] * up[0];
+  vec3_normalize(cast<*f32>(&s));
+
+  let u: [f32; 3];
+  u[0] = s[1] * f[2] - s[2] * f[1];
+  u[1] = s[2] * f[0] - s[0] * f[2];
+  u[2] = s[0] * f[1] - s[1] * f[0];
+
+  out[0] = s[0]; out[4] = u[0];  out[8]  = -f[0];
+  out[1] = s[1]; out[5] = u[1];  out[9]  = -f[1];
+  out[2] = s[2]; out[6] = u[2];  out[10] = -f[2];
+  out[3] = 0.0;  out[7] = 0.0;   out[11] = 0.0;
+
+  out[12] = -(s[0] * eye[0] + s[1] * eye[1] + s[2] * eye[2]);
+  out[13] = -(u[0] * eye[0] + u[1] * eye[1] + u[2] * eye[2]);
+  out[14] =  (f[0] * eye[0] + f[1] * eye[1] + f[2] * eye[2]);
+  out[15] = 1.0;
+}
+
+// ── Mesh builders: interleaved pos(3) + normal(3) ────────────────────────────
+
+/// Fills `buf` (36 verts) with a box centered at (cx,cy,cz), half extents.
+const build_box -> fn (buf: *f32, cx: f32, cy: f32, cz: f32, sx: f32, sy: f32, sz: f32) void {
+  let corners: [f32; 24] = [
+    cx - sx, cy - sy, cz - sz,
+    cx + sx, cy - sy, cz - sz,
+    cx + sx, cy - sy, cz + sz,
+    cx - sx, cy - sy, cz + sz,
+    cx - sx, cy + sy, cz - sz,
+    cx + sx, cy + sy, cz - sz,
+    cx + sx, cy + sy, cz + sz,
+    cx - sx, cy + sy, cz + sz
+  ];
+  let faces: [i64; 42] = [
+    4, 5, 6, 4, 6, 7, 0,
+    1, 0, 3, 1, 3, 2, 0,
+    3, 2, 6, 3, 6, 7, 0,
+    0, 1, 5, 0, 5, 4, 0,
+    1, 2, 6, 1, 6, 5, 0,
+    3, 0, 4, 3, 4, 7, 0
+  ];
+  let normals: [f32; 18] = [
+     0.0,  1.0,  0.0,
+     0.0, -1.0,  0.0,
+     0.0,  0.0,  1.0,
+     0.0,  0.0, -1.0,
+     1.0,  0.0,  0.0,
+    -1.0,  0.0,  0.0
+  ];
+  let out_i: i64 = 0;
+  loop [f: i64 = 0](f < 6) : (++f) {
+    let nidx: i64 = faces[f * 7 + 6];
+    loop [t: i64 = 0](t < 2) : (++t) {
+      loop [v: i64 = 0](v < 3) : (++v) {
+        let cidx: i64 = faces[f * 7 + t * 3 + v] * 3;
+        buf[out_i]     = corners[cidx];
+        buf[out_i + 1] = corners[cidx + 1];
+        buf[out_i + 2] = corners[cidx + 2];
+        buf[out_i + 3] = normals[nidx * 3];
+        buf[out_i + 4] = normals[nidx * 3 + 1];
+        buf[out_i + 5] = normals[nidx * 3 + 2];
+        out_i = out_i + 6;
+      }
+    }
+  }
+}
+
+/// Fills `buf` (6 verts) with a flat quad on the XZ plane at height `y`.
+const build_plane -> fn (buf: *f32, half: f32, y: f32) void {
+  let verts: [f32; 18] = [
+    -half, y, -half,
+     half, y, -half,
+     half, y,  half,
+    -half, y, -half,
+     half, y,  half,
+    -half, y,  half
+  ];
+  loop [i: i64 = 0](i < 6) : (++i) {
+    buf[i * 6]     = verts[i * 3];
+    buf[i * 6 + 1] = verts[i * 3 + 1];
+    buf[i * 6 + 2] = verts[i * 3 + 2];
+    buf[i * 6 + 3] = 0.0;
+    buf[i * 6 + 4] = 1.0;
+    buf[i * 6 + 5] = 0.0;
+  }
+}
+
+/// Uploads interleaved mesh to a fresh VAO/VBO and configures attributes.
+const upload_mesh -> fn (vao: *i64, vbo: *i64, data: *f32, floats: i64) void {
+  let v0: i64 = 0;
+  let b0: i64 = 0;
+  gl::glGenVertexArrays(1, &v0);
+  gl::glGenBuffers(1, &b0);
+  gl::glBindVertexArray(v0);
+  gl::glBindBuffer(gl::GL_ARRAY_BUFFER, b0);
+  gl::glBufferData(gl::GL_ARRAY_BUFFER, floats * sizeof<f32>, cast<*void>(data), gl::GL_STATIC_DRAW);
+  let stride: i64 = 6 * sizeof<f32>;
+  gl::glEnableVertexAttribArray(0);
+  gl::glVertexAttribPointer(0, 3, gl::GL_FLOAT, gl::GL_FALSE, stride, cast<*void>(0));
+  gl::glEnableVertexAttribArray(1);
+  gl::glVertexAttribPointer(1, 3, gl::GL_FLOAT, gl::GL_FALSE, stride, cast<*void>(3 * sizeof<f32>));
+  *vao = v0;
+  *vbo = b0;
+}
+
+pub const main -> fn (argc: i64, argv: **byte) i64 {
+  if (!sdl::SDL_Init(sdl::SDL_INIT_VIDEO)) {
+    outputln("SDL could not initialize! SDL_Error: ", sdl::SDL_GetError());
+    return -1;
+  }
+  defer sdl::SDL_Quit();
+
+  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_MINOR_VERSION, 3);
+  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_CONTEXT_PROFILE_MASK, sdl::SDL_GL_CONTEXT_PROFILE_CORE);
+  sdl::SDL_GL_SetAttribute(sdl::SDL_GL_DOUBLEBUFFER, 1);
+
+  let window: *void = sdl::SDL_CreateWindow(
+    "Luma Walkable Platform",
+    800, 600,
+    sdl::SDL_WINDOW_OPENGL | sdl::SDL_WINDOW_RESIZABLE
+  );
+  if (window == cast<*void>(0)) {
+    outputln("Window could not be created! SDL_Error: ", sdl::SDL_GetError());
+    return -1;
+  }
+  defer sdl::SDL_DestroyWindow(window);
+
+  let gl_context: *void = sdl::SDL_GL_CreateContext(window);
+  if (gl_context == cast<*void>(0)) {
+    outputln("OpenGL Context could not be created! SDL_Error: ", sdl::SDL_GetError());
+    return -1;
+  }
+  defer sdl::SDL_GL_DestroyContext(gl_context);
+  sdl::SDL_GL_MakeCurrent(window, gl_context);
+
+  let vs_src: *byte = load_shader_source("test/shaders/vertex.glsl");
+  if (vs_src == cast<*byte>(0)) return -1;
+  defer free(vs_src);
+  let fs_src: *byte = load_shader_source("test/shaders/fragment.glsl");
+  if (fs_src == cast<*byte>(0)) return -1;
+  defer free(fs_src);
+
+  let vs_arr: [*byte; 1] = [vs_src];
+  let vertex_shader: i64 = gl::glCreateShader(gl::GL_VERTEX_SHADER);
+  gl::glShaderSource(vertex_shader, 1, cast<**byte>(&vs_arr), cast<*i64>(0));
+  gl::glCompileShader(vertex_shader);
+  if (check_shader(vertex_shader, "vertex shader") != 0) return -1;
+
+  let fs_arr: [*byte; 1] = [fs_src];
+  let fragment_shader: i64 = gl::glCreateShader(gl::GL_FRAGMENT_SHADER);
+  gl::glShaderSource(fragment_shader, 1, cast<**byte>(&fs_arr), cast<*i64>(0));
+  gl::glCompileShader(fragment_shader);
+  if (check_shader(fragment_shader, "fragment shader") != 0) return -1;
+
+  let program: i64 = gl::glCreateProgram();
+  gl::glAttachShader(program, vertex_shader);
+  gl::glAttachShader(program, fragment_shader);
+  gl::glLinkProgram(program);
+  if (check_program(program) != 0) return -1;
+
+  gl::glDeleteShader(vertex_shader);
+  gl::glDeleteShader(fragment_shader);
+  defer gl::glDeleteProgram(program);
+
+  let mvp_loc: i64 = gl::glGetUniformLocation(program, "uMVP");
+  let tint_loc: i64 = gl::glGetUniformLocation(program, "uTint");
+  if (mvp_loc < 0 || tint_loc < 0) {
+    outputln("missing shader uniform (uMVP/uTint)");
+    return -1;
+  }
+
+  // Build meshes: ground plane, platform box, player box.
+  let ground_verts: [f32; 36];
+  build_plane(cast<*f32>(&ground_verts), 15.0, 0.0);
+
+  let platform_verts: [f32; 216];
+  build_box(cast<*f32>(&platform_verts), 0.0, 0.5, 0.0, 2.0, 0.5, 2.0);
+
+  let player_verts: [f32; 216];
+  build_box(cast<*f32>(&player_verts), 0.0, 0.3, 0.0, 0.3, 0.3, 0.3);
+
+  let ground_vao: i64 = 0;  let ground_vbo: i64 = 0;
+  let plat_vao:   i64 = 0;  let plat_vbo:   i64 = 0;
+  let player_vao: i64 = 0;  let player_vbo: i64 = 0;
+  upload_mesh(&ground_vao, &ground_vbo, cast<*f32>(&ground_verts), 36);
+  upload_mesh(&plat_vao,   &plat_vbo,   cast<*f32>(&platform_verts), 216);
+  upload_mesh(&player_vao, &player_vbo, cast<*f32>(&player_verts), 216);
+
+  defer gl::glDeleteVertexArrays(1, &ground_vao);
+  defer gl::glDeleteBuffers(1, &ground_vbo);
+  defer gl::glDeleteVertexArrays(1, &plat_vao);
+  defer gl::glDeleteBuffers(1, &plat_vbo);
+  defer gl::glDeleteVertexArrays(1, &player_vao);
+  defer gl::glDeleteBuffers(1, &player_vbo);
+
+  gl::glEnable(gl::GL_DEPTH_TEST);
+
+  let proj: [f32; 16];
+  mat4_perspective(cast<*f32>(&proj), FOVY, 800.0 / 600.0, 0.1, 100.0);
+
+  let player: Player = Player {
+    x: 0.0, y: PLAYER_HALF, z: 4.0,
+    vx: 0.0, vy: 0.0, vz: 0.0,
+    yaw: 0.0, half: PLAYER_HALF, on_ground: true,
+  };
+
+  let running: bool = true;
+  let event: [byte; 128];
+  let win_w: i64 = 800;
+  let win_h: i64 = 600;
+
+  let up: [f32; 3] = [0.0, 1.0, 0.0];
+  let view: [f32; 16];
+  let model: [f32; 16];
+  let rot: [f32; 16];
+  let view_model: [f32; 16];
+  let mvp: [f32; 16];
+
+  let last_ns: i64 = sdl::SDL_GetTicksNS();
+  let keys: *byte = cast<*byte>(sdl::SDL_GetKeyboardState(cast<*i64>(0)));
+
+  // Smoothed follow-camera state: eye and focus chase their targets so a
+  // quick turn swings the view gently instead of snapping the whole world.
+  let cam_x: f32 = 0.0;
+  let cam_y: f32 = 3.0;
+  let cam_z: f32 = 9.5;
+  let fcx: f32 = 0.0;
+  let fcy: f32 = 0.5;
+  let fcz: f32 = 4.0;
+
+  loop (running) {
+    let now_ns: i64 = sdl::SDL_GetTicksNS();
+    let raw_dt: f64 = cast<f64>(now_ns - last_ns) / 1000000000.0;
+    if (raw_dt > 0.05) raw_dt = 0.05;
+    let dt: f32 = cast<f32>(raw_dt);
+    last_ns = now_ns;
+
+    loop (sdl::SDL_PollEvent(cast<*void>(&event)) > 0) {
+      let etype: i64 = sdl::event_type(cast<*byte>(&event));
+      if (etype == sdl::SDL_EVENT_QUIT) {
+        running = false;
+      } elif (etype == sdl::SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED) {
+        sdl::SDL_GetWindowSize(window, &win_w, &win_h);
+        gl::glViewport(0, 0, win_w, win_h);
+      }
+    }
+
+    player.update(dt, keys);
+
+    // Follow camera behind the player, orbiting with player yaw.
+    let sa: f32 = cast<f32>(LIBC::sin(cast<f64>(player.yaw)));
+    let ca: f32 = cast<f32>(LIBC::cos(cast<f64>(player.yaw)));
+
+    // Frame-rate independent damping (≈10 Hz follow, no snap on fast turns).
+    let damp: f32 = 1.0 - cast<f32>(LIBC::pow(0.1, cast<f64>(dt)));
+
+    let tx: f32 = player.x + sa * 5.5;
+    let ty: f32 = player.y + 3.4;
+    let tz: f32 = player.z + ca * 5.5;
+    cam_x = cam_x + (tx - cam_x) * damp;
+    cam_y = cam_y + (ty - cam_y) * damp;
+    cam_z = cam_z + (tz - cam_z) * damp;
+
+    let tc_x: f32 = player.x;
+    let tc_y: f32 = player.y + 0.5;
+    let tc_z: f32 = player.z;
+    fcx = fcx + (tc_x - fcx) * damp;
+    fcy = fcy + (tc_y - fcy) * damp;
+    fcz = fcz + (tc_z - fcz) * damp;
+
+    let eye: [f32; 3];
+    eye[0] = cam_x; eye[1] = cam_y; eye[2] = cam_z;
+    let center: [f32; 3];
+    center[0] = fcx; center[1] = fcy; center[2] = fcz;
+    mat4_look_at(cast<*f32>(&view), cast<*f32>(&eye), cast<*f32>(&center), cast<*f32>(&up));
+
+    gl::glClearColor(0.16, 0.18, 0.22, 1.0);
+    gl::glClear(gl::GL_COLOR_BUFFER_BIT | gl::GL_DEPTH_BUFFER_BIT);
+    gl::glUseProgram(program);
+
+    // Ground (identity model)
+    mat4_identity(cast<*f32>(&model));
+    mat4_mul(cast<*f32>(&view_model), cast<*f32>(&view), cast<*f32>(&model));
+    mat4_mul(cast<*f32>(&mvp), cast<*f32>(&proj), cast<*f32>(&view_model));
+    gl::glUniformMatrix4fv(mvp_loc, 1, 0, cast<*f32>(&mvp));
+    gl::glUniform3f(tint_loc, 0.10, 0.13, 0.18);
+    gl::glBindVertexArray(ground_vao);
+    gl::glDrawArrays(gl::GL_TRIANGLES, 0, 6);
+
+    // Platform (identity model)
+    mat4_identity(cast<*f32>(&model));
+    mat4_mul(cast<*f32>(&view_model), cast<*f32>(&view), cast<*f32>(&model));
+    mat4_mul(cast<*f32>(&mvp), cast<*f32>(&proj), cast<*f32>(&view_model));
+    gl::glUniformMatrix4fv(mvp_loc, 1, 0, cast<*f32>(&mvp));
+    gl::glUniform3f(tint_loc, 0.09, 0.45, 0.20);
+    gl::glBindVertexArray(plat_vao);
+    gl::glDrawArrays(gl::GL_TRIANGLES, 0, 36);
+
+    // Player: T * Ry(yaw)
+    mat4_translate(cast<*f32>(&model), player.x, player.y, player.z);
+    mat4_rotate_y(cast<*f32>(&rot), player.yaw);
+    mat4_mul(cast<*f32>(&view_model), cast<*f32>(&view), cast<*f32>(&model));
+    mat4_mul(cast<*f32>(&view_model), cast<*f32>(&view_model), cast<*f32>(&rot));
+    mat4_mul(cast<*f32>(&mvp), cast<*f32>(&proj), cast<*f32>(&view_model));
+    gl::glUniformMatrix4fv(mvp_loc, 1, 0, cast<*f32>(&mvp));
+    gl::glUniform3f(tint_loc, 0.85, 0.42, 0.12);
+    gl::glBindVertexArray(player_vao);
+    gl::glDrawArrays(gl::GL_TRIANGLES, 0, 36);
+
+    sdl::SDL_GL_SwapWindow(window);
+    sdl::SDL_Delay(6);
+  }
+
+  return 0;
+}
