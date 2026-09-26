@@ -9,7 +9,8 @@
 //! These are thin wrappers — see the corresponding C man pages for
 //! detailed documentation.
 //!
-//! PLATFORM: Linux x86_64 (glibc)
+//! PLATFORM: Linux/macOS via `@link`. On Windows nothing is linked
+//! explicitly — mingw-w64's driver links the C runtime automatically.
 //!
 //! # Example
 //! ```luma
@@ -19,7 +20,10 @@
 
 @module "std_libc"
 
-@link("libc.so.6")
+@os {
+    "linux"     -> { @link("libc.so.6") }
+    "macos"     -> { @link("libc.so.6") }
+}
 
 // ============================================================================
 // stdio.h - Standard input/output

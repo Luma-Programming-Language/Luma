@@ -20,7 +20,18 @@ cd "$(dirname "$0")/.."
 source "scripts/lib-src-files.sh"
 
 TARGET="${1:?usage: cross-build.sh <windows64|windows32> <output-path>}"
-OUT="${2:?usage: cross-build.sh <windows64|windows32> <output-path>}"
+OUT_ARG="${2:?usage: cross-build.sh <windows64|windows32> <output-path>}"
+
+# Accept either a directory path (`windows/`, binary lands inside it as
+# `luma.exe`) or a file path (`dist/luma`). `dirname windows/` is `.`, so a
+# trailing slash must be handled before `mkdir -p`.
+if [[ "$OUT_ARG" == */ ]]; then
+  OUT_DIR="${OUT_ARG%/}"
+  OUT="$OUT_DIR/luma"
+else
+  OUT_DIR="$(dirname "$OUT_ARG")"
+  OUT="$OUT_ARG"
+fi
 
 case "$TARGET" in
   windows64) COMPILER="x86_64-w64-mingw32-gcc" ;;
@@ -38,8 +49,8 @@ if ! command -v "$COMPILER" >/dev/null 2>&1; then
 fi
 
 # Empty directories aren't tracked by git, so a fresh checkout won't have
-# $OUT's parent dir — same lesson as bootstrap-build.sh's `mkdir -p bin`.
-mkdir -p "$(dirname "$OUT")"
+# $OUT_DIR — same lesson as bootstrap-build.sh's `mkdir -p bin`.
+mkdir -p "$OUT_DIR"
 
 # Same false-target-naming trap bootstrap-build.sh guards against: remove
 # any stale output (and a stray .exe) before building, and hard-fail if the
