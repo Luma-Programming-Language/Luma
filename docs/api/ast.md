@@ -106,6 +106,7 @@ char, bool, or null (selected by `lit_type`).
 | `lit_type` | i64 |  |
 | `int_val` | i64 |  |
 | `float_val` | i64 |  |
+| `float_src` | *byte |  |
 | `string_val` | *byte |  |
 | `char_val` | byte |  |
 | `bool_val` | i64 |  |

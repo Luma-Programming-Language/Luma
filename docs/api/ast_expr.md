@@ -34,6 +34,7 @@ Creates a float literal expression node.
 ```luma
 pub #returns_ownership
 make_literal_float -> fn(
+    float_src: *byte,
     float_val: i64,
     line: i64,
     col: i64

@@ -259,6 +259,20 @@ pub pending_pop -> fn(
 ) Pending
 ```
 
+### `registry_reset`
+
+Drops every generic template, cached instantiation, and pending job.
+
+All three hold declaration/scope pointers owned by one typecheck run's
+AST. tc.typecheck calls this at the start of each run so a long-lived
+host (the language server) cannot resolve a template from — or queue work
+against — an AST that has already been freed.
+
+```luma
+pub registry_reset -> fn(
+) void
+```
+
 ### `rename_callee`
 
 Rewrites a call's callee to a new name, preserving identifier vs. member

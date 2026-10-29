@@ -228,6 +228,20 @@ pub generated_decl_at -> fn(
 ) *GeneratedDecl
 ```
 
+### `generated_decls_clear`
+
+Empties the generated-declaration registry.
+
+The recorded declarations are clones that belong to the AST of the run
+that produced them. A long-lived host (the language server typechecks a
+fresh AST on every edit) must drop them before the next run, or stale
+entries point into a freed AST.
+
+```luma
+pub generated_decls_clear -> fn(
+) void
+```
+
 ### `unresolved_types_init`
 
 Lazily initializes the unresolved-type registry exactly once.
@@ -267,6 +281,19 @@ Returns the unresolved type name at index `i`.
 pub unresolved_type_name_at -> fn(
     i: i64
 ) *UnresolvedTypeName
+```
+
+### `unresolved_types_clear`
+
+Empties the deferred unresolved-type registry.
+
+Entries hold scope and AST pointers from the run that recorded them, so
+they must not survive into the next typecheck run (see
+generated_decls_clear's note on long-lived hosts).
+
+```luma
+pub unresolved_types_clear -> fn(
+) void
 ```
 
 ### `nominals_init`

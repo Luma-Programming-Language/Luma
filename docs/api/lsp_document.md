@@ -4,11 +4,11 @@
 
 Document tracking + single-file analysis for the Luma language server.
 
-Each open document is analyzed as its own per-process scratch file, run
-through the normal parse/typecheck pipeline exactly as the CLI compiler
-would — but its `@use` imports are resolved transitively against a
-workspace/std registry first (see the Module Resolution section), so this
-isn't limited to single-file programs in practice.
+Each open document is analyzed as its own scratch file, run through the
+normal parse/typecheck pipeline exactly as the CLI compiler would — but
+its `@use` imports are resolved transitively against a workspace/std
+registry first (see the Module Resolution section), so this isn't
+limited to single-file programs in practice.
 
 ## Table of Contents
 
@@ -225,12 +225,23 @@ pub lsp_document_close -> fn(
 ) void
 ```
 
-### `lsp_set_workspace_root`
+### `uri_hex_value`
 
-Stores the workspace root, stripping a leading `file://` prefix.
+Converts a hexadecimal URI escape digit, returning -1 for other bytes.
 
 ```luma
-pub lsp_set_workspace_root -> fn(
+      uri_hex_value -> fn(
+    c: byte
+) i64
+```
+
+### `lsp_set_workspace_root`
+
+Stores the decoded local path from a `file://` workspace URI.
+
+```luma
+pub #returns_ownership
+lsp_set_workspace_root -> fn(
     uri: *byte
 ) void
 ```
@@ -287,6 +298,37 @@ Appends every `*.lx` path under dir to the registry listing file on POSIX.
 ) void
 ```
 
+### `windows_join_path`
+
+Joins a Windows directory and entry name into an owned path.
+
+```luma
+      #returns_ownership
+windows_join_path -> fn(
+    dir: *byte,
+    name: *byte
+) *byte
+```
+
+### `append_windows_dir_listing`
+
+Recursively discovers Luma source files using Win32 file enumeration.
+
+```luma
+      append_windows_dir_listing -> fn(
+    root: *byte
+) void
+```
+
+### `append_windows_user_std`
+
+Adds the user-local Windows standard library to the registry when present.
+
+```luma
+      append_windows_user_std -> fn(
+) void
+```
+
 ### `build_registry`
 
 Scans std and the workspace root and fills g_registry; only runs once.
@@ -294,6 +336,15 @@ Uses native Win32 enumeration on Windows and `find` on POSIX.
 
 ```luma
       build_registry -> fn(
+) void
+```
+
+### `build_posix_registry`
+
+Builds the module registry on POSIX using `find` to list source files.
+
+```luma
+      build_posix_registry -> fn(
 ) void
 ```
 
@@ -316,6 +367,16 @@ Returns the transitive closure of modules imported by main_module.
       collect_modules -> fn(
     main_module: *AST::AstNode
 ) VEC::Vector
+```
+
+### `build_scratch_path`
+
+Returns an owned, per-process path for the LSP analysis scratch file.
+
+```luma
+      #returns_ownership
+build_scratch_path -> fn(
+) *byte
 ```
 
 ### `write_scratch_file`
@@ -540,7 +601,7 @@ format_struct_member -> fn(
 
 ### `format_struct_signature`
 
-Formats a struct header as `struct Name<T> { ... }`.
+Formats a struct header as a multi-line `struct Name<T> { ... }`.
 
 ```luma
       #returns_ownership
@@ -551,7 +612,7 @@ format_struct_signature -> fn(
 
 ### `format_enum_signature`
 
-Formats an enum header as `enum Name<T> { ... }`.
+Formats an enum header as a multi-line `enum Name<T> { ... }`.
 
 ```luma
       #returns_ownership
@@ -780,8 +841,7 @@ Finds the top-level declaration named name in a module, optionally public-only.
 
 ### `path_to_uri`
 
-Converts a filesystem path to an escaped file URI, including Windows drive
-letters and path separators.
+Converts a filesystem path to an escaped file URI.
 
 ```luma
       #returns_ownership
@@ -1179,9 +1239,9 @@ lsp_semantic_tokens -> fn(
 - **`g_documents`** : VEC::Vector *(let)* — Vector of every open LSPDocument.
 - **`g_registry`** : VEC::Vector *(let)* — Registry of known modules, keyed by `@module` name.
 - **`g_registry_built`** : bool *(let)* — True once the registry scan has run (the scan runs lazily, once).
-- **`g_workspace_root`** : *byte *(let)* — Owned, decoded workspace root path set from the client's initialize request.
-- **`REGISTRY_LISTING_PATH`** : *byte *(const)* — Scratch file that collects the recursive registry scan output.
-- **`g_scratch_path`** : *byte *(let)* — Per-process scratch file each document is written to for analysis.
+- **`g_workspace_root`** : *byte *(let)* — Owned workspace root URI, set from the client's initialize request.
+- **`REGISTRY_LISTING_PATH`** : *byte *(const)* — Scratch file that collects the recursive registry scan output on POSIX.
+- **`g_scratch_path`** : *byte *(let)* — Per-process scratch file used to parse the current editor buffer.
 - **`SK_FUNCTION`** : i64 *(const)* — SymbolKind code for functions.
 - **`SK_STRUCT`** : i64 *(const)* — SymbolKind code for structs.
 - **`SK_ENUM`** : i64 *(const)* — SymbolKind code for enums.
@@ -1230,6 +1290,46 @@ lsp_semantic_tokens -> fn(
 
 ## OS-Specific
 
+### `"windows64"`
+
+### `FindFirstFileA`
+
+```luma
+      #dll_import("kernel32.dll, callconv: "stdcall")
+FindFirstFileA -> fn(
+    file_name: *byte,
+    find_data: *void
+) i64
+```
+
+### `FindNextFileA`
+
+```luma
+      #dll_import("kernel32.dll, callconv: "stdcall")
+FindNextFileA -> fn(
+    find_handle: i64,
+    find_data: *void
+) i64
+```
+
+### `FindClose`
+
+```luma
+      #dll_import("kernel32.dll, callconv: "stdcall")
+FindClose -> fn(
+    find_handle: i64
+) i64
+```
+
+### `GetCurrentProcessId`
+
+```luma
+      #dll_import("kernel32.dll, callconv: "stdcall")
+GetCurrentProcessId -> fn(
+) i64
+```
+
+
 ### `"linux"`
 
 - **`STD_DIR`** : *byte *(const)*
@@ -1261,3 +1361,4 @@ lsp_semantic_tokens -> fn(
 ### Default `_`
 
 - **`CURRENT_OS`** : *byte *(const)*
+

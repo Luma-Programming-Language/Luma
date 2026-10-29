@@ -30,3 +30,4 @@ pub lsp_run -> fn(
 
 **Returns:**
 0 when the loop ends.
+

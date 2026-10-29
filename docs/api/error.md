@@ -276,8 +276,7 @@ Prints the `^` caret indicator under a source position, plus its label.
 ### `error_report`
 
 Prints all queued errors, each with location, source excerpt, and any
-note/help lines. Returns `1` if errors are queued; output is skipped while
-`error_silent` is true.
+note/help lines.
 
 
 ```luma
@@ -286,7 +285,7 @@ pub error_report -> fn(
 ```
 
 **Returns:**
-`1` if errors are queued, `0` when the queue was empty.
+`1` if errors are queued, `0` when the queue is empty.
 
 
 ## Variables

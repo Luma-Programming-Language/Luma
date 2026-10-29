@@ -6,8 +6,9 @@ JSON-RPC-over-stdio transport for the Luma language server.
 
 Frames messages the way LSP requires: `Content-Length: N\r\n\r\n` followed
 by exactly N bytes of UTF-8 JSON. Reading and writing go through raw
-`std_io::local_read`/`std_io::local_write` calls rather than buffered stdio.
-POSIX uses file descriptors; Windows uses standard handles.
+std_io::local_read/local_write calls rather than buffered stdio, since
+the message loop needs to read exactly N bytes and nothing more. POSIX
+uses descriptors; Windows uses standard handles.
 
 ## Table of Contents
 
@@ -15,6 +16,20 @@ POSIX uses file descriptors; Windows uses standard handles.
 
 
 ## Functions
+
+### `stdin_handle`
+
+```luma
+      stdin_handle -> fn(
+) i64
+```
+
+### `stdout_handle`
+
+```luma
+      stdout_handle -> fn(
+) i64
+```
 
 ### `read_byte`
 
@@ -86,3 +101,4 @@ pub send_error -> fn(
     message: *byte
 ) void
 ```
+
