@@ -4,11 +4,11 @@
 
 Document tracking + single-file analysis for the Luma language server.
 
-Each open document is analyzed as its own scratch file, run through the
-normal parse/typecheck pipeline exactly as the CLI compiler would — but
-its `@use` imports are resolved transitively against a workspace/std
-registry first (see the Module Resolution section), so this isn't
-limited to single-file programs in practice.
+Each open document is analyzed as its own per-process scratch file, run
+through the normal parse/typecheck pipeline exactly as the CLI compiler
+would — but its `@use` imports are resolved transitively against a
+workspace/std registry first (see the Module Resolution section), so this
+isn't limited to single-file programs in practice.
 
 ## Table of Contents
 
@@ -279,7 +279,7 @@ Parses a file's `@module` name and registers it in the registry.
 
 ### `append_dir_listing`
 
-Appends every `*.lx` path under dir to the registry listing file.
+Appends every `*.lx` path under dir to the registry listing file on POSIX.
 
 ```luma
       append_dir_listing -> fn(
@@ -290,6 +290,7 @@ Appends every `*.lx` path under dir to the registry listing file.
 ### `build_registry`
 
 Scans std and the workspace root and fills g_registry; only runs once.
+Uses native Win32 enumeration on Windows and `find` on POSIX.
 
 ```luma
       build_registry -> fn(
@@ -779,7 +780,8 @@ Finds the top-level declaration named name in a module, optionally public-only.
 
 ### `path_to_uri`
 
-Prefixes a filesystem path with `file://`.
+Converts a filesystem path to an escaped file URI, including Windows drive
+letters and path separators.
 
 ```luma
       #returns_ownership
@@ -1177,9 +1179,9 @@ lsp_semantic_tokens -> fn(
 - **`g_documents`** : VEC::Vector *(let)* — Vector of every open LSPDocument.
 - **`g_registry`** : VEC::Vector *(let)* — Registry of known modules, keyed by `@module` name.
 - **`g_registry_built`** : bool *(let)* — True once the registry scan has run (the scan runs lazily, once).
-- **`g_workspace_root`** : *byte *(let)* — Owned workspace root URI, set from the client's initialize request.
+- **`g_workspace_root`** : *byte *(let)* — Owned, decoded workspace root path set from the client's initialize request.
 - **`REGISTRY_LISTING_PATH`** : *byte *(const)* — Scratch file that collects the recursive registry scan output.
-- **`SCRATCH_PATH`** : *byte *(const)* — Scratch file each document is written to for analysis.
+- **`g_scratch_path`** : *byte *(let)* — Per-process scratch file each document is written to for analysis.
 - **`SK_FUNCTION`** : i64 *(const)* — SymbolKind code for functions.
 - **`SK_STRUCT`** : i64 *(const)* — SymbolKind code for structs.
 - **`SK_ENUM`** : i64 *(const)* — SymbolKind code for enums.
@@ -1259,4 +1261,3 @@ lsp_semantic_tokens -> fn(
 ### Default `_`
 
 - **`CURRENT_OS`** : *byte *(const)*
-

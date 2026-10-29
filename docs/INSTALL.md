@@ -22,6 +22,14 @@ sudo ./install.sh   # system-wide, requires sudo
 1. Extract `luma-v0.3.5-windows-x86_64.zip`.
 2. Run `install.bat` — as Administrator for a system-wide install, or without for a user-local one.
 
+## Visual Studio Code
+
+The repository includes a VS Code extension that connects `.lx` files to the
+Luma language server. Install Luma and make sure `luma` is on your `PATH`, then
+follow the [extension installation instructions](../editors/vscode/README.md).
+If the executable is not on `PATH`, set `luma.serverPath` to its full path in
+VS Code settings.
+
 ## Building from Source
 
 ```bash

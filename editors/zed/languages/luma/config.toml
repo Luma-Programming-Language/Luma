@@ -1,0 +1,6 @@
+name = "Luma"
+grammar = "luma"
+path_suffixes = ["lx"]
+line_comments = ["// "]
+tab_size = 4
+hard_tabs = false

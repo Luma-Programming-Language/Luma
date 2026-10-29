@@ -276,7 +276,8 @@ Prints the `^` caret indicator under a source position, plus its label.
 ### `error_report`
 
 Prints all queued errors, each with location, source excerpt, and any
-note/help lines.
+note/help lines. Returns `1` if errors are queued; output is skipped while
+`error_silent` is true.
 
 
 ```luma
@@ -285,7 +286,7 @@ pub error_report -> fn(
 ```
 
 **Returns:**
-`1` if errors were printed, `0` when the queue was empty.
+`1` if errors are queued, `0` when the queue was empty.
 
 
 ## Variables
@@ -293,3 +294,4 @@ pub error_report -> fn(
 - **`MAX_ERRORS`** : i64 *(const)* — Maximum number of errors kept before the list silently stops growing.
 - **`error_list`** : [ErrorInformation; 256] *(let)* — Fixed-size storage for queued errors.
 - **`error_count`** : i64 *(let)* — Number of errors currently queued in `error_list`.
+- **`error_silent`** : bool *(let)* — When true, `error_report` records no terminal output (for LSP analysis).

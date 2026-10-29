@@ -840,7 +840,13 @@ pub const codegen_transpile -> fn (program: *AST::AstNode, config: CONST::LumaBu
   if (program.kind != AST::NodeType::PROGRAM) return cast<*byte>(0);
 
   // e.g. `-name test` -> `output/test.c`, for `-save` to keep.
-  let mkdir_rc: i64 = system("mkdir -p output");
+  @os {
+    "linux"     -> { system("mkdir -p output"); }
+    "macos"     -> { system("mkdir -p output"); }
+    "windows32" -> { system("if not exist output mkdir output"); }
+    "windows64" -> { system("if not exist output mkdir output"); }
+  }
+
   let pb: *CG::Buf = CG::buf_init();
   CG::buf_str(pb, "output/");
   CG::buf_str(pb, basename_of(config.name));

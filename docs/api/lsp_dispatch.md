@@ -13,7 +13,8 @@ JSON-RPC method dispatch for the Luma language server.
 
 ### `wrap_code_block`
 
-Wraps a signature in a fenced `luma` code block for hover markdown.
+Formats a declaration signature as a fenced `luma` code block and keeps
+its documentation comment as Markdown text.
 
 ```luma
       #returns_ownership
@@ -34,11 +35,11 @@ capabilities_result -> fn(
 
 ### `handle_message`
 
-Parses and dispatches one JSON-RPC message to the document API.
+Parses and dispatches one JSON-RPC message to the document API, returning
+true when the client sends the `exit` notification.
 
 ```luma
 pub handle_message -> fn(
     raw: *byte
-) void
+) bool
 ```
-

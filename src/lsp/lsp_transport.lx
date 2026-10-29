@@ -1,35 +1,46 @@
 //! JSON-RPC-over-stdio transport for the Luma language server.
 //!
 //! Frames messages the way LSP requires: `Content-Length: N\r\n\r\n` followed
-//! by exactly N bytes of UTF-8 JSON. Reading and writing both go through raw
-//! fd 0 / fd 1 syscalls (std_io::local_read/local_write) rather than
-//! buffered stdio, since the message loop needs to read exactly N bytes and
-//! nothing more.
+//! by exactly N bytes of UTF-8 JSON. Reading and writing go through raw
+//! std_io::local_read/local_write calls rather than buffered stdio, since
+//! the message loop needs to read exactly N bytes and nothing more. POSIX
+//! uses descriptors; Windows uses standard handles.
 
 @module "lsp_transport"
 
 @use "std_io"      as IO
-@use "std_sys"     as SYS
 @use "std_memory"  as MEM
 @use "std_cstring" as STR
 @use "json"        as J
 
-/// Reads a single raw byte from stdin (fd 0).
+const stdin_handle -> fn () i64 {
+  @os {
+    "linux"     -> { return 0; }
+    "macos"     -> { return 0; }
+    "windows64" -> { return IO::GetStdHandle(IO::STD_INPUT_HANDLE); }
+  }
+}
+
+const stdout_handle -> fn () i64 {
+  @os {
+    "linux"     -> { return 1; }
+    "macos"     -> { return 1; }
+    "windows64" -> { return IO::GetStdHandle(IO::STD_OUTPUT_HANDLE); }
+  }
+}
+
+/// Reads a single raw byte from standard input.
 ///
 /// # Returns
 /// -1 on EOF or read error.
 const read_byte -> fn () i64 {
   let c: byte;
-  let n: i64 = IO::local_read(0, cast<*void>(&c), 1);
+  let n: i64 = IO::local_read(stdin_handle(), cast<*void>(&c), 1);
   if (n <= 0) return -1;
   return cast<i64>(c);
 }
 
 /// Reads one full Content-Length-framed JSON-RPC message from stdin.
-///
-/// # Parameters
-/// - `saved`: real stdout fd to restore once the body is read
-/// - `bytes_len`: output slot that receives the total bytes read
 ///
 /// # Returns
 /// A heap-allocated, NUL-terminated JSON body, or null on EOF or a bad header.
@@ -89,7 +100,11 @@ pub const read_message -> fn () *byte {
   let body: *byte = cast<*byte>(alloc(content_length + 1));
   let got: i64 = 0;
   loop (got < content_length) {
-    let n: i64 = IO::local_read(0, cast<*void>(cast<i64>(body) + got), content_length - got);
+    let n: i64 = IO::local_read(
+      stdin_handle(),
+      cast<*void>(cast<i64>(body) + got),
+      content_length - got
+    );
     if (n <= 0) { free(body); return cast<*byte>(0); }
     got = got + n;
   }
@@ -113,8 +128,8 @@ pub const send_raw -> fn (body: *byte) void {
   STR::cat(header, prefix, len_str);
   STR::cat(header, header, suffix);
 
-  IO::local_write(1, cast<*void>(header), STR::strlen(header));
-  IO::local_write(1, cast<*void>(body), len);
+  IO::local_write(stdout_handle(), cast<*void>(header), STR::strlen(header));
+  IO::local_write(stdout_handle(), cast<*void>(body), len);
 
   free(header);
   free(len_str);
@@ -161,71 +176,4 @@ pub const send_error -> fn (id: i64, code: i64, message: *byte) void {
   send_raw(s);
   free(s);
   J::json_free(msg);
-}
-
-/// Redirects stdout (fd 1) to /dev/null so the compiler's diagnostic
-/// printer cannot corrupt the JSON-RPC channel.
-///
-/// # Returns
-/// The saved real stdout fd to pass back to `suppress_stdout_end`.
-// Temporarily redirects fd 1 (stdout) to /dev/null and returns a saved copy
-// of the real stdout fd. The compiler's own error/diagnostic printer
-// (error.lx's error_report, called internally by both parse_file and
-// TC::typecheck on failure) writes straight to stdout — which is also our
-// JSON-RPC channel. Analysis must run with stdout muted so a stray print
-// never corrupts a Content-Length-framed message; restore with
-// suppress_stdout_end before sending anything ourselves.
-pub const suppress_stdout_begin -> fn () i64 {
-  @os {
-    "linux" -> {
-      let saved: i64 = SYS::dup(1);
-      let devnull: i64 = SYS::open("/dev/null", SYS::O_WRONLY, 0);
-      SYS::dup2(devnull, 1);
-      SYS::close(devnull);
-      return saved;
-    }
-    "macos" -> {
-      let saved: i64 = SYS::dup(1);
-      let devnull: i64 = SYS::open("/dev/null", SYS::O_WRONLY, 0);
-      SYS::dup2(devnull, 1);
-      SYS::close(devnull);
-      return saved;
-    }
-    "windows64" -> {
-      // No fd-table indirection on Windows to dup(2) — stdout *is* whatever
-      // handle GetStdHandle(STD_OUTPUT_HANDLE) currently resolves to, so
-      // save that handle value directly and point the std handle at NUL
-      // (the Windows equivalent of /dev/null) until restored below.
-      // These externs are std_io's own (declared in its windows64 @os arm
-      // for its own print/local_write use) — reused here rather than
-      // pulling in std_win32, which is a much larger, purely-Windows
-      // module not otherwise needed by this file.
-      let saved: i64 = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
-      let devnull: i64 = IO::CreateFileA(
-        "NUL", IO::GENERIC_WRITE, IO::FILE_SHARE_READ,
-        cast<*void>(0), IO::OPEN_EXISTING, 128, 0 // 128 = FILE_ATTRIBUTE_NORMAL
-      );
-      IO::SetStdHandle(IO::STD_OUTPUT_HANDLE, devnull);
-      return saved;
-    }
-  }
-}
-
-/// Restores stdout from the fd saved by `suppress_stdout_begin`.
-pub const suppress_stdout_end -> fn (saved: i64) void {
-  @os {
-    "linux" -> {
-      SYS::dup2(saved, 1);
-      SYS::close(saved);
-    }
-    "macos" -> {
-      SYS::dup2(saved, 1);
-      SYS::close(saved);
-    }
-    "windows64" -> {
-      let current: i64 = IO::GetStdHandle(IO::STD_OUTPUT_HANDLE);
-      IO::SetStdHandle(IO::STD_OUTPUT_HANDLE, saved);
-      IO::CloseHandle(current); // the NUL handle opened above
-    }
-  }
 }

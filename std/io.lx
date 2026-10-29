@@ -72,6 +72,7 @@
         const CREATE_ALWAYS: i64       = 2;
         const FILE_ATTRIBUTE_NORMAL: i64 = 128;
         const INVALID_HANDLE_VALUE: i64 = -1;
+        const STD_INPUT_HANDLE: i64    = -10;
         const STD_OUTPUT_HANDLE: i64   = -11;
         const STD_ERROR_HANDLE: i64    = -12;
 

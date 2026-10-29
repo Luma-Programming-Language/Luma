@@ -12,6 +12,8 @@
 @use "std_cstring" as STR
 @use "std_memory"  as MEM
 @use "std_io"      as IO
+@use "std_libc"    as LIBC
+@use "std_sys"     as SYS
 
 @use "ast"          as AST
 @use "ast_stmt"     as STMT
@@ -25,6 +27,22 @@
 
 @use "json"          as J
 @use "lsp_transport" as T
+
+@os {
+  "windows64" -> {
+    #dll_import("kernel32.dll", callconv: "stdcall")
+    const FindFirstFileA -> fn (file_name: *byte, find_data: *void) i64;
+
+    #dll_import("kernel32.dll", callconv: "stdcall")
+    const FindNextFileA -> fn (find_handle: i64, find_data: *void) i64;
+
+    #dll_import("kernel32.dll", callconv: "stdcall")
+    const FindClose -> fn (find_handle: i64) i64;
+
+    #dll_import("kernel32.dll", callconv: "stdcall")
+    const GetCurrentProcessId -> fn () i64;
+  }
+}
 
 /// An open document tracked by the server.
 ///
@@ -51,6 +69,7 @@ pub let g_documents: VEC::Vector;
 /// lsp_document_* function.
 pub const lsp_document_init -> fn () void {
   g_documents = VEC::create_vector(sizeof<LSPDocument>);
+  g_scratch_path = build_scratch_path();
 }
 
 /// Returns the index of the document whose uri matches, or -1 if not open.
@@ -131,10 +150,8 @@ pub const lsp_document_close -> fn (uri: *byte) void {
 // workspace root, recursively pulling in whatever transitive imports those
 // need too — matching what `-l` does for the CLI compiler, just automated.
 //
-// There's no directory-listing primitive in std/ yet, so the scan shells
-// out to `find` (via the `system()` builtin) and reads its output back from
-// a scratch file — simplest thing that works without adding a new FFI
-// surface just for this.
+// POSIX uses `find` and a temporary listing file; Windows walks directories
+// with FindFirstFileA/FindNextFileA so it does not depend on Unix shell tools.
 
 /// One resolved module in the registry.
 ///
@@ -151,7 +168,7 @@ let g_registry: VEC::Vector;
 /// True once the registry scan has run (the scan runs lazily, once).
 let g_registry_built: bool = false;
 /// Owned workspace root URI, set from the client's initialize request.
-let g_workspace_root: *byte = cast<*byte>(0); // owned; set via lsp_set_workspace_root
+let g_workspace_root: *byte = cast<*byte>(0); // owned decoded path; set via lsp_set_workspace_root
 
 @os {
   "linux"     -> { const STD_DIR: *byte = "/usr/local/lib/luma/std"; }
@@ -170,12 +187,21 @@ let g_workspace_root: *byte = cast<*byte>(0); // owned; set via lsp_set_workspac
   _ -> { const CURRENT_OS: *byte = "unknown"; }
 }
 
-/// Scratch file that collects the recursive registry scan output.
+/// Scratch file that collects the recursive registry scan output on POSIX.
 const REGISTRY_LISTING_PATH: *byte = "/tmp/.luma-lsp-registry-listing.txt";
+/// Per-process scratch file used to parse the current editor buffer.
+let g_scratch_path: *byte = cast<*byte>(0);
 
-/// Stores the workspace root, stripping a leading `file://` prefix.
-// Call once at startup (from the `initialize` handler) with the client's
-// rootUri/workspaceFolder, if any — strips a leading "file://" if present.
+/// Converts a hexadecimal URI escape digit, returning -1 for other bytes.
+const uri_hex_value -> fn (c: byte) i64 {
+  if (c >= '0' && c <= '9') return cast<i64>(c) - cast<i64>('0');
+  if (c >= 'a' && c <= 'f') return cast<i64>(c) - cast<i64>('a') + 10;
+  if (c >= 'A' && c <= 'F') return cast<i64>(c) - cast<i64>('A') + 10;
+  return -1;
+}
+
+/// Stores the decoded local path from a `file://` workspace URI.
+#returns_ownership
 pub const lsp_set_workspace_root -> fn (uri: *byte) void {
   if (uri == cast<*byte>(0)) return;
   if (g_workspace_root != cast<*byte>(0)) { free(g_workspace_root); g_workspace_root = cast<*byte>(0); }
@@ -183,17 +209,54 @@ pub const lsp_set_workspace_root -> fn (uri: *byte) void {
   let prefix: *byte = "file://";
   let plen: i64 = STR::strlen(prefix);
   let ulen: i64 = STR::strlen(uri);
+  let start: i64 = 0;
   if (ulen >= plen) {
     let matches: bool = true;
     loop [i: i64 = 0](i < plen) : (++i) {
       if (uri[i] != prefix[i]) { matches = false; break; }
     }
-    if (matches) {
-      g_workspace_root = dup_str(cast<*byte>(cast<i64>(uri) + plen));
-      return;
+    if (matches) start = plen;
+  }
+
+  @os {
+    "windows64" -> {
+      if (start == plen && start + 2 < ulen && uri[start] == '/' &&
+          ((uri[start + 1] >= 'A' && uri[start + 1] <= 'Z') ||
+           (uri[start + 1] >= 'a' && uri[start + 1] <= 'z'))) {
+        let colon: bool = uri[start + 2] == ':';
+        let escaped_colon: bool = false;
+        if (start + 4 < ulen && uri[start + 2] == '%' &&
+            uri_hex_value(uri[start + 3]) == 3 &&
+            uri_hex_value(uri[start + 4]) == 10) {
+          escaped_colon = true;
+        }
+        if (colon || escaped_colon) start = start + 1;
+      }
     }
   }
-  g_workspace_root = dup_str(uri);
+
+  let decoded: *byte = cast<*byte>(alloc(ulen - start + 1));
+  let i: i64 = start;
+  let out: i64 = 0;
+  loop (i < ulen) {
+    let c: byte = uri[i];
+    if (c == '%' && i + 2 < ulen) {
+      let high: i64 = uri_hex_value(uri[i + 1]);
+      let low: i64 = uri_hex_value(uri[i + 2]);
+      if (high >= 0 && low >= 0) {
+        c = cast<byte>(high * 16 + low);
+        i = i + 2;
+      }
+    }
+    @os {
+      "windows64" -> { if (c == '/') c = '\\'; }
+    }
+    decoded[out] = c;
+    out = out + 1;
+    i = i + 1;
+  }
+  decoded[out] = cast<byte>(0);
+  g_workspace_root = decoded;
 }
 
 /// Returns the index of the first occurrence of needle in haystack, or -1.
@@ -280,7 +343,7 @@ const register_file -> fn (path: *byte) void {
   }
 }
 
-/// Appends every `*.lx` path under dir to the registry listing file.
+/// Appends every `*.lx` path under dir to the registry listing file on POSIX.
 const append_dir_listing -> fn (dir: *byte) void {
   let mid: *byte = "' -name '*.lx' >> '";
   let tail: *byte = "' 2>/dev/null";
@@ -295,12 +358,118 @@ const append_dir_listing -> fn (dir: *byte) void {
   free(cmd);
 }
 
+/// Joins a Windows directory and entry name into an owned path.
+#returns_ownership
+const windows_join_path -> fn (dir: *byte, name: *byte) *byte {
+  let dir_len: i64 = STR::strlen(dir);
+  let name_len: i64 = STR::strlen(name);
+  let needs_separator: bool = dir_len > 0 &&
+    dir[dir_len - 1] != '\\' && dir[dir_len - 1] != '/';
+  let separator_len: i64 = 0;
+  if (needs_separator) separator_len = 1;
+
+  let path: *byte = cast<*byte>(alloc(dir_len + separator_len + name_len + 1));
+  MEM::memcpy(cast<*void>(path), cast<*void>(dir), dir_len);
+  if (needs_separator) path[dir_len] = '\\';
+  MEM::memcpy(
+    cast<*void>(cast<i64>(path) + dir_len + separator_len),
+    cast<*void>(name),
+    name_len
+  );
+  path[dir_len + separator_len + name_len] = cast<byte>(0);
+  return path;
+}
+
+/// Recursively discovers Luma source files using Win32 file enumeration.
+const append_windows_dir_listing -> fn (root: *byte) void {
+  if (root == cast<*byte>(0)) return;
+
+  let pending: VEC::Vector = VEC::create_vector(sizeof<*byte>);
+  let first_dir: *byte = dup_str(root);
+  pending.push_back(cast<*void>(&first_dir));
+
+  loop (pending.size > 0) {
+    let dir: *byte;
+    pending.pop_back(cast<*void>(&dir));
+
+    let pattern: *byte = windows_join_path(dir, "*");
+    let find_data: [byte; 320];
+    let find_handle: i64 = FindFirstFileA(pattern, cast<*void>(&find_data));
+    free(pattern);
+
+    if (find_handle != -1) {
+      loop (1) {
+        let name: *byte = cast<*byte>(cast<i64>(&find_data) + 44);
+        let is_dot: bool = name[0] == '.' && name[1] == cast<byte>(0);
+        let is_dot_dot: bool = name[0] == '.' && name[1] == '.' && name[2] == cast<byte>(0);
+
+        if (is_dot == false && is_dot_dot == false) {
+          let attributes: i64 =
+            cast<i64>(find_data[0]) +
+            cast<i64>(find_data[1]) * 256 +
+            cast<i64>(find_data[2]) * 65536 +
+            cast<i64>(find_data[3]) * 16777216;
+          let entry_path: *byte = windows_join_path(dir, name);
+
+          if ((attributes / 16) % 2 == 1) {
+            pending.push_back(cast<*void>(&entry_path));
+          } else {
+            let name_len: i64 = STR::strlen(name);
+            if (name_len >= 3 &&
+                name[name_len - 3] == '.' &&
+                (name[name_len - 2] == 'l' || name[name_len - 2] == 'L') &&
+                (name[name_len - 1] == 'x' || name[name_len - 1] == 'X')) {
+              register_file(entry_path);
+            }
+            free(entry_path);
+          }
+        }
+
+        if (FindNextFileA(find_handle, cast<*void>(&find_data)) == 0) break;
+      }
+      FindClose(find_handle);
+    }
+
+    free(dir);
+  }
+
+  VEC::free_vector(&pending);
+}
+
+/// Adds the user-local Windows standard library to the registry when present.
+const append_windows_user_std -> fn () void {
+  let home: *byte = LIBC::getenv("USERPROFILE");
+  if (home == cast<*byte>(0)) return;
+
+  let local_dir: *byte = windows_join_path(home, ".luma");
+  let std_dir: *byte = windows_join_path(local_dir, "std");
+  append_windows_dir_listing(std_dir);
+  free(local_dir);
+  free(std_dir);
+}
+
 /// Scans std and the workspace root and fills g_registry; only runs once.
+/// Uses native Win32 enumeration on Windows and `find` on POSIX.
 const build_registry -> fn () void {
   if (g_registry_built) return;
   g_registry_built = true;
   g_registry = VEC::create_vector(sizeof<ModuleRegistryEntry>);
 
+  @os {
+    "windows64" -> {
+      append_windows_dir_listing(STD_DIR);
+      append_windows_user_std();
+      if (g_workspace_root != cast<*byte>(0)) {
+        append_windows_dir_listing(g_workspace_root);
+      }
+    }
+    "linux" -> { build_posix_registry(); }
+    "macos" -> { build_posix_registry(); }
+  }
+}
+
+/// Builds the module registry on POSIX using `find` to list source files.
+const build_posix_registry -> fn () void {
   let rm_cmd: *byte = cast<*byte>(alloc(STR::strlen(REGISTRY_LISTING_PATH) + 8));
   STR::cat(rm_cmd, "rm -f '", REGISTRY_LISTING_PATH);
   STR::cat(rm_cmd, rm_cmd, "'");
@@ -392,8 +561,62 @@ const collect_modules -> fn (main_module: *AST::AstNode) VEC::Vector {
 // Analysis
 // ============================================================================
 
-/// Scratch file each document is written to for analysis.
-const SCRATCH_PATH: *byte = "/tmp/.luma-lsp-scratch.lx";
+/// Returns an owned, per-process path for the LSP analysis scratch file.
+#returns_ownership
+const build_scratch_path -> fn () *byte {
+  @os {
+    "linux" -> {
+      let pid: *byte = STR::from_int(SYS::getpid());
+      let path: *byte = STR::cat(
+        cast<*byte>(alloc(STR::strlen("/tmp/.luma-lsp-") + STR::strlen(pid) +
+                         STR::strlen(".lx") + 1)),
+        "/tmp/.luma-lsp-", pid
+      );
+      let full: *byte = STR::cat(
+        cast<*byte>(alloc(STR::strlen(path) + STR::strlen(".lx") + 1)),
+        path, ".lx"
+      );
+      free(pid);
+      free(path);
+      return full;
+    }
+    "macos" -> {
+      let pid: *byte = STR::from_int(SYS::getpid());
+      let path: *byte = STR::cat(
+        cast<*byte>(alloc(STR::strlen("/tmp/.luma-lsp-") + STR::strlen(pid) +
+                         STR::strlen(".lx") + 1)),
+        "/tmp/.luma-lsp-", pid
+      );
+      let full: *byte = STR::cat(
+        cast<*byte>(alloc(STR::strlen(path) + STR::strlen(".lx") + 1)),
+        path, ".lx"
+      );
+      free(pid);
+      free(path);
+      return full;
+    }
+    "windows64" -> {
+      let temp: *byte = LIBC::getenv("TEMP");
+      if (temp == cast<*byte>(0)) temp = LIBC::getenv("TMP");
+      if (temp == cast<*byte>(0)) temp = ".";
+
+      let pid: *byte = STR::from_int(GetCurrentProcessId());
+      let prefix: *byte = STR::cat(
+        cast<*byte>(alloc(STR::strlen("luma-lsp-") + STR::strlen(pid) + 1)),
+        "luma-lsp-", pid
+      );
+      let filename: *byte = STR::cat(
+        cast<*byte>(alloc(STR::strlen(prefix) + STR::strlen(".lx") + 1)),
+        prefix, ".lx"
+      );
+      let path: *byte = windows_join_path(temp, filename);
+      free(pid);
+      free(prefix);
+      free(filename);
+      return path;
+    }
+  }
+}
 
 /// Creates path if needed, then writes content to it.
 // std_io's write_buffer_to_file opens with local_open_write, which uses a
@@ -420,15 +643,14 @@ pub const lsp_analyze -> fn (doc: *LSPDocument) void {
     doc.ast = cast<*AST::AstNode>(0);
   }
 
-  write_scratch_file(SCRATCH_PATH, doc.text);
+  write_scratch_file(g_scratch_path, doc.text);
 
-  // error.lx's error_report (called internally by both parse_file and
-  // TC::typecheck on failure) writes straight to stdout — our JSON-RPC
-  // channel — so analysis has to run with stdout muted. See
-  // lsp_transport.lx's suppress_stdout_begin for why.
-  let saved_stdout: i64 = T::suppress_stdout_begin();
+  // Keep compiler diagnostics in the error queue for publishDiagnostics,
+  // but do not print them into the LSP stdout stream.
+  let previous_error_silent: bool = ERO::error_silent;
+  ERO::error_silent = true;
 
-  let build_config: CONST::LumaBuildConfig = CONST::LumaBuildConfig::init_build_config(SCRATCH_PATH);
+  let build_config: CONST::LumaBuildConfig = CONST::LumaBuildConfig::init_build_config(g_scratch_path);
   // The static memory analyzer has known false-positive edge cases (see
   // build_registry's comment on register_file) and live-as-you-type
   // feedback is far more sensitive to that noise than a one-shot CLI
@@ -441,7 +663,7 @@ pub const lsp_analyze -> fn (doc: *LSPDocument) void {
     _ -> { build_config.os = "unknown"; }
   }
 
-  let main_module: *AST::AstNode = PFILE::parse_file(SCRATCH_PATH);
+  let main_module: *AST::AstNode = PFILE::parse_file(g_scratch_path);
   if (main_module != cast<*AST::AstNode>(0)) {
     let modules: VEC::Vector = collect_modules(main_module);
 
@@ -457,7 +679,7 @@ pub const lsp_analyze -> fn (doc: *LSPDocument) void {
 
   VEC::free_vector(&build_config.link_files);
 
-  T::suppress_stdout_end(saved_stdout);
+  ERO::error_silent = previous_error_silent;
 }
 
 // ============================================================================
@@ -489,7 +711,7 @@ const diagnostics_array -> fn () *J::JsonValue {
     // scratch file, error.lx's (global, shared) list can contain entries
     // that belong to a *dependency* file, not the document being edited —
     // don't surface those as if they were errors in the user's own buffer.
-    if (STR::strcmp(e.file_path, SCRATCH_PATH) != 0) continue;
+    if (STR::strcmp(e.file_path, g_scratch_path) != 0) continue;
 
     // node.line is 1-indexed; node.col is already 0-indexed (confirmed
     // against error.lx's own print_indicator, which pads with exactly
@@ -1562,13 +1784,55 @@ const find_definition_in_module -> fn (mod: *AST::ModuleNode, name: *byte, publi
   return miss;
 }
 
-/// Prefixes a filesystem path with `file://`.
+/// Converts a filesystem path to an escaped file URI.
 #returns_ownership
 const path_to_uri -> fn (path: *byte) *byte {
   let prefix: *byte = "file://";
-  let total: i64 = STR::strlen(prefix) + STR::strlen(path) + 1;
-  let out: *byte = cast<*byte>(alloc(total));
-  STR::cat(out, prefix, path);
+  let path_start: i64 = 0;
+  let path_len: i64 = STR::strlen(path);
+  @os {
+    "windows64" -> {
+      prefix = "file:///";
+      if (path_len > 2 &&
+          ((path[0] >= 'A' && path[0] <= 'Z') ||
+           (path[0] >= 'a' && path[0] <= 'z'))) {
+        if (path[1] == ':') {
+          if (path[2] == '\\' || path[2] == '/') path_start = 0;
+        }
+      }
+    }
+  }
+
+  let prefix_len: i64 = STR::strlen(prefix);
+  let out: *byte = cast<*byte>(alloc(prefix_len + path_len * 3 + 1));
+  loop [i: i64 = 0](i < prefix_len) : (++i) { out[i] = prefix[i]; }
+  let pos: i64 = prefix_len;
+  let hex: *byte = "0123456789ABCDEF";
+
+  loop [i: i64 = path_start](i < path_len) : (++i) {
+    let c: byte = path[i];
+    @os {
+      "windows64" -> { if (c == '\\') c = '/'; }
+    }
+
+    let safe: bool =
+      (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+      (c >= '0' && c <= '9') || c == '-' || c == '_' ||
+      c == '.' || c == '~' || c == '/' || c == ':';
+    if (safe) {
+      out[pos] = c;
+      pos = pos + 1;
+    } else {
+      let value: i64 = cast<i64>(c);
+      if (value < 0) value = value + 256;
+      out[pos] = '%';
+      out[pos + 1] = hex[value / 16];
+      out[pos + 2] = hex[value % 16];
+      pos = pos + 3;
+    }
+  }
+
+  out[pos] = cast<byte>(0);
   return out;
 }
 

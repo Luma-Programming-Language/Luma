@@ -6,17 +6,48 @@
 @use "lsp_transport" as T
 @use "lsp_document"  as D
 @use "std_cstring"   as STR
-@use "std_libc"      as LIBC
 
-/// Wraps a signature in a fenced `luma` code block for hover markdown.
+/// Formats the declaration as code and keeps its documentation as Markdown.
 #returns_ownership
 const wrap_code_block -> fn (sig: *byte) *byte {
   let prefix: *byte = "```luma\n";
   let suffix: *byte = "\n```";
-  let total: i64 = STR::strlen(prefix) + STR::strlen(sig) + STR::strlen(suffix) + 1;
+  let sig_len: i64 = STR::strlen(sig);
+  let code_len: i64 = 0;
+  loop (code_len < sig_len && sig[code_len] != '\n') { code_len = code_len + 1; }
+  let doc_start: i64 = code_len;
+  if (doc_start < sig_len) doc_start = doc_start + 1;
+  let doc_len: i64 = sig_len - doc_start;
+  let doc_sep: *byte = "\n\n";
+  let doc_sep_len: i64 = 0;
+  if (doc_len > 0) doc_sep_len = STR::strlen(doc_sep);
+  let total: i64 = STR::strlen(prefix) + code_len + STR::strlen(suffix) +
+    doc_sep_len + doc_len + 1;
   let out: *byte = cast<*byte>(alloc(total));
-  STR::cat(out, prefix, sig);
-  STR::cat(out, out, suffix);
+  let pos: i64 = 0;
+  loop [i: i64 = 0](i < STR::strlen(prefix)) : (++i) {
+    out[pos] = prefix[i];
+    pos = pos + 1;
+  }
+  loop [i: i64 = 0](i < code_len) : (++i) {
+    out[pos] = sig[i];
+    pos = pos + 1;
+  }
+  loop [i: i64 = 0](i < STR::strlen(suffix)) : (++i) {
+    out[pos] = suffix[i];
+    pos = pos + 1;
+  }
+  if (doc_len > 0) {
+    loop [i: i64 = 0](i < doc_sep_len) : (++i) {
+      out[pos] = doc_sep[i];
+      pos = pos + 1;
+    }
+    loop [i: i64 = 0](i < doc_len) : (++i) {
+      out[pos] = sig[doc_start + i];
+      pos = pos + 1;
+    }
+  }
+  out[pos] = cast<byte>(0);
   return out;
 }
 
@@ -83,17 +114,21 @@ const capabilities_result -> fn () *J::JsonValue {
 }
 
 /// Parses and dispatches one JSON-RPC message to the document API.
-pub const handle_message -> fn (raw: *byte) void {
+///
+/// # Returns
+/// True when the client sent the `exit` notification.
+pub const handle_message -> fn (raw: *byte) bool {
   let msg: *J::JsonValue = J::json_parse(raw);
-  if (msg == cast<*J::JsonValue>(0)) return;
+  if (msg == cast<*J::JsonValue>(0)) return false;
 
   let method: *byte = J::json_object_get_string(msg, "method");
-  if (method == cast<*byte>(0)) { J::json_free(msg); return; }
+  if (method == cast<*byte>(0)) { J::json_free(msg); return false; }
 
   let id_val: *J::JsonValue = J::json_object_get(msg, "id");
   let has_id: bool = J::json_is_null(id_val) == false;
   let id: i64 = J::json_get_int(id_val);
   let params: *J::JsonValue = J::json_object_get(msg, "params");
+  let should_exit: bool = false;
 
   if (STR::strcmp(method, "initialize") == 0) {
     let root_uri: *byte = J::json_object_get_string(params, "rootUri");
@@ -113,8 +148,7 @@ pub const handle_message -> fn (raw: *byte) void {
   } elif (STR::strcmp(method, "shutdown") == 0) {
     if (has_id) T::send_response(id, J::json_null());
   } elif (STR::strcmp(method, "exit") == 0) {
-    J::json_free(msg);
-    LIBC::exit(0); // portable across linux/macos/windows — no raw syscall needed
+    should_exit = true;
   } elif (STR::strcmp(method, "textDocument/didOpen") == 0) {
     let td: *J::JsonValue = J::json_object_get(params, "textDocument");
     let uri: *byte = J::json_object_get_string(td, "uri");
@@ -240,4 +274,5 @@ pub const handle_message -> fn (raw: *byte) void {
   }
 
   J::json_free(msg);
+  return should_exit;
 }

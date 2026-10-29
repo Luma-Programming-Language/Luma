@@ -1,0 +1,65 @@
+{
+  "name": "luma-vscode",
+  "displayName": "Luma",
+  "description": "Language support for Luma using the luma --lsp language server.",
+  "version": "0.1.0",
+  "publisher": "luma-programming-language",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Luma-Programming-Language/Luma.git",
+    "directory": "editors/vscode"
+  },
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onLanguage:luma"
+  ],
+  "main": "./extension.js",
+  "contributes": {
+    "commands": [
+      {
+        "command": "luma.showServerPath",
+        "title": "Luma: Show Server Path"
+      },
+      {
+        "command": "luma.showOutput",
+        "title": "Luma: Show Language Server Output"
+      },
+      {
+        "command": "luma.restartServer",
+        "title": "Luma: Restart Language Server"
+      }
+    ],
+    "languages": [
+      {
+        "id": "luma",
+        "aliases": [
+          "Luma",
+          "luma"
+        ],
+        "extensions": [
+          ".lx"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "configuration": {
+      "title": "Luma",
+      "properties": {
+        "luma.serverPath": {
+          "type": "string",
+          "default": "luma",
+          "description": "Path to the Luma executable that runs the language server with --lsp."
+        }
+      }
+    }
+  },
+  "dependencies": {
+    "vscode-languageclient": "^9.0.1"
+  }
+}

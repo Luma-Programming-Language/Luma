@@ -64,6 +64,8 @@ const MAX_ERRORS: i64 = 256;
 let error_list: [ErrorInformation; 256];
 /// Number of errors currently queued in `error_list`.
 let error_count: i64 = 0;
+/// When true, `error_report` records no terminal output (for LSP analysis).
+pub let error_silent: bool = false;
 
 /// Queues an error if the list is not full.
 pub const error_add -> fn (err: ErrorInformation) void {
@@ -241,9 +243,10 @@ const print_indicator -> fn (col: i64, length: i64, max_width: i64, label: *byte
 /// note/help lines.
 ///
 /// # Returns
-/// `1` if errors were printed, `0` when the queue was empty.
+/// `1` if errors are queued, `0` when the queue is empty.
 pub const error_report -> fn () i64 {
   if (error_count == 0) return 0;
+  if (error_silent) return 1;
 
   let max_width: i64 = get_max_line_width();
 

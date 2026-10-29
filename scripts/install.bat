@@ -1,165 +1,467 @@
 @echo off
-setlocal enabledelayedexpansion
+setlocal EnableExtensions EnableDelayedExpansion
 
+:: ================================================================
 :: Luma Compiler v0.1.0 - Windows Installer
-:: This script installs the Luma compiler and standard library
+:: ================================================================
+::
+:: Expected project layout:
+::
+::   Luma/
+::   ├── bin/
+::   │   └── luma.exe
+::   ├── src/
+::   │   └── *.lx
+::   ├── std/
+::   │   └── ...
+::   └── scripts/
+::       └── install.bat
+::
+:: Installed layout:
+::
+::   C:\Program Files\luma/
+::   ├── bin/
+::   │   └── luma.exe
+::   └── std/
+::       └── ...
+::
+:: ================================================================
+
+title Luma Compiler Installer
 
 echo.
-echo ================================================
-echo    Luma Compiler v0.1.0 - Windows Installer
-echo ================================================
+echo ================================================================
+echo              Luma Compiler v0.1.0 - Windows Installer
+echo ================================================================
 echo.
 
-:: Check if running as administrator
+:: ----------------------------------------------------------------
+:: Determine project directory
+:: ----------------------------------------------------------------
+::
+:: install.bat is located in:
+::
+::   Luma\scripts\install.bat
+::
+:: Therefore:
+::
+::   %~dp0       = Luma\scripts\
+::   %~dp0..     = Luma\
+::
+:: ----------------------------------------------------------------
+
+set "PROJECT_DIR=%~dp0.."
+
+:: Convert to absolute/normalized path
+for %%A in ("%PROJECT_DIR%") do set "PROJECT_DIR=%%~fA"
+
+set "LUMA_EXE=%PROJECT_DIR%\bin\luma.exe"
+set "STD_DIR=%PROJECT_DIR%\std"
+
+:: ----------------------------------------------------------------
+:: Installation paths
+:: ----------------------------------------------------------------
+
+set "INSTALL_DIR=C:\Program Files\luma"
+set "BIN_DIR=%INSTALL_DIR%\bin"
+set "INSTALL_STD_DIR=%INSTALL_DIR%\std"
+
+:: ----------------------------------------------------------------
+:: Display configuration
+:: ----------------------------------------------------------------
+
+echo Project directory:
+echo   %PROJECT_DIR%
+echo.
+echo Compiler source:
+echo   %LUMA_EXE%
+echo.
+echo Standard library source:
+echo   %STD_DIR%
+echo.
+echo Installation directory:
+echo   %INSTALL_DIR%
+echo.
+
+:: ----------------------------------------------------------------
+:: Check administrator privileges
+:: ----------------------------------------------------------------
+
 net session >nul 2>&1
-if %errorLevel% == 0 (
-    set "ADMIN=1"
-    echo Running with administrator privileges...
-    echo Installing system-wide to: C:\Program Files\luma
-    set "INSTALL_DIR=C:\Program Files\luma"
-) else (
-    set "ADMIN=0"
-    echo Running without administrator privileges...
-    echo Installing for current user to: %USERPROFILE%\.luma
-    set "INSTALL_DIR=%USERPROFILE%\.luma"
+
+if %errorlevel% neq 0 (
+    echo Administrator privileges are required.
+    echo.
+    echo Requesting administrator privileges...
+    echo.
+
+    "%SystemRoot%\System32\WindowsPowerShell\v1.0\powershell.exe" ^
+        -NoProfile -ExecutionPolicy Bypass ^
+        -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
+
+    if errorlevel 1 (
+        echo.
+        echo ERROR: Failed to request administrator privileges.
+        echo.
+        echo Please right-click install.bat and select:
+        echo "Run as administrator"
+        echo.
+        pause
+        exit /b 1
+    )
+
+    exit /b 0
 )
 
+echo [OK] Running with administrator privileges.
 echo.
 
-:: Create installation directories
-echo Creating installation directories...
-if not exist "%INSTALL_DIR%\bin" mkdir "%INSTALL_DIR%\bin"
-if not exist "%INSTALL_DIR%\std" mkdir "%INSTALL_DIR%\std"
+:: ----------------------------------------------------------------
+:: Check compiler
+:: ----------------------------------------------------------------
 
-if %errorLevel% neq 0 (
-    echo ERROR: Failed to create directories!
-    echo Please check permissions and try again.
+echo ================================================================
+echo Checking compiler...
+echo ================================================================
+echo.
+
+if not exist "%LUMA_EXE%" (
+    echo ERROR: luma.exe was not found.
+    echo.
+    echo Expected:
+    echo   %LUMA_EXE%
+    echo.
+    echo Your project should contain:
+    echo.
+    echo   Luma\
+    echo   +-- bin\
+    echo   ^|   +-- luma.exe
+    echo   +-- src\
+    echo   ^|   +-- *.lx
+    echo   +-- std\
+    echo   ^|   +-- ...
+    echo   +-- scripts\
+    echo       +-- install.bat
+    echo.
     pause
     exit /b 1
 )
 
-:: Copy luma.exe
-echo Copying luma.exe...
-if exist "luma.exe" (
-    copy /Y "luma.exe" "%INSTALL_DIR%\bin\luma.exe" >nul
-    if %errorLevel% neq 0 (
-        echo ERROR: Failed to copy luma.exe!
-        pause
-        exit /b 1
-    )
-) else (
-    echo ERROR: luma.exe not found in current directory!
-    pause
-    exit /b 1
-)
-
-:: Copy standard library
-echo Copying standard library...
-if exist "std" (
-    xcopy /E /I /Y "std\*" "%INSTALL_DIR%\std\" >nul
-    if %errorLevel% neq 0 (
-        echo ERROR: Failed to copy standard library!
-        pause
-        exit /b 1
-    )
-) else (
-    echo WARNING: std\ directory not found. Standard library not installed.
-)
-
-echo.
-echo Installation completed successfully!
-echo.
-echo Luma installed to: %INSTALL_DIR%
+echo [OK] Found luma.exe
 echo.
 
-:: Check if already in PATH
-echo %PATH% | findstr /C:"%INSTALL_DIR%\bin" >nul
-if %errorLevel% == 0 (
-    echo Path already configured correctly.
-    goto :verify
-)
-
-:: Add to PATH
-echo Configuring PATH...
-if %ADMIN% == 1 (
-    :: System-wide PATH (requires admin)
-    for /f "skip=2 tokens=3*" %%a in ('reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path') do set "SYSTEM_PATH=%%a %%b"
-    setx /M PATH "%SYSTEM_PATH%;%INSTALL_DIR%\bin" >nul 2>&1
-    if %errorLevel% == 0 (
-        echo PATH updated successfully (system-wide^).
-    ) else (
-        echo WARNING: Failed to update system PATH automatically.
-        echo Please add manually: %INSTALL_DIR%\bin
-    )
-) else (
-    :: User PATH
-    for /f "skip=2 tokens=3*" %%a in ('reg query "HKCU\Environment" /v Path 2^>nul') do set "USER_PATH=%%a %%b"
-    if "!USER_PATH!" == "" (
-        setx PATH "%INSTALL_DIR%\bin" >nul 2>&1
-    ) else (
-        setx PATH "!USER_PATH!;%INSTALL_DIR%\bin" >nul 2>&1
-    )
-    if %errorLevel% == 0 (
-        echo PATH updated successfully (user-only^).
-    ) else (
-        echo WARNING: Failed to update user PATH automatically.
-        echo Please add manually: %INSTALL_DIR%\bin
-    )
-)
-
-:verify
-echo.
-echo ================================================
-echo Verifying installation...
-echo ================================================
-echo.
-
-:: Test if luma is accessible
-"%INSTALL_DIR%\bin\luma.exe" --version >nul 2>&1
-if %errorLevel% == 0 (
-    echo [OK] Luma compiler found
-    "%INSTALL_DIR%\bin\luma.exe" --version
-) else (
-    echo [WARNING] Could not verify luma installation
-)
-
-echo.
-
+:: ----------------------------------------------------------------
 :: Check standard library
-if exist "%INSTALL_DIR%\std\io.luma" (
-    echo [OK] Standard library installed
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo Checking standard library...
+echo ================================================================
+echo.
+
+if not exist "%STD_DIR%" (
+    echo ERROR: Standard library directory was not found.
+    echo.
+    echo Expected:
+    echo   %STD_DIR%
+    echo.
+    echo The Luma compiler requires the standard library.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [OK] Found standard library:
+echo      %STD_DIR%
+echo.
+
+:: ----------------------------------------------------------------
+:: Create installation directories
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo Creating installation directories...
+echo ================================================================
+echo.
+
+if not exist "%INSTALL_DIR%" (
+    mkdir "%INSTALL_DIR%" >nul 2>&1
+
+    if errorlevel 1 (
+        echo ERROR: Failed to create:
+        echo   %INSTALL_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+if not exist "%BIN_DIR%" (
+    mkdir "%BIN_DIR%" >nul 2>&1
+
+    if errorlevel 1 (
+        echo ERROR: Failed to create:
+        echo   %BIN_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+if not exist "%INSTALL_STD_DIR%" (
+    mkdir "%INSTALL_STD_DIR%" >nul 2>&1
+
+    if errorlevel 1 (
+        echo ERROR: Failed to create:
+        echo   %INSTALL_STD_DIR%
+        echo.
+        pause
+        exit /b 1
+    )
+)
+
+echo [OK] Installation directories created.
+echo.
+
+:: ----------------------------------------------------------------
+:: Install compiler
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo Installing Luma compiler...
+echo ================================================================
+echo.
+
+echo Source:
+echo   %LUMA_EXE%
+echo.
+echo Destination:
+echo   %BIN_DIR%\luma.exe
+echo.
+
+copy /Y "%LUMA_EXE%" "%BIN_DIR%\luma.exe" >nul
+
+if errorlevel 1 (
+    echo.
+    echo ERROR: Failed to copy luma.exe.
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [OK] Luma compiler installed.
+echo.
+
+:: ----------------------------------------------------------------
+:: Install standard library
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo Installing Luma standard library...
+echo ================================================================
+echo.
+
+echo Source:
+echo   %STD_DIR%
+echo.
+echo Destination:
+echo   %INSTALL_STD_DIR%
+echo.
+
+:: Copy the entire std directory recursively.
+::
+:: /E = copy subdirectories, including empty ones
+:: /I = assume destination is a directory
+:: /Y = overwrite existing files without prompting
+:: /Q = quiet mode
+
+xcopy "%STD_DIR%\*" "%INSTALL_STD_DIR%\" /E /I /Y /Q >nul
+
+if errorlevel 1 (
+    echo.
+    echo ERROR: Failed to copy the standard library.
+    echo.
+    echo Source:
+    echo   %STD_DIR%
+    echo.
+    echo Destination:
+    echo   %INSTALL_STD_DIR%
+    echo.
+    pause
+    exit /b 1
+)
+
+echo [OK] Standard library installed.
+echo.
+
+:: ----------------------------------------------------------------
+:: Verify compiler
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo Verifying installation...
+echo ================================================================
+echo.
+
+if exist "%BIN_DIR%\luma.exe" (
+    echo [OK] Compiler:
+    echo      %BIN_DIR%\luma.exe
 ) else (
-    echo [WARNING] Standard library may not be complete
+    echo [ERROR] Compiler was not found after installation.
+    echo.
+    pause
+    exit /b 1
+)
+
+:: ----------------------------------------------------------------
+:: Verify standard library
+:: ----------------------------------------------------------------
+
+if exist "%INSTALL_STD_DIR%" (
+    echo [OK] Standard library:
+    echo      %INSTALL_STD_DIR%\
+) else (
+    echo [ERROR] Standard library was not found after installation.
+    echo.
+    pause
+    exit /b 1
 )
 
 echo.
-echo ================================================
-echo Installation Summary
-echo ================================================
-echo.
-echo Installation directory: %INSTALL_DIR%
-echo Compiler binary:        %INSTALL_DIR%\bin\luma.exe
-echo Standard library:       %INSTALL_DIR%\std\
+
+:: ----------------------------------------------------------------
+:: Add Luma to system PATH
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo Configuring system PATH...
+echo ================================================================
 echo.
 
-if %ADMIN% == 0 (
-    echo IMPORTANT: You may need to restart your Command Prompt
-    echo            for PATH changes to take effect.
+set "SYSTEM_PATH="
+
+for /f "tokens=2,*" %%A in (
+    'reg query "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment" /v Path 2^>nul'
+) do (
+    if /I "%%A"=="Path" (
+        set "SYSTEM_PATH=%%B"
+    )
+)
+
+echo !SYSTEM_PATH! | findstr /I /L /C:"%BIN_DIR%" >nul 2>&1
+
+if not errorlevel 1 (
+    echo [OK] Luma is already in the system PATH.
 ) else (
-    echo IMPORTANT: You may need to restart your Command Prompt
-    echo            for PATH changes to take effect.
+    echo Adding:
+    echo   %BIN_DIR%
+    echo.
+
+    setx /M PATH "!SYSTEM_PATH!;%BIN_DIR%" >nul 2>&1
+
+    if errorlevel 1 (
+        echo [WARNING] Failed to update the system PATH.
+        echo.
+        echo Please manually add:
+        echo   %BIN_DIR%
+    ) else (
+        echo [OK] Luma added to the system PATH.
+    )
 )
 
 echo.
-echo To verify installation, open a NEW command prompt and run:
+
+:: ----------------------------------------------------------------
+:: Test compiler
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo Testing Luma compiler...
+echo ================================================================
+echo.
+
+"%BIN_DIR%\luma.exe" --version
+
+if errorlevel 1 (
+    echo.
+    echo [WARNING] Luma was installed but could not be executed.
+    echo.
+    echo Windows may be blocking the unsigned executable through
+    echo Smart App Control or another Code Integrity policy.
+    echo.
+    echo The installation itself was successful.
+) else (
+    echo.
+    echo [OK] Luma executed successfully.
+)
+
+echo.
+
+:: ----------------------------------------------------------------
+:: Installation summary
+:: ----------------------------------------------------------------
+
+echo ================================================================
+echo                 Installation Summary
+echo ================================================================
+echo.
+
+echo Project:
+echo   %PROJECT_DIR%
+echo.
+
+echo Compiler source:
+echo   %LUMA_EXE%
+echo.
+
+echo Installed compiler:
+echo   %BIN_DIR%\luma.exe
+echo.
+
+echo Standard library source:
+echo   %STD_DIR%\
+echo.
+
+echo Installed standard library:
+echo   %INSTALL_STD_DIR%\
+echo.
+
+echo PATH entry:
+echo   %BIN_DIR%
+echo.
+
+echo ================================================================
+echo Important
+echo ================================================================
+echo.
+
+echo Luma source files remain in:
+echo   %PROJECT_DIR%\src\
+echo.
+
+echo The source files are NOT copied by this installer.
+echo.
+
+echo The standard library IS copied to:
+echo   %INSTALL_STD_DIR%\
+echo.
+
+echo PATH changes only apply to NEW terminals.
+echo.
+echo Close this terminal and open a new PowerShell or Command Prompt.
+echo.
+
+echo Then run:
+echo.
 echo   luma --version
 echo.
-echo To uninstall, simply delete: %INSTALL_DIR%
-echo   and remove from PATH if necessary.
+echo   luma --help
 echo.
-echo ================================================
-echo Installation complete!
-echo ================================================
+
+echo ================================================================
+echo                    Installation Complete
+echo ================================================================
 echo.
 
 pause
+exit /b 0

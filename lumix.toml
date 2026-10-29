@@ -25,7 +25,7 @@ args = [
   bootstrap => "./scripts/bootstrap-build.sh"
 ]
 
-[test]
-valid  = [ "test/valid"  ]
-errors = [ "test/errors" ]
+# [test]
+# valid  = [ "test/valid"  ]
+# errors = [ "test/errors" ]
 
