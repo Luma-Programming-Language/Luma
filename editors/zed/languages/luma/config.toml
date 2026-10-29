@@ -1,5 +1,4 @@
 name = "Luma"
-grammar = "luma"
 path_suffixes = ["lx"]
 line_comments = ["// "]
 tab_size = 4

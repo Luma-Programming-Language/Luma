@@ -6,10 +6,6 @@ schema_version = 1
 authors = ["Luma Programming Language"]
 repository = "https://github.com/Luma-Programming-Language/Luma"
 
-[grammars.luma]
-repository = "https://github.com/APConduct/tree-sitter-luma"
-commit = "d2b37df1f9eae0f548d49270db668f7a38b44038"
-
 [language_servers.luma]
 name = "Luma Language Server"
 languages = ["Luma"]
