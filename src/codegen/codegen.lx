@@ -53,7 +53,7 @@ const known_libc_names: [*byte; 67] = [
   "strchr", "strrchr", "strstr", "strtok",
   "memset", "memcpy", "memmove", "memcmp",
   "sqrt", "pow", "floor", "ceil", "fabs", "fmod", "log", "exp", "sin", "cos",
-  "usleep", "execv", "fork", "strerror", "access", "close",
+  "usleep", "execv", "fork", "strerror", "access", "close", "system", "getpid", "kill", "pipe", "read", "write",
 ];
 
 /// Returns true if `name` is one of the libc/libm names in known_libc_names.

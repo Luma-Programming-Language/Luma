@@ -161,6 +161,20 @@ pub const generated_decl_at -> fn (i: i64) *GeneratedDecl {
   return cast<*GeneratedDecl>(g_generated_decls.get(i));
 }
 
+/// Empties the generated-declaration registry.
+///
+/// The recorded declarations are clones that belong to the AST of the run
+/// that produced them. A long-lived host (the language server typechecks a
+/// fresh AST on every edit) must drop them before the next run, or stale
+/// entries point into a freed AST.
+pub const generated_decls_clear -> fn () void {
+  if (g_generated_decls.data != cast<*void>(0)) {
+    VEC::free_vector(&g_generated_decls);
+  }
+  g_generated_decls_ready = true;
+  g_generated_decls = VEC::create_vector(sizeof<GeneratedDecl>);
+}
+
 // Names referenced bare in type position (`let x: Token`) that matched
 // nothing when first examined. Type resolution runs in two passes (Pass 3a
 // forwards a module's declarations statement-by-statement, Pass 3b checks
@@ -216,6 +230,19 @@ pub const unresolved_type_name_count -> fn () i64 {
 pub const unresolved_type_name_at -> fn (i: i64) *UnresolvedTypeName {
   unresolved_types_init();
   return cast<*UnresolvedTypeName>(g_unresolved_types.get(i));
+}
+
+/// Empties the deferred unresolved-type registry.
+///
+/// Entries hold scope and AST pointers from the run that recorded them, so
+/// they must not survive into the next typecheck run (see
+/// generated_decls_clear's note on long-lived hosts).
+pub const unresolved_types_clear -> fn () void {
+  if (g_unresolved_types.data != cast<*void>(0)) {
+    VEC::free_vector(&g_unresolved_types);
+  }
+  g_unresolved_types_ready = true;
+  g_unresolved_types = VEC::create_vector(sizeof<UnresolvedTypeName>);
 }
 
 // ─── nominal decl registry, for struct/enum literal member validation ───

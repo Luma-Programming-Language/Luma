@@ -165,6 +165,9 @@ pub const typecheck -> fn (node: *AST::AstNode, config: CONST::LumaBuildConfig) 
 
   SCOPE::scope_arena_init();
   CORE::nominal_registry_clear();
+  CORE::generated_decls_clear();
+  CORE::unresolved_types_clear();
+  GEN::registry_reset();
   let root: *CORE::Scope = SCOPE::scope_init("global", config.check_mem, config.os);
 
   if (node.kind != AST::NodeType::PROGRAM) {

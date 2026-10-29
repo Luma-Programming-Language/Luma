@@ -8,15 +8,25 @@
 @use "std_cstring"   as STR
 
 /// Formats the declaration as code and keeps its documentation as Markdown.
+// The signature and its doc comment are separated by a blank line (see
+// append_doc_comment in lsp_document), not just a newline — a struct hover's
+// signature spans several lines, so the whole thing belongs in the code
+// fence and only the text after the blank line is Markdown.
 #returns_ownership
 const wrap_code_block -> fn (sig: *byte) *byte {
   let prefix: *byte = "```luma\n";
   let suffix: *byte = "\n```";
   let sig_len: i64 = STR::strlen(sig);
-  let code_len: i64 = 0;
-  loop (code_len < sig_len && sig[code_len] != '\n') { code_len = code_len + 1; }
-  let doc_start: i64 = code_len;
-  if (doc_start < sig_len) doc_start = doc_start + 1;
+  let split: i64 = -1;
+  loop [i: i64 = 0](i + 1 < sig_len) : (++i) {
+    if (sig[i] == '\n' && sig[i + 1] == '\n') { split = i; break; }
+  }
+  let code_len: i64 = sig_len;
+  let doc_start: i64 = sig_len;
+  if (split >= 0) {
+    code_len = split;
+    doc_start = split + 2;
+  }
   let doc_len: i64 = sig_len - doc_start;
   let doc_sep: *byte = "\n\n";
   let doc_sep_len: i64 = 0;

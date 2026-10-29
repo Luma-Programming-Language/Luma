@@ -299,6 +299,26 @@ pub const pending_pop -> fn () Pending {
   return copy;
 }
 
+/// Drops every generic template, cached instantiation, and pending job.
+///
+/// All three hold declaration/scope pointers owned by one typecheck run's
+/// AST. tc.typecheck calls this at the start of each run so a long-lived
+/// host (the language server) cannot resolve a template from — or queue work
+/// against — an AST that has already been freed.
+pub const registry_reset -> fn () void {
+  if (g_templates.data != cast<*void>(0)) { VEC::free_vector(&g_templates); }
+  g_templates_ready = true;
+  g_templates = VEC::create_vector(sizeof<GenericTemplate>);
+
+  if (g_insts.data != cast<*void>(0)) { VEC::free_vector(&g_insts); }
+  g_insts_ready = true;
+  g_insts = VEC::create_vector(sizeof<Instantiation>);
+
+  if (g_pending.data != cast<*void>(0)) { VEC::free_vector(&g_pending); }
+  g_pending_ready = true;
+  g_pending = VEC::create_vector(sizeof<Pending>);
+}
+
 // ─── the entry point — called from tc_expr's tc_call ─────────────────────
 
 /// Rewrites a call's callee to a new name, preserving identifier vs. member

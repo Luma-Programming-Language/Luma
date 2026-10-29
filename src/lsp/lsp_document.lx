@@ -394,7 +394,16 @@ const append_windows_dir_listing -> fn (root: *byte) void {
 
     let pattern: *byte = windows_join_path(dir, "*");
     let find_data: [byte; 320];
-    let find_handle: i64 = FindFirstFileA(pattern, cast<*void>(&find_data));
+
+    @os {
+      "windows64" -> {
+        let find_handle: i64 = FindFirstFileA(pattern, cast<*void>(&find_data));
+      }
+
+      "linux" -> { let find_handle: i64 = -1; }
+      "macos" -> { let find_handle: i64 = -1; }
+    }
+    
     free(pattern);
 
     if (find_handle != -1) {
@@ -425,9 +434,18 @@ const append_windows_dir_listing -> fn (root: *byte) void {
           }
         }
 
-        if (FindNextFileA(find_handle, cast<*void>(&find_data)) == 0) break;
+        @os {
+          "windows64" -> { if (FindNextFileA(find_handle, cast<*void>(&find_data)) == 0) break; }
+          "linux" -> { break; }
+          "macos" -> { break; }
+        }
       }
-      FindClose(find_handle);
+
+      @os {
+        "windows64" -> { FindClose(find_handle); }
+        "linux" -> {}
+        "macos" -> {}
+      }
     }
 
     free(dir);
@@ -1095,7 +1113,7 @@ const format_struct_member -> fn (member: *AST::AstNode) *byte {
   return sb_finish(&b);
 }
 
-/// Formats a struct header as `struct Name<T> { ... }`.
+/// Formats a struct header as a multi-line `struct Name<T> { ... }`.
 #returns_ownership
 const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
   let b: StrBuf = sb_init();
@@ -1109,34 +1127,55 @@ const format_struct_signature -> fn (sd: *AST::StructDeclNode) *byte {
     }
     sb_str(&b, ">");
   }
-  sb_str(&b, " { ");
 
-  let member_count: i64 = 0;
+  let total: i64 = 0;
+  loop [i: i64 = 0](i < sd.public_count) : (++i) {
+    if (sd.public_members[i].kind == AST::NodeType::STMT_FIELD_DECL) {
+      total = total + 1;
+    }
+  }
+  loop [i: i64 = 0](i < sd.private_count) : (++i) {
+    if (sd.private_members[i].kind == AST::NodeType::STMT_FIELD_DECL) {
+      total = total + 1;
+    }
+  }
+
+  if (total == 0) {
+    sb_str(&b, " {}");
+    return sb_finish(&b);
+  }
+
+  sb_str(&b, " {\n");
+  let emitted: i64 = 0;
   loop [i: i64 = 0](i < sd.public_count) : (++i) {
     let f: *AST::AstNode = sd.public_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
-      if (member_count > 0) { sb_str(&b, ", "); }
+      sb_str(&b, "  ");
       let ms: *byte = format_struct_member(f);
       sb_str(&b, ms);
       free(ms);
-      member_count = member_count + 1;
+      emitted = emitted + 1;
+      if (emitted < total) { sb_str(&b, ","); }
+      sb_str(&b, "\n");
     }
   }
   loop [i: i64 = 0](i < sd.private_count) : (++i) {
     let f: *AST::AstNode = sd.private_members[i];
     if (f.kind == AST::NodeType::STMT_FIELD_DECL) {
-      if (member_count > 0) { sb_str(&b, ", "); }
+      sb_str(&b, "  ");
       let ms: *byte = format_struct_member(f);
       sb_str(&b, ms);
       free(ms);
-      member_count = member_count + 1;
+      emitted = emitted + 1;
+      if (emitted < total) { sb_str(&b, ","); }
+      sb_str(&b, "\n");
     }
   }
-  sb_str(&b, " }");
+  sb_str(&b, "}");
   return sb_finish(&b);
 }
 
-/// Formats an enum header as `enum Name<T> { ... }`.
+/// Formats an enum header as a multi-line `enum Name<T> { ... }`.
 #returns_ownership
 const format_enum_signature -> fn (ed: *AST::EnumDeclNode) *byte {
   let b: StrBuf = sb_init();
@@ -1150,12 +1189,18 @@ const format_enum_signature -> fn (ed: *AST::EnumDeclNode) *byte {
     }
     sb_str(&b, ">");
   }
-  sb_str(&b, " { ");
-  loop [i: i64 = 0](i < ed.member_count) : (++i) {
-    if (i > 0) { sb_str(&b, ", "); }
-    sb_str(&b, ed.members[i]);
+  if (ed.member_count == 0) {
+    sb_str(&b, " {}");
+    return sb_finish(&b);
   }
-  sb_str(&b, " }");
+  sb_str(&b, " {\n");
+  loop [i: i64 = 0](i < ed.member_count) : (++i) {
+    sb_str(&b, "  ");
+    sb_str(&b, ed.members[i]);
+    if (i + 1 < ed.member_count) { sb_str(&b, ","); }
+    sb_str(&b, "\n");
+  }
+  sb_str(&b, "}");
   return sb_finish(&b);
 }
 
@@ -1176,9 +1221,11 @@ const format_var_signature -> fn (vd: *AST::VarDeclNode) *byte {
 
 /// Appends doc_comment (if any) to sig, returning a fresh owned string.
 // Takes ownership of `sig` and returns it unchanged when there's no doc
-// comment, otherwise a new buffer `sig + '\n' + doc_comment` (the trailing
-// blank line the parser's consume_doc_comments leaves behind is trimmed so
-// markdown code blocks stay tidy).
+// comment, otherwise a new buffer `sig + "\n\n" + doc_comment`. The blank
+// line is what lsp_dispatch's wrap_code_block splits on, so a multi-line
+// signature stays entirely inside the code fence while the doc comment
+// becomes the Markdown body. (The trailing blank line the parser's
+// consume_doc_comments leaves behind is trimmed so the block stays tidy.)
 #returns_ownership
 const append_doc_comment -> fn (sig: *byte, doc_comment: *byte) *byte {
   if (doc_comment == cast<*byte>(0) || doc_comment[0] == '\0') return sig;
@@ -1190,11 +1237,12 @@ const append_doc_comment -> fn (sig: *byte, doc_comment: *byte) *byte {
   }
   if (dlen == 0) return sig;
 
-  let out: *byte = cast<*byte>(alloc(slen + 1 + dlen + 1));
+  let out: *byte = cast<*byte>(alloc(slen + 2 + dlen + 1));
   MEM::memcpy(cast<*void>(out), cast<*void>(sig), slen);
   out[slen] = '\n';
-  MEM::memcpy(cast<*void>(cast<i64>(out) + slen + 1), cast<*void>(doc_comment), dlen);
-  out[slen + 1 + dlen] = '\0';
+  out[slen + 1] = '\n';
+  MEM::memcpy(cast<*void>(cast<i64>(out) + slen + 2), cast<*void>(doc_comment), dlen);
+  out[slen + 2 + dlen] = '\0';
   free(sig);
   return out;
 }
@@ -2837,9 +2885,20 @@ const walk_field_for_tokens -> fn (tokens: *VEC::Vector, mod: *AST::ModuleNode, 
       walk_type_for_tokens(tokens, mod, prog, mfd.param_types[p]);
     }
     walk_type_for_tokens(tokens, mod, prog, mfd.return_type);
+    // A generic method (`static make -> fn<T>`) inside a *non*-generic
+    // struct is its own template: typecheck only runs over its concrete
+    // instantiations, so the template body's resolved_type fields are
+    // uninitialized garbage. The struct-level type_param_count check in
+    // walk_module_decl_for_tokens doesn't cover this case — see
+    // g_sem_in_template's note. Without this, emit_member_token
+    // dereferences that garbage and segfaults on the method body (e.g.
+    // ast.lx's AstNode::make<T>, `n.kind = kind`).
+    let saved_template: bool = g_sem_in_template;
+    if (mfd.type_param_count > 0) { g_sem_in_template = true; }
     g_sem_in_method = true;
     walk_stmt_for_tokens(tokens, mod, mfd, prog, mfd.body);
     g_sem_in_method = false;
+    g_sem_in_template = saved_template;
     return;
   }
 
