@@ -1,116 +1,370 @@
-//! POSIX threading bindings for Linux
+//! Threading bindings for Linux and Windows
 //!
-//! PLATFORM: Linux x86_64
+//! PLATFORM: Linux x86_64, Windows x86_64
 //!
-//! Wraps libpthread — pthread_t, pthread_mutex_t, and pthread_cond_t
-//! are all treated as i64 (opaque handles).
+//! Same pthread-style API on both platforms.
+//!   - Linux:   thin wrappers over libpthread
+//!   - Windows: pthread semantics implemented on top of Win32
+//!              (kernel32.dll: threads, SRW locks, condition variables,
+//!               synchronization barriers)
+//!
+//! Always size your storage with the PTHREAD_*_SIZE constants (they differ
+//! per OS) and give it at least 8-byte alignment (alloc() already does).
 
 @module "std_thread"
 
-@link("libpthread.so.0")
+@os {
+    // ############################################################################
+    // LINUX  (unchanged: direct libpthread bindings)
+    // ############################################################################
+    "linux" -> {
+        @link("libpthread.so.0")
 
-// Opaque type sizes on Linux x86_64
-pub const PTHREAD_T_SIZE:       i64 = 8;
-pub const PTHREAD_MUTEX_SIZE:   i64 = 40;
-pub const PTHREAD_COND_SIZE:    i64 = 48;
-pub const PTHREAD_RWLOCK_SIZE:  i64 = 56;
-pub const PTHREAD_BARRIER_SIZE: i64 = 32;
-pub const PTHREAD_ONCE_SIZE:    i64 = 4;
+        pub const PTHREAD_T_SIZE:       i64 = 8;
+        pub const PTHREAD_MUTEX_SIZE:   i64 = 40;
+        pub const PTHREAD_COND_SIZE:    i64 = 48;
+        pub const PTHREAD_RWLOCK_SIZE:  i64 = 56;
+        pub const PTHREAD_BARRIER_SIZE: i64 = 32;
+        pub const PTHREAD_ONCE_SIZE:    i64 = 4;
 
-// ============================================================================
-// Thread create / join / detach / self / exit
-// ============================================================================
+        pub const pthread_create  -> fn (tid: *i64, attr: *void, _fn: fn (*void) *void, arg: *void) i64;
+        pub const pthread_join    -> fn (tid: i64, retval: **void) i64;
+        pub const pthread_detach  -> fn (tid: i64) i64;
+        pub const pthread_self    -> fn () i64;
+        pub const pthread_exit    -> fn (retval: *void) void;
+        pub const pthread_equal   -> fn (t1: i64, t2: i64) i64;
+        pub const pthread_cancel  -> fn (tid: i64) i64;
 
-// int pthread_create(pthread_t *tid, void *attr, void *(*fn)(void*), void *arg)
-pub const pthread_create  -> fn (tid: *i64, attr: *void, _fn: fn (*void) *void, arg: *void) i64;
+        pub const pthread_mutex_init    -> fn (mutex: *i64, attr: *void) i64;
+        pub const pthread_mutex_destroy -> fn (mutex: *i64) i64;
+        pub const pthread_mutex_lock    -> fn (mutex: *i64) i64;
+        pub const pthread_mutex_trylock -> fn (mutex: *i64) i64;
+        pub const pthread_mutex_unlock  -> fn (mutex: *i64) i64;
 
-// int pthread_join(pthread_t tid, void **retval)
-pub const pthread_join    -> fn (tid: i64, retval: **void) i64;
+        pub const pthread_cond_init      -> fn (cond: *i64, attr: *void) i64;
+        pub const pthread_cond_destroy   -> fn (cond: *i64) i64;
+        pub const pthread_cond_wait      -> fn (cond: *i64, mutex: *i64) i64;
+        pub const pthread_cond_signal    -> fn (cond: *i64) i64;
+        pub const pthread_cond_broadcast -> fn (cond: *i64) i64;
 
-// int pthread_detach(pthread_t tid)
-pub const pthread_detach  -> fn (tid: i64) i64;
+        pub const pthread_rwlock_init    -> fn (rwlock: *i64, attr: *void) i64;
+        pub const pthread_rwlock_destroy -> fn (rwlock: *i64) i64;
+        pub const pthread_rwlock_rdlock  -> fn (rwlock: *i64) i64;
+        pub const pthread_rwlock_wrlock  -> fn (rwlock: *i64) i64;
+        pub const pthread_rwlock_unlock  -> fn (rwlock: *i64) i64;
 
-// pthread_t pthread_self(void)
-pub const pthread_self    -> fn () i64;
+        pub const pthread_once            -> fn (once: *i64, _fn: fn () void) i64;
+        pub const pthread_barrier_init    -> fn (barrier: *i64, attr: *void, count: i64) i64;
+        pub const pthread_barrier_destroy -> fn (barrier: *i64) i64;
+        pub const pthread_barrier_wait    -> fn (barrier: *i64) i64;
+    }
 
-// void pthread_exit(void *retval)
-pub const pthread_exit    -> fn (retval: *void) void;
+    // ############################################################################
+    // WINDOWS  (pthread API implemented over Win32, x86_64 only)
+    // ############################################################################
+    "windows" -> {
+        // Storage layout on Windows:
+        //   mutex   : SRWLOCK                       (8)
+        //   cond    : CONDITION_VARIABLE            (8)
+        //   rwlock  : [SRWLOCK, writer_flag]        (16)
+        //   barrier : SYNCHRONIZATION_BARRIER       (32)
+        //   once    : [SRWLOCK, done_flag]          (16)
+        //   thread  : HANDLE                        (8)
+        pub const PTHREAD_T_SIZE:       i64 = 8;
+        pub const PTHREAD_MUTEX_SIZE:   i64 = 8;
+        pub const PTHREAD_COND_SIZE:    i64 = 8;
+        pub const PTHREAD_RWLOCK_SIZE:  i64 = 16;
+        pub const PTHREAD_BARRIER_SIZE: i64 = 32;
+        pub const PTHREAD_ONCE_SIZE:    i64 = 16;
 
-// int pthread_equal(pthread_t t1, pthread_t t2)
-pub const pthread_equal   -> fn (t1: i64, t2: i64) i64;
+        // errno-style codes (same numeric values as the Linux module)
+        const EAGAIN: i64 = 11;
+        const EBUSY:  i64 = 16;
+        const EINVAL: i64 = 22;
+        const ENOSYS: i64 = 38;
 
-// int pthread_cancel(pthread_t tid)
-pub const pthread_cancel  -> fn (tid: i64) i64;
+        // ------------------------------------------------------------------
+        // Raw Win32 imports. Win32 types on x64:
+        //   HANDLE/SIZE_T = i64, DWORD = i32/u32, BOOL = i32, BOOLEAN = u8
+        // Return values narrower than 64 bits MUST be declared with their real
+        // width; the upper bits of RAX are undefined for them.
+        // INFINITE (0xFFFFFFFF) is written as -1 in an i32 parameter.
+        // ------------------------------------------------------------------
 
-// ============================================================================
-// Mutex
-// ============================================================================
+        // --- threads
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const CreateThread -> fn (attrs: *void, stack_size: i64, start: fn (*void) *void, arg: *void, flags: i32, thread_id: *u32) i64;
 
-// int pthread_mutex_init(pthread_mutex_t *mutex, void *attr)
-pub const pthread_mutex_init    -> fn (mutex: *i64, attr: *void) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const WaitForSingleObject -> fn (handle: i64, millis: i32) u32;
 
-// int pthread_mutex_destroy(pthread_mutex_t *mutex)
-pub const pthread_mutex_destroy -> fn (mutex: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const GetExitCodeThread -> fn (handle: i64, code: *u32) i32;
 
-// int pthread_mutex_lock(pthread_mutex_t *mutex)
-pub const pthread_mutex_lock    -> fn (mutex: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const CloseHandle -> fn (handle: i64) i32;
 
-// int pthread_mutex_trylock(pthread_mutex_t *mutex)
-pub const pthread_mutex_trylock -> fn (mutex: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const ExitThread -> fn (code: i32) void;
 
-// int pthread_mutex_unlock(pthread_mutex_t *mutex)
-pub const pthread_mutex_unlock  -> fn (mutex: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const GetCurrentThread -> fn () i64;
 
-// ============================================================================
-// Condition variables
-// ============================================================================
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const GetCurrentProcess -> fn () i64;
 
-// int pthread_cond_init(pthread_cond_t *cond, void *attr)
-pub const pthread_cond_init      -> fn (cond: *i64, attr: *void) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const DuplicateHandle -> fn (src_proc: i64, src: i64, dst_proc: i64, dst: *i64, access: i32, inherit: i32, options: i32) i32;
 
-// int pthread_cond_destroy(pthread_cond_t *cond)
-pub const pthread_cond_destroy   -> fn (cond: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const GetThreadId -> fn (handle: i64) u32;
 
-// int pthread_cond_wait(pthread_cond_t *cond, pthread_mutex_t *mutex)
-pub const pthread_cond_wait      -> fn (cond: *i64, mutex: *i64) i64;
+        // --- SRW locks (used for mutex, rwlock and once)
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const InitializeSRWLock -> fn (lock: *i64) void;
 
-// int pthread_cond_signal(pthread_cond_t *cond)
-pub const pthread_cond_signal    -> fn (cond: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const AcquireSRWLockExclusive -> fn (lock: *i64) void;
 
-// int pthread_cond_broadcast(pthread_cond_t *cond)
-pub const pthread_cond_broadcast -> fn (cond: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const ReleaseSRWLockExclusive -> fn (lock: *i64) void;
 
-// ============================================================================
-// Read/write locks
-// ============================================================================
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const TryAcquireSRWLockExclusive -> fn (lock: *i64) u8;
 
-// int pthread_rwlock_init(pthread_rwlock_t *rwlock, void *attr)
-pub const pthread_rwlock_init    -> fn (rwlock: *i64, attr: *void) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const AcquireSRWLockShared -> fn (lock: *i64) void;
 
-// int pthread_rwlock_destroy(pthread_rwlock_t *rwlock)
-pub const pthread_rwlock_destroy -> fn (rwlock: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const ReleaseSRWLockShared -> fn (lock: *i64) void;
 
-// int pthread_rwlock_rdlock(pthread_rwlock_t *rwlock)
-pub const pthread_rwlock_rdlock  -> fn (rwlock: *i64) i64;
+        // --- condition variables
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const InitializeConditionVariable -> fn (cond: *i64) void;
 
-// int pthread_rwlock_wrlock(pthread_rwlock_t *rwlock)
-pub const pthread_rwlock_wrlock  -> fn (rwlock: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const SleepConditionVariableSRW -> fn (cond: *i64, lock: *i64, millis: i32, flags: i32) i32;
 
-// int pthread_rwlock_unlock(pthread_rwlock_t *rwlock)
-pub const pthread_rwlock_unlock  -> fn (rwlock: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const WakeConditionVariable -> fn (cond: *i64) void;
 
-// ============================================================================
-// Once / barriers
-// ============================================================================
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const WakeAllConditionVariable -> fn (cond: *i64) void;
 
-// int pthread_once(pthread_once_t *once, void (*fn)(void))
-pub const pthread_once           -> fn (once: *i64, _fn: fn () void) i64;
+        // --- barriers (Windows 8+)
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const InitializeSynchronizationBarrier -> fn (barrier: *i64, total: i32, spin: i32) i32;
 
-// int pthread_barrier_init(pthread_barrier_t *barrier, void *attr, int count)
-pub const pthread_barrier_init   -> fn (barrier: *i64, attr: *void, count: i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const EnterSynchronizationBarrier -> fn (barrier: *i64, flags: i32) i32;
 
-// int pthread_barrier_destroy(pthread_barrier_t *barrier)
-pub const pthread_barrier_destroy -> fn (barrier: *i64) i64;
+        #dll_import("kernel32.dll", callconv: "stdcall")
+        const DeleteSynchronizationBarrier -> fn (barrier: *i64) i32;
 
-// int pthread_barrier_wait(pthread_barrier_t *barrier)
-pub const pthread_barrier_wait   -> fn (barrier: *i64) i64;
+        // ==================================================================
+        // Thread create / join / detach / self / exit
+        // ==================================================================
+
+        // pthread_t == the Win32 thread HANDLE. The start routine is passed
+        // straight to CreateThread: on x64 there is a single calling convention,
+        // and Windows only reads the low 32 bits of the return value.
+        pub const pthread_create -> fn (tid: *i64, attr: *void, _fn: fn (*void) *void, arg: *void) i64 {
+            let h: i64 = CreateThread(cast<*void>(0), 0, _fn, arg, 0, cast<*u32>(0));
+            if (h == 0) {
+                return EAGAIN;
+            }
+            *tid = h;
+            return 0;
+        }
+
+        // LIMITATION: Windows only keeps a 32-bit thread exit code, so only the
+        // low 32 bits of the thread's return value survive pthread_join.
+        pub const pthread_join -> fn (tid: i64, retval: **void) i64 {
+            let w: u32 = WaitForSingleObject(tid, -1);
+            if (cast<i64>(w) != 0) {
+                return EINVAL;
+            }
+
+            let code: u32 = 0;
+            GetExitCodeThread(tid, &code);
+            CloseHandle(tid);
+
+            if (retval != cast<**void>(0)) {
+                *retval = cast<*void>(cast<i64>(code));
+            }
+            return 0;
+        }
+
+        pub const pthread_detach -> fn (tid: i64) i64 {
+            CloseHandle(tid);
+            return 0;
+        }
+
+        // GetCurrentThread() is only a pseudo-handle (meaningless in other
+        // threads), so duplicate it into a real handle. This allocates one
+        // handle per call; call it once per thread and reuse the value.
+        pub const pthread_self -> fn () i64 {
+            let real: i64 = 0;
+            let proc: i64 = GetCurrentProcess();
+            // DUPLICATE_SAME_ACCESS = 2
+            DuplicateHandle(proc, GetCurrentThread(), proc, &real, 0, 0, 2);
+            return real;
+        }
+
+        pub const pthread_exit -> fn (retval: *void) void {
+            ExitThread(cast<i32>(cast<i64>(retval)));
+        }
+
+        pub const pthread_equal -> fn (t1: i64, t2: i64) i64 {
+            if (GetThreadId(t1) == GetThreadId(t2)) {
+                return 1;
+            }
+            return 0;
+        }
+
+        // There is no safe equivalent (TerminateThread leaks locks and corrupts
+        // state). Use a cooperative stop flag instead.
+        pub const pthread_cancel -> fn (tid: i64) i64 {
+            return ENOSYS;
+        }
+
+        // ==================================================================
+        // Mutex  (SRWLOCK: non-recursive, like a default pthread mutex)
+        // ==================================================================
+
+        pub const pthread_mutex_init -> fn (mutex: *i64, attr: *void) i64 {
+            InitializeSRWLock(mutex);
+            return 0;
+        }
+
+        pub const pthread_mutex_destroy -> fn (mutex: *i64) i64 {
+            return 0;   // SRW locks need no cleanup
+        }
+
+        pub const pthread_mutex_lock -> fn (mutex: *i64) i64 {
+            AcquireSRWLockExclusive(mutex);
+            return 0;
+        }
+
+        pub const pthread_mutex_trylock -> fn (mutex: *i64) i64 {
+            if (cast<i64>(TryAcquireSRWLockExclusive(mutex)) != 0) {
+                return 0;
+            }
+            return EBUSY;
+        }
+
+        pub const pthread_mutex_unlock -> fn (mutex: *i64) i64 {
+            ReleaseSRWLockExclusive(mutex);
+            return 0;
+        }
+
+        // ==================================================================
+        // Condition variables  (the mutex passed to wait must be our SRW mutex)
+        // ==================================================================
+
+        pub const pthread_cond_init -> fn (cond: *i64, attr: *void) i64 {
+            InitializeConditionVariable(cond);
+            return 0;
+        }
+
+        pub const pthread_cond_destroy -> fn (cond: *i64) i64 {
+            return 0;
+        }
+
+        pub const pthread_cond_wait -> fn (cond: *i64, mutex: *i64) i64 {
+            // INFINITE timeout, flags = 0 (exclusive)
+            if (cast<i64>(SleepConditionVariableSRW(cond, mutex, -1, 0)) == 0) {
+                return EINVAL;
+            }
+            return 0;
+        }
+
+        pub const pthread_cond_signal -> fn (cond: *i64) i64 {
+            WakeConditionVariable(cond);
+            return 0;
+        }
+
+        pub const pthread_cond_broadcast -> fn (cond: *i64) i64 {
+            WakeAllConditionVariable(cond);
+            return 0;
+        }
+
+        // ==================================================================
+        // Read/write locks
+        //   rwlock[0] = SRWLOCK
+        //   rwlock[1] = 1 while a writer holds it, else 0
+        // pthread has ONE unlock call, but SRW needs to know whether to release
+        // shared or exclusive, so the writer records itself in rwlock[1]. Only
+        // the exclusive holder ever writes that flag, so it is race-free.
+        // ==================================================================
+
+        pub const pthread_rwlock_init -> fn (rwlock: *i64, attr: *void) i64 {
+            InitializeSRWLock(rwlock);
+            rwlock[1] = 0;
+            return 0;
+        }
+
+        pub const pthread_rwlock_destroy -> fn (rwlock: *i64) i64 {
+            return 0;
+        }
+
+        pub const pthread_rwlock_rdlock -> fn (rwlock: *i64) i64 {
+            AcquireSRWLockShared(rwlock);
+            return 0;
+        }
+
+        pub const pthread_rwlock_wrlock -> fn (rwlock: *i64) i64 {
+            AcquireSRWLockExclusive(rwlock);
+            rwlock[1] = 1;
+            return 0;
+        }
+
+        pub const pthread_rwlock_unlock -> fn (rwlock: *i64) i64 {
+            if (rwlock[1] == 1) {
+                rwlock[1] = 0;
+                ReleaseSRWLockExclusive(rwlock);
+            } else {
+                ReleaseSRWLockShared(rwlock);
+            }
+            return 0;
+        }
+
+        // ==================================================================
+        // Once / barriers
+        // ==================================================================
+
+        // once[0] = SRWLOCK, once[1] = done flag. Zero-initialised storage is a
+        // valid "not run yet" state, matching PTHREAD_ONCE_INIT == 0 on Linux.
+        pub const pthread_once -> fn (once: *i64, _fn: fn () void) i64 {
+            AcquireSRWLockExclusive(once);
+            if (once[1] == 0) {
+                _fn();
+                once[1] = 1;
+            }
+            ReleaseSRWLockExclusive(once);
+            return 0;
+        }
+
+        pub const pthread_barrier_init -> fn (barrier: *i64, attr: *void, count: i64) i64 {
+            // spin count -1 = system default
+            if (cast<i64>(InitializeSynchronizationBarrier(barrier, cast<i32>(count), -1)) == 0) {
+                return EINVAL;
+            }
+            return 0;
+        }
+
+        pub const pthread_barrier_destroy -> fn (barrier: *i64) i64 {
+            DeleteSynchronizationBarrier(barrier);
+            return 0;
+        }
+
+        // Returns -1 (PTHREAD_BARRIER_SERIAL_THREAD) in exactly one thread and 0
+        // in the others, like glibc.
+        pub const pthread_barrier_wait -> fn (barrier: *i64) i64 {
+            if (cast<i64>(EnterSynchronizationBarrier(barrier, 0)) != 0) {
+                return -1;
+            }
+            return 0;
+        }
+    }
+}
